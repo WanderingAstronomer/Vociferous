@@ -1,340 +1,178 @@
 ChatterBug
 
-Design and Development of a Linux-First Local Transcription Utility  
+Design and Development of a Cross-Platform Local Dictation Assistant  
 Author: Andrew Brown  
-Date: 2025-09-17  
-Version: Draft v2.1 (MVP refined)
+Date: 2025-11-21  
+Version: Draft v3.2 (hotkey-first, Whisper Turbo primary)
 
 ---
 
 ## Abstract
-ChatterBug is a single-user, Python-based desktop utility for offline speech-to-text on Linux. It prioritizes accuracy and simplicity over cloud features. The MVP uses Voxtral as the primary ASR backend with Faster-Whisper as a fallback. The app presents a minimal UI (Start/Stop + transcript area), copies results to the clipboard, and appends each result to a local XML log. No encryption, summarization, or multi-user features are included in the MVP.
+ChatterBug is a single-user, Python-based desktop dictation tool for Linux/Windows/macOS. It is hotkey-first: press a global shortcut to record, press again to stop, get a transcript copied to the clipboard and shown in a minimal overlay/tray UI. All transcription runs locally. The primary engine is Whisper Large v3 Turbo (loaded via transformers); an optional Faster-Whisper small/int8 engine provides a lightweight fallback. Models are placed manually (with an opt-in downloader); no automatic network calls are made in the core loop.
 
 ---
 
 ## 1. Introduction
 
 ### 1.1 Purpose
-This paper presents the design of ChatterBug, a local speech-to-text (STT) utility built entirely in Python. Earlier ideas involving Java, gRPC, and Spring Boot are discarded; this is a fresh baseline (Draft v2.1). The project is intentionally narrow: an offline transcription tool with a minimal UI, reliable performance, and a clean modular design. Its purpose is twofold:
-- Deliver a functional MVP useful for day-to-day transcription.
-- Serve as a learning exercise in building complete applications solo, using Python and standard tooling.
+This document realigns ChatterBug around a cross-platform, hotkey-first workflow with local-only ASR. It replaces the earlier Linux-first/Tkinter-first framing with a stricter focus on latency, privacy, and tight modules that can swap engines without UI churn.
 
 ### 1.2 Problem Statement
-Users need a fast, offline way to dictate short notes and immediately paste the transcript into other applications. Existing tools often require cloud connectivity, subscriptions, or heavyweight software stacks. ChatterBug focuses on a Linux desktop workflow: speak, stop, paste.
+Users need highly accurate, private transcription for short dictations (≤60 s) without cloud dependencies. The target hardware is a single 24 GB GPU; the system must stay within that envelope while remaining responsive on CPU-only fallbacks.
 
 ### 1.3 Product Overview (MVP)
-- Run: `python3 main.py`
-- UI: One window with transcript area and Start/Stop button.
-- Capture → Transcribe: Press Start, speak, press Stop.
-- Output: Transcript appears in the window, copied to clipboard, and logged to local XML.
-- ASR: Voxtral (primary), Faster-Whisper (fallback).
-- Hardware: Designed for systems with NVIDIA GPUs (CUDA), though CPU fallback is possible.
-- Platform: Linux (Ubuntu/Pop!_OS baseline).
+- Entry point: `python3 main.py` (currently runs a Tk stub; overlay/tray hotkey shell is planned next).
+- Flow: Global hotkey start → speak → hotkey stop → transcribe → clipboard + overlay display.
+- Engines: Whisper Large v3 Turbo (transformers) primary; Faster-Whisper small/int8 fallback.
+- Models: Local-only, dropped into `models/` (see Section 4.6).
+- Scope: Minimal UI, no telemetry, no cloud APIs, no auto-downloads.
 
 ### 1.4 Principles
-- Local-only: No network calls in the core flow.
-- GPU-aware: Optimize for NVIDIA GPU acceleration when available.
-- Small surface area: Few dependencies, tight modules.
-- Single responsibility: UI, audio, ASR, storage remain separate.
-- Accuracy over streaming: Process after speech, not token-by-token.
+- Local-only: No network calls in the core; explicit consent before any download or system-level change.
+- Accuracy-first within resource cap: Default to Whisper Large v3 Turbo FP16/on-GPU; Faster-Whisper small/int8 fallback for constrained environments.
+- Hotkey-first: UI is an unobtrusive overlay/tray, not a heavy window.
+- Cross-platform: Linux/Windows/macOS parity for the core loop (audio, hotkey, clipboard).
+- Simplicity: Small, composable modules; defaults that “just work” for one user.
 
 ### 1.5 Out of Scope (for MVP)
-- Encryption at rest, summarization, embeddings/search.
-- Diarization, plugins, team/sync, mobile apps, cloud services.
+- Cloud services, telemetry, or analytics.
+- Encryption/summarization/embeddings, diarization.
+- Multi-user, sync, mobile, or plugin frameworks.
+- Large configuration surfaces or device pickers beyond essentials.
+- XML logging as a user feature (kept only as a simple dev log for now).
 
 ### 1.6 Success Criteria (MVP)
-- Stop→text visible ≤8 s on CUDA (≤12 s CPU). 
-- Clipboard contains the final transcript after each Stop.
-- XML log gains one `<t at="ISO8601">…</t>` entry per Stop.
-- App runs offline and does not crash during a 10-minute session.
-- Cold start model load accounted for in performance testing.
+- Stop→text ≤8–10 s on GPU for 10–30 s clips; stable ≤60 s dictations.
+- Clipboard updated automatically with the final transcript.
+- Overlay/tray UI responsive; UI thread never blocks on ASR.
+- Fallback activates automatically on engine load/oom errors.
+- No network calls or unsolicited downloads.
 
 ---
 
-## 2. Goals and Non-Goals
-
-### 2.1 Goals
-ChatterBug v2.1 aims to deliver a **Modular Local Transcription Framework** focused on:
-- Core Workflow: Capture speech, transcribe locally, display in a window, copy to clipboard, and log to XML.
-- GPU Acceleration: Optimize for NVIDIA CUDA GPUs to ensure low-latency transcription on supported hardware.
-- Linux Desktop Support: Target Ubuntu/Pop!_OS as the reference platforms.
-- Modularity: Maintain clear boundaries between UI, audio capture, ASR, and storage components.
-- Simplicity: Provide a single-user, offline-only flow that is fast to run and easy to use.
-- Safety: Enforce a configurable max recording duration to prevent runaway captures.
-
-### 2.2 Non-Goals (for MVP)
-The following are explicitly out of scope for the MVP:
-- Encryption at rest or in transit.
-- Summarization, embeddings, or advanced natural-language processing.
-- Diarization or speaker attribution.
-- Multi-user features, cloud sync, or mobile apps.
-- Plugin frameworks or extensibility layers.
-- Polished UI design and packaging (planned for future versions, not MVP).
+## 2. Constraints and Expectations
+- Hardware: single GPU; Whisper Large v3 Turbo fits comfortably on modern GPUs (≥12 GB VRAM). Faster-Whisper small/int8 serves CPU-or-small-GPU environments.
+- Privacy: local-only execution; no telemetry or cloud calls.
+- Consent: any large download, autostart, or global hotkey registration requires explicit user approval.
+- Style: PEP 8 with type hints; functions short and single-purpose; stable public interfaces.
+- Docs: README + design doc must stay in sync with behavior; DEVDIARY records changes.
 
 ---
 
 ## 3. Architecture Overview
 
 ### 3.1 System Context
-Python-only, single process. Linux first (Ubuntu/Pop!_OS). NVIDIA CUDA preferred. Offline.
+Single Python process. Audio/ASR work happens off the UI thread. Engines are swapped via config. Models live under `models/` by default.
 
 ```mermaid
 flowchart LR
-  UI[UI (Tkinter)] -->|Start/Stop| CAP[Audio Capture]
-  CAP -->|WAV bytes| ASR[ASR Engine<br/>Voxtral → FW fallback]
+  HK[Global Hotkey] --> UI[Overlay/Tray UI]
+  UI -->|record cmd| CAP[Audio Capture]
+  CAP -->|wav bytes| ASR[ASR Dispatcher<br/>Whisper Turbo → Faster-Whisper]
   ASR -->|text + meta| UI
-  ASR -->|text + meta| STORE[Storage (XML)]
   UI -->|copy| CLIP[Clipboard]
+  UI -->|optional| LOG[Local log/XML]
 ```
 
 ### 3.2 Modules and Responsibilities
-- **UI (`ui.py`)**: window, Start/Stop, transcript view, clipboard, device dropdown, background threads.
-- **Audio (`audio.py`)**: record 16 kHz mono PCM from selected device, return WAV bytes and duration.
-- **ASR (`asr.py`)**: Voxtral small INT8 on CUDA if present; fallback to Faster-Whisper base INT8; returns text + metadata.
-- **Storage (`storage.py`)**: ensure `~/.chatterbug/transcripts.xml`, append entries, crash-safe write.
+- **UI (`ui.py`, future overlay shell)**: Drive hotkey state machine (Idle/Recording/Transcribing/Error), show status + last transcript, trigger copy.
+- **Audio (`audio.py`)**: Capture 16 kHz mono PCM, enforce max duration, return WAV bytes + duration.
+- **ASR (`asr.py`)**: Config-driven dispatcher. Primary Whisper Large v3 Turbo (transformers); falls back to Faster-Whisper small/int8 if needed. Returns text + metadata.
+- **Storage (`storage.py`)**: Minimal XML append for dev logging; future default will be JSON/text history with search.
 
 ### 3.3 Data Flow (Happy Path)
-```mermaid
-sequenceDiagram
-  participant U as User
-  participant UI as UI
-  participant A as Audio
-  participant S as ASR
-  participant X as XML
+1. Hotkey pressed → record.
+2. Hotkey pressed again → stop recording → WAV bytes.
+3. ASR dispatcher transcribes via selected engine.
+4. UI shows transcript, copies to clipboard, logs locally.
 
-  U->>UI: Start
-  UI->>A: start(device_id)
-  U->>UI: Stop
-  UI->>A: stop() → (wav_bytes, duration_s)
-  UI->>S: transcribe(wav_bytes, lang="en")
-  S-->>UI: (text, meta)
-  UI->>UI: display + clipboard
-  UI->>X: append(text, meta)
-```
-
-### 3.4 Concurrency Model
-- Tkinter mainloop on UI thread.
-- Recording thread drains audio queue.
-- ASR thread runs model inference.
-- UI updates via `root.after(...)`.
+### 3.4 Concurrency
+- UI loop must stay responsive; recording and ASR run on background threads.
+- ASR load/generation is off the UI thread; results marshalled back via event/queue.
 
 ### 3.5 Error Handling and Fallbacks
-- Voxtral init failure → switch to Faster-Whisper; show non-blocking banner.
-- Both fail → disable Start; persistent banner.
-- No audio device → disable Start; show guidance.
-- Audio disconnect mid-record → auto-stop with error message.
-- Storage error → keep UI + clipboard; toast the write error.
-- GPU OOM → release model, retry fallback engine.
-
-### 3.6 Configuration (MVP Defaults)
-- Language: en fixed.
-- Model: Voxtral small INT8 (primary).
-- Fallback: Faster-Whisper base INT8.
-- GPU: CUDA used if available; CPU fallback allowed.
-- Audio device: dropdown selects input device, with Refresh button.
-- Paths: XML at `~/.chatterbug/transcripts.xml`.
-
-### 3.7 External Dependencies
-`tkinter` (stdlib), `sounddevice`, `soundfile`, `numpy`, `voxtral` runtime, `faster-whisper`, `psutil` (optional).
-
-### 3.8 Interfaces (Sketch)
-```python
-# audio.py
-class Recorder:
-    def list_input_devices() -> list[dict]: ...
-    def start(device_id: int | None = None) -> None: ...
-    def stop_get_wav() -> tuple[bytes, float]: ...
-
-# asr.py
-def transcribe_wav(wav_bytes: bytes, lang: str = "en") -> tuple[str, dict]:
-    """returns (text, meta) where meta includes engine, model, lang, dur_s, rtf, load_ms, mem_mb"""
-
-# storage.py
-def append_xml(text: str, meta: dict, when: datetime) -> None: ...
-```
-
-### 3.9 XML Schema (MVP)
-```xml
-<transcripts>
-  <t at="2025-09-17T19:40:12Z"
-     engine="voxtral"
-     model="voxtral-small-int8"
-     lang="en"
-     dur_s="8.42"
-     load_ms="3200"
-     mem_mb="850">
-    Dictated text goes here.
-  </t>
-</transcripts>
-```
+- Engine load/OOM/import failure → mark engine unavailable → try the next fallback.
+- Audio failure (device loss) → auto-stop + banner; keep UI responsive.
+- Storage failure → keep UI/clipboard working; surface a non-blocking error.
+- Model missing → clear message pointing to `models/<engine>` drop location.
 
 ---
 
-## 4. Detailed Requirements
+## 4. ASR Plan
 
-### 4.1 Functional
-- Start/Stop recording from selected input device.
-- Show final transcript in UI after Stop.
-- Auto-copy transcript to clipboard with status line confirmation.
-- Append transcript entry to XML with metadata.
-- Persist last-used settings (audio device, model) to `~/.chatterbug/config.json`.
-- Enforce a max recording duration (default 60 s, configurable).
+### 4.1 Engines
+- **Primary**: Whisper Large v3 Turbo (transformers HF checkpoint).
+- **Fallback**: Faster-Whisper small/int8 (converted weights).
 
-### 4.2 Non-Functional
-- Latency: Stop→text ≤8 s CUDA; ≤12 s CPU, including cold start.
-- Reliability: No crash in a 10-minute session (≥5 cycles).
-- Resource caps: ≤1.5 GB RSS during inference.
-- Startup: UI ≤1 s.
-- Integration test validates full pipeline with known audio.
+### 4.2 Quantization and Memory
+- Whisper Large v3 Turbo: FP16 fits typical 12–24 GB GPUs (~6–7 GB). Defaults to FP16 on GPU, FP32 on CPU.
+- Faster-Whisper small: int8 weights for portability.
 
-### 4.3 UI (Tkinter)
-- Transcript area scrollable, read-only.
-- Start/Stop toggle button.
-- Input device dropdown with Refresh.
-- Status line: Idle, Recording, Processing, Done, errors.
-- Progress indicator during Processing.
-- Keyboard: Enter = toggle; Esc = cancel.
-- Clipboard auto-copy with confirmation.
+### 4.3 Configuration
+- Config file: `~/.chatterbug/config.toml` (if absent, defaults are used).
+- Keys:
+  - `engine`: `whisper_large_v3_turbo` or another HF Whisper variant.
+  - `fallbacks`: ordered list (default `["faster_whisper_small"]`).
+  - `models_root`: defaults to `./models`
+  - Per-engine overrides: `local_dir`, `format` (`hf_whisper` or `fw`), `max_new_tokens`, `compute_type`.
 
-### 4.4 Audio
-- 16 kHz, mono, PCM16.
-- Default = system device; dropdown switchable.
-- Disconnection mid-record → auto-stop with banner.
-- Queue-driven capture; drop frames if lag.
-- Duration computed from frames.
+### 4.4 Engine Interface
+`transcribe_wav(wav_bytes: bytes, language_hint: str | None = None) -> (str, dict)`  
+Meta includes: engine, model_id, quantization, duration_s, latency_s, rtf, device, error (optional).
 
-### 4.5 ASR
-- Voxtral small INT8 primary (CUDA if present).
-- Faster-Whisper base INT8 fallback.
-- Both fail → disable Start; banner.
-- Language = en.
-- Meta includes duration, realtime factor, load time, GPU mem.
+### 4.5 Failure Policy
+- Any engine exception marks that engine unavailable for the session.
+- Next call uses the next fallback in config order (Whisper → Faster-Whisper).
+- Clear logging for: missing model dir, missing dependencies, OOM, bad audio.
 
-### 4.6 Storage
-- `~/.chatterbug/transcripts.xml`.
-- Atomic write with temp replace.
-- On startup, validate XML; backup and reset if corrupt.
-- Schema includes attrs for engine, model, lang, dur_s, rtf, load_ms, mem_mb.
+### 4.6 Model Placement
+- Default root: `models/` in the repo. User places weights manually (no auto-downloads).
+- Expected subdirs:
+  - `models/whisper-large-v3-turbo/` → HF checkpoint (safetensors + config) [default primary]
+  - `models/faster_whisper_small/` → Faster-Whisper small/int8 conversion
+- Config can point elsewhere if desired.
+- Opt-in downloader: `python -m download --model whisper-large-v3-turbo` (prompts before download; `--yes` to skip). Add `--model faster-whisper-small-int8` for the fallback.
 
 ---
 
-## 5. Implementation Plan
-
-### 5.1 Overview
-Five sequential iterations, each with acceptance tests.
-
-### 5.2 Iteration 1 — UI Scaffold
-Goal: Tkinter window with controls.  
-Acceptance: UI visible in ≤1 s, no errors.  
-Commit: `feat(ui): initial window and controls`
-
-### 5.3 Iteration 2 — Audio Capture
-Goal: Capture WAV from selected device.  
-Acceptance: WAV bytes valid, duration >0, UI responsive.  
-Commit: `feat(audio): capture 16k mono WAV from selected device`
-
-### 5.4 Iteration 3 — ASR Integration
-Goal: Transcribe audio to text.  
-Acceptance: Short utterance transcribed ≤8 s CUDA (≤12 s CPU), fallback if needed.  
-Commit: `feat(asr): voxtral small int8 with fw fallback`
-
-### 5.5 Iteration 4 — Output & Clipboard
-Goal: Display transcript and copy to clipboard.  
-Acceptance: Text shown, paste works, status confirms copy, progress bar visible.  
-Commit: `feat(output): transcript display and clipboard`
-
-### 5.6 Iteration 5 — Storage & Config
-Goal: XML logging and persisted config.  
-Acceptance: XML grows by one valid entry each Stop; config reloads on restart.  
-Commit: `feat(storage): xml log and config persistence`
-
-### 5.7 Definition of Done
-- All iterations pass tests.
-- SLA met.
-- Stable ≥10 min session.
-- No network calls.
-
-### 5.8 Risks and Spikes
-- Voxtral/CUDA mismatches.
-- Wayland audio quirks.
-- Latency regressions.
-- GPU OOM fallback.
+## 5. UI Plan (Hotkey-First)
+- Global hotkey toggles record/stop; secondary hotkey to cancel.
+- Overlay/tray shows: status (Idle/Recording/Transcribing/Error), last transcript (read-only), concise errors.
+- Clipboard auto-copy after successful transcript.
+- UI never blocks on model load/run; ASR work is backgrounded.
+- Minimal preferences: choose engine, hotkey, max duration. Heavy device pickers deferred.
 
 ---
 
-## 6. Testing & Validation
+## 6. Implementation Plan (Sequenced)
+1. **Phase 0 — Docs reset**: Align README/design doc with hotkey-first, cross-platform, Whisper Turbo primary plan; document model drop dirs and consent policies. ✅
+2. **Phase 1 — Audio + CLI prototype**: Stable capture helper, CLI entry for quick testing; stub ASR OK initially.
+3. **Phase 2 — ASR dispatcher**: Config-driven engine selection, Whisper Large v3 Turbo primary, Faster-Whisper fallback, lazy loading, clear error surfacing.
+4. **Phase 3 — Hotkey overlay/tray**: Replace Tk stub with hotkey shell; clipboard and status updates.
+5. **Phase 4 — Packaging**: Optional PyInstaller/Briefcase packaging; keep local model cache under control.
 
-### 6.1 Acceptance Tests
-- Launch UI ≤1 s.
-- Record 5–10 s utterance → Stop → transcript visible ≤8 s CUDA (≤12 s CPU).
-- Clipboard contains transcript, status line says Copied.
-- XML grows with valid entry.
-- Restart → device/model restored.
-- Max duration triggers auto-stop + warning.
-
-### 6.2 Unit Tests
-- XML append valid and atomic.
-- Audio duration correct.
-- Config load/save round-trip.
-- XML corruption recovery works.
-
-### 6.3 Integration & Performance
-- End-to-end test with fixed WAV sample.
-- Log latency including load time.
-- Monitor memory (GPU/CPU).
-
-### 6.4 Error Cases
-- Voxtral fail → fallback.
-- Both fail → Start disabled.
-- Audio disconnect → auto-stop.
-- Storage unwritable → clipboard still valid.
-
-### 6.5 Logging
-- Fields: device, engine, model, dur, rtf, load_ms, mem_mb.
-- Rotating logs.
+Definition of done: stop→text latency target met, fallback verified, clipboard + UI responsive, no network traffic, basic logging in place.
 
 ---
 
-## 7. Implementation Details
-
-### 7.1 Runtime
-Python 3.11+. Linux-first. CUDA 12.x with NVIDIA Turing+.
-
-### 7.2 Dependencies
-Tkinter, sounddevice, soundfile, numpy, voxtral, faster-whisper, pytest, psutil.
-
-### 7.3 Paths
-- Transcripts: ~/.chatterbug/transcripts.xml
-- Config: ~/.chatterbug/config.json
-- Logs: ~/.chatterbug/chatterbug.log
-- Caches: ~/.cache/voxtral
-
-### 7.4 Error Handling
-- XML corruption → backup + recreate.
-- Audio disconnect → auto-stop.
-- GPU OOM → free, fallback.
-
-### 7.5 Installation
-- Requires CUDA toolkit 12.x + NVIDIA drivers.
-- System packages: portaudio19-dev, libsndfile1, build-essential.
-- Repo clone, venv, pip install with CUDA wheels.
-
-### 7.6 Logging
-Rotating log, INFO default, DEBUG optional. Include perf metrics.
+## 7. Testing & Validation
+- Unit: audio duration calculation; config parsing; dispatcher fallback logic; storage append.
+- Integration: end-to-end WAV → transcript (with real engines when available); ensure fallback triggers on forced failure.
+- Performance: log cold-start and warm latencies; track GPU memory for Whisper Large v3 Turbo (primary) and Faster-Whisper fallback.
+- Cross-platform checks: audio/hotkey/clipboard sanity on Linux/Windows/macOS (manual initially).
+- Mark GPU/slow tests; default CI should run CPU-safe fast tests only.
 
 ---
 
-## 8. Conclusion
+## 8. Operational Notes
+- No automatic downloads. Prompt the user before any large fetch or system change.
+- Model storage defaults to `./models`; optional override to `~/.chatterbug/models`.
+- Logging should stay terse; avoid spam that hides errors.
+- Keep public interfaces stable (`audio.record`, `asr.transcribe_wav`, storage append) to minimize UI churn.
 
-ChatterBug v2.1 is a **Modular Local Transcription Framework**: a minimal, offline tool for converting speech to text on Linux with NVIDIA GPU acceleration. Complexity has been cut back to Python-only with four clear modules: UI, Audio, ASR, and Storage.
+---
 
-The MVP scope is precise and improved:
-- GPU latency expectations adjusted conservatively.
-- Safety features added (max recording duration, XML validation).
-- UX improved with progress indicator and clipboard confirmation.
-- Error handling extended to device disconnects, GPU OOM, and ASR total failure.
-
-Testing now includes an integration pipeline and explicit performance logging. Risks around Voxtral stability, CUDA versions, and Wayland are documented with fallback paths.
-
-This refined MVP remains achievable, stable, and extensible. It sets a solid foundation for future polish, advanced features, and broader adoption once validated in real use.
-
+## 9. Current Status
+- Tk stub UI remains; audio/storage helpers exist; ASR dispatcher is implemented with Whisper Large v3 Turbo as default and Faster-Whisper fallback.
+- Docs and repo structure reflect the hotkey-first, cross-platform plan with Whisper Turbo as primary.
+- Next: wire UI shell (hotkey overlay/tray), validate downloads/models, and exercise dispatcher end-to-end.

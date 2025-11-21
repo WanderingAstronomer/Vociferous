@@ -2,10 +2,15 @@
 numpy
 sounddevice
 soundfile
+pyperclip
 
 # ASR backends (install GPU variants as needed)
 faster-whisper
 torch
+transformers
+accelerate
+huggingface-hub
+tqdm
 
 # utilities
 psutil

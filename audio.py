@@ -20,7 +20,7 @@ except Exception:
 SAMPLERATE = 16000
 CHANNELS = 1
 
-def record(stop_event: Optional[threading.Event] = None, max_sec: float = 60.0) -> Tuple[bytes, float]:
+def record(stop_event: Optional[threading.Event] = None, max_sec: float = 60.0, level_queue: Optional["queue.SimpleQueue[float]"] = None) -> Tuple[bytes, float]:
     if not _HAS_AUDIO:
         return b"", 0.0
 
@@ -28,6 +28,13 @@ def record(stop_event: Optional[threading.Event] = None, max_sec: float = 60.0) 
 
     def callback(indata, frames_count, time_info, status):
         frames.append(indata.copy())
+        if level_queue is not None:
+            # Simple RMS meter
+            rms = float((indata**2).mean() ** 0.5)
+            try:
+                level_queue.put_nowait(rms)
+            except Exception:
+                pass
 
     with sd.InputStream(samplerate=SAMPLERATE, channels=CHANNELS, callback=callback):
         start = time.time()

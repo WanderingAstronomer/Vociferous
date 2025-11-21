@@ -21,3 +21,8 @@ ENV/
 
 # Development diary
 DEVDIARY.md
+
+# Local model drops (weight files stay untracked)
+models/*
+!models/.gitkeep
+!models/README.md

@@ -1,0 +1,16 @@
+engine = "whisper_large_v3_turbo"
+fallbacks = ["faster_whisper_small"]
+models_root = "models"
+
+[models.whisper_large_v3_turbo]
+format = "hf_whisper"
+id = "openai/whisper-large-v3-turbo"
+local_dir = "whisper-large-v3-turbo"
+max_new_tokens = 448
+
+[models.faster_whisper_small]
+format = "fw"
+id = "guillaumekln/faster-whisper-small-int8"
+local_dir = "faster_whisper_small"
+compute_type = "int8"
+max_new_tokens = 320
