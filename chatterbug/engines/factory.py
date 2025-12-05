@@ -4,6 +4,7 @@ from dataclasses import replace
 from typing import Callable
 
 from chatterbug.domain.model import EngineConfig, EngineKind, TranscriptionEngine
+from chatterbug.domain.exceptions import ConfigurationError
 from .parakeet import ParakeetEngine
 from .model_registry import normalize_model_name
 from .voxtral import VoxtralEngine
@@ -21,4 +22,4 @@ def build_engine(kind: EngineKind, config: EngineConfig) -> TranscriptionEngine:
         return VoxtralEngine(config)
     if kind == "parakeet_rnnt":
         return ParakeetEngine(config)
-    raise ValueError(f"Unknown engine kind: {kind}")
+    raise ConfigurationError(f"Unknown engine kind: {kind}")
