@@ -112,6 +112,31 @@ class ParakeetEngine(TranscriptionEngine):
     def push_audio(self, pcm16: bytes, timestamp_ms: int) -> None:
         self._buffer.extend(pcm16)
 
+    def _transcribe_from_path(self, audio_bytes: bytes) -> List:
+        """Helper to transcribe from audio file path (fallback when tensor API unavailable)."""
+        import tempfile
+        import wave
+        import os
+        
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+            # Write audio as WAV file
+            with wave.open(tmp_path, 'wb') as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)  # 16-bit
+                wav_file.setframerate(self._sample_rate)
+                wav_file.writeframes(audio_bytes)
+        try:
+            return self._model.transcribe(
+                paths=[tmp_path],
+                batch_size=1,
+            )
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
     def flush(self) -> None:
         if not self._buffer:
             return
@@ -144,53 +169,14 @@ class ParakeetEngine(TranscriptionEngine):
             except TypeError:
                 # Fallback: model may not support audio/audio_len kwargs (e.g., older versions or test mocks)
                 # Try path-based inference by saving to temp file
-                import tempfile
-                import wave
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
-                    tmp_path = tmp_file.name
-                    # Write audio as WAV file
-                    with wave.open(tmp_path, 'wb') as wav_file:
-                        wav_file.setnchannels(1)
-                        wav_file.setsampwidth(2)  # 16-bit
-                        wav_file.setframerate(self._sample_rate)
-                        wav_file.writeframes(audio_bytes)
-                try:
-                    texts = self._model.transcribe(
-                        paths=[tmp_path],
-                        batch_size=1,
-                    )
-                finally:
-                    import os
-                    try:
-                        os.unlink(tmp_path)
-                    except Exception:
-                        pass
+                texts = self._transcribe_from_path(audio_bytes)
         except (ImportError, RuntimeError) as exc:
             # If numpy/torch unavailable or torch has import issues, fall back to path-based inference
             # This allows tests to work with mocked models
-            import tempfile
-            import wave
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
-                tmp_path = tmp_file.name
-                # Write audio as WAV file
-                with wave.open(tmp_path, 'wb') as wav_file:
-                    wav_file.setnchannels(1)
-                    wav_file.setsampwidth(2)  # 16-bit
-                    wav_file.setframerate(self._sample_rate)
-                    wav_file.writeframes(audio_bytes)
             try:
-                texts = self._model.transcribe(
-                    paths=[tmp_path],
-                    batch_size=1,
-                )
+                texts = self._transcribe_from_path(audio_bytes)
             except Exception as e:
                 raise EngineError(f"Parakeet inference failed: {e}") from e
-            finally:
-                import os
-                try:
-                    os.unlink(tmp_path)
-                except Exception:
-                    pass
             
         text = ""
         try:
