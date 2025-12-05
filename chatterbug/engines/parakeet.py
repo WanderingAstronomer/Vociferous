@@ -112,6 +112,31 @@ class ParakeetEngine(TranscriptionEngine):
     def push_audio(self, pcm16: bytes, timestamp_ms: int) -> None:
         self._buffer.extend(pcm16)
 
+    def _transcribe_from_path(self, audio_bytes: bytes) -> List:
+        """Helper to transcribe from audio file path (fallback when tensor API unavailable)."""
+        import tempfile
+        import wave
+        import os
+        
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+            # Write audio as WAV file
+            with wave.open(tmp_path, 'wb') as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)  # 16-bit
+                wav_file.setframerate(self._sample_rate)
+                wav_file.writeframes(audio_bytes)
+        try:
+            return self._model.transcribe(
+                paths=[tmp_path],
+                batch_size=1,
+            )
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
     def flush(self) -> None:
         if not self._buffer:
             return
@@ -119,32 +144,42 @@ class ParakeetEngine(TranscriptionEngine):
         if self._model is None:
             raise EngineError("Parakeet model not loaded")
 
-        # Convert buffered PCM16 directly to torch tensor for inference
-        try:
-            import numpy as np
-            import torch
-        except ImportError as exc:  # pragma: no cover
-            raise DependencyError("numpy and torch required for tensor conversion") from exc
-
         audio_bytes = bytes(self._buffer)
         num_samples = len(audio_bytes) // 2
         duration_s = num_samples / float(self._sample_rate)
 
-        # Convert PCM16 bytes directly to float32 tensor
-        audio_np = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-        audio_tensor = torch.tensor(audio_np).unsqueeze(0).to(self.device)
-        audio_lengths = torch.tensor([len(audio_np)], dtype=torch.long).to(self.device)
-
+        # Try tensor-based inference first (requires numpy and torch)
         try:
-            # NeMo's transcribe() method signature may vary by version
-            # Common patterns: audio/audio_len or paths_2_audio_files
-            # Try tensor-based inference first (faster, no temp files)
-            texts = self._model.transcribe(
-                audio=audio_tensor,
-                audio_len=audio_lengths,
-                batch_size=1,
-            )
-            text = ""
+            import numpy as np
+            import torch
+            
+            # Convert PCM16 bytes directly to float32 tensor
+            audio_np = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+            audio_tensor = torch.tensor(audio_np).unsqueeze(0).to(self.device)
+            audio_lengths = torch.tensor([len(audio_np)], dtype=torch.long).to(self.device)
+
+            try:
+                # NeMo's transcribe() method signature may vary by version
+                # Common patterns: audio/audio_len or paths_2_audio_files
+                texts = self._model.transcribe(
+                    audio=audio_tensor,
+                    audio_len=audio_lengths,
+                    batch_size=1,
+                )
+            except TypeError:
+                # Fallback: model may not support audio/audio_len kwargs (e.g., older versions or test mocks)
+                # Try path-based inference by saving to temp file
+                texts = self._transcribe_from_path(audio_bytes)
+        except (ImportError, RuntimeError) as exc:
+            # If numpy/torch unavailable or torch has import issues, fall back to path-based inference
+            # This allows tests to work with mocked models
+            try:
+                texts = self._transcribe_from_path(audio_bytes)
+            except Exception as e:
+                raise EngineError(f"Parakeet inference failed: {e}") from e
+            
+        text = ""
+        try:
             if texts:
                 first = texts[0]
                 # NeMo may return str, list[str], or Hypothesis objects depending on version
