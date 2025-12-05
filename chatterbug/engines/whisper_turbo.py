@@ -201,7 +201,8 @@ class WhisperTurboEngine(TranscriptionEngine):
                 f"of oldest audio to prevent OOM"
             )
             self._buffer = self._buffer[excess:]
-            # Also update stream offset to account for dropped audio
+            # Update stream offset to account for dropped audio
+            # This happens before _maybe_process, so consumed audio offset is separate
             self._stream_offset_s += excess / (self.sample_rate * 2)
         self._maybe_process(force=False)
 
@@ -298,6 +299,9 @@ class WhisperTurboEngine(TranscriptionEngine):
         self._buffer = self._buffer[consume_bytes:]
         hop_bytes = int(self.hop_sec * bytes_per_sec)
         if len(self._buffer) > hop_bytes:
+            # Additional audio is dropped for sliding window; account for it in offset
+            dropped_bytes = len(self._buffer) - hop_bytes
+            self._stream_offset_s += dropped_bytes / bytes_per_sec
             self._buffer = self._buffer[-hop_bytes:]
         elif force:
             self._buffer.clear()

@@ -92,9 +92,12 @@ class TranscriptionSession:
                 except Exception:
                     pass
         # Join threads outside the lock to avoid deadlock
+        # Use timeout to prevent hanging indefinitely
         for thread in self._threads:
             if thread.is_alive():
-                thread.join()
+                thread.join(timeout=10.0)
+                if thread.is_alive():
+                    logger.warning(f"Thread {thread.name} did not terminate within timeout")
 
     def join(self, timeout: float | None = None) -> None:
         import time
