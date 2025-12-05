@@ -135,8 +135,9 @@ class ParakeetEngine(TranscriptionEngine):
         audio_lengths = torch.tensor([len(audio_np)], dtype=torch.long).to(self.device)
 
         try:
-            # Use NeMo's transcribe method with tensors directly
-            # NeMo models accept processed_signal and processed_signal_length
+            # NeMo's transcribe() method signature may vary by version
+            # Common patterns: audio/audio_len or paths_2_audio_files
+            # Try tensor-based inference first (faster, no temp files)
             texts = self._model.transcribe(
                 audio=audio_tensor,
                 audio_len=audio_lengths,

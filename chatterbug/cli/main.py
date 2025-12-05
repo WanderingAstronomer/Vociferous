@@ -135,8 +135,8 @@ def transcribe(
             "enable_batching": str(enable_batching).lower(),
             "batch_size": str(batch_size),
             "vad_filter": str(vad_filter).lower(),
-            # Default is true in engine; explicit flags override
-            "clean_disfluencies": str(clean_disfluencies if clean_disfluencies else not no_clean_disfluencies).lower(),
+            # Default is true in engine; flags override: explicit enable OR (no explicit disable)
+            "clean_disfluencies": str(clean_disfluencies or not no_clean_disfluencies).lower(),
         },
     )
     options = TranscriptionOptions(
