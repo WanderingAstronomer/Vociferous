@@ -43,10 +43,10 @@ def test_normalize_whisper_model_case_insensitive() -> None:
 def test_normalize_whisper_model_default() -> None:
     """Test that None or empty string returns default model in CT2 format."""
     default = normalize_model_name("whisper_turbo", None)
-    assert default == "large-v3-turbo"  # Default maps to CT2 format
+    assert default == "distil-large-v3"  # New default
     
     default = normalize_model_name("whisper_turbo", "")
-    assert default == "large-v3-turbo"
+    assert default == "distil-large-v3"
 
 
 def test_normalize_voxtral_model_names() -> None:

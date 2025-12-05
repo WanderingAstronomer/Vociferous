@@ -72,7 +72,7 @@ def test_load_config_with_nonexistent_file_uses_defaults(tmp_path: Path) -> None
     nonexistent = tmp_path / "nonexistent.toml"
     cfg = load_config(nonexistent)
     
-    assert cfg.model_name == "openai/whisper-large-v3-turbo"
+    assert cfg.model_name == "distil-whisper/distil-large-v3"
     assert cfg.engine == "whisper_turbo"
     assert cfg.device == "cpu"
 
@@ -85,7 +85,7 @@ def test_load_config_with_partial_config(tmp_path: Path) -> None:
     cfg = load_config(config_path)
     assert cfg.device == "cuda"  # Overridden
     assert cfg.compute_type == "float16"  # Overridden
-    assert cfg.model_name == "openai/whisper-large-v3-turbo"  # Default
+    assert cfg.model_name == "distil-whisper/distil-large-v3"  # Default
 
 
 def test_load_config_with_invalid_toml(tmp_path: Path) -> None:

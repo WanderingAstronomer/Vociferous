@@ -7,7 +7,7 @@ from chatterbug.engines.model_registry import normalize_model_name
 def test_normalize_model_name_with_none() -> None:
     """Test normalize_model_name returns default when given None."""
     result = normalize_model_name("whisper_turbo", None)
-    assert result == "large-v3-turbo"  # faster-whisper short name
+    assert result == "distil-large-v3"  # faster-whisper short name for new default
     
     result = normalize_model_name("voxtral", None)
     assert result == "mistralai/Voxtral-Mini-3B-2507"  # full HF path
@@ -19,7 +19,7 @@ def test_normalize_model_name_with_none() -> None:
 def test_normalize_model_name_with_empty_string() -> None:
     """Test normalize_model_name handles empty string."""
     result = normalize_model_name("whisper_turbo", "")
-    assert result == "large-v3-turbo"  # faster-whisper short name
+    assert result == "distil-large-v3"  # faster-whisper short name for new default
 
 
 def test_normalize_model_name_with_whitespace() -> None:
