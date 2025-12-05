@@ -20,11 +20,12 @@ class TestWhisperTurboInitialization:
         config = _config()
         engine = WhisperTurboEngine(config)
         
-        assert engine.model_name == "large-v3-turbo"
+        assert engine.model_name == "distil-large-v3"
         assert engine.device == "cpu"
         assert engine.precision == "int8"
         assert engine.enable_batching is False
         assert engine.batch_size == 1
+        assert engine.clean_disfluencies is True  # New default
 
     def test_init_model_name_normalization(self) -> None:
         """Engine normalizes model names to faster-whisper format."""
@@ -45,6 +46,20 @@ class TestWhisperTurboInitialization:
         
         assert engine.enable_batching is False
         assert engine.batch_size == 16
+
+    def test_clean_disfluencies_default_enabled(self) -> None:
+        """Engine has clean_disfluencies enabled by default."""
+        config = _config()
+        engine = WhisperTurboEngine(config)
+        
+        assert engine.clean_disfluencies is True
+
+    def test_clean_disfluencies_can_be_disabled(self) -> None:
+        """Engine respects explicit disable of clean_disfluencies."""
+        config = _config(params={"clean_disfluencies": "false"})
+        engine = WhisperTurboEngine(config)
+        
+        assert engine.clean_disfluencies is False
 
 
 class TestWhisperTurboModelLoading:

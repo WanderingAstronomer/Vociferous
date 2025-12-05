@@ -47,9 +47,9 @@ def test_whisper_model_name_normalization_to_faster_whisper_format() -> None:
     Regression test for: Model normalization must map full HF names to faster-whisper short names.
     E.g., "openai/whisper-large-v3-turbo" -> "large-v3-turbo"
     """
-    # Test default model
+    # Test default model (now distil-large-v3)
     normalized = normalize_model_name("whisper_turbo", None)
-    assert normalized == "large-v3-turbo", f"Expected faster-whisper format, got {normalized}"
+    assert normalized == "distil-large-v3", f"Expected faster-whisper format, got {normalized}"
     
     # Test alias resolution
     normalized = normalize_model_name("whisper_turbo", "turbo")

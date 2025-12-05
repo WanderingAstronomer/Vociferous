@@ -7,7 +7,7 @@ from chatterbug.domain.model import EngineConfig
 def test_engine_config_defaults() -> None:
     """Test default EngineConfig values."""
     cfg = EngineConfig()
-    assert cfg.model_name == "openai/whisper-large-v3-turbo"
+    assert cfg.model_name == "distil-whisper/distil-large-v3"
     assert cfg.compute_type == "int8"
     assert cfg.device == "cpu"
     assert cfg.params == {}

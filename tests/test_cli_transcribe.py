@@ -11,7 +11,7 @@ from chatterbug.cli.main import app
 
 
 class _FakeConfig:
-    model_name = "openai/whisper-large-v3-turbo"
+    model_name = "distil-whisper/distil-large-v3"
     engine = "whisper_turbo"
     compute_type = "int8"
     device = "cpu"
@@ -66,7 +66,8 @@ def _setup_cli_fixtures(monkeypatch: pytest.MonkeyPatch) -> Dict[str, Any]:
     return calls
 
 
-def test_cli_transcribe_defaults_disable_batching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_transcribe_defaults_enable_batching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that batching is enabled by default for file transcription."""
     calls = _setup_cli_fixtures(monkeypatch)
     audio = tmp_path / "a.wav"
     audio.write_bytes(b"data")
@@ -75,9 +76,11 @@ def test_cli_transcribe_defaults_disable_batching(tmp_path: Path, monkeypatch: p
 
     assert result.exit_code == 0
     cfg = calls["engine_config"]
-    assert cfg.params["enable_batching"] == "false"
-    assert cfg.params["batch_size"] == "1"
+    assert cfg.params["enable_batching"] == "true"
+    assert cfg.params["batch_size"] == "16"
     assert cfg.params["word_timestamps"] == "false"
+    # Clean disfluencies enabled by default
+    assert cfg.params["clean_disfluencies"] == "true"
 
 
 def test_cli_transcribe_enable_batching_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -102,3 +105,59 @@ def test_cli_transcribe_enable_batching_flag(tmp_path: Path, monkeypatch: pytest
     assert cfg.params["enable_batching"] == "true"
     assert cfg.params["batch_size"] == "8"
     assert cfg.params["word_timestamps"] == "true"
+
+
+def test_cli_transcribe_fast_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that --fast flag enables optimized settings."""
+    calls = _setup_cli_fixtures(monkeypatch)
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"data")
+
+    result = CliRunner().invoke(
+        app,
+        ["transcribe", str(audio), "--fast", "--language", "en"],
+    )
+
+    assert result.exit_code == 0
+    cfg = calls["engine_config"]
+    # Fast mode should enable batching with batch_size >= 16
+    assert cfg.params["enable_batching"] == "true"
+    assert int(cfg.params["batch_size"]) >= 16
+    # Fast mode should use distil-large-v3 for English
+    assert cfg.model_name == "distil-large-v3"
+    # Check beam_size in options
+    start_args = calls["start_args"]
+    options = start_args[3]
+    assert options.beam_size == 1
+
+
+def test_cli_transcribe_no_clean_disfluencies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that --no-clean-disfluencies disables disfluency cleaning."""
+    calls = _setup_cli_fixtures(monkeypatch)
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"data")
+
+    result = CliRunner().invoke(
+        app,
+        ["transcribe", str(audio), "--no-clean-disfluencies"],
+    )
+
+    assert result.exit_code == 0
+    cfg = calls["engine_config"]
+    assert cfg.params["clean_disfluencies"] == "false"
+
+
+def test_cli_transcribe_clean_disfluencies_explicit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that --clean-disfluencies explicitly enables cleaning."""
+    calls = _setup_cli_fixtures(monkeypatch)
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"data")
+
+    result = CliRunner().invoke(
+        app,
+        ["transcribe", str(audio), "--clean-disfluencies"],
+    )
+
+    assert result.exit_code == 0
+    cfg = calls["engine_config"]
+    assert cfg.params["clean_disfluencies"] == "true"
