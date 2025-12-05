@@ -21,6 +21,9 @@ from chatterbug.polish.base import Polisher
 
 logger = structlog.get_logger()
 
+# Timeout for graceful thread shutdown
+THREAD_JOIN_TIMEOUT_SEC = 10.0
+
 class TranscriptionSession:
     """Wires an AudioSource into a TranscriptionEngine and pushes results to a sink."""
 
@@ -95,7 +98,7 @@ class TranscriptionSession:
         # Use timeout to prevent hanging indefinitely
         for thread in self._threads:
             if thread.is_alive():
-                thread.join(timeout=10.0)
+                thread.join(timeout=THREAD_JOIN_TIMEOUT_SEC)
                 if thread.is_alive():
                     logger.warning(f"Thread {thread.name} did not terminate within timeout")
 

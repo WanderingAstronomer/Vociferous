@@ -77,9 +77,10 @@ class WhisperTurboEngine(TranscriptionEngine):
         neg_default = max(0.0, self.vad_threshold - 0.15)
         self.vad_neg_threshold = float(params.get("vad_neg_threshold", neg_default))
         self.sample_rate = 16000
-        # Prevent OOM: max buffer size (e.g., 60 seconds = ~2MB for 16kHz mono PCM16)
+        self.bytes_per_sample = 2  # PCM16 = 2 bytes per sample
+        # Prevent OOM: max buffer size (60 seconds ≈ 1.83MB for 16kHz mono PCM16)
         self.max_buffer_sec = float(params.get("max_buffer_sec", 60.0))
-        self.max_buffer_bytes = int(self.max_buffer_sec * self.sample_rate * 2)
+        self.max_buffer_bytes = int(self.max_buffer_sec * self.sample_rate * self.bytes_per_sample)
 
     def _lazy_model(self):
         if self._model is not None:
@@ -196,14 +197,15 @@ class WhisperTurboEngine(TranscriptionEngine):
         # Prevent buffer overflow: drop oldest audio if exceeds limit
         if len(self._buffer) > self.max_buffer_bytes:
             excess = len(self._buffer) - self.max_buffer_bytes
+            bytes_per_sec = self.sample_rate * self.bytes_per_sample
             logger.warning(
-                f"Buffer overflow: dropping {excess} bytes ({excess / (self.sample_rate * 2):.1f}s) "
+                f"Buffer overflow: dropping {excess} bytes ({excess / bytes_per_sec:.1f}s) "
                 f"of oldest audio to prevent OOM"
             )
             self._buffer = self._buffer[excess:]
             # Update stream offset to account for dropped audio
             # This happens before _maybe_process, so consumed audio offset is separate
-            self._stream_offset_s += excess / (self.sample_rate * 2)
+            self._stream_offset_s += excess / bytes_per_sec
         self._maybe_process(force=False)
 
     def flush(self) -> None:
@@ -218,7 +220,7 @@ class WhisperTurboEngine(TranscriptionEngine):
         if not self._options or not self._model:
             return
 
-        bytes_per_sec = self.sample_rate * 2
+        bytes_per_sec = self.sample_rate * self.bytes_per_sample
         min_bytes = int(self.min_emit_sec * bytes_per_sec)
         window_bytes = int(self.window_sec * bytes_per_sec)
 
