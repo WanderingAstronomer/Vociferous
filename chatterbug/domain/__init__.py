@@ -5,6 +5,7 @@ from .model import (  # noqa: F401
     AudioSource,
     EngineConfig,
     EngineKind,
+    EngineMetadata,
     TranscriptSegment,
     TranscriptionEngine,
     TranscriptionRequest,

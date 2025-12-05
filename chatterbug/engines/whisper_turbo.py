@@ -11,6 +11,7 @@ import numpy as np
 from chatterbug.domain.model import (
     DEFAULT_MODEL_CACHE_DIR,
     EngineConfig,
+    EngineMetadata,
     TranscriptSegment,
     TranscriptionEngine,
     TranscriptionOptions,
@@ -348,4 +349,13 @@ class WhisperTurboEngine(TranscriptionEngine):
         cleaned = re.sub(r"\s*-\s*", " ", cleaned)
         cleaned = cleaned.rstrip("-").strip()
         return cleaned
+
+    @property
+    def metadata(self) -> EngineMetadata:
+        """Return engine metadata for result building."""
+        return EngineMetadata(
+            model_name=self.model_name,
+            device=self.device,
+            precision=self.precision,
+        )
 

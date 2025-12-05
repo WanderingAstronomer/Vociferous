@@ -35,6 +35,18 @@ class TranscriptSegment(BaseModel):
     confidence: float
 
 
+class EngineMetadata(BaseModel):
+    """Metadata about a transcription engine instance.
+    
+    This provides a type-safe way for engines to expose their configuration
+    and runtime information, avoiding the need for attribute introspection.
+    """
+    model_config = ConfigDict(frozen=True)
+    model_name: str
+    device: str
+    precision: str
+
+
 class EngineConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
     model_name: str = "distil-whisper/distil-large-v3"
@@ -146,6 +158,11 @@ class TranscriptionEngine(Protocol):
 
     def poll_segments(self) -> list[TranscriptSegment]:
         """Return any new segments produced since last call."""
+        ...
+
+    @property
+    def metadata(self) -> EngineMetadata:
+        """Return engine metadata for result building."""
         ...
 
 

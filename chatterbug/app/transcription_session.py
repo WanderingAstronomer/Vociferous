@@ -237,12 +237,14 @@ class TranscriptionSession:
                     if self._polisher is not None
                     else normalized_text
                 )
+                # Use engine's metadata property instead of getattr
+                metadata = engine.metadata
                 result = TranscriptionResult(
                     text=polished_text,
                     segments=tuple(segments),
-                    model_name=getattr(engine, "model_name", "unknown"),
-                    device=getattr(engine, "device", "unknown"),
-                    precision=getattr(engine, "precision", "unknown"),
+                    model_name=metadata.model_name,
+                    device=metadata.device,
+                    precision=metadata.precision,
                     engine=engine_kind,
                     duration_s=segments[-1].end_s if segments else 0.0,
                     warnings=warnings,
