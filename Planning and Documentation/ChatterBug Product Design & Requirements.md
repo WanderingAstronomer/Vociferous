@@ -1,57 +1,81 @@
 # ChatterBug Product Requirements Document (PRD)
-*This document outlines the product design and requirements for ChatterBug, an AI-powered Automatic Speech Recognition (ASR) tool. It was the first step in planning the product before development began.*
+*AI-powered ASR that runs locally with Whisper large-v3-turbo.*
 
 ## Problem Statement
-Transcribing audio files can be a time-consuming and error-prone process, especially when relying on manual transcription or low-quality automated tools. Users need a reliable, efficient, and privacy-focused solution to convert spoken language into written text without compromising their data security. Furthermore, an elegant, "beautiful" user interface for such tasks does not currently exist, especially on Linux, making the user experience less enjoyable.
+Transcribing audio is slow, error-prone, and often privacy-invasive when cloud services are involved. Users need a reliable, local-first way to turn speech into text quickly without sending data off their machine. A polished desktop experience (especially on Linux) is missing for this class of tool.
+
+### User Personas & Primary Use Cases
+- **Dev recording standups**: Wants fast, local text from short clips to paste into tickets or docs.
+- **Student recording lectures**: Wants private, offline transcription of long recordings for study.
+- **Privacy-focused creator**: Needs accurate, local transcription for publishing without data leakage.
+
+### Use-Case Flows
+- **Hotkey capture to clipboard**: User presses a hotkey, records up to 30s, releases; text is ready in the clipboard or UI within <= 3 seconds after release.
+- **Drag-and-drop file**: User drops an audio file; a `.txt` is created alongside the source file.
+- **CLI batch**: User runs a CLI command on N files; transcriptions stream to stdout or specified output paths.
 
 ## Overview
-ChatterBug is an AI-powered Automatic Speech Recognition (ASR) tool designed to transcribe audio quickly and accurately. It leverages the Whisper Large Turbo v3 model to deliver high-quality transcriptions efficiently. As a local application, ChatterBug ensures user privacy by processing audio files on the user's device without requiring an internet connection. Later, ChatterBug will also support transcription journalizing and organization features to help users manage their transcriptions effectively. Speech analysis features will be added in future versions to provide deeper insights into the transcribed content.
+ChatterBug is a local Automatic Speech Recognition (ASR) tool that uses the Whisper large-v3-turbo model (via faster-whisper) for fast, high-quality transcription, with optional Voxtral "smart mode" for long-context/Q&A and Parakeet RNNT for Riva endpoint integration. Engines are stateful and push-based (start/push/flush/poll) with VAD-trimmed sliding windows by default. All processing stays on-device to preserve privacy. Architecture follows a small, typed ports-and-adapters pattern: dependency-free domain, application orchestrators, and swappable adapters for audio I/O, ASR engines, storage, hotkeys, and UI. The initial release focuses on the core ASR pipeline (hotkey capture, batch CLI/TUI, multi-format support). Future releases add transcription journaling/organization and speech analysis.
 
 ## Key Features
-- **High-Quality Transcription**: Utilizes the Whisper Large Turbo v3 model for accurate and efficient speech-to-text conversion.
-- **Local Processing**: All audio processing is done locally on the user's device, ensuring privacy
-- **Hotkey Support**: Users can start and stop transcriptions using customizable hotkeys for convenience.
-- **Multi-Format Audio Support**: Compatible with various audio file formats including MP3,
-- Callable from CLI: Users can transcribe audio files directly from the command line interface for seamless integration into workflows. WAV, and AAC.
-- **Transcription Journalizing and Organization**: Future feature to help users manage and organize their transcriptions effectively.
-- **Speech Analysis**: Planned future feature to provide insights into the transcribed content, such as sentiment analysis and frequency of keywords. Suggestions to improve spoken language will also be included.
+### v1
+- **High-Quality Transcription**: Whisper large-v3-turbo for accurate, efficient speech-to-text (CPU-safe defaults; GPU when available).
+- **Local Processing**: On-device inference; offline mode by default.
+- **Hotkey Support**: Customizable start/stop for quick capture.
+- **Multi-Format Audio Support**: MP3, WAV, AAC (extensible via decoder).
+- **CLI/TUI Support**: Typer CLI and Rich/Textual TUI for live output from terminal.
+- **Pluggable Engines**: Engine factory with `whisper_turbo` default, `voxtral` optional smart mode, and `parakeet_rnnt` for Riva endpoint integration.
 
-## Out of Scope for Initial Release
-- Real-time transcription of live audio streams.
-- Integration with cloud services for transcription storage or processing.
-- Support for languages other than English in the initial release.
-- Mobile application versions; initial release will focus on desktop platforms.
-- the transcription journalizing, organization, and speech analysis features will be developed in future versions.
+### Future Roadmap
+- **Transcription Journalizing & Organization**.
+- **Speech Analysis**: Sentiment, keyword frequency, spoken-language suggestions.
+- **Mobile/real-time streaming** (post-v1).
 
-## Functional Requirements
-1. The application shall allow users to select audio files from their local storage for transcription.
-2. The application shall transcribe audio files using the Whisper Large Turbo v3 model.
-3. The application shall provide an option to start and stop transcriptions using customizable hotkeys.
-4. The application shall support multiple audio file formats including MP3, WAV, and AAC.
-5. The application shall process all audio files locally on the user's device without requiring an internet connection.
-6. The application shall provide a command line interface (CLI) for users to transcribe audio files directly from the terminal.
+## Out of Scope and Assumptions (v1)
+- Cloud storage/processing, mobile apps.
+- Languages beyond English; non-English inputs may fail gracefully (configurable for future engines).
+- Advanced analytics (sentiment/keywording), journaling, organization until later versions.
+- **Assumptions**: Single user on a single machine (no concurrent sessions). Reference machine has >= 16 GB RAM; GPU is optional/auto-detected but CPU defaults must meet NFRs. English-only defaults; failures fall back with clear errors. Offline mode is default; zero intentional network calls.
+
+## Functional Requirements (FR)
+1. The application shall allow users to select audio files from local storage for transcription.
+2. The application shall transcribe audio files using the Whisper large-v3-turbo model.
+3. The application shall provide start/stop via customizable hotkeys.
+4. The application shall support MP3, WAV, AAC input (extensible to other decodable formats).
+5. The application shall process all audio locally without requiring an internet connection.
+6. The application shall provide a CLI to transcribe audio files from the terminal.
+7. The application shall allow batch transcription of N files in one command.
+8. The application shall write transcription output to a user-specified path, stdout (CLI), or a paste bin/text area (GUI).
+9. When invoked via hotkey, the app shall show a minimal in-progress indicator and notify on completion.
+10. The app shall preserve a history of N recent transcriptions in the UI (configurable, default 20).
+11. If a file cannot be decoded, the app shall surface a clear error, log the file path, and continue running.
+12. If the model fails (e.g., OOM), the app shall abort gracefully and provide a recovery suggestion (e.g., shorter clip).
+13. The app shall read model/device/configuration from a config file and/or environment variables.
+14. The app shall expose a safe-default configuration that runs on a modest CPU-only machine.
+
+## Non-Functional Requirements (NFR)
+- **Performance**: NFR1: 1-minute audio on a mid-range CPU-only machine transcribes in <= 90 seconds. NFR2: Hotkey latency (key release -> transcription start) <= 300 ms.
+- **Resource Usage**: NFR3: Default configuration shall not exceed 8 GB RAM with chosen model settings.
+- **Portability**: NFR4: Runs on Windows, macOS, and Linux with consistent CLI and config semantics.
+- **Reliability**: NFR5: Process at least 100 files sequentially without memory leaks or required restarts.
+- **Usability**: NFR6: Primary actions (select file, start transcription, copy text) reachable within <= 2 steps from main UI.
 
 ## High-Level Architecture
-- **User Interface (UI)**: A clean and intuitive interface for users to interact with the application, select audio files, and view transcriptions.
-- **Transcription Engine**: The core component that utilizes the Whisper Large Turbo v3 model to process audio files and generate transcriptions.
-- **Local Storage**: A module to handle the storage of audio files and transcriptions on the user's device.
-- **Hotkey Manager**: A component to manage customizable hotkeys for starting and stopping transcriptions.
-- **CLI Module**: A command line interface for users to interact with the application via terminal commands.
+- **UI Layer**: Typer CLI + Rich/Textual TUI; optional desktop UI (Tauri/Svelte recommended; Electron/Qt acceptable fallback).
+- **Application Layer (Use Cases)**: `TranscriptionSession` orchestrator; Transcribe file; Transcribe from hotkey capture; Save/export transcription.
+- **Domain Layer**: Dependency-free types `AudioChunk`, `TranscriptSegment`, `TranscriptionRequest/Result`, Protocols (`AudioSource`, `TranscriptionEngine`, `TranscriptSink`).
+- **Adapters Layer**: ASR engines (WhisperTurbo default, Voxtral optional), audio decode/capture (ffmpeg + sounddevice), storage/history/config, hotkey manager (OS-specific bindings behind a shared interface).
 
-## Hardware Interactions by Process Step
-1. **Audio Input**: The user selects an audio file from local storage or uses a hotkey to start transcription.
-2. **Processing**: The transcription engine processes the audio file using the Whisper Large Turbo v3 model on the user's local hardware.
-3. **Output**: The transcribed text is displayed in the program's paste bin interface or returned via the CLI. Optionally, the transcription can be saved to a local file or copied to the clipboard.
+### Data Flow
+`UI -> Application -> TranscriptionEngine (via factory) -> Sink/UI/Storage`
 
-## What Systems Does This Affect?
-- Desktop operating systems (Windows, macOS, Linux) where the application will be installed and run.
-- Local file systems for accessing and storing audio files and transcriptions.
-- User input systems for hotkey functionality.
-- Command line interfaces for CLI interactions.
-- Audio hardware for playback and recording (if applicable).
-- System resources for processing audio files locally.
-- Clipboard management systems for copying transcriptions.
+## Runtime Flow + Dependencies
+- User action (file select/drag-drop/CLI/hotkey) -> audio capture/decode -> `TranscriptionEngine` (default whisper_turbo via faster-whisper) -> transcript stream -> sinks (stdout/file/UI/clipboard/history).
+- Dependencies: CTranslate2/faster-whisper runtime; optional Voxtral runtime; ffmpeg (or equivalent) for decode; sounddevice for capture; local filesystem; optional clipboard API. GPU used when available; CPU-safe defaults always available.
+- Permissions: Microphone access for live capture; filesystem read/write for inputs/outputs; clipboard access for copy operations. No network permissions required in offline mode.
 
 ## Success Criteria
-- Hotkey --> Audio In --> Transcription Out pipeline works seamlessly.
-- Transcriptions are accurate and generated in a timely manner.
+- SC1: 95% of transcription jobs for files <= 2 minutes complete without error on reference hardware.
+- SC2: Median runtime <= 1.5x audio length on reference hardware.
+- SC3: Hotkey -> text appears in UI or clipboard within <= 5 seconds for 30-second recordings.
+- SC4: Zero network traffic during normal operation when offline mode is enabled.

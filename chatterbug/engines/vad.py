@@ -1,0 +1,133 @@
+import numpy as np
+
+try:
+    from silero_vad import load_silero_vad
+    HAS_SILERO = True
+except ImportError:  # Optional dependency; we degrade gracefully without it.
+    load_silero_vad = None
+    HAS_SILERO = False
+
+class VadWrapper:
+    def __init__(self, sample_rate: int = 16000):
+        self.sample_rate = sample_rate
+        self.model = None
+        self.utils = None
+        self._enabled = False
+        self._torch = None
+        
+        if HAS_SILERO:
+            self._torch = self._try_import_torch()
+            if self._torch:
+                try:
+                    self.model, self.utils = load_silero_vad()
+                    self._enabled = True
+                except Exception:
+                    # Fallback if model load fails (e.g. network issue in strict offline mode without cache)
+                    self._enabled = False
+
+    def is_speech(self, audio: bytes) -> bool:
+        if not self._enabled or not self.model or not self._torch:
+            return True # Default to "everything is speech" if VAD fails
+
+        # Convert bytes to float32 tensor
+        # audio is 16-bit PCM
+        audio_np = np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
+        audio_tensor = self._torch.from_numpy(audio_np)
+        
+        # get_speech_timestamps is in utils[0]
+        get_speech_timestamps = self.utils[0]
+        
+        timestamps = get_speech_timestamps(
+            audio_tensor, 
+            self.model, 
+            sampling_rate=self.sample_rate,
+            threshold=0.5
+        )
+        return len(timestamps) > 0
+
+    def trim(self, audio: bytes) -> bytes:
+        """
+        Return only the voiced parts of the audio.
+        """
+        if not self._enabled or not self.model or not self._torch:
+            return audio
+
+        audio_np = np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
+        audio_tensor = self._torch.from_numpy(audio_np)
+        get_speech_timestamps = self.utils[0]
+        
+        timestamps = get_speech_timestamps(
+            audio_tensor, 
+            self.model, 
+            sampling_rate=self.sample_rate
+        )
+        
+        if not timestamps:
+            return b""
+            
+        # Collect chunks
+        # This is a simplification; for streaming we might want to be smarter
+        # But for now, let's just concatenate all speech segments
+        voiced_audio = bytearray()
+        for ts in timestamps:
+            start = int(ts['start'])
+            end = int(ts['end'])
+            # Convert back to bytes (int16)
+            # We need to slice the original bytes, not the float tensor to avoid conversion loss/cost
+            # 1 sample = 2 bytes
+            voiced_audio.extend(audio[start*2 : end*2])
+            
+        return bytes(voiced_audio)
+
+    def speech_spans(
+        self,
+        audio: bytes,
+        *,
+        threshold: float = 0.5,
+        neg_threshold: float | None = None,
+        min_silence_ms: int | None = None,
+        min_speech_ms: int | None = None,
+        speech_pad_ms: int | None = None,
+    ) -> list[tuple[int, int]]:
+        """Return speech spans as (start_sample, end_sample). Empty if VAD unavailable."""
+        if not self._enabled or not self.model or not self._torch:
+            return []
+
+        audio_np = np.frombuffer(audio, dtype=np.int16).astype(np.float32) / 32768.0
+        audio_tensor = self._torch.from_numpy(audio_np)
+        get_speech_timestamps = self.utils[0]
+
+        vad_kwargs = {
+            "sampling_rate": self.sample_rate,
+            "threshold": threshold,
+        }
+        if neg_threshold is not None:
+            vad_kwargs["neg_threshold"] = neg_threshold
+        if min_silence_ms is not None:
+            vad_kwargs["min_silence_duration_ms"] = min_silence_ms
+        if min_speech_ms is not None:
+            vad_kwargs["min_speech_duration_ms"] = min_speech_ms
+        if speech_pad_ms is not None:
+            vad_kwargs["speech_pad_ms"] = speech_pad_ms
+
+        timestamps = get_speech_timestamps(
+            audio_tensor,
+            self.model,
+            **vad_kwargs,
+        )
+
+        spans: list[tuple[int, int]] = []
+        for ts in timestamps:
+            start = int(ts["start"])
+            end = int(ts["end"])
+            if end > start:
+                spans.append((start, end))
+        return spans
+
+    @staticmethod
+    def _try_import_torch():
+        try:
+            import torch
+        except ImportError:
+            return None
+        return torch
