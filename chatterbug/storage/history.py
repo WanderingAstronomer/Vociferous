@@ -63,5 +63,8 @@ class HistoryStorage(StorageRepository):
             # Atomic rename on POSIX systems (overwrites destination)
             # On Windows, need to remove destination first
             if os.name == 'nt':
-                self.history_file.unlink()
+                try:
+                    self.history_file.unlink()
+                except FileNotFoundError:
+                    pass  # File already gone, which is fine
             temp_file.replace(self.history_file)

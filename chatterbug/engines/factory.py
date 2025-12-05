@@ -13,20 +13,6 @@ EngineBuilder = Callable[[EngineConfig], TranscriptionEngine]
 ENGINE_REGISTRY: dict[EngineKind, Type[TranscriptionEngine]] = {}
 
 
-def register_engine(kind: EngineKind):
-    """Decorator to register an engine class for a given engine kind.
-    
-    Usage:
-        @register_engine("whisper_turbo")
-        class WhisperTurboEngine(TranscriptionEngine):
-            ...
-    """
-    def decorator(cls: Type[TranscriptionEngine]) -> Type[TranscriptionEngine]:
-        ENGINE_REGISTRY[kind] = cls
-        return cls
-    return decorator
-
-
 def build_engine(kind: EngineKind, config: EngineConfig) -> TranscriptionEngine:
     """Build an engine instance using the registry pattern.
     
