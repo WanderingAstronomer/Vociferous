@@ -34,7 +34,7 @@ gui = [
 
 [project.scripts]
 vociferous = "vociferous.cli.main:main"
-luciferous = "vociferous.gui.app:run_gui"
+vociferous-gui = "vociferous.gui.app:run_gui"
 
 [tool.setuptools]
 packages = ["vociferous"]

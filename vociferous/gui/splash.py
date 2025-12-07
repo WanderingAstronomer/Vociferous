@@ -72,7 +72,7 @@ class SplashScreen(Screen):
         
         # Welcome message
         welcome_label = MDLabel(
-            text="[size=32][b]Welcome to Luciferous![/b][/size]\n\n"
+            text="[size=32][b]Welcome to Vociferous![/b][/size]\n\n"
                  "[size=18]Your AI-powered transcription assistant[/size]",
             markup=True,
             halign="center",

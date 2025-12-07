@@ -1,4 +1,4 @@
-"""Main KivyMD application for Luciferous GUI."""
+"""Main KivyMD application for Vociferous GUI."""
 
 from __future__ import annotations
 
@@ -21,13 +21,13 @@ from .installer import InstallMode
 logger = structlog.get_logger(__name__)
 
 
-class LuciferousApp(MDApp):
-    """Main KivyMD application for Luciferous."""
+class VociferousGUIApp(MDApp):
+    """Main KivyMD application for Vociferous."""
 
     def __init__(self, **kwargs):
-        """Initialize the Luciferous application."""
+        """Initialize the Vociferous application."""
         super().__init__(**kwargs)
-        self.title = "Luciferous - AI Transcription"
+        self.title = "Vociferous - AI Transcription"
         self.theme_cls.theme_style = "Dark"
         self.theme_cls.primary_palette = "Blue"
         self.theme_cls.primary_hue = "700"
@@ -48,7 +48,7 @@ class LuciferousApp(MDApp):
         Returns:
             The root widget (navigation layout or screen manager for splash).
         """
-        logger.info("Building Luciferous application")
+        logger.info("Building Vociferous application")
         
         # Check if first run
         marker_file = Path.home() / ".config" / "vociferous" / ".gui_setup_complete"
@@ -107,7 +107,7 @@ class LuciferousApp(MDApp):
         
         # Top app bar with bright blue
         toolbar = MDTopAppBar(
-            title="Luciferous",
+            title="Vociferous",
             left_action_items=[["menu", lambda x: self._toggle_nav_drawer()]],
             md_bg_color=(0.1, 0.3, 0.7, 1),  # Bright blue
             specific_text_color=(1, 1, 1, 1),  # White text
@@ -165,6 +165,6 @@ class LuciferousApp(MDApp):
 
 
 def run_gui() -> None:
-    """Run the Luciferous GUI application."""
-    app = LuciferousApp()
+    """Run the Vociferous GUI application."""
+    app = VociferousGUIApp()
     app.run()

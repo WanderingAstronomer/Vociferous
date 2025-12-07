@@ -1,4 +1,4 @@
-"""Screen definitions for the Luciferous GUI."""
+"""Screen definitions for the Vociferous GUI."""
 
 from __future__ import annotations
 

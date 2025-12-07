@@ -1,5 +1,5 @@
-"""KivyMD-based GUI for Vociferous (Luciferous)."""
+"""KivyMD-based GUI for Vociferous."""
 
-from .app import LuciferousApp
+from .app import VociferousGUIApp
 
-__all__ = ["LuciferousApp"]
+__all__ = ["VociferousGUIApp"]

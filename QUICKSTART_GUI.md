@@ -1,6 +1,6 @@
-# Luciferous Quick Start Guide
+# Vociferous GUI Quick Start Guide
 
-Welcome to Luciferous, the graphical user interface for Vociferous! This guide will help you get started quickly.
+Welcome to the Vociferous GUI, the graphical user interface for Vociferous! This guide will help you get started quickly.
 
 ## Installation
 
@@ -15,10 +15,10 @@ This will install:
 - Kivy (GUI framework)
 - All base Vociferous dependencies
 
-### Step 2: Launch Luciferous
+### Step 2: Launch Vociferous GUI
 
 ```bash
-luciferous
+vociferous-gui
 ```
 
 Or from Python:
@@ -29,7 +29,7 @@ run_gui()
 
 ## First Run Setup
 
-When you launch Luciferous for the first time, you'll see a splash screen that asks you to select your hardware configuration:
+When you launch the Vociferous GUI for the first time, you'll see a splash screen that asks you to select your hardware configuration:
 
 ### Hardware Options
 
@@ -50,7 +50,7 @@ When you launch Luciferous for the first time, you'll see a splash screen that a
 
 ### Installation Process
 
-After selecting your hardware, Luciferous will:
+After selecting your hardware, the Vociferous GUI will:
 1. Download and install necessary dependencies
 2. Configure your system for optimal performance
 3. Create configuration files
@@ -124,7 +124,7 @@ Configure all aspects of transcription:
 
 ### Basic Transcription
 
-1. Launch Luciferous: `luciferous`
+1. Launch Vociferous GUI: `vociferous-gui`
 2. Click "Browse Files"
 3. Select your audio file
 4. Click "Start Transcription"
@@ -179,7 +179,7 @@ brew install sdl2 sdl2_image sdl2_mixer sdl2_ttf
 1. Close the application
 2. Remove setup marker: `rm ~/.config/vociferous/.gui_setup_complete`
 3. Install dependencies manually: `pip install torch`
-4. Relaunch: `luciferous`
+4. Relaunch: `vociferous-gui`
 
 ### Transcription fails
 
@@ -255,4 +255,4 @@ Any format supported by FFmpeg should work.
 - Model cache: `~/.cache/vociferous/models/`
 - History: `~/.cache/vociferous/history/`
 
-Enjoy transcribing with Luciferous! 🎙️✨
+Enjoy transcribing with Vociferous! 🎙️✨

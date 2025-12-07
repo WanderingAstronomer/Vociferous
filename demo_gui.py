@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Demo script to showcase Luciferous GUI features.
+"""Demo script to showcase Vociferous GUI features.
 
 This script demonstrates the key components without actually launching the GUI,
 useful for testing and documentation.
@@ -115,7 +115,7 @@ def demo_gui_structure():
     """Demonstrate GUI structure without launching."""
     print("\n=== GUI Structure ===")
     print("""
-LuciferousApp (KivyMD App)
+VociferousGUIApp (KivyMD App)
 ├── Theme: Dark with Blue accents
 ├── Window: 1200x800 (minimum 800x600)
 └── Layout: NavigationLayout
@@ -164,7 +164,7 @@ def demo_supported_formats():
 def main():
     """Run all demonstrations."""
     print("=" * 60)
-    print("Luciferous GUI Demonstration")
+    print("Vociferous GUI Demonstration")
     print("=" * 60)
     
     try:
@@ -192,7 +192,7 @@ def main():
     
     print("\n" + "=" * 60)
     print("To launch the actual GUI, run:")
-    print("  luciferous")
+    print("  vociferous-gui")
     print("Or:")
     print("  python -m vociferous.gui.app")
     print("=" * 60)

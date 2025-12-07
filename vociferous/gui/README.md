@@ -1,6 +1,6 @@
-# Luciferous - KivyMD GUI for Vociferous
+# Vociferous GUI - KivyMD Interface
 
-Luciferous is the graphical user interface for Vociferous, built with KivyMD to provide an intuitive, modern interface for AI-powered transcription.
+The Vociferous GUI is the graphical user interface for Vociferous, built with KivyMD to provide an intuitive, modern interface for AI-powered transcription.
 
 ## Features
 
@@ -60,7 +60,7 @@ pip uninstall nvidia-cudnn-cu12
 
 ### Launch the GUI
 ```bash
-luciferous
+vociferous-gui
 ```
 
 Or from Python:
@@ -70,14 +70,14 @@ run_gui()
 ```
 
 ### First Run
-On first launch, Luciferous will:
+On first launch, the Vociferous GUI will:
 1. Show a welcome splash screen
 2. Ask you to select your hardware configuration (GPU/CPU/Both)
 3. Install appropriate dependencies
 4. Take you to the main application
 
 ### Subsequent Runs
-After first setup, Luciferous launches directly to the main interface.
+After first setup, the Vociferous GUI launches directly to the main interface.
 
 ## Architecture
 
@@ -89,7 +89,7 @@ After first setup, Luciferous launches directly to the main interface.
 
 ### Screen Structure
 ```
-LuciferousApp
+VociferousGUIApp
 ├── SplashScreen (first run only)
 │   ├── Welcome message
 │   ├── Hardware selection buttons
@@ -125,7 +125,7 @@ vociferous/gui/
 
 ### Key Components
 
-**LuciferousApp** (`app.py`)
+**VociferousGUIApp** (`app.py`)
 - Main application class
 - Handles screen management
 - Configures theme and window
@@ -185,7 +185,7 @@ If the installation hangs, you can:
 1. Close the app
 2. Remove the marker: `rm ~/.config/vociferous/.gui_setup_complete`
 3. Install dependencies manually: `pip install torch nvidia-cudnn-cu12`
-4. Relaunch Luciferous
+4. Relaunch the Vociferous GUI
 
 ## Future Enhancements
 

@@ -1,8 +1,8 @@
-# Luciferous GUI - Implementation Summary
+# Vociferous GUI - Implementation Summary
 
 ## Overview
 
-This document summarizes the implementation of the Luciferous GUI for Vociferous, a KivyMD-based graphical user interface for AI-powered transcription.
+This document summarizes the implementation of the Vociferous GUI, a KivyMD-based graphical user interface for AI-powered transcription.
 
 ## What Was Implemented
 
@@ -12,7 +12,7 @@ This document summarizes the implementation of the Luciferous GUI for Vociferous
 ```
 vociferous/gui/
 ├── __init__.py          # Package exports
-├── app.py               # Main application (LuciferousApp)
+├── app.py               # Main application (VociferousGUIApp)
 ├── splash.py            # First-run splash screen
 ├── screens.py           # Home and Settings screens
 ├── transcription.py     # Background transcription integration
@@ -141,13 +141,13 @@ dependencies = [
 ```toml
 [project.scripts]
 vociferous = "vociferous.cli.main:main"
-luciferous = "vociferous.gui.app:run_gui"  # NEW
+vociferous-gui = "vociferous.gui.app:run_gui"  # NEW
 ```
 
 **Usage:**
 ```bash
 # Launch GUI
-luciferous
+vociferous-gui
 
 # Or from Python
 python -m vociferous.gui.app
@@ -271,7 +271,7 @@ Users can migrate smoothly:
 pip install -e .[gui]
 
 # Launch GUI
-luciferous
+vociferous-gui
 ```
 
 ### For Developers:
@@ -355,7 +355,7 @@ compute_type = "auto"
 
 ## Summary
 
-The Luciferous GUI successfully implements:
+The Vociferous GUI successfully implements:
 - ✅ Modern, dark-themed Material Design interface
 - ✅ First-run setup with hardware selection
 - ✅ File selection and transcription interface
