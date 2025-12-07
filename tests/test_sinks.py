@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from chatterbug.cli.sinks import FileSink, StdoutSink, CompositeSink
-from chatterbug.domain.model import TranscriptSegment, TranscriptionResult
+from vociferous.cli.sinks import FileSink, StdoutSink, CompositeSink
+from vociferous.domain.model import TranscriptSegment, TranscriptionResult
 
 
 @pytest.fixture

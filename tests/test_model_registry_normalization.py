@@ -1,8 +1,8 @@
 """Tests for model registry normalization fixes (TDD approach)."""
 import pytest
 
-from chatterbug.domain.model import DEFAULT_WHISPER_MODEL
-from chatterbug.engines.model_registry import normalize_model_name
+from vociferous.domain.model import DEFAULT_WHISPER_MODEL
+from vociferous.engines.model_registry import normalize_model_name
 
 
 def test_normalize_whisper_model_full_name_to_short_format() -> None:

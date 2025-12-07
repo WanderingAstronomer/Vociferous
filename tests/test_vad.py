@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from chatterbug.audio.vad import VadService, NullVad, VadWrapper
+from vociferous.audio.vad import VadService, NullVad, VadWrapper
 
 
 def test_null_vad_returns_empty_spans():

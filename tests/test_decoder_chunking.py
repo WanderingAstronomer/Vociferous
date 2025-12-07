@@ -1,4 +1,4 @@
-from chatterbug.audio.decoder import DecodedAudio, _chunk_pcm_bytes
+from vociferous.audio.decoder import DecodedAudio, _chunk_pcm_bytes
 
 
 def test_chunk_pcm_bytes_splits_audio() -> None:

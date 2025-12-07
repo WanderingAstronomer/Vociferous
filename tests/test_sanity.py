@@ -1,4 +1,4 @@
-from chatterbug.domain import AudioChunk, TranscriptSegment
+from vociferous.domain import AudioChunk, TranscriptSegment
 
 
 def test_domain_types_constructable() -> None:

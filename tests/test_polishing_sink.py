@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from chatterbug.app.sinks import PolishingSink
-from chatterbug.domain.model import TranscriptSegment, TranscriptionResult
+from vociferous.app.sinks import PolishingSink
+from vociferous.domain.model import TranscriptSegment, TranscriptionResult
 
 
 class MockSink:

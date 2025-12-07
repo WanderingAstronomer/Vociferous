@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from chatterbug.app.transcription_session import SessionConfig
+from vociferous.app.transcription_session import SessionConfig
 
 
 def test_session_config_default_values():
@@ -98,7 +98,7 @@ def test_session_config_repr():
 
 def test_session_config_in_transcription_session():
     """Test that SessionConfig can be used with TranscriptionSession."""
-    from chatterbug.app.transcription_session import TranscriptionSession
+    from vociferous.app.transcription_session import TranscriptionSession
     
     config = SessionConfig(
         audio_queue_size=100,

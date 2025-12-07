@@ -1,7 +1,7 @@
 """Test TranscriptSegment domain type."""
 import pytest
 
-from chatterbug.domain.model import TranscriptSegment
+from vociferous.domain.model import TranscriptSegment
 
 
 def test_transcript_segment_creation() -> None:

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from chatterbug.audio.sources import MicrophoneSource
-from chatterbug.audio.recorder import MicrophoneRecorder
+from vociferous.audio.sources import MicrophoneSource
+from vociferous.audio.recorder import MicrophoneRecorder
 
 
 class FakeRecorder(MicrophoneRecorder):

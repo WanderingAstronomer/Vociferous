@@ -1,5 +1,5 @@
-from chatterbug.domain.model import EngineConfig, TranscriptionOptions
-from chatterbug.engines.whisper_turbo import WhisperTurboEngine
+from vociferous.domain.model import EngineConfig, TranscriptionOptions
+from vociferous.engines.whisper_turbo import WhisperTurboEngine
 
 
 def test_whisper_merges_params():

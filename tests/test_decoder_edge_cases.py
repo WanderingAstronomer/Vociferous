@@ -3,9 +3,9 @@ import shutil
 import pytest
 from pathlib import Path
 
-from chatterbug.audio.decoder import FfmpegDecoder, WavDecoder, DecodedAudio, _chunk_pcm_bytes
-from chatterbug.domain.model import AudioChunk
-from chatterbug.domain.exceptions import AudioDecodeError, ConfigurationError
+from vociferous.audio.decoder import FfmpegDecoder, WavDecoder, DecodedAudio, _chunk_pcm_bytes
+from vociferous.domain.model import AudioChunk
+from vociferous.domain.exceptions import AudioDecodeError, ConfigurationError
 
 
 def test_ffmpeg_decoder_handles_missing_binary() -> None:

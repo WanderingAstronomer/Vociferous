@@ -1,7 +1,7 @@
 """Test TranscriptionResult domain type."""
 import pytest
 
-from chatterbug.domain.model import TranscriptSegment, TranscriptionResult
+from vociferous.domain.model import TranscriptSegment, TranscriptionResult
 
 
 @pytest.fixture

@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from chatterbug.audio.decoder import AudioDecoder, DecodedAudio
-from chatterbug.audio.sources import FileSource
-from chatterbug.domain.model import AudioChunk
+from vociferous.audio.decoder import AudioDecoder, DecodedAudio
+from vociferous.audio.sources import FileSource
+from vociferous.domain.model import AudioChunk
 
 
 class FakeDecoder(AudioDecoder):

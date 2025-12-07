@@ -1,8 +1,8 @@
 from pathlib import Path
 
-import chatterbug.polish.factory as factory
-from chatterbug.polish.base import NullPolisher, PolisherConfig, RuleBasedPolisher
-from chatterbug.polish.factory import build_polisher
+import vociferous.polish.factory as factory
+from vociferous.polish.base import NullPolisher, PolisherConfig, RuleBasedPolisher
+from vociferous.polish.factory import build_polisher
 
 
 def test_null_polisher_noop() -> None:

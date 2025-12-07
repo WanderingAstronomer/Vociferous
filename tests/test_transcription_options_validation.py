@@ -1,7 +1,7 @@
 """Test TranscriptionOptions validation and param sanitization."""
 import pytest
 
-from chatterbug.domain.model import TranscriptionOptions
+from vociferous.domain.model import TranscriptionOptions
 
 
 def test_transcription_options_defaults() -> None:

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from chatterbug.domain.model import TranscriptSegment, TranscriptionResult
-from chatterbug.storage.history import HistoryStorage
+from vociferous.domain.model import TranscriptSegment, TranscriptionResult
+from vociferous.storage.history import HistoryStorage
 
 
 @pytest.fixture

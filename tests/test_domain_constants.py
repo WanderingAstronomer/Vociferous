@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from chatterbug.domain.constants import Device, ComputeType
+from vociferous.domain.constants import Device, ComputeType
 
 
 def test_device_enum_values():
@@ -125,7 +125,7 @@ def test_compute_type_enum_in_set():
 
 def test_enums_work_with_validators():
     """Test that enums can be used for validation."""
-    from chatterbug.domain.model import EngineConfig
+    from vociferous.domain.model import EngineConfig
     
     # Should accept valid enum values
     config = EngineConfig(device="cpu", compute_type="int8")

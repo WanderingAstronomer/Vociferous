@@ -1,13 +1,13 @@
 """Test engine factory and model registry integration."""
 import pytest
 
-from chatterbug.domain.model import EngineConfig
-from chatterbug.domain.exceptions import ConfigurationError
-from chatterbug.engines.factory import build_engine
-from chatterbug.engines.whisper_turbo import WhisperTurboEngine
-from chatterbug.engines.whisper_vllm import WhisperVLLMEngine
-from chatterbug.engines.voxtral_local import VoxtralLocalEngine
-from chatterbug.engines.voxtral_vllm import VoxtralVLLMEngine
+from vociferous.domain.model import EngineConfig
+from vociferous.domain.exceptions import ConfigurationError
+from vociferous.engines.factory import build_engine
+from vociferous.engines.whisper_turbo import WhisperTurboEngine
+from vociferous.engines.whisper_vllm import WhisperVLLMEngine
+from vociferous.engines.voxtral_local import VoxtralLocalEngine
+from vociferous.engines.voxtral_vllm import VoxtralVLLMEngine
 
 
 def test_build_whisper_turbo_engine() -> None:

@@ -1,4 +1,4 @@
-from chatterbug.domain.model import TranscriptionOptions
+from vociferous.domain.model import TranscriptionOptions
 
 
 def test_transcription_options_params_override() -> None:

@@ -1,8 +1,8 @@
 """Test model registry edge cases and normalization logic (TDD approach)."""
 import pytest
 
-from chatterbug.domain.model import DEFAULT_WHISPER_MODEL
-from chatterbug.engines.model_registry import normalize_model_name
+from vociferous.domain.model import DEFAULT_WHISPER_MODEL
+from vociferous.engines.model_registry import normalize_model_name
 
 
 def test_normalize_model_name_with_none() -> None:

@@ -1,7 +1,7 @@
 """Test AudioChunk domain type."""
 import pytest
 
-from chatterbug.domain.model import AudioChunk
+from vociferous.domain.model import AudioChunk
 
 
 def test_audio_chunk_creation() -> None:

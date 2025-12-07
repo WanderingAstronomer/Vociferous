@@ -3,9 +3,9 @@ import pytest
 from unittest.mock import patch, MagicMock, call
 from pathlib import Path
 
-from chatterbug.engines.whisper_turbo import WhisperTurboEngine
-from chatterbug.domain.model import DEFAULT_WHISPER_MODEL, EngineConfig, TranscriptionOptions, AudioChunk
-from chatterbug.audio.sources import FileSource
+from vociferous.engines.whisper_turbo import WhisperTurboEngine
+from vociferous.domain.model import DEFAULT_WHISPER_MODEL, EngineConfig, TranscriptionOptions, AudioChunk
+from vociferous.audio.sources import FileSource
 
 
 def _config(**overrides) -> EngineConfig:

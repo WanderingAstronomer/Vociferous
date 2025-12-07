@@ -5,8 +5,8 @@ import time
 from pathlib import Path
 from typing import Iterable, List
 
-from chatterbug.app.transcription_session import TranscriptionSession
-from chatterbug.domain.model import (
+from vociferous.app.transcription_session import TranscriptionSession
+from vociferous.domain.model import (
     AudioChunk,
     AudioSource,
     TranscriptSegment,
@@ -71,7 +71,7 @@ class FakeTranscriptionEngine(TranscriptionEngine):
     @property
     def metadata(self):
         """Return fake metadata for testing."""
-        from chatterbug.domain.model import EngineMetadata
+        from vociferous.domain.model import EngineMetadata
         return EngineMetadata(
             model_name="fake-model",
             device="cpu",
@@ -212,7 +212,7 @@ def test_integration_buffer_overflow_handling() -> None:
         @property
         def metadata(self):
             """Return fake metadata for testing."""
-            from chatterbug.domain.model import EngineMetadata
+            from vociferous.domain.model import EngineMetadata
             return EngineMetadata(
                 model_name="slow-engine",
                 device="cpu",
@@ -261,7 +261,7 @@ def test_integration_empty_source() -> None:
 
 def test_integration_session_cannot_restart_while_running() -> None:
     """Test that a session cannot be restarted while already running."""
-    from chatterbug.domain.exceptions import SessionError
+    from vociferous.domain.exceptions import SessionError
     
     session = TranscriptionSession()
     source = SlowAudioSource(num_chunks=10, chunk_delay_s=0.1)

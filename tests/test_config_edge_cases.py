@@ -5,8 +5,8 @@ from typing import Mapping
 
 from pydantic import ValidationError
 
-from chatterbug.config.schema import AppConfig, load_config
-from chatterbug.domain.model import DEFAULT_WHISPER_MODEL
+from vociferous.config.schema import AppConfig, load_config
+from vociferous.domain.model import DEFAULT_WHISPER_MODEL
 
 
 def test_app_config_from_dict_with_invalid_types() -> None:

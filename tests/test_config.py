@@ -1,4 +1,4 @@
-from chatterbug.config.schema import AppConfig
+from vociferous.config.schema import AppConfig
 
 
 def test_app_config_defaults_params() -> None:

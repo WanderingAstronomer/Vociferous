@@ -1,7 +1,7 @@
 """Test EngineConfig validation and param sanitization."""
 import pytest
 
-from chatterbug.domain.model import DEFAULT_WHISPER_MODEL, EngineConfig
+from vociferous.domain.model import DEFAULT_WHISPER_MODEL, EngineConfig
 
 
 def test_engine_config_defaults() -> None:

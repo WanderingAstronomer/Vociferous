@@ -2,10 +2,10 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from chatterbug.engines.whisper_turbo import WhisperTurboEngine
-from chatterbug.engines.whisper_vllm import WhisperVLLMEngine
-from chatterbug.engines.voxtral_local import VoxtralLocalEngine
-from chatterbug.domain.model import EngineConfig, TranscriptionOptions, AudioChunk
+from vociferous.engines.whisper_turbo import WhisperTurboEngine
+from vociferous.engines.whisper_vllm import WhisperVLLMEngine
+from vociferous.engines.voxtral_local import VoxtralLocalEngine
+from vociferous.domain.model import EngineConfig, TranscriptionOptions, AudioChunk
 
 
 def _config(**overrides) -> EngineConfig:
@@ -153,7 +153,7 @@ class TestEngineFactory:
 
     def test_factory_routes_to_whisper_turbo(self) -> None:
         """Factory builds WhisperTurbo for 'whisper_turbo' kind."""
-        from chatterbug.engines.factory import build_engine
+        from vociferous.engines.factory import build_engine
         
         config = _config()
         engine = build_engine("whisper_turbo", config)
@@ -162,7 +162,7 @@ class TestEngineFactory:
 
     def test_factory_routes_to_voxtral(self) -> None:
         """Factory builds VoxtralLocalEngine for 'voxtral' alias."""
-        from chatterbug.engines.factory import build_engine
+        from vociferous.engines.factory import build_engine
         
         config = _config(model_name="voxtral-mini")
         engine = build_engine("voxtral", config)
@@ -171,7 +171,7 @@ class TestEngineFactory:
 
     def test_factory_routes_to_whisper_vllm(self) -> None:
         """Factory builds WhisperVLLMEngine for 'whisper_vllm' kind."""
-        from chatterbug.engines.factory import build_engine
+        from vociferous.engines.factory import build_engine
         
         config = _config(model_name="openai/whisper-large-v3-turbo")
         engine = build_engine("whisper_vllm", config)
@@ -180,7 +180,7 @@ class TestEngineFactory:
 
     def test_factory_rejects_unknown_engine(self) -> None:
         """Factory raises error for unknown engine kind."""
-        from chatterbug.engines.factory import build_engine
+        from vociferous.engines.factory import build_engine
         
         config = _config()
         

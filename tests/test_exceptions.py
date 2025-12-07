@@ -1,8 +1,8 @@
 """Tests for domain-specific exceptions."""
 import pytest
 
-from chatterbug.domain.exceptions import (
-    ChatterBugError,
+from vociferous.domain.exceptions import (
+    VociferousError,
     EngineError,
     AudioDecodeError,
     ConfigurationError,
@@ -12,17 +12,17 @@ from chatterbug.domain.exceptions import (
 
 
 def test_exception_hierarchy():
-    """Test that all custom exceptions inherit from ChatterBugError."""
-    assert issubclass(EngineError, ChatterBugError)
-    assert issubclass(AudioDecodeError, ChatterBugError)
-    assert issubclass(ConfigurationError, ChatterBugError)
-    assert issubclass(SessionError, ChatterBugError)
-    assert issubclass(DependencyError, ChatterBugError)
+    """Test that all custom exceptions inherit from VociferousError."""
+    assert issubclass(EngineError, VociferousError)
+    assert issubclass(AudioDecodeError, VociferousError)
+    assert issubclass(ConfigurationError, VociferousError)
+    assert issubclass(SessionError, VociferousError)
+    assert issubclass(DependencyError, VociferousError)
 
 
-def test_chatterbug_error_is_exception():
-    """Test that ChatterBugError inherits from Exception."""
-    assert issubclass(ChatterBugError, Exception)
+def test_vociferous_error_is_exception():
+    """Test that VociferousError inherits from Exception."""
+    assert issubclass(VociferousError, Exception)
 
 
 def test_engine_error_can_be_raised():
@@ -55,19 +55,19 @@ def test_dependency_error_can_be_raised():
         raise DependencyError("missing dependency")
 
 
-def test_catch_chatterbug_error():
-    """Test that ChatterBugError catches all custom exceptions."""
-    with pytest.raises(ChatterBugError):
+def test_catch_vociferous_error():
+    """Test that VociferousError catches all custom exceptions."""
+    with pytest.raises(VociferousError):
         raise EngineError("engine error")
     
-    with pytest.raises(ChatterBugError):
+    with pytest.raises(VociferousError):
         raise AudioDecodeError("decode error")
     
-    with pytest.raises(ChatterBugError):
+    with pytest.raises(VociferousError):
         raise ConfigurationError("config error")
     
-    with pytest.raises(ChatterBugError):
+    with pytest.raises(VociferousError):
         raise SessionError("session error")
     
-    with pytest.raises(ChatterBugError):
+    with pytest.raises(VociferousError):
         raise DependencyError("dependency error")

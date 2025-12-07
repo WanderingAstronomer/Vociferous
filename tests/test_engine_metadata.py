@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from chatterbug.domain.model import EngineMetadata
+from vociferous.domain.model import EngineMetadata
 
 
 def test_engine_metadata_creation():

@@ -1,9 +1,9 @@
 """Tests for engine registry pattern."""
 import pytest
 
-from chatterbug.domain.model import EngineConfig, TranscriptionEngine
-from chatterbug.domain.exceptions import ConfigurationError
-from chatterbug.engines.factory import ENGINE_REGISTRY, build_engine, _register_engines
+from vociferous.domain.model import EngineConfig, TranscriptionEngine
+from vociferous.domain.exceptions import ConfigurationError
+from vociferous.engines.factory import ENGINE_REGISTRY, build_engine, _register_engines
 
 
 def test_engine_registry_contains_all_engines():

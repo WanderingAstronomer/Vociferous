@@ -1,4 +1,4 @@
-from chatterbug.engines.model_registry import normalize_model_name
+from vociferous.engines.model_registry import normalize_model_name
 
 
 def test_normalize_model_name_alias() -> None:

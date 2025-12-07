@@ -7,8 +7,8 @@ from typing import Any, Dict
 import pytest
 from typer.testing import CliRunner
 
-from chatterbug.cli.main import app
-from chatterbug.domain.model import DEFAULT_WHISPER_MODEL
+from vociferous.cli.main import app
+from vociferous.domain.model import DEFAULT_WHISPER_MODEL
 
 
 class _FakeConfig:
@@ -16,13 +16,13 @@ class _FakeConfig:
     engine = "whisper_turbo"
     compute_type = "auto"
     device = "auto"
-    model_cache_dir = "/tmp/chatterbug-model-cache"
+    model_cache_dir = "/tmp/vociferous-model-cache"
     params: Dict[str, str] = {
         "enable_batching": "false",
         "batch_size": "1",
         "word_timestamps": "false",
     }
-    history_dir = "/tmp/chatterbug-history"
+    history_dir = "/tmp/vociferous-history"
     history_limit = 20
     numexpr_max_threads = None
     polish_enabled = False
@@ -62,11 +62,11 @@ def _setup_cli_fixtures(monkeypatch: pytest.MonkeyPatch) -> Dict[str, Any]:
         def join(self) -> None:
             calls["join_called"] = True
 
-    monkeypatch.setattr("chatterbug.cli.main.load_config", lambda: _FakeConfig())
-    monkeypatch.setattr("chatterbug.cli.main.build_engine", fake_build_engine)
-    monkeypatch.setattr("chatterbug.cli.main.FileSource", FakeFileSource)
-    monkeypatch.setattr("chatterbug.cli.main.build_polisher", lambda cfg: "polisher")
-    monkeypatch.setattr("chatterbug.cli.main.TranscriptionSession", FakeSession)
+    monkeypatch.setattr("vociferous.cli.main.load_config", lambda: _FakeConfig())
+    monkeypatch.setattr("vociferous.cli.main.build_engine", fake_build_engine)
+    monkeypatch.setattr("vociferous.cli.main.FileSource", FakeFileSource)
+    monkeypatch.setattr("vociferous.cli.main.build_polisher", lambda cfg: "polisher")
+    monkeypatch.setattr("vociferous.cli.main.TranscriptionSession", FakeSession)
 
     return calls
 

@@ -2,9 +2,9 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from chatterbug.engines.whisper_turbo import WhisperTurboEngine
-from chatterbug.domain.model import DEFAULT_WHISPER_MODEL, EngineConfig, TranscriptionOptions, AudioChunk
-from chatterbug.engines.model_registry import normalize_model_name
+from vociferous.engines.whisper_turbo import WhisperTurboEngine
+from vociferous.domain.model import DEFAULT_WHISPER_MODEL, EngineConfig, TranscriptionOptions, AudioChunk
+from vociferous.engines.model_registry import normalize_model_name
 
 
 def _config(**overrides) -> EngineConfig:

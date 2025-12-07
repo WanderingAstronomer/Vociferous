@@ -1,7 +1,7 @@
 import pytest
 
-from chatterbug.audio.validation import validate_pcm_chunk
-from chatterbug.domain.exceptions import ConfigurationError
+from vociferous.audio.validation import validate_pcm_chunk
+from vociferous.domain.exceptions import ConfigurationError
 
 
 def test_validate_pcm_chunk_accepts_expected_size() -> None:

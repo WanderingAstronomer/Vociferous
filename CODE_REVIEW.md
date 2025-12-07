@@ -1,4 +1,4 @@
-# ChatterBug: Senior Developer Code Review
+# Vociferous: Senior Developer Code Review
 
 **Review Date:** 2025-12-05  
 **Reviewer Role:** Senior Developer / Application Architect  
@@ -63,15 +63,15 @@ This is production-ready code with exceptional architecture, comprehensive testi
 
 #### Minor Issues:
 ```python
-# chatterbug/engines/whisper_turbo.py lines 29-57
-# chatterbug/engines/whisper_vllm.py lines 56-72
+# vociferous/engines/whisper_turbo.py lines 29-57
+# vociferous/engines/whisper_vllm.py lines 56-72
 # ISSUE: Preset configurations duplicated across engines
 # RECOMMENDATION: Extract to shared registry or config module
 ```
 
 **Recommendation:**
 ```python
-# Create chatterbug/engines/presets.py
+# Create vociferous/engines/presets.py
 from typing import TypedDict
 
 class PresetConfig(TypedDict):
@@ -107,7 +107,7 @@ WHISPER_PRESETS: dict[str, PresetConfig] = {
 
 #### Examples of Excellence:
 ```python
-# chatterbug/domain/model.py
+# vociferous/domain/model.py
 # Immutable domain models with validation
 class TranscriptionOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -121,20 +121,20 @@ class TranscriptionOptions(BaseModel):
 ```
 
 ```python
-# chatterbug/domain/exceptions.py
+# vociferous/domain/exceptions.py
 # Domain-specific exceptions (no generic RuntimeError abuse)
-class ChatterBugError(Exception):
-    """Base exception for all ChatterBug errors."""
+class VociferousError(Exception):
+    """Base exception for all Vociferous errors."""
     pass
 
-class EngineError(ChatterBugError):
+class EngineError(VociferousError):
     """Raised when an ASR engine encounters an error..."""
     pass
 ```
 
 #### Minor Issues:
 ```python
-# chatterbug/cli/main.py lines 82-301
+# vociferous/cli/main.py lines 82-301
 # ISSUE: Long function (220 lines) with multiple responsibilities
 # IMPACT: Low - typical for CLI entry points, well-structured
 # RECOMMENDATION: Consider extracting config resolution to helper
@@ -151,7 +151,7 @@ class EngineError(ChatterBugError):
 - **Context Preservation**: Uses `raise ... from exc` pattern
 - **Graceful Degradation**: Multiple fallback paths
   ```python
-  # chatterbug/audio/sources.py
+  # vociferous/audio/sources.py
   try:
       audio = self.decoder.decode(str(self.path))
   except (RuntimeError, FileNotFoundError) as exc:
@@ -165,7 +165,7 @@ class EngineError(ChatterBugError):
 
 - **Thread Safety**: Locks where needed
   ```python
-  # chatterbug/storage/history.py
+  # vociferous/storage/history.py
   def save_transcription(self, result: TranscriptionResult, ...) -> Path | None:
       with self._lock:  # Proper locking for concurrent access
           ...
@@ -176,7 +176,7 @@ class EngineError(ChatterBugError):
 
 #### Minor Issues:
 ```python
-# chatterbug/app/transcription_session.py lines 107-111
+# vociferous/app/transcription_session.py lines 107-111
 def stop(self) -> None:
     # ...
     for thread in self._threads:
@@ -252,7 +252,7 @@ def stop(self) -> None:
 #### Strengths:
 - **No Shell Injection**: All subprocess calls use list form
   ```python
-  # chatterbug/audio/decoder.py
+  # vociferous/audio/decoder.py
   cmd = [self.ffmpeg_path, "-nostdin", "-y", "-i", "pipe:0", ...]
   proc = subprocess.run(cmd, input=input_bytes, ...)  # Safe ✅
   ```
@@ -263,7 +263,7 @@ def stop(self) -> None:
 - **Secrets Management**: No hardcoded credentials or API keys
 - **Atomic File Operations**: Temp file + rename pattern for safety
   ```python
-  # chatterbug/storage/history.py
+  # vociferous/storage/history.py
   temp_file = self.history_file.with_suffix(".tmp")
   temp_file.write_text("\n".join(trimmed) + "\n", encoding="utf-8")
   temp_file.replace(self.history_file)  # Atomic on POSIX
@@ -271,7 +271,7 @@ def stop(self) -> None:
 
 #### Minor Issues:
 ```python
-# chatterbug/polish/llama_cpp_polisher.py line 65
+# vociferous/polish/llama_cpp_polisher.py line 65
 def _build_prompt(self, text: str) -> str:
     trimmed = text[-2000:]  # Last 2000 chars
     return (
@@ -334,7 +334,7 @@ def _build_prompt(self, text: str) -> str:
         ...
       
       EXAMPLES:
-        chatterbug transcribe recording.wav
+        vociferous transcribe recording.wav
         ...
       """
   ```
@@ -395,11 +395,11 @@ gpu = [
 **Score: 8.5/10**
 
 #### Strengths:
-- **Single Source of Truth**: `~/.config/chatterbug/config.toml`
+- **Single Source of Truth**: `~/.config/vociferous/config.toml`
 - **Validation**: Pydantic models for config
 - **Migration Logic**: Handles deprecated engines
   ```python
-  # chatterbug/config/schema.py
+  # vociferous/config/schema.py
   if engine == "parakeet_rnnt":
       logger.warning("⚠ Parakeet engine removed; migrated to whisper_vllm...")
       data["engine"] = "whisper_vllm"
@@ -408,14 +408,14 @@ gpu = [
 
 #### Minor Issues:
 ```python
-# chatterbug/config/schema.py lines 88-108
+# vociferous/config/schema.py lines 88-108
 # ISSUE: Migration logic mixed with config loading
 # RECOMMENDATION: Extract to separate migration module for clarity
 ```
 
 **Recommendation:**
 ```python
-# chatterbug/config/migrations.py
+# vociferous/config/migrations.py
 def migrate_config(data: dict) -> dict:
     """Apply all config migrations."""
     if "engine" in data:
@@ -442,7 +442,7 @@ def _migrate_engine_names(data: dict) -> dict:
 - **Streaming Architecture**: Push-based, memory efficient
 - **Bounded Queues**: Backpressure prevents OOM
   ```python
-  # chatterbug/app/transcription_session.py
+  # vociferous/app/transcription_session.py
   self._audio_queue = queue.Queue(maxsize=self._config.audio_queue_size)
   ```
 - **Lazy Loading**: Models loaded on first use
@@ -451,7 +451,7 @@ def _migrate_engine_names(data: dict) -> dict:
 
 #### Minor Issues:
 ```python
-# chatterbug/storage/history.py lines 53-70
+# vociferous/storage/history.py lines 53-70
 def _trim_history_locked(self) -> None:
     if not self.history_file.exists():
         return

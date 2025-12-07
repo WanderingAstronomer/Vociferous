@@ -2,15 +2,15 @@
 import pytest
 from typing import Iterable
 
-from chatterbug.app.transcription_session import TranscriptionSession
-from chatterbug.domain.model import (
+from vociferous.app.transcription_session import TranscriptionSession
+from vociferous.domain.model import (
     AudioChunk,
     TranscriptSegment,
     TranscriptionEngine,
     TranscriptionOptions,
     TranscriptionResult,
 )
-from chatterbug.domain.exceptions import SessionError, EngineError, ConfigurationError
+from vociferous.domain.exceptions import SessionError, EngineError, ConfigurationError
 
 
 class ErrorSource:
@@ -43,7 +43,7 @@ class ErrorEngine(TranscriptionEngine):
 
     @property
     def metadata(self):
-        from chatterbug.domain.model import EngineMetadata
+        from vociferous.domain.model import EngineMetadata
         return EngineMetadata(model_name="test-model", device="cpu", precision="int8")
 
 
@@ -114,7 +114,7 @@ class FakeEngine(TranscriptionEngine):
 
     @property
     def metadata(self):
-        from chatterbug.domain.model import EngineMetadata
+        from vociferous.domain.model import EngineMetadata
         return EngineMetadata(model_name="test-model", device="cpu", precision="int8")
 
 
@@ -260,7 +260,7 @@ def test_session_error_propagates_to_join() -> None:
 
         @property
         def metadata(self):
-            from chatterbug.domain.model import EngineMetadata
+            from vociferous.domain.model import EngineMetadata
             return EngineMetadata(model_name="test-model", device="cpu", precision="int8")
 
     session = TranscriptionSession()
@@ -298,7 +298,7 @@ def test_session_handles_empty_transcription() -> None:
 
         @property
         def metadata(self):
-            from chatterbug.domain.model import EngineMetadata
+            from vociferous.domain.model import EngineMetadata
             return EngineMetadata(model_name="test-model", device="cpu", precision="int8")
 
     session = TranscriptionSession()

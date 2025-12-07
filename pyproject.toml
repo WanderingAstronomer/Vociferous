@@ -1,5 +1,5 @@
 [project]
-name = "chatterbug"
+name = "vociferous"
 version = "0.0.0"
 description = "Local-first ASR with vLLM-backed Whisper and Voxtral engines (accuracy-first, GPU-optimized)."
 readme = "README.md"
@@ -27,27 +27,27 @@ dev = ["pytest>=8.0.0", "mypy>=1.10.0"]
 polish = ["llama-cpp-python>=0.3.0", "huggingface_hub>=0.23.0"]
 
 [project.scripts]
-chatterbug = "chatterbug.cli.main:main"
+vociferous = "vociferous.cli.main:main"
 
 [tool.setuptools]
-packages = ["chatterbug"]
+packages = ["vociferous"]
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
 explicit_package_bases = true
-exclude = ".*(chatterbug/tui/|chatterbug/polish/).*"
+exclude = ".*(vociferous/tui/|vociferous/polish/).*"
 
 [[tool.mypy.overrides]]
 module = [
   "tests.*",
-  "chatterbug.engines.whisper_turbo",
-  "chatterbug.engines.whisper_vllm",
-  "chatterbug.engines.voxtral_vllm",
-  "chatterbug.engines.voxtral_local",
-  "chatterbug.audio.vad",
-  "chatterbug.engines.hardware",
-  "chatterbug.polish.*",
+  "vociferous.engines.whisper_turbo",
+  "vociferous.engines.whisper_vllm",
+  "vociferous.engines.voxtral_vllm",
+  "vociferous.engines.voxtral_local",
+  "vociferous.audio.vad",
+  "vociferous.engines.hardware",
+  "vociferous.polish.*",
 ]
 ignore_errors = true
 

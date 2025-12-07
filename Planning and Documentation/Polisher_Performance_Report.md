@@ -52,11 +52,11 @@ Notes:
 GPU (default CUDA, polished/unpolished):
 ```bash
 /usr/bin/time -f "whisper_gpu_no_polish wall=%e sec" \
-  ./.venv/bin/python -m chatterbug.cli.main transcribe "samples/Recording 2.flac" \
+  ./.venv/bin/python -m vociferous.cli.main transcribe "samples/Recording 2.flac" \
   --engine whisper_turbo --clean-disfluencies --no-polish >/dev/null
 
 /usr/bin/time -f "whisper_gpu_polish wall=%e sec" \
-  ./.venv/bin/python -m chatterbug.cli.main transcribe "samples/Recording 2.flac" \
+  ./.venv/bin/python -m vociferous.cli.main transcribe "samples/Recording 2.flac" \
   --engine whisper_turbo --clean-disfluencies --polish \
   --polish-gpu-layers 99 >/dev/null
 ```
@@ -65,13 +65,13 @@ CPU-only (CUDA disabled, polished/unpolished):
 ```bash
 CUDA_VISIBLE_DEVICES="" NUMEXPR_MAX_THREADS=8 \
 /usr/bin/time -f "whisper_cpu_no_polish wall=%e sec" \
-  ./.venv/bin/python -m chatterbug.cli.main transcribe "samples/Recording 2.flac" \
+  ./.venv/bin/python -m vociferous.cli.main transcribe "samples/Recording 2.flac" \
   --engine whisper_turbo --device cpu --compute-type int8 \
   --clean-disfluencies --no-polish --vad-filter --chunk-ms 30000 --trim-tail-ms 800 >/dev/null
 
 CUDA_VISIBLE_DEVICES="" NUMEXPR_MAX_THREADS=8 \
 /usr/bin/time -f "whisper_cpu_polish wall=%e sec" \
-  ./.venv/bin/python -m chatterbug.cli.main transcribe "samples/Recording 2.flac" \
+  ./.venv/bin/python -m vociferous.cli.main transcribe "samples/Recording 2.flac" \
   --engine whisper_turbo --device cpu --compute-type int8 \
   --clean-disfluencies --polish --polish-gpu-layers 0 \
   --vad-filter --chunk-ms 30000 --trim-tail-ms 800 >/dev/null

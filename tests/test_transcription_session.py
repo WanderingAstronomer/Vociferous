@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from chatterbug.app import TranscriptionSession
-from chatterbug.app.sinks import PolishingSink
-from chatterbug.domain.model import (
+from vociferous.app import TranscriptionSession
+from vociferous.app.sinks import PolishingSink
+from vociferous.domain.model import (
     AudioChunk,
     EngineMetadata,
     TranscriptSegment,
