@@ -1,4 +1,4 @@
-"""CLI integration tests for batching/VAD flags in transcribe command."""
+"""CLI integration tests for transcribe command with simplified signature."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,17 +17,25 @@ class _FakeConfig:
     compute_type = "auto"
     device = "auto"
     model_cache_dir = "/tmp/vociferous-model-cache"
+    vllm_endpoint = "http://localhost:8000"
+    chunk_ms = 960
     params: Dict[str, str] = {
-        "enable_batching": "false",
-        "batch_size": "1",
+        "enable_batching": "true",
+        "batch_size": "16",
         "word_timestamps": "false",
+        "vad_filter": "true",
     }
     history_dir = "/tmp/vociferous-history"
     history_limit = 20
     numexpr_max_threads = None
     polish_enabled = False
     polish_model = None
-    polish_params: Dict[str, str] = {}
+    polish_params: Dict[str, str] = {
+        "max_tokens": "128",
+        "temperature": "0.2",
+        "gpu_layers": "0",
+        "context_length": "2048",
+    }
 
 
 def _setup_cli_fixtures(monkeypatch: pytest.MonkeyPatch) -> Dict[str, Any]:
@@ -65,14 +73,14 @@ def _setup_cli_fixtures(monkeypatch: pytest.MonkeyPatch) -> Dict[str, Any]:
     monkeypatch.setattr("vociferous.cli.main.load_config", lambda: _FakeConfig())
     monkeypatch.setattr("vociferous.cli.main.build_engine", fake_build_engine)
     monkeypatch.setattr("vociferous.cli.main.FileSource", FakeFileSource)
-    monkeypatch.setattr("vociferous.cli.main.build_polisher", lambda cfg: "polisher")
+    monkeypatch.setattr("vociferous.cli.main.build_polisher", lambda cfg: None)
     monkeypatch.setattr("vociferous.cli.main.TranscriptionSession", FakeSession)
 
     return calls
 
 
-def test_cli_transcribe_defaults_enable_batching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that batching is enabled by default for file transcription."""
+def test_cli_transcribe_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that basic transcription works with defaults from config."""
     calls = _setup_cli_fixtures(monkeypatch)
     audio = tmp_path / "a.wav"
     audio.write_bytes(b"data")
@@ -81,94 +89,75 @@ def test_cli_transcribe_defaults_enable_batching(tmp_path: Path, monkeypatch: py
 
     assert result.exit_code == 0
     cfg = calls["engine_config"]
+    # Config values should be applied
     assert cfg.params["enable_batching"] == "true"
     assert cfg.params["batch_size"] == "16"
     assert cfg.params["word_timestamps"] == "false"
-    # Clean disfluencies enabled by default
     assert cfg.params["clean_disfluencies"] == "true"
-    # Note: preset is only set for vLLM engines by default, not whisper_turbo
+    assert calls["engine_kind"] == "whisper_turbo"
 
 
-def test_cli_transcribe_enable_batching_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cli_transcribe_engine_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that --engine flag overrides config engine."""
     calls = _setup_cli_fixtures(monkeypatch)
     audio = tmp_path / "a.wav"
     audio.write_bytes(b"data")
 
     result = CliRunner().invoke(
         app,
-        [
-            "transcribe",
-            str(audio),
-            "--enable-batching",
-            "--batch-size",
-            "8",
-            "--word-timestamps",
-        ],
+        ["transcribe", str(audio), "--engine", "voxtral_local"],
     )
 
     assert result.exit_code == 0
-    cfg = calls["engine_config"]
-    assert cfg.params["enable_batching"] == "true"
-    assert cfg.params["batch_size"] == "8"
-    assert cfg.params["word_timestamps"] == "true"
+    assert calls["engine_kind"] == "voxtral_local"
 
 
-def test_cli_transcribe_fast_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that --fast flag enables optimized settings for whisper_turbo."""
+def test_cli_transcribe_preset_fast(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that --preset fast selects fast model and settings."""
     calls = _setup_cli_fixtures(monkeypatch)
     audio = tmp_path / "a.wav"
     audio.write_bytes(b"data")
 
     result = CliRunner().invoke(
         app,
-        ["transcribe", str(audio), "--fast", "--language", "en"],
+        ["transcribe", str(audio), "--preset", "fast"],
     )
 
     assert result.exit_code == 0
     cfg = calls["engine_config"]
-    # Fast mode should enable batching with batch_size >= 16
-    assert cfg.params["enable_batching"] == "true"
-    assert int(cfg.params["batch_size"]) >= 16
-    # Fast mode for whisper_turbo uses the CT2 turbo model
-    assert "turbo" in cfg.model_name.lower()
-    assert cfg.compute_type in {"int8", "int8_float16", "float16"}
     assert cfg.params["preset"] == "fast"
-    # Check beam_size in options
+    # Fast preset should enable batching
+    assert cfg.params["enable_batching"] == "true"
+    # Fast uses turbo model
+    assert "turbo" in cfg.model_name.lower()
+    # Check options
     start_args = calls["start_args"]
     options = start_args[3]
+    assert options.preset == "fast"
     assert options.beam_size == 1
 
 
-def test_cli_transcribe_no_clean_disfluencies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that --no-clean-disfluencies disables disfluency cleaning."""
+def test_cli_transcribe_preset_high_accuracy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that --preset high_accuracy selects high quality model and settings."""
     calls = _setup_cli_fixtures(monkeypatch)
     audio = tmp_path / "a.wav"
     audio.write_bytes(b"data")
 
     result = CliRunner().invoke(
         app,
-        ["transcribe", str(audio), "--no-clean-disfluencies"],
+        ["transcribe", str(audio), "--preset", "high_accuracy"],
     )
 
     assert result.exit_code == 0
     cfg = calls["engine_config"]
-    assert cfg.params["clean_disfluencies"] == "false"
-
-
-def test_cli_transcribe_clean_disfluencies_explicit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that --clean-disfluencies explicitly enables cleaning."""
-    calls = _setup_cli_fixtures(monkeypatch)
-    audio = tmp_path / "a.wav"
-    audio.write_bytes(b"data")
-
-    result = CliRunner().invoke(
-        app,
-        ["transcribe", str(audio), "--clean-disfluencies"],
-    )
-
-    assert result.exit_code == 0
-    cfg = calls["engine_config"]
-    assert cfg.params["clean_disfluencies"] == "true"
+    assert cfg.params["preset"] == "high_accuracy"
+    # High accuracy uses large model
+    assert "large" in cfg.model_name.lower()
+    # Check options
+    start_args = calls["start_args"]
+    options = start_args[3]
+    assert options.preset == "high_accuracy"
+    assert options.beam_size == 2
 
 
 def test_cli_transcribe_engine_short_alias(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -266,19 +255,37 @@ def test_cli_transcribe_rejects_output_directory(tmp_path: Path, monkeypatch: py
     assert "directory" in result.stdout.lower()
 
 
-def test_cli_transcribe_validates_language(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that invalid language codes are rejected by CLI."""
-    _setup_cli_fixtures(monkeypatch)
+def test_cli_transcribe_language_english(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that language flag works correctly."""
+    calls = _setup_cli_fixtures(monkeypatch)
     audio = tmp_path / "a.wav"
     audio.write_bytes(b"data")
 
     result = CliRunner().invoke(
         app,
-        ["transcribe", str(audio), "-l", "eng"],
+        ["transcribe", str(audio), "--language", "en"],
     )
 
-    assert result.exit_code != 0
-    # Typer/Click might catch the ValueError and print it to stdout/stderr
-    assert "Invalid language code" in str(result.exception) or "Invalid language code" in result.stdout
+    assert result.exit_code == 0
+    start_args = calls["start_args"]
+    options = start_args[3]
+    assert options.language == "en"
 
+
+def test_cli_transcribe_vllm_engine_gets_balanced_preset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that vLLM engines default to balanced preset."""
+    calls = _setup_cli_fixtures(monkeypatch)
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"data")
+
+    result = CliRunner().invoke(
+        app,
+        ["transcribe", str(audio), "--engine", "whisper_vllm"],
+    )
+
+    assert result.exit_code == 0
+    cfg = calls["engine_config"]
+    # vLLM should default to balanced preset
+    assert cfg.params["preset"] == "balanced"
+    assert "turbo" in cfg.model_name.lower()
 

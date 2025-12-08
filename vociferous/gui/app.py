@@ -29,6 +29,7 @@ class VociferousGUIApp(MDApp):
         super().__init__(**kwargs)
         self.title = "Vociferous - AI Transcription"
         self.theme_cls.theme_style = "Dark"
+        self.theme_cls.material_style = "M2"
         self.theme_cls.primary_palette = "Blue"
         self.theme_cls.primary_hue = "700"
         self.theme_cls.accent_palette = "LightBlue"
@@ -95,25 +96,26 @@ class VociferousGUIApp(MDApp):
         # Main layout
         nav_layout = MDNavigationLayout()
         
-        # Screen manager for main content
+        # Screen manager for main content pages
         self.screen_manager = ScreenManager()
-        
-        # Add screens
         self.screen_manager.add_widget(HomeScreen(name="home"))
         self.screen_manager.add_widget(SettingsScreen(name="settings"))
         
-        # Content layout with toolbar
+        # Wrap toolbar and content into a screen so MDNavigationLayout
+        # sees a ScreenManager as its primary child (required by KivyMD).
         content_layout = MDBoxLayout(orientation="vertical")
-        
-        # Top app bar
         toolbar = MDTopAppBar(
             title="Vociferous",
             left_action_items=[["menu", lambda x: self._toggle_nav_drawer()]],
         )
         content_layout.add_widget(toolbar)
-        
-        # Add screen manager to content
         content_layout.add_widget(self.screen_manager)
+        
+        main_screen = Screen(name="main_content")
+        main_screen.add_widget(content_layout)
+        
+        root_manager = ScreenManager(transition=NoTransition())
+        root_manager.add_widget(main_screen)
         
         # Navigation drawer
         self.nav_drawer = MDNavigationDrawer()
@@ -136,7 +138,7 @@ class VociferousGUIApp(MDApp):
         self.nav_drawer.add_widget(nav_drawer_content)
         
         # Add to nav layout
-        nav_layout.add_widget(content_layout)
+        nav_layout.add_widget(root_manager)
         nav_layout.add_widget(self.nav_drawer)
         
         return nav_layout

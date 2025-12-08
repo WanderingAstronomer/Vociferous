@@ -4,23 +4,19 @@ from pathlib import Path
 import logging
 import subprocess
 import shutil
-import typing
 
 from vociferous.app import TranscriptionSession, configure_logging
 from vociferous.audio.sources import FileSource
 from vociferous.app.sinks import PolishingSink
 from vociferous.config import load_config
-from vociferous.domain import EngineConfig, TranscriptionOptions
-from vociferous.domain.model import DEFAULT_WHISPER_MODEL, TranscriptionPreset, EngineKind
+from vociferous.domain.model import TranscriptionPreset, EngineKind
 from vociferous.domain.exceptions import (
     DependencyError, EngineError, AudioDecodeError, ConfigurationError
 )
 from vociferous.engines.factory import build_engine
-from vociferous.engines.model_registry import normalize_model_name
-from vociferous.polish.base import PolisherConfig
 from vociferous.polish.factory import build_polisher
 from vociferous.tui import run_tui
-from vociferous.cli.helpers import build_sink
+from vociferous.cli.helpers import build_sink, build_transcribe_configs_from_cli
 
 try:
     import typer
@@ -112,36 +108,6 @@ def transcribe(
         case_sensitive=False,
         show_default=False,
     ),
-    # Common options
-    model: str | None = typer.Option(None, help="Override model name", hidden=True),
-    device: str | None = typer.Option(None, help="Device: cpu or cuda", hidden=True),
-    vad_filter: bool = typer.Option(True, help="Apply voice activity detection", hidden=True),
-    clipboard: bool = typer.Option(False, help="Copy transcript to clipboard", hidden=True),
-    save_history: bool = typer.Option(False, help="Save to history", hidden=True),
-    # Advanced options (hidden from main help)
-    compute_type: str | None = typer.Option(None, help="Compute type (int8, float16, etc.)", hidden=True),
-    numexpr_max_threads: int | None = typer.Option(None, help="Limit NumExpr threads", hidden=True),
-    word_timestamps: bool = typer.Option(False, help="Enable word-level timestamps", hidden=True),
-    enable_batching: bool = typer.Option(True, help="Enable batched inference", hidden=True),
-    batch_size: int = typer.Option(16, help="Batch size for inference", hidden=True),
-    beam_size: int = typer.Option(1, help="Beam size for decoding", hidden=True),
-    chunk_ms: int = typer.Option(30000, help="Audio chunk size (ms)", hidden=True),
-    trim_tail_ms: int = typer.Option(800, help="Trim trailing silence (ms)", hidden=True),
-    noise_gate_db: float | None = typer.Option(None, help="Noise gate threshold (dBFS)", hidden=True),
-    whisper_temperature: float = typer.Option(0.0, help="Whisper sampling temperature", hidden=True),
-    prompt: str | None = typer.Option(None, help="Prompt for Voxtral", hidden=True),
-    max_new_tokens: int = typer.Option(0, help="Voxtral max tokens", hidden=True),
-    gen_temperature: float = typer.Option(0.0, help="Voxtral temperature", hidden=True),
-    vllm_endpoint: str = typer.Option("http://localhost:8000", help="vLLM server URL", hidden=True),
-    clean_disfluencies: bool = typer.Option(False, help="Remove stutters/fillers", hidden=True),
-    no_clean_disfluencies: bool = typer.Option(False, help="Disable disfluency cleaning", hidden=True),
-    fast: bool = typer.Option(False, help="Alias for --preset fast", hidden=True),
-    polish: bool | None = typer.Option(None, help="Enable transcript polishing", hidden=True),
-    polish_model: str | None = typer.Option(None, help="Polisher model name", hidden=True),
-    polish_max_tokens: int = typer.Option(128, help="Polisher max tokens", hidden=True),
-    polish_temperature: float = typer.Option(0.2, help="Polisher temperature", hidden=True),
-    polish_gpu_layers: int = typer.Option(0, help="Polisher GPU layers", hidden=True),
-    polish_context_length: int = typer.Option(2048, help="Polisher context length", hidden=True),
 ) -> None:
     """Transcribe an audio file to text using local ASR engines.
 
@@ -155,109 +121,33 @@ def transcribe(
       vociferous transcribe audio.mp3
       vociferous transcribe audio.wav --language fr --preset high_accuracy
       vociferous transcribe audio.flac --engine voxtral_local --output transcript.txt
+      
+    ADVANCED SETTINGS:
+      Edit ~/.config/vociferous/config.toml to configure:
+        • Model selection, device (CPU/CUDA), compute type
+        • Batching, VAD filtering, chunk sizes
+        • Polish settings, vLLM endpoint, etc.
     """
     logging.basicConfig(level=logging.INFO)
     config = load_config()
-    # Apply preset overrides (new presets)
-    preset_lower = (preset or "").replace("-", "_").lower()
-    if fast and not preset_lower:
-        preset_lower = "fast"
-
-    # Default to balanced if no preset specified for whisper_vllm
-    if not preset_lower and engine in {"whisper_vllm", "voxtral_vllm"}:
-        preset_lower = "balanced"
-
-    if preset_lower in {"high_accuracy", "balanced", "fast"}:
-        target_device = device or config.device
-        if engine == "whisper_vllm":
-            if preset_lower == "high_accuracy":
-                model = model or "openai/whisper-large-v3"
-                compute_type = compute_type or ("bfloat16" if target_device == "cuda" else "float32")
-                beam_size = 2
-            elif preset_lower == "fast":
-                model = model or "openai/whisper-large-v3-turbo"
-                compute_type = compute_type or ("float16" if target_device == "cuda" else "int8")
-                beam_size = 1
-            else:  # balanced
-                model = model or "openai/whisper-large-v3-turbo"
-                compute_type = compute_type or ("bfloat16" if target_device == "cuda" else "float32")
-                beam_size = max(beam_size, 1)
-            enable_batching = True
-            vad_filter = True
-        elif engine == "whisper_turbo":
-            # Keep legacy CT2 presets for local engine
-            if preset_lower == "high_accuracy":
-                model = model or "openai/whisper-large-v3"
-                compute_type = compute_type or ("float16" if target_device == "cuda" else "int8")
-                beam_size = max(beam_size, 2)
-                batch_size = max(batch_size, 8)
-            elif preset_lower == "fast":
-                model = model or DEFAULT_WHISPER_MODEL
-                compute_type = compute_type or "int8_float16"
-                beam_size = 1
-                batch_size = max(batch_size, 16)
-            else:  # balanced
-                model = model or DEFAULT_WHISPER_MODEL
-                compute_type = compute_type or ("float16" if target_device == "cuda" else "int8")
-                beam_size = max(beam_size, 1)
-                batch_size = max(batch_size, 12)
-            enable_batching = True
-            vad_filter = True
-
-    if numexpr_max_threads is None:
-        env_threads = config.numexpr_max_threads
-    else:
-        env_threads = numexpr_max_threads
-    if env_threads is not None:
-        import os
-        os.environ["NUMEXPR_MAX_THREADS"] = str(env_threads)
-
-    polish_enabled = config.polish_enabled if polish is None else polish
-    polisher_config = PolisherConfig(
-        enabled=polish_enabled,
-        model=polish_model or config.polish_model,
-        params={
-            **config.polish_params,
-            "max_tokens": str(polish_max_tokens),
-            "temperature": str(polish_temperature),
-            "gpu_layers": str(polish_gpu_layers),
-            "context_length": str(polish_context_length),
-        },
-    )
-
-    engine_config = EngineConfig(
-        model_name=normalize_model_name(engine, model or config.model_name if engine == config.engine else model),
-        compute_type=compute_type or config.compute_type,
-        device=device or config.device,
-        model_cache_dir=config.model_cache_dir,
-        params={
-            **config.params,
-            "preset": preset_lower,
-            "word_timestamps": str(word_timestamps).lower(),
-            "enable_batching": str(enable_batching).lower(),
-            "batch_size": str(batch_size),
-            "vad_filter": str(vad_filter).lower(),
-            # Default is true in engine; flags override: explicit enable OR (no explicit disable)
-            "clean_disfluencies": str(clean_disfluencies or not no_clean_disfluencies).lower(),
-            # vLLM endpoint for vLLM engines
-            "vllm_endpoint": vllm_endpoint,
-        },
-    )
-    options = TranscriptionOptions(
+    
+    # Build all configs from user-facing CLI options + config file
+    bundle = build_transcribe_configs_from_cli(
+        app_config=config,
+        engine=engine,
         language=language,
-        preset=typing.cast(TranscriptionPreset | None, preset_lower) if preset_lower in {"high_accuracy", "balanced", "fast"} else None,
-        prompt=prompt,
-        params={
-            "max_new_tokens": str(max_new_tokens) if max_new_tokens > 0 else "",
-            "temperature": str(gen_temperature) if gen_temperature > 0 else "",
-        },
-        beam_size=beam_size if beam_size > 0 else None,
-        temperature=whisper_temperature if whisper_temperature > 0 else None,
+        preset=preset,
     )
+    
+    # Apply numexpr thread limit if configured
+    if bundle.numexpr_threads is not None:
+        import os
+        os.environ["NUMEXPR_MAX_THREADS"] = str(bundle.numexpr_threads)
 
+    # Build engine and polisher
     try:
-        engine_adapter = build_engine(engine, engine_config)
-        polisher = build_polisher(polisher_config)
+        engine_adapter = build_engine(engine, bundle.engine_config)
+        polisher = build_polisher(bundle.polisher_config)
     except (DependencyError, EngineError) as exc:
         typer.echo(f"Engine initialization error: {exc}", err=True)
         raise typer.Exit(code=3) from exc
@@ -265,21 +155,14 @@ def transcribe(
         typer.echo(f"Polisher error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
 
+    # Build audio source with default chunk settings
     source = FileSource(
         file,
-        chunk_ms=chunk_ms,
-        trim_tail_ms=trim_tail_ms,
-        noise_gate_db=noise_gate_db,
+        chunk_ms=config.chunk_ms,
     )
     
-    # Build composed sink from CLI flags
-    sink = build_sink(
-        output=output,
-        clipboard=clipboard,
-        save_history=save_history,
-        history_dir=Path(config.history_dir),
-        history_limit=config.history_limit,
-    )
+    # Build output sink
+    sink = build_sink(output=output)
     if polisher is not None:
         sink = PolishingSink(sink, polisher)
 
@@ -324,7 +207,7 @@ def transcribe(
     session = TranscriptionSession()
 
     try:
-        session.start(source, engine_adapter, sink, options, engine_kind=engine)
+        session.start(source, engine_adapter, sink, bundle.options, engine_kind=engine)
         session.join()
     except FileNotFoundError as exc:
         console.print(Panel(f"[red]{exc}[/red]", title="❌ File Not Found", border_style="red"))

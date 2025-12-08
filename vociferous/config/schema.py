@@ -21,8 +21,8 @@ class AppConfig(BaseModel):
     engine: EngineKind = "whisper_turbo"  # Local engine is default (works out of the box)
     compute_type: str = "auto"
     device: str = "auto"
-    model_cache_dir: str | None = str(DEFAULT_MODEL_CACHE_DIR)
-    model_parent_dir: str | None = str(DEFAULT_MODEL_CACHE_DIR)
+    model_cache_dir: str | None = Field(default_factory=lambda: str(DEFAULT_MODEL_CACHE_DIR))
+    model_parent_dir: str | None = Field(default_factory=lambda: str(DEFAULT_MODEL_CACHE_DIR))
     vllm_endpoint: str = "http://localhost:8000"  # Default vLLM server endpoint
     allow_local_fallback: bool = False  # Explicit opt-in for auto-fallback to local engines
     chunk_ms: int = 960
@@ -85,11 +85,15 @@ class AppConfig(BaseModel):
 
 
 def load_config(config_path: Path | None = None) -> AppConfig:
-    if config_path is None:
-        config_path = Path.home() / ".config" / "vociferous" / "config.toml"
+    """Load configuration, prompting for model directory only in interactive default runs."""
 
-    import sys
-    if not config_path.exists():
+    default_config_path = Path.home() / ".config" / "vociferous" / "config.toml"
+    if config_path is None:
+        config_path = default_config_path
+
+    is_first_run = not config_path.exists()
+
+    if is_first_run:
         cfg = AppConfig()
     else:
         with open(config_path, "rb") as f:
@@ -98,16 +102,24 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         migrated = migrate_raw_config(data)
         cfg = AppConfig.model_validate(migrated)
 
-    # Prompt for model_parent_dir if missing or empty
-    if not cfg.model_parent_dir or not str(cfg.model_parent_dir).strip():
-        default_dir = str(DEFAULT_MODEL_CACHE_DIR)
-        print(f"\nVociferous: Please select a parent directory for your models.")
-        print(f"Default: {default_dir}")
-        user_input = input(f"Enter model parent directory (or press Enter to use default): ").strip()
-        chosen_dir = user_input if user_input else default_dir
-        cfg.model_parent_dir = str(Path(chosen_dir).expanduser())
-        # Save updated config
-        save_config(cfg, config_path)
+    # Decide whether to prompt: only for default config path, interactive stdin, and missing/blank value
+    should_prompt = (
+        config_path == default_config_path
+        and (not cfg.model_parent_dir or not str(cfg.model_parent_dir).strip())
+    )
+    if should_prompt:
+        import sys
+        if sys.stdin.isatty():
+            default_dir = str(DEFAULT_MODEL_CACHE_DIR)
+            print("\nVociferous: Please select a parent directory for your models.")
+            print(f"Default: {default_dir}")
+            user_input = input("Enter model parent directory (or press Enter to use default): ").strip()
+            chosen_dir = user_input if user_input else default_dir
+            cfg.model_parent_dir = str(Path(chosen_dir).expanduser())
+            save_config(cfg, config_path)
+        else:
+            # Non-interactive (e.g., tests); fall back to default without prompting
+            cfg.model_parent_dir = str(DEFAULT_MODEL_CACHE_DIR)
 
     # Ensure model parent directory exists
     if cfg.model_parent_dir:

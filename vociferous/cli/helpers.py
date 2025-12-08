@@ -166,6 +166,7 @@ def build_polisher_config(
 
 @dataclass
 class TranscribeConfigBundle:
+    """Bundle of all configs needed for transcription."""
     engine_config: EngineConfig
     options: TranscriptionOptions
     polisher_config: PolisherConfig
@@ -173,50 +174,49 @@ class TranscribeConfigBundle:
     numexpr_threads: int | None
 
 
-def build_transcribe_configs(
+def build_transcribe_configs_from_cli(
     *,
     app_config: AppConfig,
     engine: EngineKind,
     language: str,
     preset: TranscriptionPreset | None,
-    fast_flag: bool,
-    model: str | None,
-    device: str | None,
-    compute_type: str | None,
-    batch_size: int,
-    beam_size: int,
-    enable_batching: bool,
-    vad_filter: bool,
-    word_timestamps: bool,
-    vllm_endpoint: str,
-    clean_disfluencies: bool,
-    no_clean_disfluencies: bool,
-    polish: bool | None,
-    polish_model: str | None,
-    polish_max_tokens: int,
-    polish_temperature: float,
-    polish_gpu_layers: int,
-    polish_context_length: int,
-    numexpr_max_threads: int | None,
-    prompt: str | None,
-    max_new_tokens: int,
-    gen_temperature: float,
-    whisper_temperature: float,
 ) -> TranscribeConfigBundle:
-    """Resolve CLI/config settings into engine/polisher/options configs."""
+    """Build transcription configs from CLI user-facing options only.
+    
+    All advanced settings come from AppConfig (loaded from ~/.config/vociferous/config.toml).
+    This is the clean separation: CLI for user intent, config file for tuning.
+    
+    Args:
+        app_config: Loaded application configuration
+        engine: Engine selected by user (--engine)
+        language: Language code (--language)
+        preset: Quality preset (--preset) or None for defaults
+        
+    Returns:
+        Complete config bundle for transcription
+    """
+    # Normalize preset
     preset_lower = (preset or "").replace("-", "_").lower()
-    if fast_flag and not preset_lower:
-        preset_lower = "fast"
+    
+    # vLLM engines default to balanced preset if none specified
     if not preset_lower and engine in {"whisper_vllm", "voxtral_vllm"}:
         preset_lower = "balanced"
 
-    target_device = device or app_config.device
-    resolved_model = model or (app_config.model_name if engine == app_config.engine else None)
-    resolved_compute = compute_type or app_config.compute_type
-    resolved_beam = beam_size
-    resolved_batch = batch_size
-    resolved_enable_batching = enable_batching
-    resolved_vad = vad_filter
+    # Resolve model/compute/batch settings from preset
+    target_device = app_config.device
+    resolved_model = app_config.model_name if engine == app_config.engine else None
+    resolved_compute = app_config.compute_type
+    
+    # Extract current batch settings from config params
+    current_batch_size = int(app_config.params.get("batch_size", "16"))
+    current_enable_batching = app_config.params.get("enable_batching", "true").lower() == "true"
+    current_vad = app_config.params.get("vad_filter", "true").lower() == "true"
+    current_word_timestamps = app_config.params.get("word_timestamps", "false").lower() == "true"
+    
+    resolved_beam = 1
+    resolved_batch = current_batch_size
+    resolved_enable_batching = current_enable_batching
+    resolved_vad = current_vad
 
     if preset_lower in {"high_accuracy", "balanced", "fast"}:
         preset_settings = resolve_preset(
@@ -225,8 +225,8 @@ def build_transcribe_configs(
             target_device,
             current_model=resolved_model,
             current_compute_type=resolved_compute,
-            current_beam_size=beam_size,
-            current_batch_size=batch_size,
+            current_beam_size=1,
+            current_batch_size=current_batch_size,
         )
         resolved_model = preset_settings.model
         resolved_compute = preset_settings.compute_type or resolved_compute
@@ -240,45 +240,42 @@ def build_transcribe_configs(
         cast(TranscriptionPreset, preset_lower) if preset_lower in {"high_accuracy", "balanced", "fast"} else None
     )
 
-    numexpr_threads = app_config.numexpr_max_threads if numexpr_max_threads is None else numexpr_max_threads
-    clean_disfluencies_value = clean_disfluencies or not no_clean_disfluencies
-
+    # Polisher config from AppConfig only
     polisher_config = build_polisher_config(
-        enabled=app_config.polish_enabled if polish is None else polish,
-        model=polish_model or app_config.polish_model,
+        enabled=app_config.polish_enabled,
+        model=app_config.polish_model,
         base_params=app_config.polish_params,
-        max_tokens=polish_max_tokens,
-        temperature=polish_temperature,
-        gpu_layers=polish_gpu_layers,
-        context_length=polish_context_length,
+        max_tokens=int(app_config.polish_params.get("max_tokens", "128")),
+        temperature=float(app_config.polish_params.get("temperature", "0.2")),
+        gpu_layers=int(app_config.polish_params.get("gpu_layers", "0")),
+        context_length=int(app_config.polish_params.get("context_length", "2048")),
     )
 
+    # Build engine config using resolved preset values + config defaults
     engine_config = build_engine_config(
         engine,
-        model_name=resolved_model or (app_config.model_name if engine == app_config.engine else None),
-        compute_type=resolved_compute or app_config.compute_type,
+        model_name=resolved_model or app_config.model_name,
+        compute_type=resolved_compute,
         device=target_device,
         model_cache_dir=app_config.model_cache_dir,
         params=app_config.params,
         preset=preset_lower,
-        word_timestamps=word_timestamps,
+        word_timestamps=current_word_timestamps,
         enable_batching=resolved_enable_batching,
         batch_size=resolved_batch,
         vad_filter=resolved_vad,
-        clean_disfluencies=clean_disfluencies_value,
-        vllm_endpoint=vllm_endpoint,
+        clean_disfluencies=True,  # Always enabled (users can disable in config.toml)
+        vllm_endpoint=app_config.vllm_endpoint,
     )
 
+    # Build transcription options (language + preset only from CLI)
     options = TranscriptionOptions(
         language=language,
         preset=preset_value,
-        prompt=prompt,
-        params={
-            "max_new_tokens": str(max_new_tokens) if max_new_tokens > 0 else "",
-            "temperature": str(gen_temperature) if gen_temperature > 0 else "",
-        },
+        prompt=None,  # Advanced: config-only
+        params={},  # Advanced params come from config
         beam_size=resolved_beam if resolved_beam > 0 else None,
-        temperature=whisper_temperature if whisper_temperature > 0 else None,
+        temperature=None,  # Advanced: config-only
     )
 
     return TranscribeConfigBundle(
@@ -286,37 +283,26 @@ def build_transcribe_configs(
         options=options,
         polisher_config=polisher_config,
         preset=preset_lower,
-        numexpr_threads=numexpr_threads,
+        numexpr_threads=app_config.numexpr_max_threads,
     )
 
 
 def build_sink(
     *,
     output: Path | None,
-    clipboard: bool,
-    save_history: bool,
-    history_dir: Path,
-    history_limit: int,
 ) -> TranscriptSink:
-    """Build a composed sink from CLI flags.
+    """Build output sink from CLI flags.
     
-    Returns a CompositeSink wrapping all enabled sinks.
-    Falls back to StdoutSink if no other outputs specified.
+    If output path provided, writes to file. Otherwise writes to stdout.
+    
+    Args:
+        output: Optional output file path
+        
+    Returns:
+        TranscriptSink implementation
     """
-    from vociferous.app.sinks import (
-        ClipboardSink, FileSink, HistorySink, StdoutSink, CompositeSink
-    )
-    from vociferous.storage.history import HistoryStorage
+    from vociferous.app.sinks import FileSink, StdoutSink
 
-    sinks: list[TranscriptSink] = []
     if output:
-        sinks.append(FileSink(output))
-    if clipboard:
-        sinks.append(ClipboardSink())
-    if save_history:
-        storage = HistoryStorage(history_dir, limit=history_limit)
-        sinks.append(HistorySink(storage, target=output))
-    if not sinks:
-        sinks.append(StdoutSink())
-
-    return CompositeSink(sinks)
+        return FileSink(output)
+    return StdoutSink()
