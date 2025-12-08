@@ -1,10 +1,6 @@
 """Tests for SegmentArbiter integration with WhisperTurboEngine."""
 
-from unittest.mock import MagicMock, patch
-
-import pytest
-
-from vociferous.domain.model import EngineConfig, TranscriptSegment, TranscriptionOptions
+from vociferous.domain.model import EngineConfig, TranscriptSegment
 from vociferous.engines.whisper_turbo import WhisperTurboEngine
 
 
