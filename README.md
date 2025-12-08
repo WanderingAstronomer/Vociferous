@@ -35,15 +35,17 @@ Local-first ASR with faster-whisper (CTranslate2) as the default engine and opti
 ## CLI Usage
 - `vociferous transcribe <file>` - Transcribe audio file to stdout. Common flags: `-e`/`--engine`, `-l`/`--language`, `-o`/`--output`, `-p`/`--preset`.
   - Example: `vociferous transcribe recording.wav -e voxtral_local -o transcript.txt`
+- `vociferous languages` - List all supported language codes (ISO 639-1) for Whisper and Voxtral engines.
+- `vociferous check` - Verify local prerequisites (ffmpeg, sounddevice).
 - `vociferous-gui` - Launch the graphical user interface (requires `[gui]` extra).
 - `-e|--engine whisper_vllm|voxtral_vllm|whisper_turbo|voxtral_local` - Select engine.
 - `-p|--preset high_accuracy|balanced|fast` (balanced default for vLLM engines); `--fast` shortcut for `preset=fast`.
+- `-l|--language <code>` - Language code (e.g., `en`, `es`, `fr`) or `auto` for detection. See `vociferous languages` for full list.
 - `--vllm-endpoint http://host:port` - Target vLLM server for vLLM engines.
 - Whisper controls: `--enable-batching/--batch-size`, `--beam-size`, `--vad-filter/--no-vad-filter`, `--word-timestamps`, `--whisper-temperature`.
 - Voxtral controls: `--prompt`, `--max-new-tokens`, `--gen-temperature`.
 - Polisher: `--polish/--no-polish`, `--polish-model`, `--polish-max-tokens`, `--polish-temperature`, `--polish-gpu-layers`, `--polish-context-length`.
 - Output/UX: `--output <path>`, `--clipboard`, `--save-history`.
-- `vociferous check` - Verify local prerequisites (ffmpeg, sounddevice).
 - `vociferous check-vllm` - Validate connectivity and list models served by a vLLM endpoint.
 - `vociferous serve-vllm --model <name>` - Convenience wrapper to launch `vllm serve` with sane defaults (use your own process manager for production).
 
