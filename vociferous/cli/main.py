@@ -33,6 +33,38 @@ except ImportError as exc:  # pragma: no cover - tooling dependency guard
 
 configure_logging()
 
+# Language support constants (ISO 639-1 codes)
+WHISPER_LANGUAGES = {
+    "af": "Afrikaans", "am": "Amharic", "ar": "Arabic", "as": "Assamese",
+    "az": "Azerbaijani", "ba": "Bashkir", "be": "Belarusian", "bg": "Bulgarian",
+    "bn": "Bengali", "bo": "Tibetan", "br": "Breton", "bs": "Bosnian",
+    "ca": "Catalan", "cs": "Czech", "cy": "Welsh", "da": "Danish",
+    "de": "German", "el": "Greek", "en": "English", "es": "Spanish",
+    "et": "Estonian", "eu": "Basque", "fa": "Persian", "fi": "Finnish",
+    "fo": "Faroese", "fr": "French", "gl": "Galician", "gu": "Gujarati",
+    "ha": "Hausa", "haw": "Hawaiian", "he": "Hebrew", "hi": "Hindi",
+    "hr": "Croatian", "ht": "Haitian Creole", "hu": "Hungarian", "hy": "Armenian",
+    "id": "Indonesian", "is": "Icelandic", "it": "Italian", "ja": "Japanese",
+    "jw": "Javanese", "ka": "Georgian", "kk": "Kazakh", "km": "Khmer",
+    "kn": "Kannada", "ko": "Korean", "la": "Latin", "lb": "Luxembourgish",
+    "ln": "Lingala", "lo": "Lao", "lt": "Lithuanian", "lv": "Latvian",
+    "mg": "Malagasy", "mi": "Maori", "mk": "Macedonian", "ml": "Malayalam",
+    "mn": "Mongolian", "mr": "Marathi", "ms": "Malay", "mt": "Maltese",
+    "my": "Myanmar", "ne": "Nepali", "nl": "Dutch", "nn": "Norwegian Nynorsk",
+    "no": "Norwegian", "oc": "Occitan", "pa": "Punjabi", "pl": "Polish",
+    "ps": "Pashto", "pt": "Portuguese", "ro": "Romanian", "ru": "Russian",
+    "sa": "Sanskrit", "sd": "Sindhi", "si": "Sinhala", "sk": "Slovak",
+    "sl": "Slovenian", "sn": "Shona", "so": "Somali", "sq": "Albanian",
+    "sr": "Serbian", "su": "Sundanese", "sv": "Swedish", "sw": "Swahili",
+    "ta": "Tamil", "te": "Telugu", "tg": "Tajik", "th": "Thai",
+    "tk": "Turkmen", "tl": "Tagalog", "tr": "Turkish", "tt": "Tatar",
+    "uk": "Ukrainian", "ur": "Urdu", "uz": "Uzbek", "vi": "Vietnamese",
+    "yi": "Yiddish", "yo": "Yoruba", "zh": "Chinese", "yue": "Cantonese",
+}
+
+# Voxtral core languages with best performance (subset of Whisper languages)
+VOXTRAL_CORE_LANGUAGES = ["en", "es", "fr", "de", "it", "pt", "hi", "nl"]
+
 # Custom theme with bright, readable colors
 console = Console(theme=Theme({
     "option": "bright_cyan",
@@ -65,10 +97,26 @@ class BrightTyperGroup(TyperGroup):
         return formatter.getvalue()
 
 app = typer.Typer(
-    help="Vociferous - Local-first speech transcription",
+    help="""[bold cyan]Vociferous[/bold cyan] — Local-first speech transcription
+
+Transcribe audio files using Whisper or Voxtral entirely on your machine.
+No cloud. No telemetry. Just your GPU/CPU.
+
+[bold]Getting Started:[/bold]
+  vociferous transcribe audio.mp3              Basic transcription
+  vociferous transcribe audio.wav -e voxtral_local  Smart punctuation
+  vociferous transcribe audio.flac -l es       Spanish audio
+  
+[bold]Learn More:[/bold]
+  vociferous transcribe --help                 Transcription options
+  vociferous languages                         Supported languages
+  vociferous check                             Verify your system
+    """,
     cls=BrightTyperGroup,
     rich_markup_mode="rich",
     pretty_exceptions_show_locals=False,
+    no_args_is_help=True,
+    add_completion=False,  # Hide completion commands
 )
 cli_app = app  # alias for embedding
 
@@ -112,20 +160,28 @@ def transcribe(
 
     ENGINES:
       whisper_turbo - Fast, accurate, works offline (default)
-      voxtral_local - Smart punctuation, Mistral-based
-      whisper_vllm  - Use vLLM server for Whisper
-      voxtral_vllm  - Use vLLM server for Voxtral
+      voxtral_local - Smart punctuation & grammar (slower)
+      whisper_vllm  - Server-based (requires separate vLLM server)
+      voxtral_vllm  - Server-based smart mode
+
+    PRESETS:
+      fast           - Speed optimized (small model, batch)
+      balanced       - Quality/speed tradeoff (default for vLLM)
+      high_accuracy  - Quality optimized (large model, beam search)
 
     EXAMPLES:
-      vociferous transcribe audio.mp3
-      vociferous transcribe audio.wav --language fr --preset high_accuracy
-      vociferous transcribe audio.flac --engine voxtral_local --output transcript.txt
-      
-    ADVANCED SETTINGS:
-      Edit ~/.config/vociferous/config.toml to configure:
-        • Model selection, device (CPU/CUDA), compute type
-        • Batching, VAD filtering, chunk sizes
-        • Polish settings, vLLM endpoint, etc.
+      vociferous transcribe meeting.wav
+      vociferous transcribe podcast.mp3 -e voxtral_local -o podcast.txt
+      vociferous transcribe recording.wav -l es --preset high_accuracy
+
+    ADVANCED:
+      Edit ~/.config/vociferous/config.toml for:
+        • Model selection, device (CPU/GPU), compute precision
+        • Batching, VAD, chunk sizes, polish settings
+        
+    SEE ALSO:
+      vociferous languages  - List supported language codes
+      vociferous check      - Verify system prerequisites
     """
     logging.basicConfig(level=logging.INFO)
     config = load_config()
@@ -274,6 +330,76 @@ def check() -> None:
     else:
         console.print("\n[bold red]❌ Some prerequisites missing. Install them for full functionality.[/bold red]")
         raise typer.Exit(code=1)
+
+
+@app.command(rich_help_panel="Utilities")
+def languages() -> None:
+    """[bold cyan]📋 List all supported language codes[/bold cyan] for transcription.
+
+    Shows ISO 639-1 language codes supported by Whisper and Voxtral engines.
+    Use these codes with the [cyan]--language[/cyan] or [cyan]-l[/cyan] flag.
+    
+    [bold]Examples:[/bold]
+      vociferous transcribe audio.wav -l es      Spanish
+      vociferous transcribe audio.mp3 -l fr      French
+      vociferous transcribe audio.flac -l ja     Japanese
+    """
+    # Create main table for Whisper
+    table = Table(title="Whisper (CTranslate2) - All Engines", 
+                  show_header=True, header_style="bold cyan",
+                  title_style="bold yellow")
+    table.add_column("Code", style="cyan", width=6)
+    table.add_column("Language", style="white")
+    table.add_column("Code", style="cyan", width=6)
+    table.add_column("Language", style="white")
+    table.add_column("Code", style="cyan", width=6)
+    table.add_column("Language", style="white")
+    
+    # Split languages into 3 columns for compact display
+    sorted_langs = sorted(WHISPER_LANGUAGES.items())
+    chunk_size = (len(sorted_langs) + 2) // 3  # Calculate chunk size for 3-column layout
+    
+    for i in range(chunk_size):
+        row = []
+        for col in range(3):
+            idx = i + col * chunk_size
+            if idx < len(sorted_langs):
+                code, name = sorted_langs[idx]
+                row.extend([code, name])
+            else:
+                row.extend(["", ""])
+        table.add_row(*row)
+    
+    console.print()
+    console.print(table)
+    console.print(f"\n[dim]Total: {len(WHISPER_LANGUAGES)} languages[/dim]")
+    
+    # Create Voxtral table
+    voxtral_table = Table(title="Voxtral (Mistral-based) - Core Languages", 
+                          show_header=True, header_style="bold cyan",
+                          title_style="bold magenta")
+    voxtral_table.add_column("Code", style="cyan", width=6)
+    voxtral_table.add_column("Language", style="white")
+    
+    # All Voxtral core languages are guaranteed to be in WHISPER_LANGUAGES
+    for code in VOXTRAL_CORE_LANGUAGES:
+        voxtral_table.add_row(code, WHISPER_LANGUAGES[code])
+    
+    console.print()
+    console.print(voxtral_table)
+    console.print("[dim]Note: Voxtral supports 30+ languages with best performance on the above.[/dim]")
+    
+    # Usage examples
+    console.print()
+    console.print(Panel(
+        "[bold]Usage:[/bold]\n"
+        "  vociferous transcribe audio.wav --language [cyan]<code>[/cyan]\n"
+        "  vociferous transcribe audio.mp3 [cyan]-l es[/cyan]  (Spanish)\n"
+        "  vociferous transcribe audio.flac [cyan]-l auto[/cyan]  (Auto-detect)\n\n"
+        "[bold]Tip:[/bold] Use 'auto' to automatically detect the language.",
+        title="💡 How to Use",
+        border_style="green",
+    ))
 
 
 @app.command(rich_help_panel="vLLM Server")

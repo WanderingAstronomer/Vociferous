@@ -48,7 +48,7 @@ packages = ["vociferous"]
 python_version = "3.11"
 strict = true
 explicit_package_bases = true
-exclude = ".*(vociferous/tui/|vociferous/polish/|vociferous/gui/).*"
+exclude = ".*(vociferous/polish/|vociferous/gui/).*"
 
 [[tool.mypy.overrides]]
 module = [
