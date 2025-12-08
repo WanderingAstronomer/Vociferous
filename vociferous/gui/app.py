@@ -180,7 +180,7 @@ class VociferousGUIApp(MDApp):
         )
         snackbar.open()
 
-    def _on_keyboard(self, window, key, scancode, codepoint, modifier):
+    def _on_keyboard(self, window: Any, key: int, scancode: int, codepoint: str | None, modifier: list[str]) -> bool:
         """Handle keyboard shortcuts.
         
         Args:

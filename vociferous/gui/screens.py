@@ -35,7 +35,7 @@ from .transcription import GUITranscriptionManager
 logger = structlog.get_logger(__name__)
 
 
-def _get_app():
+def _get_app() -> Any:
     """Get the running MDApp instance.
     
     Returns:
@@ -308,7 +308,7 @@ class HomeScreen(Screen):
         if app and hasattr(app, 'show_notification'):
             app.show_notification(f"Transcription failed: {error}")
 
-    def _on_file_drop(self, window, file_path: bytes, *args: Any) -> None:
+    def _on_file_drop(self, window: Any, file_path: bytes, *args: Any) -> None:
         """Handle file drop event.
         
         Args:
@@ -701,9 +701,13 @@ class SettingsScreen(Screen):
         """
         logger.info("Font size selected", size=size)
         
-        # Extract percentage value
-        percent = int(size.rstrip('%'))
-        multiplier = percent / 100.0
+        # Extract percentage value with validation
+        try:
+            percent = int(size.rstrip('%'))
+            multiplier = percent / 100.0
+        except (ValueError, AttributeError) as e:
+            logger.error("Invalid font size format", size=size, error=str(e))
+            return
         
         # Apply font size to app
         app = _get_app()
