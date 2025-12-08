@@ -16,10 +16,15 @@ non-overlapping, semantically coherent final segments by:
 
 from __future__ import annotations
 
-import re
 from typing import Sequence
 
 from vociferous.domain.model import TranscriptSegment
+
+
+# Punctuation constants for boundary detection
+SENTENCE_PUNCTUATION = ".?!"
+OTHER_PUNCTUATION = ".,!?;: \t\n"
+CONNECTOR_WORDS = {"and", "but", "so", "or", "yet", "nor"}
 
 
 def _lcs_length(text1: str, text2: str) -> int:
@@ -62,7 +67,7 @@ def _word_count(text: str) -> int:
 def _ends_with_sentence_punctuation(text: str) -> bool:
     """Check if text ends with sentence-ending punctuation."""
     text = text.rstrip()
-    return len(text) > 0 and text[-1] in ".?!"
+    return len(text) > 0 and text[-1] in SENTENCE_PUNCTUATION
 
 
 def _starts_with_connector(text: str) -> bool:
@@ -70,8 +75,8 @@ def _starts_with_connector(text: str) -> bool:
     text = text.lstrip()
     if not text:
         return False
-    first_word = text.split()[0].lower().rstrip(".,!?")
-    return first_word in {"and", "but", "so", "or", "yet", "nor"}
+    first_word = text.split()[0].lower().rstrip(OTHER_PUNCTUATION)
+    return first_word in CONNECTOR_WORDS
 
 
 def _ends_with_lowercase(text: str) -> bool:
@@ -85,7 +90,7 @@ def _ends_with_lowercase(text: str) -> bool:
         return False
     
     # No sentence punctuation, check if last word is lowercase
-    text = text.rstrip(".,!?;: \t\n")
+    text = text.rstrip(OTHER_PUNCTUATION)
     if not text:
         return False
     # Get last word
@@ -120,7 +125,8 @@ def _find_overlap_words(seg1_text: str, seg2_text: str) -> int:
         suffix = " ".join(words1[i:])
         # Check if this suffix appears at start of seg2
         lcs = _lcs_length(suffix, seg2_text)
-        overlap_ratio = lcs / len(suffix.split()) if suffix else 0
+        suffix_words = suffix.split()
+        overlap_ratio = lcs / len(suffix_words) if suffix_words else 0
         # If significant overlap (>50% LCS match), consider it duplicate
         if overlap_ratio > 0.5:
             overlap_words = len(words1) - i
