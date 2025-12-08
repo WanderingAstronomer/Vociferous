@@ -35,6 +35,16 @@ from .transcription import GUITranscriptionManager
 logger = structlog.get_logger(__name__)
 
 
+def _get_app():
+    """Get the running MDApp instance.
+    
+    Returns:
+        The running MDApp instance or None if not available.
+    """
+    from kivymd.app import MDApp
+    return MDApp.get_running_app()
+
+
 class TooltipButton(MDRaisedButton, MDTooltip):
     """Button with tooltip support."""
     pass
@@ -57,7 +67,15 @@ class HomeScreen(Screen):
         self._build_ui()
         
         # Bind drag-and-drop events
+        # Note: We bind to Window which is a singleton, so this won't leak
+        # but we should unbind on cleanup if needed
         Window.bind(on_dropfile=self._on_file_drop)
+
+    def on_leave(self, *args) -> None:
+        """Clean up when leaving the screen."""
+        # Unbind drag-and-drop to prevent memory leaks
+        Window.unbind(on_dropfile=self._on_file_drop)
+        return super().on_leave(*args)
 
     def _build_ui(self) -> None:
         """Build the home screen UI."""
@@ -271,9 +289,8 @@ class HomeScreen(Screen):
         self.save_button.disabled = False
         
         # Show notification
-        from kivymd.app import MDApp
-        app = MDApp.get_running_app()
-        if hasattr(app, 'show_notification'):
+        app = _get_app()
+        if app and hasattr(app, 'show_notification'):
             app.show_notification("Transcription complete!")
 
     def _on_transcription_error(self, error: str) -> None:
@@ -287,9 +304,8 @@ class HomeScreen(Screen):
         self.transcribe_button.disabled = False
         
         # Show notification
-        from kivymd.app import MDApp
-        app = MDApp.get_running_app()
-        if hasattr(app, 'show_notification'):
+        app = _get_app()
+        if app and hasattr(app, 'show_notification'):
             app.show_notification(f"Transcription failed: {error}")
 
     def _on_file_drop(self, window, file_path: bytes, *args: Any) -> None:
@@ -308,9 +324,8 @@ class HomeScreen(Screen):
             self._select_file(path_str)
             
             # Show notification
-            from kivymd.app import MDApp
-            app = MDApp.get_running_app()
-            if hasattr(app, 'show_notification'):
+            app = _get_app()
+            if app and hasattr(app, 'show_notification'):
                 app.show_notification("File loaded successfully")
         except Exception as e:
             logger.error("Error handling file drop", error=str(e))
@@ -334,18 +349,16 @@ class HomeScreen(Screen):
             self.status_label.text = f"[color=#{self.COLOR_SUCCESS}]✓ Saved to {output_path.name}[/color]"
             
             # Show notification
-            from kivymd.app import MDApp
-            app = MDApp.get_running_app()
-            if hasattr(app, 'show_notification'):
+            app = _get_app()
+            if app and hasattr(app, 'show_notification'):
                 app.show_notification(f"Transcript saved to {output_path.name}")
         except Exception as e:
             logger.error("Error saving transcript", error=str(e))
             self.status_label.text = f"[color=#{self.COLOR_ERROR}]✗ Error saving file[/color]"
             
             # Show notification
-            from kivymd.app import MDApp
-            app = MDApp.get_running_app()
-            if hasattr(app, 'show_notification'):
+            app = _get_app()
+            if app and hasattr(app, 'show_notification'):
                 app.show_notification(f"Failed to save: {str(e)}")
 
     def _cancel_operation(self) -> None:
@@ -357,9 +370,8 @@ class HomeScreen(Screen):
                 self.transcribe_button.disabled = False
                 
                 # Show notification
-                from kivymd.app import MDApp
-                app = MDApp.get_running_app()
-                if hasattr(app, 'show_notification'):
+                app = _get_app()
+                if app and hasattr(app, 'show_notification'):
                     app.show_notification("Transcription cancelled")
                 
                 logger.info("Transcription cancelled by user")
@@ -622,17 +634,15 @@ class SettingsScreen(Screen):
             logger.info("Settings saved successfully")
             
             # Show notification
-            from kivymd.app import MDApp
-            app = MDApp.get_running_app()
-            if hasattr(app, 'show_notification'):
+            app = _get_app()
+            if app and hasattr(app, 'show_notification'):
                 app.show_notification("Settings saved successfully")
         except Exception as e:
             logger.error("Failed to save settings", error=str(e))
             
             # Show notification
-            from kivymd.app import MDApp
-            app = MDApp.get_running_app()
-            if hasattr(app, 'show_notification'):
+            app = _get_app()
+            if app and hasattr(app, 'show_notification'):
                 app.show_notification(f"Failed to save settings: {str(e)}")
 
     def _show_theme_menu(self, item: Any) -> None:
@@ -659,9 +669,8 @@ class SettingsScreen(Screen):
             theme: Selected theme name ("Light" or "Dark")
         """
         logger.info("Theme selected", theme=theme)
-        from kivymd.app import MDApp
-        app = MDApp.get_running_app()
-        if hasattr(app, 'switch_theme'):
+        app = _get_app()
+        if app and hasattr(app, 'switch_theme'):
             app.switch_theme(theme)
         self.theme_item.secondary_text = f"Current: {theme}"
         if hasattr(self, "theme_menu"):
@@ -697,17 +706,17 @@ class SettingsScreen(Screen):
         multiplier = percent / 100.0
         
         # Apply font size to app
-        from kivymd.app import MDApp
-        app = MDApp.get_running_app()
+        app = _get_app()
         
-        # Store the multiplier for future use
-        # In a real implementation, this would be saved to config
-        # and applied to all text elements
+        # Note: Full font size implementation would require applying
+        # the multiplier to all text elements' font_size properties.
+        # This is a placeholder for future implementation.
+        # For now, we just update the UI and inform the user.
         
         self.font_item.secondary_text = f"Current: {size}"
         if hasattr(self, "font_menu"):
             self.font_menu.dismiss()
         
         # Show notification
-        if hasattr(app, 'show_notification'):
-            app.show_notification(f"Font size set to {size} (restart may be required)")
+        if app and hasattr(app, 'show_notification'):
+            app.show_notification(f"Font size set to {size} (restart may be required for full effect)")
