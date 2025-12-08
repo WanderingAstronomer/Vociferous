@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import Mapping
 
@@ -95,31 +96,25 @@ def load_config(config_path: Path | None = None) -> AppConfig:
 
     if is_first_run:
         cfg = AppConfig()
+        # Always prompt on first run in interactive mode
+        should_prompt = sys.stdin.isatty()
     else:
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
 
         migrated = migrate_raw_config(data)
         cfg = AppConfig.model_validate(migrated)
+        # Prompt only if model_parent_dir is missing/blank and in interactive mode
+        should_prompt = (not cfg.model_parent_dir or not str(cfg.model_parent_dir).strip()) and sys.stdin.isatty()
 
-    # Decide whether to prompt: only for default config path, interactive stdin, and missing/blank value
-    should_prompt = (
-        config_path == default_config_path
-        and (not cfg.model_parent_dir or not str(cfg.model_parent_dir).strip())
-    )
     if should_prompt:
-        import sys
-        if sys.stdin.isatty():
-            default_dir = str(DEFAULT_MODEL_CACHE_DIR)
-            print("\nVociferous: Please select a parent directory for your models.")
-            print(f"Default: {default_dir}")
-            user_input = input("Enter model parent directory (or press Enter to use default): ").strip()
-            chosen_dir = user_input if user_input else default_dir
-            cfg.model_parent_dir = str(Path(chosen_dir).expanduser())
-            save_config(cfg, config_path)
-        else:
-            # Non-interactive (e.g., tests); fall back to default without prompting
-            cfg.model_parent_dir = str(DEFAULT_MODEL_CACHE_DIR)
+        default_dir = str(DEFAULT_MODEL_CACHE_DIR)
+        print("\nVociferous: Please select a parent directory for your models.")
+        print(f"Default: {default_dir}")
+        user_input = input("Enter model parent directory (or press Enter to use default): ").strip()
+        chosen_dir = user_input if user_input else default_dir
+        cfg.model_parent_dir = str(Path(chosen_dir).expanduser())
+        save_config(cfg, config_path)
 
     # Ensure model parent directory exists
     if cfg.model_parent_dir:

@@ -15,7 +15,6 @@ from vociferous.domain.exceptions import (
 )
 from vociferous.engines.factory import build_engine
 from vociferous.polish.factory import build_polisher
-from vociferous.tui import run_tui
 from vociferous.cli.helpers import build_sink, build_transcribe_configs_from_cli
 
 try:
@@ -220,20 +219,6 @@ def transcribe(
         raise typer.Exit(code=2) from exc
     except Exception as exc:  # pragma: no cover - safety net
         console.print(Panel(f"[red]{exc}[/red]", title="Unexpected Error", border_style="red"))
-        raise typer.Exit(code=1) from exc
-
-
-@app.command(rich_help_panel="Interfaces")
-def tui(
-    file: Path | None = typer.Option(None, help="Optional audio file; default is microphone"),
-    engine: EngineKind = "whisper_turbo",
-    language: str = "en",
-) -> None:
-    """[bold magenta]Full-screen TUI[/bold magenta] for live transcription. [yellow](Experimental)[/yellow]"""
-    try:
-        run_tui(file=file, engine=engine, language=language)
-    except Exception as exc:
-        typer.echo(f"TUI error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
 

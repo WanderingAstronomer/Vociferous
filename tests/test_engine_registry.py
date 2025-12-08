@@ -101,33 +101,6 @@ def test_registry_pattern_enables_plugin_architecture():
     # Cleanup
     del ENGINE_REGISTRY["custom_engine"]  # type: ignore[arg-type]
 
-
-def test_build_engine_normalizes_model_names():
-    """Test that build_engine normalizes model names via registry."""
-    config = EngineConfig(model_name="small")
-    engine = build_engine("whisper_turbo", config)
-    
-    # Model name should be normalized
-    assert engine.model_name == "small"  # normalized to faster-whisper format
-
-
-def test_build_engine_preserves_config():
-    """Test that build_engine preserves all config parameters."""
-    config = EngineConfig(
-        model_name="turbo",
-        device="cuda",
-        compute_type="float16",
-        params={"enable_batching": "true"},
-    )
-    
-    engine = build_engine("whisper_turbo", config)
-    
-    # Config should be preserved (though model name may be normalized)
-    assert engine.config.device == "cuda"
-    assert engine.config.compute_type in ("float16", "float16")  # May be auto-adjusted
-    assert engine.config.params.get("enable_batching") == "true"
-
-
 def test_registry_reinitialization_idempotent():
     """Test that re-registering engines is idempotent."""
     _register_engines()

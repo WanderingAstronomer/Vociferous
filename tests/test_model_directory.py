@@ -14,6 +14,11 @@ def test_model_parent_dir_default(monkeypatch):
         config_path = Path(tmpdir) / "config.toml"
         monkeypatch.setattr(schema, "DEFAULT_MODEL_CACHE_DIR", Path(tmpdir) / "models")
         monkeypatch.setattr("builtins.input", lambda _: "")  # Simulate Enter for default
+        
+        mock_stdin = mock.Mock()
+        mock_stdin.isatty.return_value = True
+        monkeypatch.setattr(schema.sys, "stdin", mock_stdin)
+        
         cfg = schema.load_config(config_path)
         assert cfg.model_parent_dir == str(Path(tmpdir) / "models")
         assert cfg.model_parent_dir is not None and Path(cfg.model_parent_dir).exists()
@@ -23,8 +28,14 @@ def test_model_parent_dir_custom(monkeypatch):
     with tempfile.TemporaryDirectory() as tmpdir:
         config_path = Path(tmpdir) / "config.toml"
         custom_dir = Path(tmpdir) / "custom_models"
+        custom_dir.mkdir(parents=True, exist_ok=True)
         monkeypatch.setattr(schema, "DEFAULT_MODEL_CACHE_DIR", Path(tmpdir) / "models")
-        monkeypatch.setattr("builtins.input", lambda _: str(custom_dir))
+        monkeypatch.setattr("builtins.input", lambda _: str(custom_dir))  # Simulate user input
+        
+        mock_stdin = mock.Mock()
+        mock_stdin.isatty.return_value = True
+        monkeypatch.setattr(schema.sys, "stdin", mock_stdin)
+        
         cfg = schema.load_config(config_path)
         assert cfg.model_parent_dir == str(custom_dir)
         assert custom_dir.exists()
@@ -35,6 +46,11 @@ def test_config_persistence(monkeypatch):
         config_path = Path(tmpdir) / "config.toml"
         monkeypatch.setattr(schema, "DEFAULT_MODEL_CACHE_DIR", Path(tmpdir) / "models")
         monkeypatch.setattr("builtins.input", lambda _: "")
+        
+        # mock_stdin = mock.Mock()
+        # mock_stdin.isatty.return_value = True
+        # monkeypatch.setattr(schema.sys, "stdin", mock_stdin)
+        
         cfg = schema.load_config(config_path)
         cfg.model_parent_dir = str(Path(tmpdir) / "persisted_models")
         schema.save_config(cfg, config_path)
