@@ -18,7 +18,7 @@ from vociferous.domain.model import (
     TranscriptionEngine,
     TranscriptionOptions,
 )
-from vociferous.domain.exceptions import DependencyError, EngineError
+from vociferous.domain.exceptions import DependencyError
 from vociferous.engines.model_registry import normalize_model_name
 from vociferous.engines.hardware import get_optimal_device, get_optimal_compute_type
 from vociferous.engines.presets import (

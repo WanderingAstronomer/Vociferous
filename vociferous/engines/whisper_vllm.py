@@ -31,13 +31,11 @@ import io
 import logging
 from typing import TYPE_CHECKING, List
 import wave
-from pathlib import Path
 
 if TYPE_CHECKING:
     import openai
 
 from vociferous.domain.model import (
-    DEFAULT_MODEL_CACHE_DIR,
     EngineConfig,
     EngineMetadata,
     TranscriptSegment,

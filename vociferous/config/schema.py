@@ -11,7 +11,6 @@ import tomli_w
 from pydantic import BaseModel, Field, field_validator
 
 from vociferous.domain.model import DEFAULT_MODEL_CACHE_DIR, DEFAULT_WHISPER_MODEL, EngineKind
-from vociferous.domain.exceptions import ConfigurationError
 from vociferous.config.migrations import migrate_raw_config
 
 logger = logging.getLogger(__name__)

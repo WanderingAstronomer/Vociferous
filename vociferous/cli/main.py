@@ -22,8 +22,6 @@ try:
     from typer.core import TyperGroup
     from rich.console import Console
     from rich.panel import Panel
-    from rich.text import Text
-    from rich.progress import Progress, SpinnerColumn, TextColumn
     from rich.table import Table
     from rich.theme import Theme
     import click
