@@ -11,8 +11,6 @@ def test_engine_registry_contains_all_engines():
     # Trigger registration
     _register_engines()
     
-    assert "whisper_vllm" in ENGINE_REGISTRY
-    assert "voxtral_vllm" in ENGINE_REGISTRY
     assert "whisper_turbo" in ENGINE_REGISTRY
     assert "voxtral_local" in ENGINE_REGISTRY
     assert "voxtral" in ENGINE_REGISTRY  # legacy alias
@@ -63,8 +61,8 @@ def test_registry_lazy_initialization():
     config = EngineConfig()
     engine = build_engine("whisper_turbo", config)
     
-    # Registry should now be populated (whisper_vllm, voxtral_vllm, whisper_turbo, voxtral_local, voxtral)
-    assert len(ENGINE_REGISTRY) == 5
+    # Registry should now be populated (whisper_turbo, voxtral_local, voxtral)
+    assert len(ENGINE_REGISTRY) == 3
     assert isinstance(engine, TranscriptionEngine)
 
 

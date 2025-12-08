@@ -67,21 +67,6 @@ def test_transcription_result_voxtral_engine(sample_segments: tuple[TranscriptSe
     assert result.device == "cuda"
 
 
-def test_transcription_result_whisper_vllm(sample_segments: tuple[TranscriptSegment, ...]) -> None:
-    """Test TranscriptionResult with Whisper vLLM engine."""
-    result = TranscriptionResult(
-        text="vLLM transcription",
-        segments=sample_segments,
-        model_name="openai/whisper-large-v3",
-        device="cuda",
-        precision="bfloat16",
-        engine="whisper_vllm",
-        duration_s=2.0,
-    )
-    assert result.engine == "whisper_vllm"
-    assert "whisper" in result.model_name
-
-
 def test_transcription_result_immutable(sample_segments: tuple[TranscriptSegment, ...]) -> None:
     """Test TranscriptionResult is frozen (immutable)."""
     result = TranscriptionResult(

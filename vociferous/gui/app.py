@@ -123,7 +123,7 @@ class VociferousGUIApp(MDApp):
         
         # Navigation drawer
         self.nav_drawer = MDNavigationDrawer()
-        nav_drawer_content = MDBoxLayout(orientation="vertical", padding=20, spacing=10)
+        nav_drawer_content = MDBoxLayout(orientation="vertical", padding=[12, 15], spacing=8)
         
         # Navigation items
         nav_items = [

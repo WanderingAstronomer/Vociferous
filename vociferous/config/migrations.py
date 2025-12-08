@@ -17,12 +17,30 @@ def migrate_raw_config(data: Mapping[str, object]) -> dict[str, object]:
 
     if engine == "parakeet_rnnt":
         logger.warning(
-            "⚠ Parakeet engine removed; migrated to whisper_vllm with large-v3-turbo "
+            "⚠ Parakeet engine removed; migrated to whisper_turbo with large-v3-turbo "
             "(comparable accuracy). Update ~/.config/vociferous/config.toml."
         )
-        migrated["engine"] = "whisper_vllm"
+        migrated["engine"] = "whisper_turbo"
         if "model_name" not in migrated or migrated["model_name"] == DEFAULT_WHISPER_MODEL:
             migrated["model_name"] = "openai/whisper-large-v3-turbo"
+
+    elif engine == "whisper_vllm":
+        logger.warning(
+            "⚠ vLLM engines removed; migrated to whisper_turbo (local). "
+            "Update config to keep running without a server."
+        )
+        migrated["engine"] = "whisper_turbo"
+        if "model_name" not in migrated:
+            migrated["model_name"] = DEFAULT_WHISPER_MODEL
+
+    elif engine == "voxtral_vllm":
+        logger.warning(
+            "⚠ vLLM engines removed; migrated to voxtral_local (offline). "
+            "Update config to keep running without a server."
+        )
+        migrated["engine"] = "voxtral_local"
+        if "model_name" not in migrated:
+            migrated["model_name"] = "mistralai/Voxtral-Mini-3B-2507"
 
     elif engine == "voxtral":
         logger.warning(

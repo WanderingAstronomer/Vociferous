@@ -5,9 +5,7 @@ from vociferous.domain.model import EngineConfig
 from vociferous.domain.exceptions import ConfigurationError
 from vociferous.engines.factory import build_engine
 from vociferous.engines.whisper_turbo import WhisperTurboEngine
-from vociferous.engines.whisper_vllm import WhisperVLLMEngine
 from vociferous.engines.voxtral_local import VoxtralLocalEngine
-from vociferous.engines.voxtral_vllm import VoxtralVLLMEngine
 
 
 def test_build_whisper_turbo_engine() -> None:
@@ -24,20 +22,6 @@ def test_build_voxtral_engine() -> None:
     engine = build_engine("voxtral", cfg)
     assert isinstance(engine, VoxtralLocalEngine)
     assert "Voxtral" in engine.model_name
-
-
-def test_build_voxtral_vllm_engine() -> None:
-    """Test factory builds VoxtralVLLMEngine."""
-    cfg = EngineConfig(model_name="voxtral-mini")
-    engine = build_engine("voxtral_vllm", cfg)
-    assert isinstance(engine, VoxtralVLLMEngine)
-
-
-def test_build_whisper_vllm_engine() -> None:
-    """Test factory builds WhisperVLLMEngine."""
-    cfg = EngineConfig(model_name="openai/whisper-large-v3-turbo")
-    engine = build_engine("whisper_vllm", cfg)
-    assert isinstance(engine, WhisperVLLMEngine)
 
 
 def test_build_engine_with_unknown_kind() -> None:

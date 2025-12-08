@@ -79,15 +79,15 @@ class HomeScreen(Screen):
 
     def _build_ui(self) -> None:
         """Build the home screen UI."""
-        layout = MDBoxLayout(orientation="vertical", padding=20, spacing=20)
+        layout = MDBoxLayout(orientation="vertical", padding=15, spacing=15)
         
         # Title card
         title_card = MDCard(
             orientation="vertical",
-            padding=20,
+            padding=[15, 12],
             size_hint=(1, None),
-            height=120,
-            elevation=3,
+            height=100,
+            elevation=2,
         )
         
         title_label = MDLabel(
@@ -102,17 +102,17 @@ class HomeScreen(Screen):
         # File selection section
         file_card = MDCard(
             orientation="vertical",
-            padding=20,
-            spacing=10,
+            padding=[15, 12],
+            spacing=8,
             size_hint=(1, 0.6),
-            elevation=3,
+            elevation=2,
         )
         
         file_label = MDLabel(
             text="[b]Audio File[/b]",
             markup=True,
             size_hint_y=None,
-            height=30,
+            height=25,
         )
         file_card.add_widget(file_label)
         
@@ -122,16 +122,16 @@ class HomeScreen(Screen):
             mode="rectangle",
             readonly=True,
             size_hint=(1, None),
-            height=50,
+            height=48,
         )
         file_card.add_widget(self.file_path_field)
         
         # Buttons
         button_layout = MDBoxLayout(
             orientation="horizontal",
-            spacing=10,
+            spacing=12,
             size_hint=(1, None),
-            height=60,
+            height=56,
         )
         
         browse_button = TooltipButton(
@@ -567,7 +567,7 @@ class SettingsScreen(Screen):
 
     def _show_engine_menu(self, item: Any) -> None:
         """Show engine selection menu."""
-        engines = ["whisper_turbo", "voxtral_local", "whisper_vllm", "voxtral_vllm"]
+        engines = ["whisper_turbo", "voxtral_local"]
         menu_items = [
             {
                 "text": engine,
@@ -590,7 +590,7 @@ class SettingsScreen(Screen):
         """
         logger.info("Engine selected", engine=engine)
         # Validate engine is a valid EngineKind
-        valid_engines = {"whisper_turbo", "voxtral_local", "whisper_vllm", "voxtral_vllm"}
+        valid_engines = {"whisper_turbo", "voxtral_local"}
         if engine in valid_engines:
             self.config.engine = engine  # type: ignore[assignment]
         self.engine_item.secondary_text = f"Current: {engine}"

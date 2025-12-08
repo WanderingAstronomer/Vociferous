@@ -133,14 +133,14 @@ def test_app_config_params_immutability() -> None:
 
 
 def test_load_config_migrates_parakeet_and_updates_model(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
-    """Parakeet engine configs should migrate to whisper_vllm with a better model."""
+    """Parakeet engine configs should migrate to whisper_turbo with a better model."""
     config_path = tmp_path / "config.toml"
     config_path.write_text('engine = "parakeet_rnnt"\nmodel_name = "openai/whisper-large-v3-turbo"\n')
 
     with caplog.at_level("WARNING"):
         cfg = load_config(config_path)
 
-    assert cfg.engine == "whisper_vllm"
+    assert cfg.engine == "whisper_turbo"
     assert cfg.model_name == "openai/whisper-large-v3-turbo"
     assert any("Parakeet engine removed" in msg for msg in caplog.messages)
 

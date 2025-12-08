@@ -20,7 +20,6 @@ class _FakeConfig:
     compute_type = "auto"
     device = "auto"
     model_cache_dir = "/tmp/vociferous-model-cache"
-    vllm_endpoint = "http://localhost:8000"
     chunk_ms = 960
     params: Dict[str, str] = {
         "enable_batching": "true",
@@ -105,8 +104,6 @@ def test_cli_transcribe_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ("args", "expected_engine"),
     [
         (["--engine", "voxtral_local"], "voxtral_local"),
-        (["--engine", "whisper_vllm"], "whisper_vllm"),
-        (["--engine", "voxtral_vllm"], "voxtral_vllm"),
         (["-e", "voxtral_local"], "voxtral_local"),
     ],
 )
@@ -232,19 +229,6 @@ def test_cli_transcribe_rejects_output_directory(tmp_path: Path, monkeypatch: py
 
     assert result.exit_code == 2
     assert "directory" in result.stdout.lower()
-
-
-def test_cli_transcribe_vllm_engine_gets_balanced_preset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    calls = _setup_cli_fixtures(monkeypatch)
-    audio = tmp_path / "a.wav"
-    audio.write_bytes(b"data")
-
-    result = CliRunner().invoke(app, ["transcribe", str(audio), "--engine", "whisper_vllm"])
-
-    assert result.exit_code == 0
-    cfg = calls["engine_config"]
-    assert cfg.params["preset"] == "balanced"
-    assert "turbo" in cfg.model_name.lower()
 
 
 def test_cli_transcribe_engine_error_exit_code(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

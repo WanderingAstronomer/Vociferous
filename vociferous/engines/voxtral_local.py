@@ -20,12 +20,9 @@ class VoxtralLocalEngine(TranscriptionEngine):
     """
     Transformers-based local Voxtral engine for offline audio transcription.
 
-    This is a fallback engine for environments without vLLM server access.
     Runs entirely locally using the transformers library with direct GPU/CPU
-    inference. Slower than VoxtralVLLMEngine but doesn't require external services.
-
-    For production use with better performance and GPU efficiency, prefer
-    VoxtralVLLMEngine (voxtral_vllm) which delegates to a vLLM server.
+    inference. Slower than WhisperTurbo but provides smarter punctuation and
+    formatting without relying on external services.
     """
 
     def __init__(self, config: EngineConfig) -> None:

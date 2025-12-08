@@ -23,7 +23,6 @@ class AppConfig(BaseModel):
     device: str = "auto"
     model_cache_dir: str | None = Field(default_factory=lambda: str(DEFAULT_MODEL_CACHE_DIR))
     model_parent_dir: str | None = Field(default_factory=lambda: str(DEFAULT_MODEL_CACHE_DIR))
-    vllm_endpoint: str = "http://localhost:8000"  # Default vLLM server endpoint
     allow_local_fallback: bool = False  # Explicit opt-in for auto-fallback to local engines
     chunk_ms: int = 960
     history_limit: int = 20

@@ -20,6 +20,7 @@ from vociferous.cli.helpers import (
     build_sink,
 )
 from vociferous.domain.model import DEFAULT_WHISPER_MODEL
+from vociferous.config.languages import WHISPER_LANGUAGES, VOXTRAL_CORE_LANGUAGES
 
 
 class _FakeAppConfig:
@@ -29,7 +30,6 @@ class _FakeAppConfig:
     compute_type: str = "auto"
     device: str = "auto"
     model_cache_dir: str = "/tmp/vociferous-model-cache"
-    vllm_endpoint: str = "http://localhost:8000"
     chunk_ms: int = 960
     params: Dict[str, str] = {
         "enable_batching": "true",
@@ -48,6 +48,32 @@ class _FakeAppConfig:
         "gpu_layers": "0",
         "context_length": "2048",
     }
+
+
+# ============================================================================
+# Root command tests
+# ============================================================================
+
+
+def test_root_invocation_is_compact() -> None:
+    """Root invocation should show a concise welcome without repeating help sections."""
+    result = CliRunner().invoke(app, [])
+
+    assert result.exit_code == 0
+    assert "Usage:" not in result.stdout
+    assert "Core Commands" not in result.stdout
+    assert "Utilities" not in result.stdout
+
+    assert "Quick start" in result.stdout
+    assert "transcribe" in result.stdout
+    assert "languages" in result.stdout
+    assert "check" in result.stdout
+
+
+def test_language_constants_module() -> None:
+    """Shared language constants should be importable for reuse."""
+    assert WHISPER_LANGUAGES["en"] == "English"
+    assert set(VOXTRAL_CORE_LANGUAGES).issubset(WHISPER_LANGUAGES.keys())
 
 
 # ============================================================================
@@ -206,139 +232,6 @@ class TestLanguagesCommand:
 
 
 # ============================================================================
-# CHECK_VLLM Command Tests
-# ============================================================================
-
-
-class TestCheckVLLMCommand:
-    """Tests for the check-vllm command."""
-
-    def test_check_vllm_success(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr("vociferous.cli.main.load_config", lambda: _FakeAppConfig())
-
-        import sys
-
-        mock_models = Mock()
-        mock_models.data = [Mock(id="openai/whisper-large-v3-turbo")]
-        mock_client = Mock()
-        mock_client.models.list.return_value = mock_models
-
-        mock_openai_module = Mock()
-        mock_openai_module.OpenAI.return_value = mock_client
-
-        monkeypatch.setitem(sys.modules, "openai", mock_openai_module)
-
-        result = CliRunner().invoke(app, ["check-vllm"])
-
-        assert result.exit_code == 0
-        assert "vLLM endpoint" in result.stdout or "Models" in result.stdout
-
-    def test_check_vllm_with_custom_endpoint(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr("vociferous.cli.main.load_config", lambda: _FakeAppConfig())
-
-        import sys
-
-        mock_models = Mock()
-        mock_models.data = [Mock(id="openai/whisper-large-v3")]
-        mock_client = Mock()
-        mock_client.models.list.return_value = mock_models
-
-        mock_openai_module = Mock()
-        mock_openai_module.OpenAI.return_value = mock_client
-
-        monkeypatch.setitem(sys.modules, "openai", mock_openai_module)
-
-        result = CliRunner().invoke(app, ["check-vllm", "--endpoint", "http://custom:9000"])
-
-        assert result.exit_code == 0
-
-
-# ============================================================================
-# SERVE_VLLM Command Tests
-# ============================================================================
-
-
-class TestServeVLLMCommand:
-    """Tests for the serve-vllm command."""
-
-    def test_serve_vllm_missing_binary(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr("shutil.which", lambda x: None)
-
-        result = CliRunner().invoke(app, ["serve-vllm"])
-
-        assert result.exit_code == 1
-        assert result.stdout or result.stderr
-
-    def test_serve_vllm_success_with_defaults(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/vllm" if x == "vllm" else None)
-
-        called_args: list[str] = []
-
-        def mock_run(args: list[str], **kwargs: Any) -> None:
-            called_args.extend(args)
-
-        monkeypatch.setattr("subprocess.run", mock_run)
-
-        result = CliRunner().invoke(app, ["serve-vllm"])
-
-        assert result.exit_code == 0
-        assert called_args  # ensure subprocess.run was invoked
-
-    def test_serve_vllm_custom_model(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/vllm" if x == "vllm" else None)
-
-        called_args: list[str] = []
-
-        def mock_run(args: list[str], **kwargs: Any) -> None:
-            called_args.extend(args)
-
-        monkeypatch.setattr("subprocess.run", mock_run)
-
-        result = CliRunner().invoke(
-            app,
-            [
-                "serve-vllm",
-                "--model",
-                "openai/whisper-large-v3",
-                "--dtype",
-                "float16",
-                "--port",
-                "9000",
-            ],
-        )
-
-        assert result.exit_code == 0
-        assert any("whisper-large-v3" in arg for arg in called_args)
-        assert "9000" in called_args
-
-    def test_serve_vllm_propagates_return_code(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr("shutil.which", lambda x: "/usr/bin/vllm" if x == "vllm" else None)
-
-        from subprocess import CalledProcessError
-
-        def mock_run_error(args: list[str], **kwargs: Any) -> None:
-            raise CalledProcessError(returncode=42, cmd=args)
-
-        monkeypatch.setattr("subprocess.run", mock_run_error)
-
-        result = CliRunner().invoke(app, ["serve-vllm"])
-
-        assert result.exit_code == 42
-
-
-# ============================================================================
 # HELPERS: Preset Resolution
 # ============================================================================
 
@@ -372,20 +265,6 @@ class TestPresetResolution:
         assert settings.beam_size >= 2
         assert settings.batch_size >= 8
         assert settings.enable_batching is True
-
-    def test_resolve_preset_fast_whisper_vllm(self) -> None:
-        settings = resolve_preset("fast", "whisper_vllm", "auto")
-
-        model_lower = settings.model.lower() if settings.model else ""
-        assert "turbo" in model_lower
-        assert settings.beam_size == 1
-
-    def test_resolve_preset_high_accuracy_whisper_vllm(self) -> None:
-        settings = resolve_preset("high_accuracy", "whisper_vllm", "auto")
-
-        model_lower = settings.model.lower() if settings.model else ""
-        assert "large" in model_lower and "turbo" not in model_lower
-        assert settings.beam_size == 2
 
     def test_resolve_preset_respects_device_cpu(self) -> None:
         settings = resolve_preset("balanced", "whisper_turbo", "cpu")
@@ -481,18 +360,6 @@ class TestBuildTranscribeConfigs:
         assert bundle.preset == "high_accuracy"
         model_lower = bundle.engine_config.model_name.lower() if bundle.engine_config.model_name else ""
         assert "large" in model_lower
-
-    def test_build_configs_vllm_defaults_balanced(self) -> None:
-        config = _FakeAppConfig()
-
-        bundle = build_transcribe_configs_from_cli(
-            app_config=config,  # type: ignore[arg-type]
-            engine="whisper_vllm",
-            language="en",
-            preset=None,
-        )
-
-        assert bundle.preset == "balanced"
 
     def test_build_configs_preserves_config_params(self) -> None:
         config = _FakeAppConfig()

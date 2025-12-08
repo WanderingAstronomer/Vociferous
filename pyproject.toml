@@ -1,7 +1,7 @@
 [project]
 name = "vociferous"
 version = "0.0.0"
-description = "Local-first ASR with vLLM-backed Whisper and Voxtral engines (accuracy-first, GPU-optimized)."
+description = "Local-first ASR with faster-whisper and offline Voxtral engines."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -12,7 +12,6 @@ dependencies = [
   "rich>=13.7.0",
   "sounddevice>=0.4.6",
   "pyperclip>=1.8.2",
-  "openai>=1.0.0",
   "tomli-w>=1.0.0",
   "faster-whisper>=1.0.0",
   "silero-vad>=5.0",
@@ -54,8 +53,6 @@ exclude = ".*(vociferous/polish/|vociferous/gui/).*"
 module = [
   "tests.*",
   "vociferous.engines.whisper_turbo",
-  "vociferous.engines.whisper_vllm",
-  "vociferous.engines.voxtral_vllm",
   "vociferous.engines.voxtral_local",
   "vociferous.audio.vad",
   "vociferous.engines.hardware",

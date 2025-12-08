@@ -11,13 +11,16 @@ from typing import Mapping
 from vociferous.config.schema import AppConfig
 from vociferous.domain import EngineConfig, TranscriptSink
 from vociferous.domain.model import (
+    AudioSource,
     DEFAULT_WHISPER_MODEL,
     EngineKind,
+    PreprocessingConfig,
     TranscriptionOptions,
     TranscriptionPreset,
 )
 from vociferous.engines.model_registry import normalize_model_name
 from vociferous.polish.base import PolisherConfig
+from vociferous.audio.sources import FileSource, PreprocessedFileSource
 
 
 @dataclass
@@ -59,21 +62,7 @@ def resolve_preset(
     enable_batching = True
     vad_filter = True
 
-    if engine == "whisper_vllm":
-        if preset == "high_accuracy":
-            model = model or "openai/whisper-large-v3"
-            compute_type = compute_type or ("bfloat16" if device == "cuda" else "float32")
-            beam_size = 2
-        elif preset == "fast":
-            model = model or "openai/whisper-large-v3-turbo"
-            compute_type = compute_type or ("float16" if device == "cuda" else "int8")
-            beam_size = 1
-        else:  # balanced
-            model = model or "openai/whisper-large-v3-turbo"
-            compute_type = compute_type or ("bfloat16" if device == "cuda" else "float32")
-            beam_size = max(beam_size, 1)
-            
-    elif engine == "whisper_turbo":
+    if engine == "whisper_turbo":
         if preset == "high_accuracy":
             model = model or "openai/whisper-large-v3"
             compute_type = compute_type or ("float16" if device == "cuda" else "int8")
@@ -114,7 +103,6 @@ def build_engine_config(
     batch_size: int = 16,
     vad_filter: bool = True,
     clean_disfluencies: bool = True,
-    vllm_endpoint: str = "http://localhost:8000",
 ) -> EngineConfig:
     """Build an EngineConfig from CLI options.
     
@@ -135,7 +123,6 @@ def build_engine_config(
             "batch_size": str(batch_size),
             "vad_filter": str(vad_filter).lower(),
             "clean_disfluencies": str(clean_disfluencies).lower(),
-            "vllm_endpoint": vllm_endpoint,
         },
     )
 
@@ -197,10 +184,6 @@ def build_transcribe_configs_from_cli(
     """
     # Normalize preset
     preset_lower = (preset or "").replace("-", "_").lower()
-    
-    # vLLM engines default to balanced preset if none specified
-    if not preset_lower and engine in {"whisper_vllm", "voxtral_vllm"}:
-        preset_lower = "balanced"
 
     # Resolve model/compute/batch settings from preset
     target_device = app_config.device
@@ -265,7 +248,6 @@ def build_transcribe_configs_from_cli(
         batch_size=resolved_batch,
         vad_filter=resolved_vad,
         clean_disfluencies=True,  # Always enabled (users can disable in config.toml)
-        vllm_endpoint=app_config.vllm_endpoint,
     )
 
     # Build transcription options (language + preset only from CLI)
@@ -306,3 +288,39 @@ def build_sink(
     if output:
         return FileSink(output)
     return StdoutSink()
+
+
+def build_audio_source(
+    path: Path,
+    app_config: AppConfig,
+) -> AudioSource:
+    """Construct an audio source based on preprocessing settings.
+
+    When preprocessing is enabled, returns a PreprocessedFileSource configured
+    from AppConfig; otherwise falls back to the standard FileSource.
+    """
+    preprocessing_enabled = getattr(app_config, "preprocessing_enabled", False)
+
+    if preprocessing_enabled:
+        preprocessing_config = PreprocessingConfig(
+            trim_head=getattr(app_config, "preprocessing_trim_head", True),
+            trim_tail=getattr(app_config, "preprocessing_trim_tail", True),
+            head_margin_ms=getattr(app_config, "preprocessing_head_margin_ms", 500),
+            tail_margin_ms=getattr(app_config, "preprocessing_tail_margin_ms", 500),
+            split_on_gaps=getattr(app_config, "preprocessing_split_on_gaps", True),
+            gap_threshold_ms=getattr(app_config, "preprocessing_gap_threshold_ms", 5000),
+            energy_threshold_db=getattr(app_config, "preprocessing_energy_threshold_db", -40.0),
+            min_speech_duration_ms=getattr(app_config, "preprocessing_min_speech_duration_ms", 300),
+            min_silence_duration_ms=getattr(app_config, "preprocessing_min_silence_duration_ms", 500),
+        )
+
+        return PreprocessedFileSource(
+            path,
+            config=preprocessing_config,
+            chunk_ms=getattr(app_config, "chunk_ms", 30000),
+        )
+
+    return FileSource(
+        path,
+        chunk_ms=getattr(app_config, "chunk_ms", 30000),
+    )

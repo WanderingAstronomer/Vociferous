@@ -3,7 +3,6 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from vociferous.engines.whisper_turbo import WhisperTurboEngine
-from vociferous.engines.whisper_vllm import WhisperVLLMEngine
 from vociferous.engines.voxtral_local import VoxtralLocalEngine
 from vociferous.domain.model import EngineConfig, TranscriptionOptions, AudioChunk
 
@@ -85,68 +84,6 @@ class TestVoxtralLocalEngine:
             with pytest.raises(RuntimeError, match="transformers and torch are required"):
                 engine.start(options)  # start() calls _lazy_model()
 
-class TestWhisperVLLMEngine:
-    """Verify WhisperVLLMEngine initializes and handles API calls via mocked client."""
-
-    def test_whisper_vllm_init_and_flush(self) -> None:
-        config = _config(model_name="openai/whisper-large-v3-turbo")
-        engine = WhisperVLLMEngine(config)
-
-        fake_response = MagicMock()
-        fake_response.segments = [{"text": "hello", "start": 0.0, "end": 1.0}]
-        fake_response.language = "en"
-
-        class FakeAudio:
-            def __init__(self):
-                self.transcriptions = self
-
-            def create(self, **kwargs):
-                return fake_response
-
-        class FakeModels:
-            def list(self):
-                return MagicMock(data=[MagicMock(id="openai/whisper-large-v3-turbo")])
-
-        class FakeClient:
-            def __init__(self, *_, **__):
-                self.audio = FakeAudio()
-                self.models = FakeModels()
-
-        with patch("openai.OpenAI", FakeClient):
-            options = TranscriptionOptions(language="en")
-            engine.start(options)
-            engine.push_audio(b"\x00\x01" * 16000, 0)
-            engine.flush()
-            segments = engine.poll_segments()
-            assert segments and segments[0].text == "hello"
-
-    def test_whisper_vllm_unreachable_endpoint(self) -> None:
-        config = _config(model_name="openai/whisper-large-v3-turbo")
-        engine = WhisperVLLMEngine(config)
-
-        class FakeAudio:
-            def __init__(self):
-                self.transcriptions = self
-
-            def create(self, **kwargs):  # pragma: no cover - error path
-                raise RuntimeError("endpoint unreachable")
-
-        class FakeModels:
-            def list(self):
-                return MagicMock(data=[MagicMock(id="openai/whisper-large-v3-turbo")])
-
-        class FakeClient:
-            def __init__(self, *_, **__):
-                self.audio = FakeAudio()
-                self.models = FakeModels()
-
-        with patch("openai.OpenAI", FakeClient):
-            options = TranscriptionOptions(language="en")
-            engine.start(options)
-            engine.push_audio(b"\x00\x01" * 16000, 0)
-            with pytest.raises(Exception):
-                engine.flush()
-
 
 class TestEngineFactory:
     """Verify factory can route to registered engines."""
@@ -168,15 +105,6 @@ class TestEngineFactory:
         engine = build_engine("voxtral", config)
         
         assert isinstance(engine, VoxtralLocalEngine)
-
-    def test_factory_routes_to_whisper_vllm(self) -> None:
-        """Factory builds WhisperVLLMEngine for 'whisper_vllm' kind."""
-        from vociferous.engines.factory import build_engine
-        
-        config = _config(model_name="openai/whisper-large-v3-turbo")
-        engine = build_engine("whisper_vllm", config)
-        
-        assert isinstance(engine, WhisperVLLMEngine)
 
     def test_factory_rejects_unknown_engine(self) -> None:
         """Factory raises error for unknown engine kind."""

@@ -1,25 +1,67 @@
 # Vociferous
 
-Local-first ASR with faster-whisper (CTranslate2) as the default engine and optional vLLM-backed Whisper/Voxtral engines for remote acceleration. See `Planning and Documentation` for architecture and requirements.
+Local-first ASR with faster-whisper (CTranslate2) as the default engine and an offline Voxtral transformer option for smarter punctuation. See `Planning and Documentation` for architecture and requirements.
 
 ## Requirements
 - Python 3.11+
 - `ffmpeg` available on PATH for decode.
-- vLLM server reachable at `http://localhost:8000` for `whisper_vllm` / `voxtral_vllm` (optional). Use `vociferous serve-vllm --model <model>` for a quick local server, or point `--vllm-endpoint` to an existing one.
 - `sounddevice`/PortAudio for microphone capture (installed with the base package; ensure OS-specific PortAudio libs are available).
-- GPU optional; CPU runs are supported but vLLM benefits from GPU for throughput. Models cache to `~/.cache/vociferous/models` automatically.
+- GPU optional; CPU runs are supported. Models cache to `~/.cache/vociferous/models` automatically.
 
 ## Installation
-- Base install (includes OpenAI client, faster-whisper, transformers): `pip install -e .`
+- Base install (includes faster-whisper and Silero VAD): `pip install -e .`
 - Optional extras:
 	- `pip install -e .[polish]` for grammar/fluency polishing (llama.cpp + HF hub download)
 	- `pip install -e .[gui]` for the Vociferous GUI (KivyMD-based graphical interface)
+	- `pip install -e .[voxtral]` for Voxtral local transformer support (transformers + torch)
 	- `pip install -e .[dev]` for tests, typing, and linting tools
 
-## Engines and presets
-- Engines: `whisper_turbo` (default, CTranslate2 local), `voxtral_local` (transformers local), `whisper_vllm` (remote), `voxtral_vllm` (remote).
-- Presets: `high_accuracy` (whisper-large-v3, beam=2), `balanced` (default for vLLM; whisper-large-v3-turbo), `fast` (turbo tuned for speed). `--fast` aliases `preset=fast`.
-- Engines are stateful and push-based: `start()` → `push_audio()` → `flush()` → `poll_segments()`; the CLI orchestrates via `TranscriptionSession`.
+## Engines and Presets
+
+### Engines
+- **`whisper_turbo`** (default): CTranslate2-based faster-whisper engine. Fast, accurate, runs offline. Best for general use.
+- **`voxtral_local`**: Mistral-based transformer with smart punctuation and grammar. Requires `[voxtral]` extra. Slower but produces more natural text.
+- **`parakeet_rnnt`**: NVIDIA Parakeet RNNT via Riva endpoint (optional). Experimental streaming support.
+
+Engines are stateful and push-based: `start()` → `push_audio()` → `flush()` → `poll_segments()`; the CLI orchestrates via `TranscriptionSession`.
+
+### Quality Presets (`whisper_turbo` engine)
+Control the speed/quality tradeoff with `-p/--preset`:
+
+**`balanced`** (default)
+- **Model**: `openai/whisper-large-v3-turbo` (optimized variant)
+- **Compute**: `float16` on GPU, `int8` on CPU
+- **Beam size**: 1 (greedy decoding)
+- **Batch size**: 12
+- **Use case**: Best general-purpose option. Good accuracy with reasonable speed.
+
+**`fast`**
+- **Model**: `openai/whisper-large-v3-turbo`
+- **Compute**: `int8_float16` mixed precision (speed optimized)
+- **Beam size**: 1 (greedy decoding)
+- **Batch size**: 16 (larger batches for throughput)
+- **Use case**: Maximum speed for quick drafts or when processing many files. Slightly lower accuracy.
+
+**`high_accuracy`**
+- **Model**: `openai/whisper-large-v3` (full model, not turbo)
+- **Compute**: `float16` on GPU, `int8` on CPU
+- **Beam size**: 2 (beam search explores multiple hypotheses)
+- **Batch size**: 8 (smaller batches, more careful processing)
+- **Use case**: Best quality for important transcriptions. Significantly slower but more accurate, especially with difficult audio.
+
+**Examples**:
+```bash
+# Default balanced preset
+vociferous transcribe meeting.wav
+
+# Fast preset for quick turnaround
+vociferous transcribe podcast.mp3 --preset fast
+
+# High accuracy for important content
+vociferous transcribe interview.wav -p high_accuracy -o transcript.txt
+```
+
+**Note**: For fine-grained control beyond presets, edit `~/.config/vociferous/config.toml` to set specific model names, compute types, beam sizes, and batch parameters.
 
 ## Key behaviors
 - `vociferous transcribe` defaults to `whisper_turbo` (local faster-whisper) for offline/low-dependency use.
@@ -28,7 +70,7 @@ Local-first ASR with faster-whisper (CTranslate2) as the default engine and opti
 
 ## Configuration
 - Config file: `~/.config/vociferous/config.toml` (created on first run). CLI flags override config values.
-- Key fields: `engine` (default `whisper_turbo`), `vllm_endpoint` (default `http://localhost:8000`), `model_cache_dir`, `device`, `compute_type`, `params`.
+- Key fields: `engine` (default `whisper_turbo`), `model_cache_dir`, `device`, `compute_type`, `params`.
 - Model cache: `~/.cache/vociferous/models` (auto-created).
 - History: JSONL-backed history stored under `~/.cache/vociferous/history/history.jsonl`.
 
@@ -38,16 +80,13 @@ Local-first ASR with faster-whisper (CTranslate2) as the default engine and opti
 - `vociferous languages` - List all supported language codes (ISO 639-1) for Whisper and Voxtral engines.
 - `vociferous check` - Verify local prerequisites (ffmpeg, sounddevice).
 - `vociferous-gui` - Launch the graphical user interface (requires `[gui]` extra).
-- `-e|--engine whisper_vllm|voxtral_vllm|whisper_turbo|voxtral_local` - Select engine.
-- `-p|--preset high_accuracy|balanced|fast` (balanced default for vLLM engines); `--fast` shortcut for `preset=fast`.
+- `-e|--engine whisper_turbo|voxtral_local` - Select engine.
+- `-p|--preset high_accuracy|balanced|fast`; `--fast` shortcut for `preset=fast`.
 - `-l|--language <code>` - Language code (e.g., `en`, `es`, `fr`) or `auto` for detection. See `vociferous languages` for full list.
-- `--vllm-endpoint http://host:port` - Target vLLM server for vLLM engines.
 - Whisper controls: `--enable-batching/--batch-size`, `--beam-size`, `--vad-filter/--no-vad-filter`, `--word-timestamps`, `--whisper-temperature`.
 - Voxtral controls: `--prompt`, `--max-new-tokens`, `--gen-temperature`.
 - Polisher: `--polish/--no-polish`, `--polish-model`, `--polish-max-tokens`, `--polish-temperature`, `--polish-gpu-layers`, `--polish-context-length`.
 - Output/UX: `--output <path>`, `--clipboard`, `--save-history`.
-- `vociferous check-vllm` - Validate connectivity and list models served by a vLLM endpoint.
-- `vociferous serve-vllm --model <name>` - Convenience wrapper to launch `vllm serve` with sane defaults (use your own process manager for production).
 
 ## Development
 - Run tests: `pytest` (strict type hints enforced).

@@ -56,15 +56,8 @@ def build_engine(kind: EngineKind, config: EngineConfig) -> TranscriptionEngine:
 def _register_engines() -> None:
     """Register all available engines. Called lazily on first use."""
     from .whisper_turbo import WhisperTurboEngine
-    from .whisper_vllm import WhisperVLLMEngine
     from .voxtral_local import VoxtralLocalEngine
-    from .voxtral_vllm import VoxtralVLLMEngine
 
-    # vLLM engines (primary, accuracy-first)
-    ENGINE_REGISTRY["whisper_vllm"] = WhisperVLLMEngine
-    ENGINE_REGISTRY["voxtral_vllm"] = VoxtralVLLMEngine
-
-    # Local/fallback engines (offline use)
     ENGINE_REGISTRY["whisper_turbo"] = WhisperTurboEngine
     ENGINE_REGISTRY["voxtral_local"] = VoxtralLocalEngine
     ENGINE_REGISTRY["voxtral"] = VoxtralLocalEngine  # Legacy alias

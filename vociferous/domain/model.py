@@ -10,9 +10,8 @@ from .constants import Device, ComputeType
 DEFAULT_MODEL_CACHE_DIR = Path.home() / ".cache" / "vociferous" / "models"
 DEFAULT_WHISPER_MODEL = "deepdml/faster-whisper-large-v3-turbo-ct2"
 
-# vLLM engines are now primary; local/fallback engines preserved for offline use
-# "voxtral" is deprecated alias for "voxtral_local" (backward compatibility)
-EngineKind = Literal["whisper_vllm", "voxtral_vllm", "whisper_turbo", "voxtral_local", "voxtral"]
+# Local engines only; "voxtral" is deprecated alias for "voxtral_local"
+EngineKind = Literal["whisper_turbo", "voxtral_local", "voxtral"]
 
 # Transcription presets for accuracy vs speed trade-offs
 TranscriptionPreset = Literal["high_accuracy", "balanced", "fast"]

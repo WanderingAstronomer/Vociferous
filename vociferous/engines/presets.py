@@ -1,12 +1,30 @@
 from __future__ import annotations
 
-"""Shared preset definitions and helpers for transcription engines."""
+"""Shared preset definitions and helpers for transcription engines.
+
+Quality Presets (whisper_turbo):
+---------------------------------
+- balanced (default): Large-v3-turbo, float16/int8, beam=1, batch=12
+  Best general-purpose option with good speed/quality balance.
+
+- fast: Large-v3-turbo, int8_float16 mixed, beam=1, batch=16
+  Maximum speed, slightly lower accuracy. Good for drafts or bulk processing.
+
+- high_accuracy: Full large-v3, float16/int8, beam=2, batch=8
+  Best quality with beam search. Slower but more accurate for important content.
+
+Key differences:
+- Model: high_accuracy uses full large-v3 (more parameters), others use turbo variant
+- Beam size: high_accuracy uses beam=2 (explores hypotheses), others use greedy (beam=1)
+- Compute: fast uses mixed int8_float16 for speed, others use standard precision
+- Batch size: fast=16 (throughput), high_accuracy=8 (careful), balanced=12 (middle)
+"""
 
 from typing import Mapping
 
 from vociferous.domain.model import DEFAULT_WHISPER_MODEL
 
-# Default CT2/vLLM Whisper presets shared across engines
+# Default CT2 Whisper presets shared across engines
 WHISPER_TURBO_PRESETS: Mapping[str, dict[str, object]] = {
     # Default: large-v3-turbo CT2, FP16 on CUDA, INT8 on CPU
     "balanced": {
@@ -34,24 +52,6 @@ WHISPER_TURBO_PRESETS: Mapping[str, dict[str, object]] = {
         "temperature": 0.0,
         "window_sec": 18.0,
         "hop_sec": 4.0,
-    },
-}
-
-WHISPER_VLLM_PRESETS: Mapping[str, dict[str, object]] = {
-    "high_accuracy": {
-        "model": "openai/whisper-large-v3",
-        "beam_size": 2,
-        "temperature": 0.0,
-    },
-    "balanced": {
-        "model": "openai/whisper-large-v3-turbo",
-        "beam_size": 1,
-        "temperature": 0.0,
-    },
-    "fast": {
-        "model": "openai/whisper-large-v3-turbo",
-        "beam_size": 1,
-        "temperature": 0.0,
     },
 }
 

@@ -2,20 +2,20 @@ from __future__ import annotations
 
 from pathlib import Path
 import logging
-import subprocess
 import shutil
 
 from vociferous.app import TranscriptionSession, configure_logging
-from vociferous.audio.sources import FileSource
 from vociferous.app.sinks import PolishingSink
+from vociferous.audio.sources import FileSource
 from vociferous.config import load_config
+from vociferous.config.languages import WHISPER_LANGUAGES, VOXTRAL_CORE_LANGUAGES
 from vociferous.domain.model import TranscriptionPreset, EngineKind
 from vociferous.domain.exceptions import (
     DependencyError, EngineError, AudioDecodeError, ConfigurationError
 )
 from vociferous.engines.factory import build_engine
 from vociferous.polish.factory import build_polisher
-from vociferous.cli.helpers import build_sink, build_transcribe_configs_from_cli
+from vociferous.cli.helpers import build_audio_source, build_sink, build_transcribe_configs_from_cli
 
 try:
     import typer
@@ -31,92 +31,98 @@ except ImportError as exc:  # pragma: no cover - tooling dependency guard
 
 configure_logging()
 
-# Language support constants (ISO 639-1 codes)
-WHISPER_LANGUAGES = {
-    "af": "Afrikaans", "am": "Amharic", "ar": "Arabic", "as": "Assamese",
-    "az": "Azerbaijani", "ba": "Bashkir", "be": "Belarusian", "bg": "Bulgarian",
-    "bn": "Bengali", "bo": "Tibetan", "br": "Breton", "bs": "Bosnian",
-    "ca": "Catalan", "cs": "Czech", "cy": "Welsh", "da": "Danish",
-    "de": "German", "el": "Greek", "en": "English", "es": "Spanish",
-    "et": "Estonian", "eu": "Basque", "fa": "Persian", "fi": "Finnish",
-    "fo": "Faroese", "fr": "French", "gl": "Galician", "gu": "Gujarati",
-    "ha": "Hausa", "haw": "Hawaiian", "he": "Hebrew", "hi": "Hindi",
-    "hr": "Croatian", "ht": "Haitian Creole", "hu": "Hungarian", "hy": "Armenian",
-    "id": "Indonesian", "is": "Icelandic", "it": "Italian", "ja": "Japanese",
-    "jw": "Javanese", "ka": "Georgian", "kk": "Kazakh", "km": "Khmer",
-    "kn": "Kannada", "ko": "Korean", "la": "Latin", "lb": "Luxembourgish",
-    "ln": "Lingala", "lo": "Lao", "lt": "Lithuanian", "lv": "Latvian",
-    "mg": "Malagasy", "mi": "Maori", "mk": "Macedonian", "ml": "Malayalam",
-    "mn": "Mongolian", "mr": "Marathi", "ms": "Malay", "mt": "Maltese",
-    "my": "Myanmar", "ne": "Nepali", "nl": "Dutch", "nn": "Norwegian Nynorsk",
-    "no": "Norwegian", "oc": "Occitan", "pa": "Punjabi", "pl": "Polish",
-    "ps": "Pashto", "pt": "Portuguese", "ro": "Romanian", "ru": "Russian",
-    "sa": "Sanskrit", "sd": "Sindhi", "si": "Sinhala", "sk": "Slovak",
-    "sl": "Slovenian", "sn": "Shona", "so": "Somali", "sq": "Albanian",
-    "sr": "Serbian", "su": "Sundanese", "sv": "Swedish", "sw": "Swahili",
-    "ta": "Tamil", "te": "Telugu", "tg": "Tajik", "th": "Thai",
-    "tk": "Turkmen", "tl": "Tagalog", "tr": "Turkish", "tt": "Tatar",
-    "uk": "Ukrainian", "ur": "Urdu", "uz": "Uzbek", "vi": "Vietnamese",
-    "yi": "Yiddish", "yo": "Yoruba", "zh": "Chinese", "yue": "Cantonese",
-}
 
-# Voxtral core languages with best performance (subset of Whisper languages)
-VOXTRAL_CORE_LANGUAGES = ["en", "es", "fr", "de", "it", "pt", "hi", "nl"]
 
 # Custom theme with bright, readable colors
-console = Console(theme=Theme({
-    "option": "bright_cyan",
-    "switch": "bright_green", 
-    "metavar": "bright_yellow",
-    "metavar_sep": "white",
-    "usage": "bold white",
-}))
+console = Console(
+    theme=Theme({
+        "option": "bright_cyan",
+        "switch": "bright_green",
+        "metavar": "bright_yellow",
+        "metavar_sep": "white",
+        "usage": "bold white",
+    })
+)
+
 
 # Custom help colors for Click/Typer
 class ColorHelpFormatter(click.HelpFormatter):
     """Help formatter with bright colors instead of dim grey."""
+
     def write_usage(self, prog: str, args: str = "", prefix: str | None = "Usage: ") -> None:
         colorized_prefix = click.style(prefix or "", fg="bright_yellow", bold=True)
         colorized_prog = click.style(prog, fg="bright_white", bold=True)
         self.write(f"{colorized_prefix}{colorized_prog} {args}\n")
-    
+
     def write_heading(self, heading: str) -> None:
         self.write(f"\n{click.style(heading, fg='bright_yellow', bold=True)}\n")
-    
+
     def write_text(self, text: str) -> None:
         # Make description text bright white instead of dim
         self.write(f"{click.style(text, fg='bright_white')}\n")
 
+
 class BrightTyperGroup(TyperGroup):
-    """TyperGroup with bright help colors."""
+    """TyperGroup with bright help colors and hidden help option display."""
+
+    def format_options(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        """Format options, but skip the Options section if it only contains --help."""
+        opts = []
+        for param in self.get_params(ctx):
+            rv = param.get_help_record(ctx)
+            if rv is not None:
+                opts.append(rv)
+        
+        # Only show Options section if there are options other than just help
+        if opts and not (len(opts) == 1 and opts[0][0].startswith('--help')):
+            with formatter.section("Options"):
+                formatter.write_dl(opts)
+
     def get_help(self, ctx: click.Context) -> str:
         formatter = ColorHelpFormatter()
         self.format_help(ctx, formatter)
         return formatter.getvalue()
 
 app = typer.Typer(
-    help="""[bold cyan]Vociferous[/bold cyan] — Local-first speech transcription
-
-Transcribe audio files using Whisper or Voxtral entirely on your machine.
-No cloud. No telemetry. Just your GPU/CPU.
-
-[bold]Getting Started:[/bold]
-  vociferous transcribe audio.mp3              Basic transcription
-  vociferous transcribe audio.wav -e voxtral_local  Smart punctuation
-  vociferous transcribe audio.flac -l es       Spanish audio
-  
-[bold]Learn More:[/bold]
-  vociferous transcribe --help                 Transcription options
-  vociferous languages                         Supported languages
-  vociferous check                             Verify your system
-    """,
+    help="""[bold cyan]Vociferous[/bold cyan] - Local-first speech transcription.
+No cloud. No telemetry. Local engines only.
+""",
     cls=BrightTyperGroup,
     rich_markup_mode="rich",
     pretty_exceptions_show_locals=False,
-    no_args_is_help=True,
+    no_args_is_help=False,
+    invoke_without_command=True,
     add_completion=False,  # Hide completion commands
 )
 cli_app = app  # alias for embedding
+
+
+@app.callback(invoke_without_command=True)
+def main_callback(ctx: typer.Context) -> None:
+    """Show a clean welcome panel when no subcommand is provided."""
+    if ctx.invoked_subcommand is not None:
+        return
+
+    welcome = Panel(
+        "[bold cyan]Vociferous[/bold cyan]\n"
+        "Local-first speech transcription\n"
+        "No cloud. No telemetry."
+        "\n\n"
+        "[bold]Quick start[/bold]\n"
+        "  - vociferous transcribe audio.mp3\n"
+        "  - vociferous transcribe audio.wav -e voxtral_local\n"
+        "  - vociferous transcribe audio.flac -l es\n"
+        "\n"
+        "[bold]More help[/bold]\n"
+        "  - vociferous transcribe --help\n"
+        "  - vociferous languages\n"
+        "  - vociferous check",
+        border_style="cyan",
+        title="Vociferous",
+    )
+    console.print(welcome)
+    console.print("[dim]Tip: run 'vociferous --help' for the full command list.[/dim]")
+    raise typer.Exit(code=0)
 
 
 @app.command(rich_help_panel="Core Commands")
@@ -158,13 +164,11 @@ def transcribe(
 
     ENGINES:
       whisper_turbo - Fast, accurate, works offline (default)
-      voxtral_local - Smart punctuation & grammar (slower)
-      whisper_vllm  - Server-based (requires separate vLLM server)
-      voxtral_vllm  - Server-based smart mode
+      voxtral_local - Smart punctuation & grammar (offline, slower)
 
     PRESETS:
       fast           - Speed optimized (small model, batch)
-      balanced       - Quality/speed tradeoff (default for vLLM)
+      balanced       - Quality/speed tradeoff (default)
       high_accuracy  - Quality optimized (large model, beam search)
 
     EXAMPLES:
@@ -174,8 +178,8 @@ def transcribe(
 
     ADVANCED:
       Edit ~/.config/vociferous/config.toml for:
-        • Model selection, device (CPU/GPU), compute precision
-        • Batching, VAD, chunk sizes, polish settings
+                - Model selection, device (CPU/GPU), compute precision
+                - Batching, VAD, chunk sizes, polish settings
         
     SEE ALSO:
       vociferous languages  - List supported language codes
@@ -208,11 +212,8 @@ def transcribe(
         typer.echo(f"Polisher error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
 
-    # Build audio source with default chunk settings
-    source = FileSource(
-        file,
-        chunk_ms=config.chunk_ms,
-    )
+    # Build audio source with optional preprocessing
+    source = build_audio_source(file, config)
     
     # Build output sink
     sink = build_sink(output=output)
@@ -221,7 +222,7 @@ def transcribe(
 
     # Validate file exists before showing banner
     if not file.exists():
-        console.print(Panel(f"[red]File not found: {file}[/red]", title="❌ File Not Found", border_style="red"))
+        console.print(Panel(f"[red]File not found: {file}[/red]", title="File Not Found", border_style="red"))
         raise typer.Exit(code=2)
 
     if file.is_dir():
@@ -229,7 +230,7 @@ def transcribe(
             Panel(
                 f"[red]{file} is a directory, not an audio file.\n"
                 f"Example: vociferous transcribe {file / 'your_audio_file.wav'}",
-                title="❌ Directory, Not File",
+                title="Directory, Not File",
                 border_style="red",
             )
         )
@@ -239,7 +240,7 @@ def transcribe(
         console.print(
             Panel(
                 f"[red]{output} is a directory. Provide a filename (e.g., {output / 'transcript.txt'}).",
-                title="⚠️  Invalid Output",
+                title="Invalid Output",
                 border_style="yellow",
             )
         )
@@ -263,13 +264,13 @@ def transcribe(
         session.start(source, engine_adapter, sink, bundle.options, engine_kind=engine)
         session.join()
     except FileNotFoundError as exc:
-        console.print(Panel(f"[red]{exc}[/red]", title="❌ File Not Found", border_style="red"))
+        console.print(Panel(f"[red]{exc}[/red]", title="File Not Found", border_style="red"))
         raise typer.Exit(code=2) from exc
     except EngineError as exc:
-        console.print(Panel(f"[red]{exc}[/red]", title="⚠️  Engine Error", border_style="red"))
+        console.print(Panel(f"[red]{exc}[/red]", title="Engine Error", border_style="red"))
         raise typer.Exit(code=4) from exc
     except (AudioDecodeError, ConfigurationError) as exc:
-        console.print(Panel(f"[red]{exc}[/red]", title="⚠️  Configuration Error", border_style="red"))
+        console.print(Panel(f"[red]{exc}[/red]", title="Configuration Error", border_style="red"))
         raise typer.Exit(code=2) from exc
     except Exception as exc:  # pragma: no cover - safety net
         console.print(Panel(f"[red]{exc}[/red]", title="Unexpected Error", border_style="red"))
@@ -278,12 +279,12 @@ def transcribe(
 
 @app.command(rich_help_panel="Utilities")
 def check() -> None:
-    """[bold blue]✅ Verify system prerequisites[/bold blue] before transcribing.
+    """[bold cyan]Verify system prerequisites[/bold cyan] before transcribing.
 
-    Checks for:
-      • [cyan]ffmpeg[/cyan] - Audio decoding (install: apt install ffmpeg)
-      • [cyan]sounddevice[/cyan] - Microphone capture (install: pip install sounddevice)
-      • [cyan]Model cache[/cyan] - Storage location for downloaded models
+        Checks for:
+            - [cyan]ffmpeg[/cyan] - Audio decoding (install: apt install ffmpeg)
+            - [cyan]sounddevice[/cyan] - Microphone capture (install: pip install sounddevice)
+            - [cyan]Model cache[/cyan] - Storage location for downloaded models
 
     [white]Run this after installing Vociferous to ensure everything works.[/white]
     """
@@ -299,40 +300,40 @@ def check() -> None:
     # Check ffmpeg
     ffmpeg_path = shutil.which("ffmpeg")
     if ffmpeg_path:
-        table.add_row("ffmpeg", "[green]✅[/green]", ffmpeg_path)
+        table.add_row("ffmpeg", "[green]OK[/green]", ffmpeg_path)
     else:
-        table.add_row("ffmpeg", "[red]❌[/red]", "Not found on PATH")
+        table.add_row("ffmpeg", "[red]FAIL[/red]", "Not found on PATH")
         ok = False
 
     # Check sounddevice
     if importlib.util.find_spec("sounddevice") is not None:
-        table.add_row("sounddevice", "[green]✅[/green]", "Installed")
+        table.add_row("sounddevice", "[green]OK[/green]", "Installed")
     else:
-        table.add_row("sounddevice", "[yellow]⚠️[/yellow]", "Not installed (mic capture disabled)")
+        table.add_row("sounddevice", "[yellow]WARN[/yellow]", "Not installed (mic capture disabled)")
         ok = False
 
     # Check model cache
     cfg = load_config()
     cache_path = Path(cfg.model_cache_dir) if cfg.model_cache_dir else None
     if cache_path and cache_path.exists():
-        table.add_row("Model cache", "[green]✅[/green]", str(cache_path))
+        table.add_row("Model cache", "[green]OK[/green]", str(cache_path))
     elif cache_path:
-        table.add_row("Model cache", "[yellow]⚠️[/yellow]", f"{cache_path} (will be created)")
+        table.add_row("Model cache", "[yellow]WARN[/yellow]", f"{cache_path} (will be created)")
     else:
-        table.add_row("Model cache", "[dim]➖[/dim]", "Not configured")
+        table.add_row("Model cache", "[dim]N/A[/dim]", "Not configured")
 
     console.print(table)
 
     if ok:
-        console.print("\n[bold green]✅ All checks passed! Ready to transcribe.[/bold green]")
+        console.print("\n[bold green]All checks passed! Ready to transcribe.[/bold green]")
     else:
-        console.print("\n[bold red]❌ Some prerequisites missing. Install them for full functionality.[/bold red]")
+        console.print("\n[bold red]Some prerequisites missing. Install them for full functionality.[/bold red]")
         raise typer.Exit(code=1)
 
 
 @app.command(rich_help_panel="Utilities")
 def languages() -> None:
-    """[bold cyan]📋 List all supported language codes[/bold cyan] for transcription.
+    """[bold cyan]List all supported language codes[/bold cyan] for transcription.
 
     Shows ISO 639-1 language codes supported by Whisper and Voxtral engines.
     Use these codes with the [cyan]--language[/cyan] or [cyan]-l[/cyan] flag.
@@ -395,84 +396,9 @@ def languages() -> None:
         "  vociferous transcribe audio.mp3 [cyan]-l es[/cyan]  (Spanish)\n"
         "  vociferous transcribe audio.flac [cyan]-l auto[/cyan]  (Auto-detect)\n\n"
         "[bold]Tip:[/bold] Use 'auto' to automatically detect the language.",
-        title="💡 How to Use",
+        title="How to Use",
         border_style="green",
     ))
-
-
-@app.command(rich_help_panel="vLLM Server")
-def check_vllm(
-    endpoint: str | None = typer.Option(None, help="vLLM server endpoint (default from config)"),
-) -> None:
-    """[bold yellow]Check vLLM server connection[/bold yellow] and list available models.
-
-    Use this to verify your vLLM server is running and accessible.
-    The server must be started separately with [cyan]vociferous serve-vllm[/cyan].
-    """
-    config = load_config()
-    target = endpoint or config.vllm_endpoint
-
-    try:
-        import openai
-    except ImportError as exc:  # pragma: no cover - optional dependency guard
-        raise DependencyError("openai package is required for vLLM checks; pip install openai") from exc
-
-    client = openai.OpenAI(base_url=f"{target}/v1", api_key="EMPTY")
-    try:
-        models = client.models.list()
-    except Exception as exc:  # pragma: no cover - network dependent
-        typer.echo(f"vLLM check failed: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
-
-    served = [m.id for m in models.data]
-    if not served:
-        typer.echo(f"Connected to {target} but no models are served.")
-        raise typer.Exit(code=1)
-
-    typer.echo(f"vLLM endpoint: {target}")
-    typer.echo("Models:")
-    for mid in served:
-        typer.echo(f" - {mid}")
-
-
-@app.command(rich_help_panel="vLLM Server")
-def serve_vllm(
-    model: str = typer.Option("openai/whisper-large-v3-turbo", help="Model to serve with vLLM"),
-    dtype: str = typer.Option("bfloat16", help="Model dtype (bfloat16|float16|auto)"),
-    port: int = typer.Option(8000, help="Port to bind vLLM server"),
-) -> None:
-    """[bold yellow]Start a vLLM server[/bold yellow] for batch transcription.
-
-    [bold]vLLM provides:[/bold]
-      • High-throughput batch processing
-      • GPU-optimized inference
-      • OpenAI-compatible API
-
-    [bold]Example:[/bold]
-      [cyan]vociferous serve-vllm --model openai/whisper-large-v3-turbo[/cyan]
-
-    [white]Note: Requires ~24GB VRAM. Use --engine whisper_turbo for local fallback.[/white]
-    """
-    if shutil.which("vllm") is None:
-        typer.echo("vllm CLI not found on PATH. Install vllm and ensure it's available.", err=True)
-        raise typer.Exit(code=1)
-
-    cmd = [
-        "vllm",
-        "serve",
-        model,
-        "--dtype",
-        dtype,
-        "--port",
-        str(port),
-    ]
-
-    typer.echo(f"Starting vLLM: {' '.join(cmd)}")
-    try:
-        subprocess.run(cmd, check=True)
-    except subprocess.CalledProcessError as exc:  # pragma: no cover - runtime dependent
-        typer.echo(f"vLLM serve exited with code {exc.returncode}", err=True)
-        raise typer.Exit(code=exc.returncode) from exc
 
 
 def main() -> None:

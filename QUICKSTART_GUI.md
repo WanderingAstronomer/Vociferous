@@ -101,9 +101,7 @@ Configure all aspects of transcription:
 #### Engine Configuration
 - **Engine**: Choose transcription engine
   - `whisper_turbo` - Fast, accurate, offline (default)
-  - `voxtral_local` - Smart punctuation, Mistral-based
-  - `whisper_vllm` - Server-based (requires vLLM)
-  - `voxtral_vllm` - Server-based smart mode
+  - `voxtral_local` - Smart punctuation, Mistral-based (offline)
 
 - **Model**: Select AI model (depends on engine)
 - **Device**: Choose CPU or CUDA (auto-detects by default)
@@ -223,7 +221,7 @@ Any format supported by FFmpeg should work.
 4. Select "fast" preset (when available)
 
 ### For Best Accuracy:
-1. Use `whisper_vllm` engine with server
+1. Use `whisper_turbo` engine
 2. Select "high_accuracy" preset
 3. Disable batching if needed
 4. Enable VAD filtering

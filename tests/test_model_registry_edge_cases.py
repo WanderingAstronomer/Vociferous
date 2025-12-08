@@ -31,9 +31,6 @@ def test_normalize_model_name_with_none() -> None:
     
     result = normalize_model_name("voxtral", None)
     assert result == "mistralai/Voxtral-Mini-3B-2507"  # full HF path
-    
-    result = normalize_model_name("whisper_vllm", None)
-    assert result == "openai/whisper-large-v3-turbo"
 
 
 def test_normalize_model_name_with_empty_string() -> None:
@@ -104,20 +101,4 @@ def test_normalize_model_name_all_voxtral_aliases() -> None:
     
     for alias, expected in aliases.items():
         result = normalize_model_name("voxtral", alias)
-        assert result == expected, f"Alias '{alias}' should resolve to '{expected}'"
-
-
-def test_normalize_model_name_all_whisper_vllm_aliases() -> None:
-    """Test Whisper vLLM aliases normalize correctly to full HF names."""
-    aliases = {
-        "default": "openai/whisper-large-v3-turbo",
-        "balanced": "openai/whisper-large-v3-turbo",
-        "turbo": "openai/whisper-large-v3-turbo",
-        "large-v3-turbo": "openai/whisper-large-v3-turbo",
-        "v3": "openai/whisper-large-v3",
-        "large-v3": "openai/whisper-large-v3",
-    }
-    
-    for alias, expected in aliases.items():
-        result = normalize_model_name("whisper_vllm", alias)
         assert result == expected, f"Alias '{alias}' should resolve to '{expected}'"
