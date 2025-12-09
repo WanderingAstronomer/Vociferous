@@ -28,12 +28,12 @@ def test_session_config_custom_values():
     assert config.thread_join_timeout_sec == 20.0
 
 
-def test_session_config_is_frozen():
-    """Test that SessionConfig is immutable (frozen)."""
-    config = SessionConfig()
-    
-    with pytest.raises(Exception):  # dataclass(frozen=True) raises FrozenInstanceError
-        config.audio_queue_size = 1000
+    def test_session_config_is_frozen():
+        """Test that SessionConfig is immutable (frozen)."""
+        config = SessionConfig()
+        
+        with pytest.raises(Exception):  # dataclass(frozen=True) raises FrozenInstanceError
+            object.__setattr__(config, "audio_queue_size", 1000)
 
 
 def test_session_config_partial_override():

@@ -6,7 +6,7 @@ instead of reading from disk.
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterator
 
 from vociferous.domain.model import AudioChunk, AudioSource
 
@@ -38,7 +38,7 @@ class InMemoryAudioSource(AudioSource):
         self.channels = channels
         self.chunk_ms = chunk_ms
     
-    def stream(self) -> Iterable[AudioChunk]:
+    def stream(self) -> Iterator[AudioChunk]:
         """Yield AudioChunks from preprocessed in-memory segments.
         
         Each segment is already speech-bounded and cleaned by preprocessing.

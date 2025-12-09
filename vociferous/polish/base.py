@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 
@@ -16,7 +16,7 @@ class PolisherConfig:
 
     model: str | None = None
     enabled: bool = False
-    params: dict[str, str] | None = None
+    params: dict[str, str] = field(default_factory=dict)
 
 
 class Polisher(Protocol):

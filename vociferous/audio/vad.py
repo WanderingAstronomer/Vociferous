@@ -1,5 +1,8 @@
 import numpy as np
-from typing import Protocol
+from typing import Any, Callable, Protocol, Sequence, TYPE_CHECKING, cast
+
+if TYPE_CHECKING:  # Import for type checking only; optional at runtime.
+    import torch as torch_mod
 
 try:
     from silero_vad import load_silero_vad
@@ -7,6 +10,11 @@ try:
 except ImportError:  # Optional dependency; degrade gracefully without it.
     load_silero_vad = None
     HAS_SILERO = False
+
+
+SileroGetSpeechFn = Callable[..., list[dict[str, Any]]]
+SileroUtils = Sequence[Callable[..., Any]]
+LoadSileroVadFn = Callable[[], tuple[Any, SileroUtils]]
 
 
 class VadService(Protocol):
@@ -49,21 +57,35 @@ class VadWrapper:
     def __init__(self, sample_rate: int = 16000, device: str = "cpu"):
         self.sample_rate = sample_rate
         self.device = device
-        self.model = None
-        self.utils = None
+        self.model: Any | None = None
+        self.utils: SileroUtils | None = None
         self._enabled = False
-        self._torch = None
+        self._torch: Any | None = None
 
-        if HAS_SILERO:
-            self._torch = self._try_import_torch()
-            if self._torch:
-                try:
-                    self.model, self.utils = load_silero_vad()
-                    if device == "cuda" and self._torch.cuda.is_available():
-                        self.model = self.model.to(device)
-                    self._enabled = True
-                except Exception:
-                    self._enabled = False
+        if not HAS_SILERO or load_silero_vad is None:
+            return
+
+        self._torch = self._try_import_torch()
+        if not self._torch:
+            return
+
+        try:
+            load_vad = cast(LoadSileroVadFn, load_silero_vad)
+            model, utils = load_vad()
+            if model is None or utils is None:
+                return
+
+            self.model = model
+            self.utils = utils
+            if (
+                self._torch is not None
+                and device == "cuda"
+                and self._torch.cuda.is_available()
+            ):
+                self.model = self.model.to(device)
+            self._enabled = True
+        except Exception:
+            self._enabled = False
 
     def is_speech(self, audio: bytes) -> bool:
         if not self._enabled or not self.model or not self._torch:
@@ -74,7 +96,9 @@ class VadWrapper:
         if self.device == "cuda" and self._torch.cuda.is_available():
             audio_tensor = audio_tensor.to(self.device)
 
-        get_speech_timestamps = self.utils[0]
+        get_speech_timestamps = self._get_speech_timestamps()
+        if get_speech_timestamps is None:
+            return True
 
         timestamps = get_speech_timestamps(
             audio_tensor,
@@ -93,7 +117,9 @@ class VadWrapper:
         audio_tensor = self._torch.from_numpy(audio_np)
         if self.device == "cuda" and self._torch.cuda.is_available():
             audio_tensor = audio_tensor.to(self.device)
-        get_speech_timestamps = self.utils[0]
+        get_speech_timestamps = self._get_speech_timestamps()
+        if get_speech_timestamps is None:
+            return audio
 
         timestamps = get_speech_timestamps(
             audio_tensor,
@@ -130,7 +156,9 @@ class VadWrapper:
         audio_tensor = self._torch.from_numpy(audio_np)
         if self.device == "cuda" and self._torch.cuda.is_available():
             audio_tensor = audio_tensor.to(self.device)
-        get_speech_timestamps = self.utils[0]
+        get_speech_timestamps = self._get_speech_timestamps()
+        if get_speech_timestamps is None:
+            return []
 
         vad_kwargs = {
             "sampling_rate": self.sample_rate,
@@ -160,9 +188,14 @@ class VadWrapper:
         return spans
 
     @staticmethod
-    def _try_import_torch():
+    def _try_import_torch() -> "torch_mod | None":
         try:
-            import torch
+            import torch as torch_mod  # type: ignore
         except ImportError:
             return None
-        return torch
+        return torch_mod
+
+    def _get_speech_timestamps(self) -> SileroGetSpeechFn | None:
+        if not self.utils:
+            return None
+        return cast(SileroGetSpeechFn, self.utils[0])

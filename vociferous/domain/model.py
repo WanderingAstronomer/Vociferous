@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Literal, Mapping, Protocol, Sequence, runtime_checkable
+from typing import Iterable, Iterator, Literal, Mapping, Protocol, Sequence, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -204,7 +204,7 @@ class TranscriptionResult(BaseModel):
 
 @runtime_checkable
 class AudioSource(Protocol):
-    def stream(self) -> Iterable[AudioChunk]:
+    def stream(self) -> Iterator[AudioChunk]:
         ...
 
 
@@ -213,6 +213,9 @@ class TranscriptionEngine(Protocol):
     """
     Stateful, push-based ASR engine protocol.
     """
+    config: EngineConfig
+    model_name: str
+
     def start(self, options: TranscriptionOptions) -> None:
         """Initialize the engine with session-specific options."""
         ...

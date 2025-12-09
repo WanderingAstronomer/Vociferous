@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
+from typing import Iterator
 from threading import Event
 
 from vociferous.domain.model import AudioChunk, AudioSource, PreprocessingConfig
@@ -29,7 +29,7 @@ class FileSource(AudioSource):
         self.trim_tail_ms = trim_tail_ms
         self.noise_gate_db = noise_gate_db
 
-    def stream(self) -> Iterable[AudioChunk]:
+    def stream(self) -> Iterator[AudioChunk]:
         if not self.path.exists():
             raise FileNotFoundError(f"Audio file not found: {self.path}")
         if not self.path.is_file():
@@ -100,7 +100,7 @@ class MicrophoneSource(AudioSource):
     def stop(self) -> None:
         self._stop_event.set()
 
-    def stream(self) -> Iterable[AudioChunk]:
+    def stream(self) -> Iterator[AudioChunk]:
         chunk_duration = self.chunk_ms / 1000
         start = 0.0
         for raw in self._recorder.stream_chunks(
@@ -159,7 +159,7 @@ class PreprocessedFileSource(AudioSource):
         self.config = config or PreprocessingConfig()
         self.chunk_ms = chunk_ms
     
-    def stream(self) -> Iterable[AudioChunk]:
+    def stream(self) -> Iterator[AudioChunk]:
         """Stream preprocessed audio chunks.
         
         Performs the full preprocessing pipeline:
@@ -213,4 +213,3 @@ class PreprocessedFileSource(AudioSource):
         )
         
         yield from memory_source.stream()
-

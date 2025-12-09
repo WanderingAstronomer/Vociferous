@@ -29,7 +29,7 @@ class _FakeConfig:
     }
     history_dir = "/tmp/vociferous-history"
     history_limit = 20
-    numexpr_max_threads = None
+    numexpr_max_threads: int | None = None
     polish_enabled = False
     polish_model = None
     polish_params: Dict[str, str] = {

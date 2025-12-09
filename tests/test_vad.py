@@ -144,3 +144,17 @@ def test_vad_wrapper_trim_method_exists():
     audio = b"test audio"
     result = vad.trim(audio)
     assert isinstance(result, bytes)
+
+
+def test_vad_wrapper_get_speech_timestamps_handles_missing_utils():
+    """_get_speech_timestamps should be None-safe and return the first util when present."""
+    vad = VadWrapper()
+
+    # When utils is absent, helper should return None
+    vad.utils = None
+    assert vad._get_speech_timestamps() is None
+
+    # When utils is provided, the first callable should be returned
+    dummy_fn = lambda *args, **kwargs: []  # noqa: E731
+    vad.utils = (dummy_fn,)
+    assert vad._get_speech_timestamps() is dummy_fn

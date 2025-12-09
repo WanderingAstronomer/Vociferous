@@ -101,7 +101,7 @@ def _ends_with_lowercase(text: str) -> bool:
     if not words:
         return False
     last_word = words[-1]
-    return last_word and last_word[0].islower()
+    return bool(last_word) and last_word[0].islower()
 
 
 def _find_overlap_words(seg1_text: str, seg2_text: str) -> int:

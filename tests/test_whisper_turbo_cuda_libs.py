@@ -1,5 +1,6 @@
 """Targeted tests for WhisperTurboEngine CUDA library handling."""
 from types import ModuleType
+from typing import Any, cast
 import ctypes
 import os
 import sys
@@ -14,7 +15,7 @@ def test_ensure_cuda_libs_updates_ld_library_path(monkeypatch, tmp_path):
     lib_dir.mkdir(parents=True)
     (lib_dir / "libcudnn_ops.so.9").write_text("", encoding="utf-8")
 
-    nvidia_mod = ModuleType("nvidia")
+    nvidia_mod = cast(Any, ModuleType("nvidia"))
     cudnn_mod = ModuleType("nvidia.cudnn")
     cudnn_mod.__path__ = [str(cudnn_root)]
     nvidia_mod.cudnn = cudnn_mod
