@@ -123,9 +123,8 @@ class FFmpegCondenser:
             for i, ts in enumerate(timestamps):
                 start = ts['start']
                 end = ts['end']
-                duration = end - start
                 
-                if duration <= 0:
+                if end - start <= 0:
                     continue
                 
                 # Add margin at start/end of file
@@ -133,7 +132,6 @@ class FFmpegCondenser:
                     start = max(0, start - margin_s)
                 if i == len(timestamps) - 1:
                     end = end + margin_s
-                    duration = end - start
                 
                 # Write segment specification
                 concat_file.write(f"file '{audio_path}'\n")

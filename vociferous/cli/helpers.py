@@ -330,27 +330,39 @@ def build_audio_source(
             condenser = FFmpegCondenser()
             gap_threshold_ms = getattr(app_config, "preprocessing_gap_threshold_ms", 5000)
             
-            condensed_files = condenser.condense(
-                path,
-                timestamps,
-                max_duration_minutes=30,
-                min_gap_for_split_s=gap_threshold_ms / 1000.0,
-            )
-            
-            if condensed_files:
-                # Load condensed audio into memory
-                decoder = FfmpegDecoder()
-                pcm_segments = []
-                for condensed_file in condensed_files:
-                    decoded = decoder.decode(str(condensed_file))
-                    pcm_segments.append(decoded.samples)
-                
-                return MemorySource(
-                    pcm_segments=pcm_segments,
-                    sample_rate=16000,
-                    channels=1,
-                    chunk_ms=chunk_ms,
+            try:
+                condensed_files = condenser.condense(
+                    path,
+                    timestamps,
+                    max_duration_minutes=30,
+                    min_gap_for_split_s=gap_threshold_ms / 1000.0,
                 )
+                
+                if condensed_files:
+                    # Load condensed audio into memory
+                    decoder = FfmpegDecoder()
+                    pcm_segments = []
+                    try:
+                        for condensed_file in condensed_files:
+                            decoded = decoder.decode(str(condensed_file))
+                            pcm_segments.append(decoded.samples)
+                    finally:
+                        # Clean up temporary condensed files
+                        for condensed_file in condensed_files:
+                            try:
+                                condensed_file.unlink(missing_ok=True)
+                            except OSError:
+                                pass  # Ignore cleanup failures
+                    
+                    return MemorySource(
+                        pcm_segments=pcm_segments,
+                        sample_rate=16000,
+                        channels=1,
+                        chunk_ms=chunk_ms,
+                    )
+            except Exception:
+                # Fall through to FileSource if preprocessing fails
+                pass
         
         # Fall through to FileSource if no speech detected or condensation failed
 
