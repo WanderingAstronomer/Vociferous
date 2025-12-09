@@ -474,7 +474,7 @@ class SettingsScreen(Screen):
         )
         vad_switch = MDSwitch(
             size_hint_x=0.3,
-            active=self.config.params.get("vad_filter", "true") == "true",
+            active=self.config.params.get("vad_filter", "false") == "true",
         )
         vad_layout.add_widget(vad_label)
         vad_layout.add_widget(vad_switch)

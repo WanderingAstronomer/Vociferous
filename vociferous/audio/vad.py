@@ -58,7 +58,6 @@ class VadWrapper:
         self.sample_rate = sample_rate
         self.device = device
         self.model: Any | None = None
-        self.utils: SileroUtils | None = None
         self._enabled = False
         self._torch: Any | None = None
 
@@ -70,13 +69,12 @@ class VadWrapper:
             return
 
         try:
-            load_vad = cast(LoadSileroVadFn, load_silero_vad)
-            model, utils = load_vad()
-            if model is None or utils is None:
+            # silero_vad package returns just the model, not (model, utils)
+            model = load_silero_vad()
+            if model is None:
                 return
 
             self.model = model
-            self.utils = utils
             if self.model is None:
                 return
             if (
@@ -198,6 +196,10 @@ class VadWrapper:
         return torch_mod
 
     def _get_speech_timestamps(self) -> SileroGetSpeechFn | None:
-        if not self.utils:
+        # Import get_speech_timestamps directly from silero_vad package
+        try:
+            from silero_vad import get_speech_timestamps
+            return cast(SileroGetSpeechFn, get_speech_timestamps)
+        except ImportError:
             return None
-        return cast(SileroGetSpeechFn, self.utils[0])
+

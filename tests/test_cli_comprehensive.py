@@ -35,7 +35,7 @@ class _FakeAppConfig:
         "enable_batching": "true",
         "batch_size": "16",
         "word_timestamps": "false",
-        "vad_filter": "true",
+        "vad_filter": "false",
     }
     history_dir: str = "/tmp/vociferous-history"
     history_limit: int = 20
@@ -340,6 +340,7 @@ class TestBuildTranscribeConfigs:
             engine="whisper_turbo",
             language="en",
             preset=None,
+            polish=None,
         )
 
         assert bundle.engine_config.model_name is not None
@@ -354,6 +355,7 @@ class TestBuildTranscribeConfigs:
             engine="whisper_turbo",
             language="en",
             preset="high_accuracy",
+            polish=None,
         )
 
         assert bundle.options.preset == "high_accuracy"
@@ -370,6 +372,7 @@ class TestBuildTranscribeConfigs:
             engine="whisper_turbo",
             language="en",
             preset=None,
+            polish=None,
         )
 
         assert bundle.engine_config.params["custom_param"] == "custom_value"
@@ -382,6 +385,7 @@ class TestBuildTranscribeConfigs:
             engine="whisper_turbo",
             language="en",
             preset=None,
+            polish=None,
         )
 
         assert bundle.engine_config.params["clean_disfluencies"] == "true"

@@ -119,7 +119,7 @@ class WhisperTurboEngine(TranscriptionEngine):
         self.batch_size = max(1, batch_default)
         self.word_timestamps = _bool_param(params, "word_timestamps", False)
         self.clean_disfluencies = _bool_param(params, "clean_disfluencies", True)
-        self.vad_filter = _bool_param(params, "vad_filter", True)
+        self.vad_filter = _bool_param(params, "vad_filter", False)
 
         # Configurable parameters (could be in config.params)
         # Use larger window on GPU; VAD-based splitting prevents mid-word truncation
@@ -151,8 +151,8 @@ class WhisperTurboEngine(TranscriptionEngine):
         self.max_buffer_sec = float(params.get("max_buffer_sec", 60.0))
         self.max_buffer_bytes = int(self.max_buffer_sec * self.sample_rate * self.bytes_per_sample)
 
-        # Segment arbiter configuration
-        self.use_segment_arbiter = _bool_param(params, "use_segment_arbiter", True)
+        # Segment arbiter configuration (disabled by default since VAD is off)
+        self.use_segment_arbiter = _bool_param(params, "use_segment_arbiter", False)
         self.arbiter_min_duration_s = float(params.get("arbiter_min_duration_s", 1.0))
         self.arbiter_min_words = int(params.get("arbiter_min_words", 4))
         self.arbiter_hard_break_s = float(params.get("arbiter_hard_break_s", 1.5))
@@ -344,15 +344,17 @@ class WhisperTurboEngine(TranscriptionEngine):
         # Always consume from the head to preserve chronology
         audio_chunk = bytes(self._buffer[:process_bytes])
 
-        # Use VAD to find speech spans and cut at natural gaps/pads
-        spans = self._vad.speech_spans(
-            audio_chunk,
-            threshold=self.vad_threshold,
-            neg_threshold=self.vad_neg_threshold,
-            min_silence_ms=self.vad_min_silence_ms,
-            min_speech_ms=self.vad_min_speech_ms,
-            speech_pad_ms=self.vad_speech_pad_ms,
-        )
+        # Use VAD to find speech spans and cut at natural gaps/pads (only if VAD enabled)
+        spans = []
+        if self.vad_filter:
+            spans = self._vad.speech_spans(
+                audio_chunk,
+                threshold=self.vad_threshold,
+                neg_threshold=self.vad_neg_threshold,
+                min_silence_ms=self.vad_min_silence_ms,
+                min_speech_ms=self.vad_min_speech_ms,
+                speech_pad_ms=self.vad_speech_pad_ms,
+            )
 
         def samples_to_bytes(samples: int) -> int:
             return samples * 2

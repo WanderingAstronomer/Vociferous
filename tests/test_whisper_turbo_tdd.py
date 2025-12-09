@@ -322,5 +322,5 @@ class TestWhisperTurboTranscription:
             engine.flush()
             
             call_kwargs = mock_batched_instance.transcribe.call_args[1]
-            assert call_kwargs["vad_filter"] is True
+            assert call_kwargs["vad_filter"] is False
             assert call_kwargs["word_timestamps"] is True

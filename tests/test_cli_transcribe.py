@@ -25,7 +25,7 @@ class _FakeConfig:
         "enable_batching": "true",
         "batch_size": "16",
         "word_timestamps": "false",
-        "vad_filter": "true",
+        "vad_filter": "false",
     }
     history_dir = "/tmp/vociferous-history"
     history_limit = 20
@@ -95,7 +95,7 @@ def test_cli_transcribe_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert cfg.params["enable_batching"] == "true"
     assert cfg.params["batch_size"] == "16"
     assert cfg.params["word_timestamps"] == "false"
-    assert cfg.params["vad_filter"] == "true"
+    assert cfg.params["vad_filter"] == "false"
     assert cfg.params["clean_disfluencies"] == "true"
     assert calls["engine_kind"] == "whisper_turbo"
 

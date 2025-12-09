@@ -133,8 +133,8 @@ class FFmpegCondenser:
                 if i == len(timestamps) - 1:
                     end = end + margin_s
                 
-                # Write segment specification
-                concat_file.write(f"file '{audio_path}'\n")
+                # Write segment specification (use absolute path)
+                concat_file.write(f"file '{audio_path.absolute()}'\n")
                 concat_file.write(f"inpoint {start}\n")
                 concat_file.write(f"outpoint {end}\n")
         

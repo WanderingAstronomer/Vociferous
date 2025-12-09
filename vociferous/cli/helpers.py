@@ -60,7 +60,7 @@ def resolve_preset(
     beam_size = current_beam_size
     batch_size = current_batch_size
     enable_batching = True
-    vad_filter = True
+    vad_filter = False
 
     if engine == "whisper_turbo":
         if preset == "high_accuracy":
@@ -101,7 +101,7 @@ def build_engine_config(
     word_timestamps: bool = False,
     enable_batching: bool = True,
     batch_size: int = 16,
-    vad_filter: bool = True,
+    vad_filter: bool = False,
     clean_disfluencies: bool = True,
 ) -> EngineConfig:
     """Build an EngineConfig from CLI options.
@@ -194,7 +194,7 @@ def build_transcribe_configs_from_cli(
     # Extract current batch settings from config params
     current_batch_size = int(app_config.params.get("batch_size", "16"))
     current_enable_batching = app_config.params.get("enable_batching", "true").lower() == "true"
-    current_vad = app_config.params.get("vad_filter", "true").lower() == "true"
+    current_vad = app_config.params.get("vad_filter", "false").lower() == "true"
     current_word_timestamps = app_config.params.get("word_timestamps", "false").lower() == "true"
     
     resolved_beam = 1
@@ -306,6 +306,9 @@ def build_audio_source(
     chunk_ms = getattr(app_config, "chunk_ms", 30000)
 
     if preprocessing_enabled:
+        import logging
+        logging.info("Preprocessing enabled, running VAD pipeline...")
+        
         from vociferous.audio import SileroVAD, FFmpegCondenser
         from vociferous.sources import MemorySource
         from vociferous.audio.decoder import FfmpegDecoder
@@ -324,6 +327,8 @@ def build_audio_source(
             min_silence_ms=min_silence_ms,
             min_speech_ms=min_speech_ms,
         )
+        
+        logging.info(f"VAD detected {len(timestamps)} speech segments")
         
         if timestamps:
             # Condense using FFmpegCondenser
@@ -360,8 +365,12 @@ def build_audio_source(
                         channels=1,
                         chunk_ms=chunk_ms,
                     )
-            except Exception:
+            except Exception as exc:
                 # Fall through to FileSource if preprocessing fails
+                import logging
+                logging.warning(f"Preprocessing failed, falling back to FileSource: {exc}")
+                import traceback
+                traceback.print_exc()
                 pass
         
         # Fall through to FileSource if no speech detected or condensation failed
