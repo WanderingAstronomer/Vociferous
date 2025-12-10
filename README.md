@@ -25,7 +25,7 @@ All engines use a simple batch interface - complete audio file in, complete tran
 - **`whisper_turbo`** (default): Batch processing via CTranslate2. Fast, accurate, runs offline. Best for general use.
 - **`voxtral_local`**: Batch processing via transformers. Mistral-based with smart punctuation and grammar. Requires `[voxtral]` extra. Slower but produces more natural text.
 - **`canary_qwen`**: Batch processing with dual-pass (ASR + optional refinement) using Canary-Qwen 2.5B. Defaults to a mock, dependency-light mode; set `use_mock=false` and install `transformers` + `torch` to run the real model. See `docs/engines/canary_qwen.md` for details.
-- **`parakeet_rnnt`**: NVIDIA Parakeet RNNT via Riva endpoint (optional). Experimental streaming support.
+- **`parakeet_rnnt`**: NVIDIA Parakeet RNNT via Riva endpoint (optional, experimental). Note: This engine uses a different architecture for real-time applications.
 
 ### Engine Interface
 
