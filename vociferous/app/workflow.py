@@ -45,6 +45,15 @@ def transcribe_preprocessed(
     `refine_text` and `refine` is enabled.
     """
     engine_instance = _ensure_engine(engine, engine_kind, engine_config)
+
+    warnings: list[str] = []
+    if getattr(engine_instance, "use_mock", False):
+        reason = getattr(engine_instance, "mock_reason", None)
+        warnings.append(
+            reason
+            or "Engine is running in mock mode (install dependencies or set params.use_mock=true intentionally)."
+        )
+
     segments: Sequence[TranscriptSegment] = tuple(engine_instance.transcribe_file(audio_path, options))
     text = _segments_to_text(segments)
 
@@ -53,18 +62,7 @@ def transcribe_preprocessed(
             refined_text = engine_instance.refine_text(text, refine_instructions)  # type: ignore[attr-defined]
             text = refined_text
         except Exception as exc:  # pragma: no cover - safeguard
-            # Keep original text but surface a warning that refinement failed.
-            metadata = engine_instance.metadata
-            return TranscriptionResult(
-                text=text,
-                segments=segments,
-                model_name=metadata.model_name,
-                device=metadata.device,
-                precision=metadata.precision,
-                engine=engine_kind,
-                duration_s=segments[-1].end_s if segments else 0.0,
-                warnings=(f"Refinement failed: {exc}",),
-            )
+            warnings.append(f"Refinement failed: {exc}")
 
     metadata = engine_instance.metadata
     return TranscriptionResult(
@@ -75,7 +73,7 @@ def transcribe_preprocessed(
         precision=metadata.precision,
         engine=engine_kind,
         duration_s=segments[-1].end_s if segments else 0.0,
-        warnings=(),
+        warnings=tuple(warnings),
     )
 
 

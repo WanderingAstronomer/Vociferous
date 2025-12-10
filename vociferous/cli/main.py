@@ -426,6 +426,10 @@ def transcribe(
         for segment in result.segments:
             sink.handle_segment(segment)
         sink.complete(result)
+
+        if result.warnings:
+            for warning in result.warnings:
+                console.print(Panel(f"[yellow]{warning}[/yellow]", title="Warning", border_style="yellow"))
     except FileNotFoundError as exc:
         console.print(Panel(f"[red]{exc}[/red]", title="File Not Found", border_style="red"))
         raise typer.Exit(code=2) from exc

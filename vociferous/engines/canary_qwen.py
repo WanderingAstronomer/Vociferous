@@ -9,6 +9,7 @@ Notes:
     load the real model; the stub keeps the API stable for future expansion.
 """
 
+import logging
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -20,6 +21,15 @@ from vociferous.domain.model import (
     TranscriptionOptions,
 )
 from vociferous.engines.model_registry import normalize_model_name
+
+logger = logging.getLogger(__name__)
+
+
+def _bool_param(params: Mapping[str, str], key: str, default: bool) -> bool:
+    raw = params.get(key)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() == "true"
 
 
 DEFAULT_REFINE_PROMPT = (
@@ -42,7 +52,10 @@ class CanaryQwenEngine(TranscriptionEngine):
         self.device = config.device
         self.precision = config.compute_type
         params = {k.lower(): v for k, v in (config.params or {}).items()}
-        self.use_mock = params.get("use_mock", "true").lower() != "false"
+        self.use_mock = _bool_param(params, "use_mock", False)
+        self.mock_reason: str | None = None
+        if self.use_mock:
+            self.mock_reason = "Mock mode enabled via params.use_mock=true"
         self._model: Any | None = None
         self._processor: Any | None = None
         self._lazy_model()
@@ -94,20 +107,26 @@ class CanaryQwenEngine(TranscriptionEngine):
             from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor  # pragma: no cover - optional
             import torch  # pragma: no cover - optional
         except ImportError:  # pragma: no cover - dependency guard
-            self.use_mock = True
+            self._set_mock(
+                "Missing dependencies for Canary-Qwen (install transformers, torch, accelerate). "
+                "Set params.use_mock=true to silence this warning."
+            )
             return
 
+        cache_dir = Path(self.config.model_cache_dir).expanduser() if self.config.model_cache_dir else None
+        if cache_dir:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
         try:
-            self._processor = AutoProcessor.from_pretrained(self.model_name)
+            self._processor = AutoProcessor.from_pretrained(self.model_name, cache_dir=cache_dir)
             self._model = AutoModelForSpeechSeq2Seq.from_pretrained(
                 self.model_name,
                 torch_dtype=self._resolve_dtype(torch, self.precision),
+                cache_dir=cache_dir,
             )
             self._model.to(self.device if self.device != "auto" else "cpu")
-        except Exception:  # pragma: no cover - optional guard
-            self.use_mock = True
-            self._processor = None
-            self._model = None
+        except Exception as exc:  # pragma: no cover - optional guard
+            self._set_mock(f"Failed to load Canary-Qwen model '{self.model_name}': {exc}")
 
     def _transcribe_bytes(self, data: bytes) -> str:
         if not data:
@@ -157,3 +176,10 @@ class CanaryQwenEngine(TranscriptionEngine):
             "bfloat16": getattr(torch_module, "bfloat16", None),
         }
         return mapping.get(precision, torch_module.float32)
+
+    def _set_mock(self, reason: str) -> None:
+        self.use_mock = True
+        self.mock_reason = reason
+        self._processor = None
+        self._model = None
+        logger.warning(reason)
