@@ -163,20 +163,20 @@ def main_callback(ctx: typer.Context) -> None:
         "No cloud. No telemetry."
         "\n\n"
         "[bold]Quick start[/bold]\n"
-        "  - vociferous decode audio.mp3\n"
-        "  - vociferous vad audio_decoded.wav\n"
-        "  - vociferous condense audio_decoded_vad_timestamps.json audio_decoded.wav\n"
-        "  - vociferous transcribe-full audio.mp3\n"
-        "\n"
-        "[bold]More help[/bold]\n"
-        "  - vociferous transcribe --help\n"
+        "  - vociferous transcribe audio.mp3\n"
+        "  - vociferous transcribe audio.wav -o transcript.txt\n"
         "  - vociferous languages\n"
-        "  - vociferous check",
+        "  - vociferous check\n"
+        "\n"
+        "[bold]Get help[/bold]\n"
+        "  - vociferous --help         (user commands)\n"
+        "  - vociferous --dev-help     (all commands)\n"
+        "  - vociferous transcribe --help",
         border_style="cyan",
         title="Vociferous",
     )
     console.print(welcome)
-    console.print("[dim]Tip: run 'vociferous --help' for the full command list.[/dim]")
+    console.print("[dim]Tip: Use 'vociferous --help' for user commands or '--dev-help' for developer tools.[/dim]")
     raise typer.Exit(code=0)
 
 
