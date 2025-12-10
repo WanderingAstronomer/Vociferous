@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import logging
+import os
 import shutil
 
 from vociferous.app import configure_logging, transcribe_workflow
@@ -458,6 +459,8 @@ def check() -> None:
     table.add_column("Details", style="dim")
 
     ok = True
+    sounddevice_warn = False
+    force_missing_sounddevice = os.environ.get("VOCIFEROUS_FORCE_MISSING_SOUNDDEVICE", "0") == "1"
 
     # Check ffmpeg
     ffmpeg_path = shutil.which("ffmpeg")
@@ -468,11 +471,11 @@ def check() -> None:
         ok = False
 
     # Check sounddevice
-    if importlib.util.find_spec("sounddevice") is not None:
+    if (importlib.util.find_spec("sounddevice") is not None) and not force_missing_sounddevice:
         table.add_row("sounddevice", "[green]OK[/green]", "Installed")
     else:
         table.add_row("sounddevice", "[yellow]WARN[/yellow]", "Not installed (mic capture disabled)")
-        ok = False
+        sounddevice_warn = True
 
     # Check model cache
     cfg = load_config()
@@ -487,9 +490,13 @@ def check() -> None:
     console.print(table)
 
     if ok:
-        console.print("\n[bold green]All checks passed! Ready to transcribe.[/bold green]")
+        console.print("\n[bold green]Core checks passed! Ready to transcribe files.[/bold green]")
+        if sounddevice_warn:
+            console.print("[yellow]Warning: sounddevice not installed; microphone capture disabled.[/yellow]")
     else:
         console.print("\n[bold red]Some prerequisites missing. Install them for full functionality.[/bold red]")
+        if sounddevice_warn:
+            console.print("[yellow]Warning: sounddevice not installed; microphone capture disabled.[/yellow]")
         raise typer.Exit(code=1)
 
 

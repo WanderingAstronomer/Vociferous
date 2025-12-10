@@ -773,6 +773,8 @@ vociferous condense timestamps.json audio.wav  # ✅ Component
 vociferous record                 # ✅ Component
 ```
 
+Recorder component implementation lives in `vociferous/audio/components/recorder_component.py` and wraps the low-level `SoundDeviceRecorder` defined in `vociferous/audio/recorder.py`.
+
 **cli module (workflows):**
 ```bash
 vociferous transcribe audio.mp3   # ✅ Workflow orchestrator (calls components + engines)

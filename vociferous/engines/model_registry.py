@@ -89,21 +89,27 @@ def normalize_model_name(kind: EngineKind, name: str | None) -> str:
     if not name:
         name = default or ""
     else:
+        is_canary_name = name in CANARY_MODELS or name.startswith("nvidia/canary")
         # Check if this is a model name from a different engine - if so, use default
         if kind in ("voxtral", "voxtral_local"):
             # If passed a whisper model, use voxtral default
-            if name in WHISPER_MODELS or any(name.startswith(p) for p in ["distil-whisper/", "openai/whisper"]):
+            if (
+                name in WHISPER_MODELS
+                or any(name.startswith(p) for p in ["distil-whisper/", "openai/whisper"])
+                or is_canary_name
+            ):
                 name = default or ""
         elif kind == "whisper_turbo":
             # If passed a voxtral model, use whisper default
-            if name in VOXTRAL_MODELS or name.startswith("mistralai/"):
+            if name in VOXTRAL_MODELS or name.startswith("mistralai/") or is_canary_name:
                 name = default or ""
         elif kind == "canary_qwen":
             if _is_invalid_canary_model(name, default):
                 name = default or ""
 
         alias = _ALIASES.get(kind, {})
-        lookup = alias.get(name.lower()) if name else None
+        lookup_key = name.lower() if name else ""
+        lookup = alias.get(lookup_key)
         name = lookup or name or default or ""
 
     # For whisper_turbo, prefer short names for faster-whisper (better compatibility)

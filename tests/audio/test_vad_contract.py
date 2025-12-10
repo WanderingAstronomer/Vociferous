@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -20,13 +21,17 @@ def ensure_artifacts_dir() -> None:
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _run_cli(args: list[str]) -> subprocess.CompletedProcess[str]:
+def _run_cli(args: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
     return subprocess.run(
         [sys.executable, "-m", "vociferous.cli.main", *args],
         cwd=ARTIFACTS_DIR,
         capture_output=True,
         text=True,
         timeout=30,
+        env=merged_env,
     )
 
 
@@ -95,3 +100,15 @@ def test_vad_respects_custom_output() -> None:
     with open(custom_output) as f:
         timestamps = json.load(f)
     assert len(timestamps) > 0
+
+
+def test_vad_missing_ffmpeg_shows_guidance() -> None:
+    """VAD exits with guidance instead of traceback when ffmpeg is absent."""
+    decoded = _decode_sample()
+
+    env = {"PATH": ""}
+    result = _run_cli(["vad", str(decoded)], env=env)
+
+    assert result.returncode == 2
+    assert "ffmpeg not found. Install ffmpeg and retry." in result.stderr
+    assert "Traceback" not in result.stderr

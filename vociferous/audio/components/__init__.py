@@ -3,7 +3,7 @@
 from .decoder import DecoderComponent
 from .vad import VADComponent
 from .condenser import CondenserComponent
-from .recorder import RecorderComponent
+from .recorder_component import RecorderComponent
 
 __all__ = [
     "DecoderComponent",

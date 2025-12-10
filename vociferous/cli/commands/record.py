@@ -64,7 +64,7 @@ def register_record(app: typer.Typer) -> None:
         except Exception:
             duration_s = 0.0
 
-        typer.echo(f"✓ Stopped. Saved: {out_path.name} ({size_mb:.2f} MB, {duration_s:.1f}s)")
+        typer.echo(f"✓ Stopped. Saved: {out_path} ({size_mb:.2f} MB, {duration_s:.1f}s)")
 
     record_cmd.dev_only = True  # type: ignore[attr-defined]
     return None

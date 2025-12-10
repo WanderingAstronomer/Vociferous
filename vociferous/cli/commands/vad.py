@@ -39,6 +39,9 @@ def register_vad(app: typer.Typer) -> None:
                 min_silence_ms=min_silence_ms,
                 min_speech_ms=min_speech_ms,
             )
+        except FileNotFoundError as exc:
+            typer.echo("ffmpeg not found. Install ffmpeg and retry.", err=True)
+            raise typer.Exit(code=2) from exc
         except AudioDecodeError as exc:
             typer.echo(f"VAD decode failed: {exc}", err=True)
             raise typer.Exit(code=1) from exc

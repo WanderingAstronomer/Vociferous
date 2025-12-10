@@ -108,7 +108,7 @@ def build_engine_config(
     
     Normalizes model name and constructs params dict.
     """
-    normalized_model = normalize_model_name(engine, model_name) if model_name else DEFAULT_WHISPER_MODEL
+    normalized_model = normalize_model_name(engine, model_name)
     
     return EngineConfig(
         model_name=normalized_model,
@@ -244,7 +244,7 @@ def build_transcribe_configs_from_cli(
     # Build engine config using resolved preset values + config defaults
     engine_config = build_engine_config(
         engine,
-        model_name=resolved_model or app_config.model_name,
+        model_name=resolved_model,
         compute_type=resolved_compute,
         device=target_device,
         model_cache_dir=app_config.model_cache_dir,

@@ -33,6 +33,12 @@ class SoundDeviceRecorder:
         self.device_name = device_name
         self.dtype = dtype
 
+    @property
+    def sample_width_bytes(self) -> int:
+        import numpy as np
+
+        return int(np.dtype(self.dtype).itemsize)
+
     def stream_chunks(
         self,
         *,
@@ -45,7 +51,8 @@ class SoundDeviceRecorder:
         import logging
         import queue
 
-        blocksize = int(sample_rate * (chunk_ms / 1000))
+        blocksize = max(1, int(sample_rate * (chunk_ms / 1000)))
+        bytes_per_frame = sample_width_bytes * channels
         q: "queue.SimpleQueue[bytes]" = queue.SimpleQueue()
 
         def callback(indata: Any, frames: Any, time_info: Any, status: Any) -> None:
@@ -63,9 +70,20 @@ class SoundDeviceRecorder:
         ):
             while True:
                 if stop_event is not None and stop_event.is_set():
-                    break
+                    while True:
+                        try:
+                            remaining = q.get_nowait()
+                        except queue.Empty:
+                            return
+                        yield remaining
                 try:
                     chunk = q.get(timeout=0.25)
                 except queue.Empty:
                     continue
+                if len(chunk) % bytes_per_frame != 0:
+                    logging.warning(
+                        "Unexpected recorder chunk size: %s bytes (frame size %s)",
+                        len(chunk),
+                        bytes_per_frame,
+                    )
                 yield chunk

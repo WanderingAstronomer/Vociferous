@@ -27,7 +27,8 @@ class RecorderComponent:
 
     def default_output_path(self) -> Path:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return Path(f"recording_{timestamp}.wav")
+        recordings_dir = Path(__file__).resolve().parent.parent / "recordings"
+        return recordings_dir / f"recording_{timestamp}.wav"
 
     def record_to_file(self, output_path: Path, stop_event: Event) -> Path:
         """Record microphone audio until stop_event is set."""
@@ -36,18 +37,20 @@ class RecorderComponent:
         except DependencyError:
             raise
 
+        sample_width = recorder.sample_width_bytes
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         with wave.open(str(output_path), "wb") as wf:
             wf.setnchannels(self.channels)
-            wf.setsampwidth(2)
+            wf.setsampwidth(sample_width)
             wf.setframerate(self.sample_rate)
 
             for chunk in recorder.stream_chunks(
                 sample_rate=self.sample_rate,
                 channels=self.channels,
                 chunk_ms=self.chunk_ms,
-                sample_width_bytes=2,
+                sample_width_bytes=sample_width,
                 stop_event=stop_event,
             ):
                 wf.writeframes(chunk)
