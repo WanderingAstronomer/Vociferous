@@ -24,9 +24,9 @@ Vociferous is built on the principle that **every meaningful unit of functionali
 
 ```mermaid
 graph TD
-    M(MODULEOrganizational grouping)
-    C(COMPONENTIndependently executable)
-    U(UTILITYInternal helper, not independently useful)
+    M["MODULE<br/>Organizational grouping"]
+    C["COMPONENT<br/>Independently executable"]
+    U["UTILITY<br/>Internal helper"]
 
     M --> C
     C --> U
@@ -38,7 +38,7 @@ graph TD
 | --- | --- | --- | --- |
 | **Module** | Collection of related components with unified purpose | No  | `audio`, `engines` |
 | **Component** | Independently executable, testable, chainable unit | **Yes** | `vociferous decode`, `vociferous vad` |
-| **Submodule** | Internal helper used by components | No  | `VadWrapper`, `FFmpegHelper` |
+| **Utility** | Internal helper used by components | No  | `VadWrapper`, `FFmpegHelper` |
 
 ---
 
@@ -279,12 +279,12 @@ graph TD
 ```mermaid
 graph LR
   IN[Input Audio]
-  D[Decoderstandardized.wav]
-  V[VADtimestamps.json]
-  C[Condensercondensed.wav]
-  E[Enginetranscript segments]
-  A[Arbiterdeduplicated segments]
-  P[Polisherfinal text]
+  D["Decoder<br/>standardized.wav"]
+  V["VAD<br/>timestamps.json"]
+  C["Condenser<br/>condensed.wav"]
+  E["Engine<br/>transcript segments"]
+  A["Arbiter<br/>deduplicated segments"]
+  P["Polisher<br/>final text"]
   OUT[Output]
 
   IN --> D --> V --> C --> E --> A --> P --> OUT
@@ -678,22 +678,22 @@ def transcribe_file(self, audio_path: Path):
 
 ```mermaid
 graph TD
-    U["USER INPUT(audio.mp3)"]
+    U["USER INPUT<br/>audio.mp3"]
 
-    D_CMD["vociferous decode(CLI component)"]
-    D_OUT["audio_decoded.wav(observable file)"]
+    D_CMD["vociferous decode<br/>CLI component"]
+    D_OUT["audio_decoded.wav<br/>observable file"]
 
-    V_CMD["vociferous vad(CLI component)"]
-    V_OUT["audio_decoded_vad_timestamps.json(observable file)"]
+    V_CMD["vociferous vad<br/>CLI component"]
+    V_OUT["audio_decoded_vad_timestamps.json<br/>observable file"]
 
-    C_CMD["vociferous condense(CLI component)"]
-    C_OUT["audio_decoded_condensed.wav(observable file)"]
+    C_CMD["vociferous condense<br/>CLI component"]
+    C_OUT["audio_decoded_condensed.wav<br/>observable file"]
 
-    T_CMD["vociferous transcribe(CLI component)"]
-    T_OUT["transcript_segments(observable output)"]
+    T_CMD["vociferous transcribe<br/>CLI component"]
+    T_OUT["transcript_segments<br/>observable output"]
 
-    P_CMD["vociferous polish(CLI component)"]
-    P_OUT["final_transcript.txt(observable file)"]
+    P_CMD["vociferous polish<br/>CLI component"]
+    P_OUT["final_transcript.txt<br/>observable file"]
 
     U --> D_CMD --> D_OUT
     D_OUT --> V_CMD --> V_OUT
