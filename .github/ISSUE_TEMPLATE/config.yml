@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📚 Documentation
+    url: https://github.com/WanderingAstronomer/Vociferous/tree/main/Planning%20and%20Documentation
+    about: View the architecture and design documentation
+  - name: 💬 Discussions
+    url: https://github.com/WanderingAstronomer/Vociferous/discussions
+    about: Ask questions and discuss ideas with the community
