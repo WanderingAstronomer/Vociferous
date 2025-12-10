@@ -136,6 +136,101 @@ class VoxtralLocalEngine(TranscriptionEngine):
         self._segments.clear()
         return segs
 
+    def transcribe_file(
+        self, 
+        audio_path: Path, 
+        options: TranscriptionOptions
+    ) -> list[TranscriptSegment]:
+        """Transcribe entire audio file in one batch operation.
+        
+        This is the new simplified interface that processes preprocessed audio files.
+        Audio should already be decoded and condensed via the audio preprocessing pipeline.
+        
+        Args:
+            audio_path: Path to preprocessed audio file (16kHz mono PCM WAV)
+            options: Transcription options (language, etc.)
+            
+        Returns:
+            List of transcript segments with timestamps
+        """
+        self._lazy_model()
+        
+        if self._processor is None or self._model is None:
+            raise RuntimeError("Model not loaded")
+
+        import numpy as np
+        import torch
+
+        # Load audio file
+        audio_np = self._load_audio_file(audio_path)
+
+        processor = self._processor
+        model = self._model
+
+        inputs = processor.apply_transcription_request(
+            audio=[audio_np],
+            language=options.language or "en",
+            model_id=self.model_name,
+            sampling_rate=16000,
+            format=["wav"],
+        ).to(self.device, dtype=model.dtype)
+
+        gen_kwargs = {}
+        params = options.params
+        if "max_new_tokens" in params:
+            gen_kwargs["max_new_tokens"] = int(params["max_new_tokens"])
+        else:
+            gen_kwargs["max_new_tokens"] = 2048
+
+        with torch.inference_mode():
+            outputs = model.generate(**inputs, **gen_kwargs)
+
+        input_length = inputs.input_ids.shape[1]
+        new_tokens = outputs[:, input_length:]
+        transcription = processor.batch_decode(
+            new_tokens, skip_special_tokens=True
+        )[0]
+
+        result = []
+        if transcription.strip():
+            result.append(TranscriptSegment(
+                text=transcription.strip(),
+                start_s=0.0,
+                end_s=len(audio_np) / 16000.0,
+                language=options.language or "en",
+                confidence=1.0
+            ))
+
+        return result
+    
+    def _load_audio_file(self, audio_path: Path) -> np.ndarray:
+        """Load audio file and convert to numpy array for transcription.
+        
+        Args:
+            audio_path: Path to audio file (should be 16kHz mono PCM WAV)
+            
+        Returns:
+            Normalized float32 numpy array of audio samples
+        """
+        import wave
+        import numpy as np
+        
+        # Read WAV file
+        with wave.open(str(audio_path), 'rb') as wf:
+            if wf.getnchannels() != 1:
+                raise ValueError(f"Expected mono audio, got {wf.getnchannels()} channels")
+            if wf.getsampwidth() != 2:
+                raise ValueError(f"Expected 16-bit audio, got {wf.getsampwidth() * 8}-bit")
+            if wf.getframerate() != 16000:
+                raise ValueError(f"Expected 16kHz audio, got {wf.getframerate()}Hz")
+            
+            # Read all frames
+            frames = wf.readframes(wf.getnframes())
+        
+        # Convert to numpy array and normalize
+        audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+        return audio_np
+
     @property
     def metadata(self) -> EngineMetadata:
         """Return engine metadata for result building."""
