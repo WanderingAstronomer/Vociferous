@@ -50,7 +50,7 @@ Vociferous provides **local-first ASR** that addresses all these pain points:
 ### Developers
 **Problem**: Need to quickly transcribe standup recordings or meeting notes to paste into tickets and documentation.
 
-**Solution**: Fast transcription with hotkey capture (up to 30s) and clipboard integration. Results in ≤3 seconds.
+**Solution**: Fast transcription with hotkey capture (up to 30s) and clipboard integration. Results in 3 seconds or less.
 
 ### Students
 **Problem**: Want to transcribe lecture recordings privately for study without uploading to cloud services.

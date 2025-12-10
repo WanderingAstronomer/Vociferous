@@ -408,8 +408,8 @@ Create project-specific configs:
 mkdir my_project
 cd my_project
 
-# Create local config
-cat > vociferous.toml << EOF
+# Create local config (using heredoc - text between << EOF and EOF is written to file)
+cat > vociferous.toml << 'EOF'
 engine = "whisper_turbo"
 device = "cuda"
 
@@ -428,7 +428,7 @@ vociferous transcribe audio.wav
 
 ```bash
 # Spanish transcription profile
-cat > ~/.config/vociferous/spanish.toml << EOF
+cat > ~/.config/vociferous/spanish.toml << 'EOF'
 [params]
 language = "es"
 preset = "balanced"

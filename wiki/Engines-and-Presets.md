@@ -256,6 +256,8 @@ Is accuracy critical (legal, medical, publishing)?
 
 ### Whisper Turbo RTF (Real-Time Factor)
 
+**Note**: These benchmarks are representative examples. Actual performance varies based on your specific hardware, audio characteristics, and system load.
+
 **CPU (Intel i7-12700K, 16 GB RAM)**:
 
 | Preset | RTF | Example (30s audio) |

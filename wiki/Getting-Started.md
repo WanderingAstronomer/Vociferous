@@ -161,16 +161,20 @@ See [Engines & Presets](Engines-and-Presets.md) for detailed information.
 Transcribe multiple files:
 
 ```bash
-# Process all WAV files in a directory
+# Process all WAV files in a directory (using find to handle empty directories)
+find audio/ -name "*.wav" -type f -exec sh -c '
+    vociferous transcribe "$1" -o "transcripts/$(basename "$1" .wav).txt"
+' sh {} \;
+```
+
+Alternative using bash with null glob handling:
+
+```bash
+# Enable nullglob to handle case where no files match
+shopt -s nullglob
 for file in audio/*.wav; do
     vociferous transcribe "$file" -o "transcripts/$(basename "$file" .wav).txt"
 done
-```
-
-Or using find:
-
-```bash
-find audio/ -name "*.mp3" -exec vociferous transcribe {} -o {}.txt \;
 ```
 
 ### Quick Transcription with Default Settings
