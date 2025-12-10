@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
+SHORT_FLAC = SAMPLES_DIR / "ASR_Test_30s.flac"
 
 
 def _run_cli(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -25,7 +26,7 @@ def _decode_and_vad(tmp_path: Path) -> tuple[Path, Path]:
     timestamps = tmp_path / "ASR_Test_decoded_vad_timestamps.json"
 
     dec = _run_cli(
-        ["decode", str(SAMPLES_DIR / "ASR_Test.flac"), "--output", str(decoded)],
+        ["decode", str(SHORT_FLAC), "--output", str(decoded)],
         tmp_path,
     )
     assert dec.returncode == 0, f"Decode failed: {dec.stderr}"

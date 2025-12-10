@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
+SHORT_FLAC = SAMPLES_DIR / "ASR_Test_30s.flac"
 
 
 def _run_cli(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -22,7 +23,7 @@ def _run_cli(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
 
 def test_decode_vad_condense_chain(tmp_path: Path) -> None:
     """Full chain produces timestamps and condensed audio."""
-    input_file = SAMPLES_DIR / "ASR_Test.flac"
+    input_file = SHORT_FLAC
 
     decoded = tmp_path / "ASR_Test_decoded.wav"
     timestamps = tmp_path / "ASR_Test_decoded_vad_timestamps.json"

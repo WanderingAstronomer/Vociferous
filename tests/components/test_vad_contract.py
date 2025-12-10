@@ -9,6 +9,7 @@ from pathlib import Path
 import wave
 
 SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
+SHORT_FLAC = SAMPLES_DIR / "ASR_Test_30s.flac"
 
 
 def _run_cli(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -24,7 +25,7 @@ def _run_cli(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
 def _decode_sample(tmp_path: Path) -> Path:
     decoded = tmp_path / "ASR_Test_decoded.wav"
     result = _run_cli(
-        ["decode", str(SAMPLES_DIR / "ASR_Test.flac"), "--output", str(decoded)],
+        ["decode", str(SHORT_FLAC), "--output", str(decoded)],
         tmp_path,
     )
     assert result.returncode == 0, f"Decode failed: {result.stderr}"

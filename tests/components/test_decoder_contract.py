@@ -8,6 +8,7 @@ from pathlib import Path
 import wave
 
 SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
+SHORT_FLAC = SAMPLES_DIR / "ASR_Test_30s.flac"
 
 
 def _run_cli(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -22,7 +23,7 @@ def _run_cli(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
 
 def test_decoder_standardizes_flac_to_pcm_wav(tmp_path: Path) -> None:
     """Decoder converts FLAC to PCM mono 16kHz WAV."""
-    input_file = SAMPLES_DIR / "ASR_Test.flac"
+    input_file = SHORT_FLAC
     output_file = tmp_path / "ASR_Test_decoded.wav"
 
     result = _run_cli(["decode", str(input_file), "--output", str(output_file)], tmp_path)
