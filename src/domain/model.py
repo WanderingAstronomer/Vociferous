@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Iterator, Literal, Mapping, Protocol, Sequence, runtime_checkable
+from typing import Iterator, Literal, Mapping, Protocol, Sequence, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -9,6 +9,7 @@ from .constants import Device, ComputeType
 
 DEFAULT_MODEL_CACHE_DIR = Path.home() / ".cache" / "vociferous" / "models"
 DEFAULT_WHISPER_MODEL = "deepdml/faster-whisper-large-v3-turbo-ct2"
+DEFAULT_CANARY_MODEL = "nvidia/canary-qwen-2.5b"
 
 # Local engines only; "voxtral" is deprecated alias for "voxtral_local"
 EngineKind = Literal["whisper_turbo", "voxtral_local", "voxtral", "canary_qwen"]
@@ -31,6 +32,12 @@ class AudioChunk(BaseModel):
     channels: int
     start_s: float
     end_s: float
+
+
+@runtime_checkable
+class AudioSource(Protocol):
+    def stream(self) -> Iterator[AudioChunk]:
+        ...
 
 
 class SpeechMap(BaseModel):
@@ -183,8 +190,8 @@ class TranscriptionOptions(BaseModel):
 
 class TranscriptionRequest(BaseModel):
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
-    source: "AudioSource"
-    engine: EngineKind = "whisper_turbo"
+    audio_path: Path
+    engine: EngineKind = "canary_qwen"
     engine_config: EngineConfig = Field(default_factory=EngineConfig)
     options: TranscriptionOptions = Field(default_factory=TranscriptionOptions)
     metadata: Mapping[str, str] = Field(default_factory=dict)
@@ -203,33 +210,14 @@ class TranscriptionResult(BaseModel):
 
 
 @runtime_checkable
-class AudioSource(Protocol):
-    def stream(self) -> Iterator[AudioChunk]:
-        ...
-
-
-@runtime_checkable
 class TranscriptionEngine(Protocol):
-    """
-    Stateful, push-based ASR engine protocol.
-    """
+    """Batch-only transcription engine protocol: file in → segments out."""
+
     config: EngineConfig
     model_name: str
 
-    def start(self, options: TranscriptionOptions) -> None:
-        """Initialize the engine with session-specific options."""
-        ...
-
-    def push_audio(self, pcm16: bytes, timestamp_ms: int) -> None:
-        """Append raw 16 kHz mono PCM16 audio to the internal buffer."""
-        ...
-
-    def flush(self) -> None:
-        """Force processing of whatever is currently buffered."""
-        ...
-
-    def poll_segments(self) -> list[TranscriptSegment]:
-        """Return any new segments produced since last call."""
+    def transcribe_file(self, audio_path: Path, options: TranscriptionOptions) -> list[TranscriptSegment]:
+        """Transcribe a preprocessed audio file in a single batch."""
         ...
 
     @property

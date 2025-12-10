@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from vociferous.domain.model import DEFAULT_WHISPER_MODEL, EngineKind
+from vociferous.domain.model import DEFAULT_CANARY_MODEL, DEFAULT_WHISPER_MODEL, EngineKind
 
 # Verified model names for faster-whisper (accepts short names or full Systran paths)
 WHISPER_MODELS: Dict[str, str] = {
@@ -22,7 +22,7 @@ VOXTRAL_MODELS: Dict[str, str] = {
 }
 
 CANARY_MODELS: Dict[str, str] = {
-    "nvidia/canary-qwen-2.5b": "nvidia/canary-qwen-2.5b",
+    DEFAULT_CANARY_MODEL: DEFAULT_CANARY_MODEL,
 }
 
 
@@ -42,7 +42,7 @@ _DEFAULTS = {
     "whisper_turbo": DEFAULT_WHISPER_MODEL,
     "voxtral": "mistralai/Voxtral-Mini-3B-2507",  # Legacy alias, maps to voxtral_local
     "voxtral_local": "mistralai/Voxtral-Mini-3B-2507",
-    "canary_qwen": "nvidia/canary-qwen-2.5b",
+    "canary_qwen": DEFAULT_CANARY_MODEL,
 }
 
 _ALIASES: Dict[str, Dict[str, str]] = {

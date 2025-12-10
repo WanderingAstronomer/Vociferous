@@ -6,10 +6,10 @@ from typing import Protocol
 
 
 @dataclass(frozen=True)
-class PolisherConfig:
-    """Configuration for transcript polishing.
+class RefinerConfig:
+    """Configuration for transcript refinement.
 
-    The polisher should be lightweight and local-first. The config keeps the
+    The refiner should be lightweight and local-first. The config keeps the
     chosen model name and a free-form params mapping for model-specific knobs.
     Empty/whitespace-only params are stripped by consumers.
     """
@@ -19,28 +19,28 @@ class PolisherConfig:
     params: dict[str, str] = field(default_factory=dict)
 
 
-class Polisher(Protocol):
-    """Interface for transcript polishers.
+class Refiner(Protocol):
+    """Interface for transcript refiners.
 
-    Implementations should be inexpensive and ideally fully local. The polisher
-    receives the full transcript text and returns a polished string.
+    Implementations should be inexpensive and ideally fully local. The refiner
+    receives the full transcript text and returns an improved string.
     """
 
-    def polish(self, text: str) -> str:  # pragma: no cover - Protocol definition
+    def refine(self, text: str, instructions: str | None = None) -> str:  # pragma: no cover - Protocol definition
         ...
 
 
-class NullPolisher:
-    """No-op polisher used when polishing is disabled."""
+class NullRefiner:
+    """No-op refiner used when refinement is disabled."""
 
-    def polish(self, text: str) -> str:
+    def refine(self, text: str, instructions: str | None = None) -> str:
         return text
 
 
-class RuleBasedPolisher:
-    """Lightweight heuristic polisher.
+class RuleBasedRefiner:
+    """Lightweight heuristic refiner.
 
-    This avoids heavy models and keeps the polishing step fully local. It
+    This avoids heavy models and keeps the refinement step fully local. It
     normalizes whitespace, fixes mid-word hyphen splits, and trims stray
     punctuation spacing.
     """
@@ -48,7 +48,7 @@ class RuleBasedPolisher:
     def __init__(self) -> None:
         self._hyphen_gap_pattern = re.compile(r"(?<=\w)-\s+(?=\w)")
 
-    def polish(self, text: str) -> str:
+    def refine(self, text: str, instructions: str | None = None) -> str:
         cleaned = " ".join(text.split())
         cleaned = self._hyphen_gap_pattern.sub("", cleaned)
         cleaned = cleaned.replace(" ,", ",").replace(" .", ".")

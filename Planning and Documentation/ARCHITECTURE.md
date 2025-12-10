@@ -1,8 +1,44 @@
 # Vociferous: Executive Architecture Philosophy & Design Principles
 
 **Date:** December 2025  
-**Version:** 1.0  
-**Status:** Agreed & Implemented (Audio Module), In Progress (Engine Module)
+**Version:** 2.0  
+**Status:** Architecture Refactor in Progress (see module table)
+
+## Module Implementation Status
+
+| Module | Status | Notes |
+|--------|--------|-------|
+| **audio** | ✅ Implemented | decode, vad, condense, record components working |
+| **engines** | 🚧 In Progress | Canary dual-pass implementation ongoing (Issue #9) |
+| **refinement** | 🚧 In Progress | Replacing polish module; depends on Canary LLM mode (Issues #8, #10) |
+| **cli** | ✅ Implemented | Commands live; refactoring help tiers (Issue #15) |
+| **app** | 🚧 In Progress | Removing TranscriptionSession/Arbiter; workflow function in progress (Issues #5, #6, #7) |
+| **config** | ✅ Implemented | Config loading and management working |
+| **domain** | ✅ Implemented | Core types, models, exceptions defined |
+| **sources** | ✅ Implemented | File sources and microphone capture working |
+| **gui** | ✅ Implemented | KivyMD GUI functional; integration ongoing |
+
+**Legend:** ✅ Implemented · 🚧 In Progress · ❌ Not Started · 🔄 Needs Refactor
+
+## Architecture Refactor Progress
+
+**Completed:**
+- [x] Audio preprocessing pipeline (decode, vad, condense, record)
+- [x] Real-file contract testing philosophy (no mocks)
+- [x] Module-based test organization
+
+**In Progress:**
+- [ ] Canary-Qwen dual-pass architecture (Issue #9)
+- [ ] Remove SegmentArbiter over-engineering (Issue #5)
+- [ ] Remove TranscriptionSession (Issue #6)
+- [ ] Redesign transcribe workflow (Issue #7)
+- [ ] Rename polish → refinement (Issue #8)
+- [ ] Two-tier help system implementation (Issue #15)
+
+**Planned:**
+- [ ] Deprecate Whisper/Voxtral as primary engines (Issue #20)
+- [ ] Standardize batch-only engine interface (Issue #21)
+- [ ] Documentation alignment and release prep (Issue #1)
 
 ---
 
@@ -122,7 +158,7 @@ vociferous transcribe lecture_decoded_condensed.wav
 
 ```bash
 # Convenience:  runs decode → vad → condense → transcribe → refine
-vociferous transcribe-full lecture.mp3
+vociferous transcribe lecture.mp3
 ```
 
 **But:** Manual chaining must always remain possible.
@@ -139,6 +175,7 @@ vociferous transcribe-full lecture.mp3
 | **VAD** | Detect speech boundaries | ❌ Audio format, ❌ Silence removal |
 | **Condenser** | Remove silence using timestamps | ❌ VAD detection, ❌ Decoding |
 | **Recorder** | Capture microphone audio | ❌ Preprocessing, ❌ Transcription |
+| **Refiner** | Improve grammar/punctuation using LLM | ❌ ASR decoding, ❌ Audio preprocessing |
 
 **Note:** Engines are infrastructure modules called by workflows, not CLI-accessible components themselves. The CLI exposes workflow commands like `transcribe` which orchestrate engine usage internally.
 
@@ -268,17 +305,25 @@ graph TD
     T --> I
     T --> S
 
-    A --> A1["test_decode.py"]
-    A --> A2["test_vad.py"]
-    A --> A3["test_condenser.py"]
+    A --> A1["test_decoder_contract.py"]
+    A --> A2["test_vad_contract.py"]
+    A --> A3["test_condenser_contract.py"]
     A --> AA["artifacts/<br/>test outputs"]
 
-    E --> E1["test_whisper_engine.py"]
-    E --> E2["test_canary_qwen.py"]
+    E --> E1["test_whisper_turbo_refactored.py"]
+    E --> E2["test_canary_qwen_contract.py"]
     E --> EA["artifacts/<br/>test outputs"]
 
-    R --> R1["test_refiner.py"]
+    R --> R1["test_refiner_contract.py"]
     R --> RA["artifacts/<br/>test outputs"]
+
+    C --> C1["test_transcribe_command.py"]
+    C --> C2["test_decode_command.py"]
+
+    AP --> AP1["test_workflow.py"]
+    AP --> AP2["test_config_resolution.py"]
+
+    G --> G1["test_gui_integration.py"]
 
     I --> I1["test_full_pipeline.py"]
     I --> IA["artifacts/<br/>test outputs"]
@@ -326,6 +371,8 @@ graph LR
 - No component depends on another component's **internal state**
   
 - Data flows **forward only** (no backwards dependencies)
+  
+- Workflow orchestration is explicit and stateless—there is no `TranscriptionSession` or `SegmentArbiter`. Canary ASR receives condensed audio and must emit non-overlapping segments; refinement is a second pass over the resulting text.
   
 
 ---
@@ -395,20 +442,23 @@ vociferous transcribe audio.wav --engine canary_qwen --refine \
 
 ### **Complete Module List**
 
-Vociferous is organized into 10 modules, each with a specific responsibility:
+Vociferous is organized into **9 modules**, each with a clear responsibility and visibility boundary:
 
-| Module | Purpose | Contains CLI Components? | Key Responsibilities |
-|--------|---------|-------------------------|---------------------|
-| **audio** | Audio preprocessing pipeline | Yes | Decode, VAD, condense, record |
-| **engines** | Speech-to-text conversion | No (infrastructure) | Whisper, Canary-Qwen, Voxtral, Parakeet engines |
-| **refinement** (polish) | Text post-processing | No (future: Yes) | Grammar correction, fluency improvement |
-| **cli** | Command-line interface | N/A (is the CLI) | Typer commands, argument parsing, orchestration |
-| **app** | Application logic & workflows | No | Workflow orchestration, session management |
-| **config** | Configuration management | No | Settings, defaults, config file handling |
-| **domain** | Core domain models | No | Data structures, type definitions |
-| **sources** | Audio source abstractions | No | File readers, stream handlers |
-| **storage** | Persistent storage | No | Model cache, artifact storage |
-| **gui** | Graphical user interface | N/A (separate interface) | KivyMD-based GUI application |
+| Module | Purpose | CLI Components? | Key Responsibilities |
+|--------|---------|-----------------|---------------------|
+| **audio** | Audio preprocessing pipeline | ✅ Yes | Decode, VAD, condense, record |
+| **engines** | Speech-to-text conversion | ❌ No (infrastructure) | Canary-Qwen (default), Whisper Turbo, Voxtral |
+| **refinement** | Text post-processing via Canary LLM pass | ❌ No (internal, future CLI `refine`) | Grammar/punctuation refinement, prompt handling |
+| **cli** | Command-line interface entrypoints | ✅ Yes (workflow commands only) | Typer commands, argument parsing, help system |
+| **app** | Workflow orchestration | ❌ No | Transparent workflow functions (no sessions, no arbiters) |
+| **config** | Configuration management | ❌ No | Settings, defaults, config file handling |
+| **domain** | Core domain models & protocols | ❌ No | Typed data structures, contracts, errors |
+| **sources** | Audio input abstractions | ❌ No | File/memory/microphone sources producing files |
+| **gui** | Graphical user interface | ❌ No (separate interface) | KivyMD GUI wrapper around workflows |
+
+**Notes:**
+- Engines and refinement are infrastructure invoked by workflows and components; they are not exposed as standalone CLI commands.
+- The `app` module coordinates workflows explicitly—there is **no** `TranscriptionSession` or `SegmentArbiter`.
 
 ### **Module Organization Principles**
 
@@ -427,13 +477,12 @@ These modules are called by workflows, not directly by users:
 - Refinement modules improve text quality
 - Accessed through high-level commands like `transcribe`
 
-**3. Support Modules (config, domain, sources, storage)**
+**3. Support Modules (config, domain, sources)**
 
 These modules provide supporting functionality:
 - Configuration management
 - Data structure definitions
-- I/O abstractions
-- Persistent storage
+- I/O abstractions that emit files for downstream processing
 
 ---
 
@@ -456,8 +505,9 @@ These are individual components for debugging and development:
 - `vociferous decode` - Test audio decoding
 - `vociferous vad` - Test voice activity detection
 - `vociferous condense` - Test silence removal
-- `vociferous refine` - Test text refinement (future)
+- `vociferous refine` - Text-only refinement (planned CLI component; LLM pass)
 - `vociferous record` - Test microphone capture
+- `vociferous transcribe` - Full workflow orchestrator (shows how components chain)
 
 **Rationale:**
 
@@ -544,8 +594,8 @@ vociferous condense lecture_decoded_vad_timestamps.json lecture_decoded.wav
 | Concern | Audio Module | Engine Module |
 | --- | --- | --- |
 | **Responsibility** | Prepare audio for transcription | Convert speech to text |
-| **Operations** | Decode, VAD, condense, record | Transcribe, deduplicate |
-| **Output** | Clean audio files | Text segments |
+| **Operations** | Decode, VAD, condense, record | Transcribe (ASR), provide segments for refinement |
+| **Output** | Clean audio files | Text segments (non-overlapping) |
 | **No Overlap** | ❌ No transcription | ❌ No audio preprocessing |
 
 **Anti-pattern (Old Architecture):**
@@ -596,17 +646,16 @@ segments = engine.transcribe(condensed)
 | Module | Purpose | Contains Components? | Key Responsibilities |
 | --- | --- | --- | --- |
 | **audio** | Audio preprocessing | ✅ Yes | Decode, VAD, condense, record - prepares audio for transcription |
-| **engines** | Speech-to-text transcription | ❌ No* | Canary-Qwen, Whisper engines - called by workflows, not directly via CLI |
-| **polish** | Text post-processing | ❌ No | Grammar/punctuation refinement (rule-based or LLM-based polishing) |
-| **cli** | Command-line interface | ✅ Yes | Typer commands, argument parsing, user interaction |
-| **app** | Workflow orchestration | ❌ No | Pipeline coordination, session management, config resolution |
+| **engines** | Speech-to-text transcription | ❌ No* | Canary-Qwen, Whisper Turbo, Voxtral - invoked by workflows |
+| **refinement** | Text post-processing via Canary LLM | ❌ No (internal; future `refine` CLI) | Grammar/punctuation refinement, prompt handling |
+| **cli** | Command-line interface | ✅ Yes (workflows) | Typer commands, argument parsing, help tiers |
+| **app** | Workflow orchestration | ❌ No | Transparent workflow functions; no sessions, no arbiters |
 | **config** | Configuration management | ❌ No | Load/validate settings from files and CLI arguments |
 | **domain** | Core types and contracts | ❌ No | Models, exceptions, protocols, constants |
 | **sources** | Audio input sources | ❌ No | File readers, memory buffers, microphone capture |
 | **gui** | Graphical interface | ❌ No | KivyMD application, screens, UI components |
-| **storage** | Persistence layer | ❌ No | Session history, transcription repository |
 
-**\*Note:** Engines are not directly CLI-accessible. They are infrastructure called by the `transcribe` workflow components.
+**\*Note:** Engines are not directly CLI-accessible. They are infrastructure called by workflow commands such as `transcribe`.
 
 ---
 
@@ -617,9 +666,9 @@ Modules fall into four architectural categories:
 #### **1. Processing Modules**
 - **audio**: Transforms raw audio into standardized, preprocessed files
 - **engines**: Converts preprocessed audio into text transcripts
-- **polish**: Refines raw transcripts into polished text
+- **refinement**: Runs Canary LLM refinement over transcripts
 
-**Characteristic:** These modules perform domain transformations (audio → text → polished text)
+**Characteristic:** These modules perform domain transformations (audio → text → refined text)
 
 #### **2. Interface Modules**
 - **cli**: Command-line user interface
@@ -631,7 +680,6 @@ Modules fall into four architectural categories:
 - **config**: Manages system configuration
 - **domain**: Defines core types and contracts
 - **sources**: Provides audio input abstractions
-- **storage**: Handles persistence
 
 **Characteristic:** These modules provide foundational services used by other modules
 
@@ -651,68 +699,62 @@ Modules fall into four architectural categories:
 | Audio format conversion | `audio` | ❌ `engines`, ❌ `app` |
 | Speech detection (VAD) | `audio` | ❌ `engines`, ❌ `cli` |
 | Transcription algorithm | `engines` | ❌ `audio`, ❌ `app` |
-| Text grammar fixes | `polish` | ❌ `engines`, ❌ `audio` |
+| Text grammar fixes | `refinement` | ❌ `engines`, ❌ `audio` |
 | Command parsing | `cli` | ❌ `app`, ❌ `audio` |
 | Pipeline coordination | `app` | ❌ `cli`, ❌ `engines` |
 | Configuration loading | `config` | ❌ `cli`, ❌ `app` |
 | Data models | `domain` | ❌ Any specific module |
 | File/microphone input | `sources` | ❌ `audio`, ❌ `cli` |
 | UI screens | `gui` | ❌ `cli`, ❌ `app` |
-| Session history | `storage` | ❌ `app`, ❌ `engines` |
 
 #### **Module Interaction Flow**
 
 ```mermaid
 graph TD
-    CLI[cli Module]
-    GUI[gui Module]
-    APP[app Module]
-    CFG[config Module]
-    SRC[sources Module]
-    AUD[audio Module]
-    ENG[engines Module]
-    POL[polish Module]
-    DOM[domain Module]
-    STO[storage Module]
+        CLI[cli Module]
+        GUI[gui Module]
+        APP[app Module]
+        CFG[config Module]
+        SRC[sources Module]
+        AUD[audio Module]
+        ENG[engines Module]
+        REF[refinement Module]
+        DOM[domain Module]
 
-    CLI --> APP
-    GUI --> APP
-    APP --> CFG
-    APP --> SRC
-    APP --> AUD
-    APP --> ENG
-    APP --> POL
-    APP --> STO
+        CLI --> APP
+        GUI --> APP
+        APP --> CFG
+        APP --> SRC
+        APP --> AUD
+        APP --> ENG
+        APP --> REF
     
-    AUD --> DOM
-    ENG --> DOM
-    POL --> DOM
-    SRC --> DOM
-    STO --> DOM
-    CFG --> DOM
+        AUD --> DOM
+        ENG --> DOM
+        REF --> DOM
+        SRC --> DOM
+        CFG --> DOM
 
-    style CLI fill:#e1f5ff
-    style GUI fill:#e1f5ff
-    style APP fill:#fff4e1
-    style AUD fill:#e8f5e9
-    style ENG fill:#e8f5e9
-    style POL fill:#e8f5e9
-    style CFG fill:#f3e5f5
-    style DOM fill:#f3e5f5
-    style SRC fill:#f3e5f5
-    style STO fill:#f3e5f5
+        style CLI fill:#e1f5ff
+        style GUI fill:#e1f5ff
+        style APP fill:#fff4e1
+        style AUD fill:#e8f5e9
+        style ENG fill:#e8f5e9
+        style REF fill:#e8f5e9
+        style CFG fill:#f3e5f5
+        style DOM fill:#f3e5f5
+        style SRC fill:#f3e5f5
 ```
 
 **Data Flow Example:**
 ```
-User Input (cli/gui) 
-  → app orchestrates workflow
-  → sources provides audio input
-  → audio preprocesses (decode → VAD → condense)
-  → engines transcribes
-  → polish refines text
-  → storage persists results
-  → app returns to user interface
+User Input (cli/gui)
+    → app orchestrates workflow (no session objects)
+    → sources provides audio input
+    → audio preprocesses (decode → VAD → condense)
+    → engines transcribe preprocessed audio
+    → refinement improves transcript text via Canary LLM
+    → app returns results to the user interface
 ```
 
 ---
@@ -721,20 +763,20 @@ User Input (cli/gui)
 
 **Critical Understanding:** Not all modules need CLI-accessible components.
 
-#### **Modules WITH Components (CLI-accessible)**
+**Modules WITH Components (CLI-accessible)**
 
 **audio module:**
 ```bash
 vociferous decode audio.mp3       # ✅ Component
-vociferous vad audio.wav          # ✅ Component  
+vociferous vad audio.wav          # ✅ Component
 vociferous condense timestamps.json audio.wav  # ✅ Component
 vociferous record                 # ✅ Component
 ```
 
-**cli module:**
+**cli module (workflows):**
 ```bash
-vociferous transcribe-full audio.mp3  # ✅ Component (workflow)
-vociferous transcribe-canary audio.mp3  # ✅ Component (workflow)
+vociferous transcribe audio.mp3   # ✅ Workflow orchestrator (calls components + engines)
+# `vociferous refine` is planned as a developer-facing component for text-only refinement
 ```
 
 #### **Modules WITHOUT Components (Infrastructure)**
@@ -742,12 +784,17 @@ vociferous transcribe-canary audio.mp3  # ✅ Component (workflow)
 **engines module:**
 ```python
 # ❌ NOT directly callable via CLI
-# ✅ Called by app orchestration layer
-engine = EngineFactory.create("canary_qwen")
+# ✅ Called by app workflow functions
+engine = build_engine("canary_qwen")
 segments = engine.transcribe_file(audio_path)
 ```
 
-**Why?** Engines are infrastructure called by workflows, not standalone components. The `transcribe-full` and `transcribe-canary` CLI commands expose this functionality to users.
+**refinement module:**
+```python
+# ❌ NOT directly callable via CLI (refine CLI planned)
+# ✅ Invoked by workflows for Canary LLM pass
+refined = engine.refine_text(raw_text, instructions)
+```
 
 **config module:**
 ```python
@@ -771,27 +818,10 @@ source = FileSource(path)
 audio_data = source.read()
 ```
 
-**polish module:**
-```python
-# ❌ NOT directly callable via CLI
-# ✅ Called by transcribe-full workflow when --polish flag is used
-polisher = PolisherFactory.create(config)
-polished_text = polisher.polish(raw_transcript)
-```
-
-**Note:** The `transcribe-canary` command has a separate `--refine` flag that uses the Canary-Qwen engine's built-in LLM refinement, which is different from the polish module.
-
-**storage module:**
-```python
-# ❌ NOT a component
-# ✅ Infrastructure for persistence
-history.save_session(session)
-```
-
 **gui module:**
 ```python
-# ❌ NOT CLI-accessible (different interface type)
-# ✅ Alternative user interface
+# ❌ NOT CLI-accessible (separate interface)
+# ✅ Alternative UI layered on workflows
 app = VociferousGUI()
 app.run()
 ```
@@ -805,13 +835,13 @@ When adding functionality, ask:
 1. **Which module's purpose does this serve?**
    - Audio transformation → `audio`
    - Transcription → `engines`
-   - Text refinement → `polish`
+    - Text refinement → `refinement`
    - User interaction → `cli` or `gui`
    - Workflow coordination → `app`
    - Configuration → `config`
    - Core types → `domain`
    - Input handling → `sources`
-   - Persistence → `storage`
+    - Persistence helpers → handled within workflows as needed (not a separate module)
 
 2. **Does it need to be a CLI component?**
    - Independently testable operation → Consider making it a component
@@ -873,6 +903,8 @@ class TranscriptionEngine:
     def flush(): ...
     def poll_segments(): ...  # When to poll? How to handle overlaps?
 ```
+
+**Guardrail:** Any `start/push_audio/flush/poll` API you see is legacy—do not reintroduce streaming abstractions. Engines take a **file path in** and return **full-sequence segments out**.
 
 **Note:** While Vociferous uses batch processing, individual components like `record` can still capture audio from the microphone. The difference is that recording produces a **complete file** which is then processed in batch, rather than streaming audio chunks directly to the transcription engine.
   
@@ -1203,9 +1235,8 @@ Shows all components including low-level debugging tools.
 - `record` - Capture microphone audio
 
 **Workflow Commands:**
-- `transcribe` - Main transcription workflow
-- `transcribe-full` - Full pipeline with all preprocessing
-- `transcribe-canary` - Canary-Qwen engine transcription
+- `transcribe` - Main transcription workflow (decode → VAD → condense → Canary ASR → Canary Refiner)
+- `refine` - Text-only refinement (planned CLI; Canary LLM pass)
 
 **Utilities:**
 - `languages` - List supported language codes
@@ -1228,9 +1259,8 @@ Audio Components:
   record     Capture microphone audio
 
 Workflow Commands:
-  transcribe       Main transcription workflow
-  transcribe-full  Full pipeline with preprocessing
-  transcribe-canary Canary-Qwen engine transcription
+    transcribe   Main transcription workflow (decode → VAD → condense → Canary ASR → Canary Refiner)
+    refine       Text-only refinement (planned CLI; Canary LLM mode)
 
 Utilities:
   languages  List supported language codes
@@ -1262,7 +1292,7 @@ Note: These low-level components allow manual pipeline debugging.
 
 - ✅ All commands from user help
 - ✅ Low-level audio processing components (decode, vad, condense)
-- ✅ Alternative engines/workflows (transcribe-canary, transcribe-full)
+- ✅ Workflow orchestrators (transcribe) and refinement tools (planned `refine`)
 - ✅ Recording and capture tools
 - ✅ Everything needed for manual debugging
 

@@ -19,7 +19,7 @@ from vociferous.domain.model import (
     TranscriptionPreset,
 )
 from vociferous.engines.model_registry import normalize_model_name
-from vociferous.polish.base import PolisherConfig
+from vociferous.refinement.base import RefinerConfig
 from vociferous.sources import FileSource
 
 
@@ -127,7 +127,7 @@ def build_engine_config(
     )
 
 
-def build_polisher_config(
+def build_refiner_config(
     *,
     enabled: bool,
     model: str | None,
@@ -136,9 +136,9 @@ def build_polisher_config(
     temperature: float = 0.2,
     gpu_layers: int = 0,
     context_length: int = 2048,
-) -> PolisherConfig:
-    """Build a PolisherConfig from CLI options."""
-    return PolisherConfig(
+) -> RefinerConfig:
+    """Build a RefinerConfig from CLI options."""
+    return RefinerConfig(
         enabled=enabled,
         model=model,
         params={
@@ -156,7 +156,7 @@ class TranscribeConfigBundle:
     """Bundle of all configs needed for transcription."""
     engine_config: EngineConfig
     options: TranscriptionOptions
-    polisher_config: PolisherConfig
+    refiner_config: RefinerConfig
     preset: str
     numexpr_threads: int | None
 
@@ -167,7 +167,7 @@ def build_transcribe_configs_from_cli(
     engine: EngineKind,
     language: str,
     preset: TranscriptionPreset | None,
-    polish: bool | None,
+    refine: bool | None,
 ) -> TranscribeConfigBundle:
     """Build transcription configs from CLI user-facing options only.
     
@@ -224,17 +224,21 @@ def build_transcribe_configs_from_cli(
         cast(TranscriptionPreset, preset_lower) if preset_lower in {"high_accuracy", "balanced", "fast"} else None
     )
 
-    # Polisher config from AppConfig only
-    polisher_enabled = app_config.polish_enabled if polish is None else polish
+    # Refiner config from AppConfig only (fallback to legacy polish fields)
+    refiner_enabled = (
+        app_config.refinement_enabled
+        if refine is None
+        else refine
+    )
 
-    polisher_config = build_polisher_config(
-        enabled=polisher_enabled,
-        model=app_config.polish_model,
-        base_params=app_config.polish_params,
-        max_tokens=int(app_config.polish_params.get("max_tokens", "128")),
-        temperature=float(app_config.polish_params.get("temperature", "0.2")),
-        gpu_layers=int(app_config.polish_params.get("gpu_layers", "0")),
-        context_length=int(app_config.polish_params.get("context_length", "2048")),
+    refiner_config = build_refiner_config(
+        enabled=refiner_enabled,
+        model=app_config.refinement_model,
+        base_params=app_config.refinement_params,
+        max_tokens=int(app_config.refinement_params.get("max_tokens", "128")),
+        temperature=float(app_config.refinement_params.get("temperature", "0.2")),
+        gpu_layers=int(app_config.refinement_params.get("gpu_layers", "0")),
+        context_length=int(app_config.refinement_params.get("context_length", "2048")),
     )
 
     # Build engine config using resolved preset values + config defaults
@@ -266,7 +270,7 @@ def build_transcribe_configs_from_cli(
     return TranscribeConfigBundle(
         engine_config=engine_config,
         options=options,
-        polisher_config=polisher_config,
+        refiner_config=refiner_config,
         preset=preset_lower,
         numexpr_threads=app_config.numexpr_max_threads,
     )

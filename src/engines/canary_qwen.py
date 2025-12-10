@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 """
-Lightweight Canary-Qwen 2.5B engine wrapper.
+Canary-Qwen 2.5B dual-pass engine (ASR + refinement).
 
-This implementation is intentionally dependency-light and defaults to a mock
-path that does not download large models during tests. When torch/transformers
-are available and `use_mock` is set to false, the class can be extended to load
-the real model.
+Notes:
+- Defaults to a mock path to avoid heavyweight downloads during tests.
+- When torch/transformers are present and `use_mock` is false, we can lazily
+    load the real model; the stub keeps the API stable for future expansion.
 """
 
 from pathlib import Path
@@ -22,8 +22,19 @@ from vociferous.domain.model import (
 from vociferous.engines.model_registry import normalize_model_name
 
 
+DEFAULT_REFINE_PROMPT = (
+    "Refine the following transcript by:\n"
+    "1. Correcting grammar and punctuation\n"
+    "2. Fixing capitalization\n"
+    "3. Removing filler words and false starts\n"
+    "4. Improving fluency while preserving meaning\n"
+    "5. Maintaining the speaker's intent\n\n"
+    "Do not add or remove information. Only improve clarity and correctness."
+)
+
+
 class CanaryQwenEngine(TranscriptionEngine):
-    """Minimal dual-mode stub that fits the streaming engine protocol."""
+    """Dual-pass Canary wrapper with batch `transcribe_file` and `refine_text`."""
 
     def __init__(self, config: EngineConfig) -> None:
         self.config = config
@@ -31,58 +42,10 @@ class CanaryQwenEngine(TranscriptionEngine):
         self.device = config.device
         self.precision = config.compute_type
         params = {k.lower(): v for k, v in (config.params or {}).items()}
-        self.mode = params.get("mode", "asr")
         self.use_mock = params.get("use_mock", "true").lower() != "false"
-        self._buffer = bytearray()
-        self._segments: list[TranscriptSegment] = []
-        self._options: TranscriptionOptions | None = None
         self._model: Any | None = None
         self._processor: Any | None = None
-        self._pending_text: str = ""
-        self._last_timestamp_ms: int = 0
-
-    # Streaming protocol -------------------------------------------------
-    def start(self, options: TranscriptionOptions) -> None:
-        self._options = options
-        self._buffer = bytearray()
-        self._segments = []
-        self._pending_text = ""
-        if not self.use_mock:
-            self._lazy_model()
-
-    def push_audio(self, pcm16: bytes, timestamp_ms: int) -> None:
-        self._buffer.extend(pcm16)
-        self._last_timestamp_ms = timestamp_ms
-
-    def flush(self) -> None:
-        if self.mode == "llm":
-            text_input = self._pending_text.strip()
-            if not text_input:
-                return
-            text = self.refine_text(text_input)
-            duration_s = 0.0
-            self._pending_text = ""
-        else:
-            if not self._buffer:
-                return
-            text = self._transcribe_bytes(self._buffer)
-            duration_s = self._estimate_duration(self._buffer)
-            self._buffer = bytearray()
-
-        language = self._options.language if self._options else "en"
-        segment = TranscriptSegment(
-            text=text,
-            start_s=0.0,
-            end_s=duration_s,
-            language=language,
-            confidence=1.0 if self.use_mock else 0.0,
-        )
-        self._segments.append(segment)
-
-    def poll_segments(self) -> list[TranscriptSegment]:
-        segments = list(self._segments)
-        self._segments.clear()
-        return segments
+        self._lazy_model()
 
     @property
     def metadata(self) -> EngineMetadata:  # pragma: no cover - simple data accessor
@@ -92,40 +55,36 @@ class CanaryQwenEngine(TranscriptionEngine):
             precision=self.precision,
         )
 
-    # Convenience methods -----------------------------------------------
+    # Batch interface ----------------------------------------------------
     def transcribe_file(self, audio_path: Path, options: TranscriptionOptions) -> list[TranscriptSegment]:
         pcm_bytes = self._load_audio_bytes(audio_path)
-        self.start(options)
-        self.push_audio(pcm_bytes, 0)
-        self.flush()
-        return self.poll_segments()
+        transcript_text = self._transcribe_bytes(pcm_bytes)
+        duration_s = self._estimate_duration(pcm_bytes)
+        language = options.language if options and options.language else "en"
+        segment = TranscriptSegment(
+            text=transcript_text,
+            start_s=0.0,
+            end_s=duration_s,
+            language=language,
+            confidence=1.0 if self.use_mock else 0.0,
+        )
+        return [segment]
 
     def refine_text(self, raw_text: str, instructions: str | None = None) -> str:
-        if not instructions:
-            instructions = (
-                "Fix any transcription errors, add punctuation, and improve readability "
-                "without changing the meaning."
-            )
+        prompt = instructions or DEFAULT_REFINE_PROMPT
         cleaned = raw_text.strip()
         if not cleaned:
             return ""
-        # Minimal refinement: ensure sentence-style output.
-        if len(cleaned) == 1:
-            refined = cleaned.upper()
-        else:
-            refined = cleaned[0].upper() + cleaned[1:]
-        if not refined.rstrip().endswith((".", "!", "?")):
-            refined = refined.rstrip() + "."
-        if self.use_mock:
-            decorated = f"{refined} ({instructions})"
-            if not decorated.endswith((".", "!", "?")):
-                decorated = decorated.rstrip() + "."
-            return decorated
-        return refined
 
-    def set_text_input(self, text: str) -> None:
-        """Provide text directly for LLM-only mode without touching audio buffers."""
-        self._pending_text = text or ""
+        if self.use_mock or self._model is None or self._processor is None:
+            # Mock refinement: capitalize and append prompt marker for visibility.
+            normalized = cleaned[0].upper() + cleaned[1:] if len(cleaned) > 1 else cleaned.upper()
+            if not normalized.rstrip().endswith((".", "!", "?")):
+                normalized = normalized.rstrip() + "."
+            return f"{normalized} [refined]"
+
+        # Real refinement path placeholder; keep API stable for future model wiring.
+        return cleaned if cleaned else ""
 
     # Internals ---------------------------------------------------------
     def _lazy_model(self) -> None:

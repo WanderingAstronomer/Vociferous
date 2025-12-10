@@ -47,4 +47,5 @@ def register_vad(app: typer.Typer) -> None:
         typer.echo(f"Found {len(timestamps)} segments ({speech_duration:.1f}s of speech)")
         typer.echo(f"✓ Saved: {output_path}")
 
+    vad_cmd.dev_only = True  # type: ignore[attr-defined]
     return None

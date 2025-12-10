@@ -43,9 +43,6 @@ class VoxtralLocalEngine(TranscriptionEngine):
         self.cache_dir = cache_root
         self._model: Any | None = None
         self._processor: Any | None = None
-        self._options: TranscriptionOptions | None = None
-        self._buffer: bytearray = bytearray()
-        self._segments: list[TranscriptSegment] = []
 
     def _lazy_model(self):
         if self._model is not None:
@@ -72,74 +69,6 @@ class VoxtralLocalEngine(TranscriptionEngine):
                 dtype=dtype,
                 cache_dir=str(self.cache_dir),
             ).to(self.device)
-
-    def start(self, options: TranscriptionOptions) -> None:
-        self._options = options
-        self._buffer = bytearray()
-        self._segments = []
-        self._lazy_model()
-
-    def push_audio(self, pcm16: bytes, timestamp_ms: int) -> None:
-        self._buffer.extend(pcm16)
-
-    def flush(self) -> None:
-        if not self._buffer:
-            return
-        if self._options is None:
-            raise RuntimeError("Options not initialized")
-        if self._processor is None or self._model is None:
-            raise RuntimeError("Model not loaded")
-
-        import torch
-
-        # Process audio efficiently
-        audio_np = np.frombuffer(self._buffer, dtype=np.int16).astype("float32") / PCM16_SCALE
-
-        options = self._options
-        processor = self._processor
-        model = self._model
-
-        inputs = processor.apply_transcription_request(
-            audio=[audio_np],
-            language=options.language or "en",
-            model_id=self.model_name,
-            sampling_rate=16000,
-            format=["wav"],
-        ).to(self.device, dtype=model.dtype)
-
-        gen_kwargs = {}
-        params = options.params
-        if "max_new_tokens" in params:
-            gen_kwargs["max_new_tokens"] = int(params["max_new_tokens"])
-        else:
-            gen_kwargs["max_new_tokens"] = 2048
-
-        # Note: temperature is not supported for Voxtral transcription mode
-
-        with torch.inference_mode():
-            outputs = model.generate(**inputs, **gen_kwargs)
-
-        input_length = inputs.input_ids.shape[1]
-        new_tokens = outputs[:, input_length:]
-        transcription = processor.batch_decode(
-            new_tokens, skip_special_tokens=True
-        )[0]
-
-        if transcription.strip():
-            self._segments.append(TranscriptSegment(
-                text=transcription.strip(),
-                start_s=0.0,
-                end_s=len(audio_np) / 16000.0,
-                language=options.language or "en",
-                confidence=1.0
-            ))
-
-        self._buffer.clear()
-
-    def poll_segments(self) -> list[TranscriptSegment]:
-        segs = list(self._segments)
-        self._segments.clear()
-        return segs
 
     def transcribe_file(
         self, 

@@ -1,27 +1,28 @@
-"""Polishing sink decorator for transcript post-processing."""
+"""Refining sink decorator for transcript post-processing."""
 from __future__ import annotations
 
 from vociferous.domain import TranscriptSegment, TranscriptSink, TranscriptionResult
-from vociferous.polish.base import Polisher
+from vociferous.refinement.base import Refiner
 
 
-class PolishingSink(TranscriptSink):
-    """Decorator that polishes text before forwarding to inner sink.
+class RefiningSink(TranscriptSink):
+    """Decorator that refines text before forwarding to inner sink.
 
     This implements the Decorator pattern to keep polishing as a separate
     concern from core transcription, following the Single Responsibility Principle.
     """
 
-    def __init__(self, inner: TranscriptSink, polisher: Polisher) -> None:
+    def __init__(self, inner: TranscriptSink, refiner: Refiner) -> None:
         self._inner = inner
-        self._polisher = polisher
+        self._refiner = refiner
 
     def handle_segment(self, segment: TranscriptSegment) -> None:
         """Forward segments directly to inner sink without polishing."""
         self._inner.handle_segment(segment)
 
     def complete(self, result: TranscriptionResult) -> None:
-        """Polish the final text and forward to inner sink."""
-        polished_text = self._polisher.polish(result.text)
-        polished_result = result.model_copy(update={"text": polished_text})
-        self._inner.complete(polished_result)
+        """Refine the final text and forward to inner sink."""
+        refined_text = self._refiner.refine(result.text, None)
+        refined_result = result.model_copy(update={"text": refined_text})
+        self._inner.complete(refined_result)
+

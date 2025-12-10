@@ -168,5 +168,9 @@ sessions/
 recordings/
 output/
 
+# Test artifacts (keep structure, ignore files)
+tests/*/artifacts/*
+!tests/*/artifacts/.gitkeep
+
 # Sample files
 samples/

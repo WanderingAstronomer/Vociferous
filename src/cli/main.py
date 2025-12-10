@@ -4,9 +4,8 @@ from pathlib import Path
 import logging
 import shutil
 
-from vociferous.app import TranscriptionSession, configure_logging
-from vociferous.app.sinks import PolishingSink
-from vociferous.sources import FileSource
+from vociferous.app import configure_logging, transcribe_workflow
+from vociferous.app.sinks import RefiningSink
 from vociferous.config import load_config
 from vociferous.config.languages import WHISPER_LANGUAGES, VOXTRAL_CORE_LANGUAGES
 from vociferous.domain.model import TranscriptionPreset, EngineKind
@@ -14,15 +13,14 @@ from vociferous.domain.exceptions import (
     DependencyError, EngineError, AudioDecodeError, ConfigurationError
 )
 from vociferous.engines.factory import build_engine
-from vociferous.polish.factory import build_polisher
-from vociferous.cli.helpers import build_audio_source, build_sink, build_transcribe_configs_from_cli
+from vociferous.refinement.factory import build_refiner
+from vociferous.cli.helpers import build_sink, build_transcribe_configs_from_cli
 from vociferous.cli.commands import (
     register_decode,
     register_vad,
     register_condense,
     register_record,
-    register_transcribe_full,
-    register_transcribe_canary,
+    register_refine,
 )
 
 try:
@@ -91,6 +89,51 @@ class BrightTyperGroup(TyperGroup):
         self.format_help(ctx, formatter)
         return formatter.getvalue()
 
+    def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        """Format commands with optional developer-tier visibility."""
+        show_dev_help = bool(ctx.params.get("dev_help", False))
+
+        commands: list[tuple[str | None, str, str]] = []
+        for subcommand in self.list_commands(ctx):
+            cmd = self.get_command(ctx, subcommand)
+            if cmd is None or cmd.hidden:
+                continue
+            if not show_dev_help and getattr(cmd.callback, "dev_only", False):
+                continue
+            help_text = cmd.get_short_help_str(limit=100)
+            panel = getattr(cmd.callback, "rich_help_panel", None) if cmd.callback else None
+            commands.append((panel, subcommand, help_text))
+
+        if not commands:
+            return
+
+        if show_dev_help:
+            sections: list[tuple[str, list[tuple[str, str]]]] = []
+            panels = (
+                "Core Commands",
+                "Audio Components",
+                "Refinement Components",
+                "Utilities",
+            )
+            for panel_name in panels:
+                grouped = [(name, help_text) for panel, name, help_text in commands if panel == panel_name]
+                if grouped:
+                    sections.append((panel_name, grouped))
+
+            other = [(name, help_text) for panel, name, help_text in commands if panel not in panels]
+            if other:
+                sections.append(("Other Commands", other))
+
+            for title, entries in sections:
+                with formatter.section(title):
+                    for name, help_text in entries:
+                        formatter.write_text(f"  {name:<15} {help_text}")
+        else:
+            with formatter.section("Commands"):
+                for _, name, help_text in commands:
+                    formatter.write_text(f"  {name:<15} {help_text}")
+            formatter.write_text("\nFor developer tools, use: vociferous --dev-help")
+
 app = typer.Typer(
     help="""[bold cyan]Vociferous[/bold cyan] - Local-first speech transcription.
 No cloud. No telemetry. Local engines only.
@@ -118,7 +161,6 @@ cli_app = app  # alias for embedding
 # DEVELOPER TIER (--dev-help):
 #   - All user-tier commands PLUS:
 #   - Low-level audio components: decode, vad, condense, record
-#   - Alternative workflows: transcribe-full, transcribe-canary
 #   - Manual pipeline debugging tools
 #
 # CATEGORIZATION CRITERIA:
@@ -142,18 +184,28 @@ register_decode(app)        # rich_help_panel="Audio Components"
 register_vad(app)           # rich_help_panel="Audio Components"
 register_condense(app)      # rich_help_panel="Audio Components"
 register_record(app)        # rich_help_panel="Audio Components"
-
-# Developer-tier: Alternative workflow commands
-register_transcribe_full(app)    # Full preprocessing pipeline
-register_transcribe_canary(app)  # Canary-Qwen engine
+register_refine(app)        # rich_help_panel="Audio Components"
 
 # User-tier commands are defined below: transcribe, languages, check
 
 
 
 @app.callback(invoke_without_command=True)
-def main_callback(ctx: typer.Context) -> None:
+def main_callback(
+    ctx: typer.Context,
+    dev_help: bool = typer.Option(
+        False,
+        "--dev-help",
+        help="Show developer commands and components",
+        is_flag=True,
+    ),
+) -> None:
     """Show a clean welcome panel when no subcommand is provided."""
+    if dev_help and ctx.invoked_subcommand is None:
+        ctx.params["dev_help"] = True
+        console.print(ctx.command.get_help(ctx))
+        raise typer.Exit(code=0)
+
     if ctx.invoked_subcommand is not None:
         return
 
@@ -191,15 +243,14 @@ def main_callback(ctx: typer.Context) -> None:
 def transcribe(
     file: Path = typer.Argument(..., metavar="FILE", help="Audio file to transcribe"),
     engine: EngineKind = typer.Option(
-        "whisper_turbo",
+        "canary_qwen",
         "--engine",
         "-e",
         rich_help_panel="Core Options",
         help=(
             "Transcription engine to use. "
-            "'whisper_turbo' is fast and accurate. "
-            "'voxtral_local' uses Mistral for smart punctuation. "
-            "'canary_qwen' provides a dual ASR + LLM path."
+            "'canary_qwen' is the primary default (dual ASR + LLM). "
+            "'whisper_turbo' and 'voxtral_local' are legacy options."
         ),
     ),
     language: str = typer.Option(
@@ -226,19 +277,34 @@ def transcribe(
         case_sensitive=False,
         show_default=False,
     ),
-    polish: bool | None = typer.Option(
+    keep_intermediates: bool | None = typer.Option(
         None,
-        "--polish/--no-polish",
+        "--keep-intermediates/--no-keep-intermediates",
+        help="Keep decoded/vad/condensed files (default follows config).",
         rich_help_panel="Core Options",
-        help="Post-process final transcript text (enable to polish, disable to skip even if enabled in config).",
         show_default=False,
+    ),
+    refine: bool | None = typer.Option(
+        None,
+        "--refine/--no-refine",
+        help="Enable or disable second-pass refinement when the engine supports it.",
+        show_default=False,
+        rich_help_panel="Core Options",
+    ),
+    refine_instructions: str | None = typer.Option(
+        None,
+        "--refine-instructions",
+        help="Custom refinement instructions (engines that support dual-pass).",
+        show_default=False,
+        rich_help_panel="Core Options",
     ),
 ) -> None:
     """Transcribe an audio file to text using local ASR engines.
 
     ENGINES:
-      whisper_turbo - Fast, accurate, works offline (default)
-      voxtral_local - Smart punctuation & grammar (offline, slower)
+            canary_qwen   - Dual-pass ASR + refinement (default, mock-friendly)
+            whisper_turbo - Fast, accurate, works offline (legacy)
+            voxtral_local - Smart punctuation & grammar (legacy, slower)
 
     PRESETS:
       fast           - Speed optimized (small model, batch)
@@ -251,10 +317,10 @@ def transcribe(
       vociferous transcribe recording.wav -l es --preset high_accuracy
 
     ADVANCED:
-      Edit ~/.config/vociferous/config.toml for:
-                - Model selection, device (CPU/GPU), compute precision
-                - Batching, VAD, chunk sizes, polish settings
-                                - Toggle polishing per run with --polish / --no-polish
+    Edit ~/.config/vociferous/config.toml for:
+            - Model selection, device (CPU/GPU), compute precision
+            - Batching, VAD, chunk sizes, refinement settings
+            - Toggle refinement per run with --refine / --no-refine
         
     SEE ALSO:
       vociferous languages  - List supported language codes
@@ -269,34 +335,42 @@ def transcribe(
         engine=engine,
         language=language,
         preset=preset,
-        polish=polish,
+        refine=refine,
     )
+
+    # Resolve intermediate retention (CLI overrides config)
+    base_keep = config.keep_intermediates or (not config.artifacts.cleanup_intermediates)
+    keep_intermediates_choice = keep_intermediates if keep_intermediates is not None else base_keep
     
     # Apply numexpr thread limit if configured
     if bundle.numexpr_threads is not None:
         import os
         os.environ["NUMEXPR_MAX_THREADS"] = str(bundle.numexpr_threads)
 
-    # Build engine and polisher
-    polisher = None
+    # Derive refinement preference
+    refine_enabled = refine
+    if refine_enabled is None:
+        # Default: follow config when using Canary-Qwen; otherwise disable
+        refine_enabled = engine == "canary_qwen" and config.canary_qwen_refine_by_default
+    refine_text = refine_instructions or config.canary_qwen_refinement_instructions
+
+    # Build engine and optional refiner
+    refiner = None
     try:
         engine_adapter = build_engine(engine, bundle.engine_config)
-        if bundle.polisher_config.enabled:
-            polisher = build_polisher(bundle.polisher_config)
+        if bundle.refiner_config.enabled:
+            refiner = build_refiner(bundle.refiner_config)
     except (DependencyError, EngineError) as exc:
         typer.echo(f"Engine initialization error: {exc}", err=True)
         raise typer.Exit(code=3) from exc
     except ConfigurationError as exc:
-        typer.echo(f"Polisher error: {exc}", err=True)
+        typer.echo(f"Refiner error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
 
-    # Build audio source with optional preprocessing
-    source = build_audio_source(file, config)
-    
     # Build output sink
     sink = build_sink(output=output)
-    if polisher is not None:
-        sink = PolishingSink(sink, polisher)
+    if refiner is not None:
+        sink = RefiningSink(sink, refiner)
 
     # Validate file exists before showing banner
     if not file.exists():
@@ -336,18 +410,28 @@ def transcribe(
     )
     console.print(banner)
 
-    session = TranscriptionSession()
-
     try:
-        session.start(source, engine_adapter, sink, bundle.options, engine_kind=engine)
-        session.join()
+        result = transcribe_workflow(
+            file,
+            engine_kind=engine,
+            engine_config=bundle.engine_config,
+            options=bundle.options,
+            keep_intermediates=keep_intermediates_choice,
+            artifact_config=config.artifacts,
+            refine=refine_enabled,
+            refine_instructions=refine_text if refine_enabled else None,
+            engine=engine_adapter,
+        )
+        for segment in result.segments:
+            sink.handle_segment(segment)
+        sink.complete(result)
     except FileNotFoundError as exc:
         console.print(Panel(f"[red]{exc}[/red]", title="File Not Found", border_style="red"))
         raise typer.Exit(code=2) from exc
     except EngineError as exc:
         console.print(Panel(f"[red]{exc}[/red]", title="Engine Error", border_style="red"))
         raise typer.Exit(code=4) from exc
-    except (AudioDecodeError, ConfigurationError) as exc:
+    except (AudioDecodeError, ConfigurationError, ValueError) as exc:
         console.print(Panel(f"[red]{exc}[/red]", title="Configuration Error", border_style="red"))
         raise typer.Exit(code=2) from exc
     except Exception as exc:  # pragma: no cover - safety net

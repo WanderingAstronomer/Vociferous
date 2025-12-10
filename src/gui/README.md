@@ -18,7 +18,7 @@ The Vociferous GUI is the graphical user interface for Vociferous, built with Ki
 ### Settings
 All CLI options are available in the GUI settings panel:
 - **Engine Configuration**
-  - Engine selection (whisper_turbo, voxtral_local)
+  - Engine selection (canary_qwen default; whisper_turbo/voxtral_local legacy)
   - Model selection
   - Device selection (auto, cpu, cuda)
   - Compute type configuration

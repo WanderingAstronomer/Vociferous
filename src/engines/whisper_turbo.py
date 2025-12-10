@@ -4,16 +4,14 @@ import logging
 import re
 import wave
 from pathlib import Path
-from typing import Any, Iterable, List, Mapping, cast
+from typing import Any, Mapping
 import os
-from unittest.mock import MagicMock
 
 import numpy as np
 
 from vociferous.domain.model import (
     DEFAULT_MODEL_CACHE_DIR,
     DEFAULT_WHISPER_MODEL,
-    AudioChunk,
     EngineConfig,
     EngineMetadata,
     TranscriptSegment,
@@ -29,7 +27,6 @@ from vociferous.engines.presets import (
     get_preset_config,
     resolve_preset_name,
 )
-from vociferous.app.arbiter import SegmentArbiter
 
 logger = logging.getLogger(__name__)
 
@@ -71,13 +68,7 @@ def _int_setting(cfg: WhisperPreset, key: str, default: int) -> int:
 
 
 class WhisperTurboEngine(TranscriptionEngine):
-    """
-    Stateful, push-based faster-whisper adapter with buffering.
-    
-    Note: Internal VAD has been removed. Audio should be preprocessed 
-    (decoded, VAD'd, condensed) before being passed to the engine.
-    For batch processing of preprocessed files, use transcribe_file().
-    """
+    """Batch-only faster-whisper adapter for preprocessed audio files."""
 
     def __init__(self, config: EngineConfig) -> None:
         self.config = config
@@ -86,6 +77,8 @@ class WhisperTurboEngine(TranscriptionEngine):
         raw_preset = params.get("preset") or params.get("profile")
         preset_name, preset_explicit = resolve_preset_name(raw_preset, WHISPER_TURBO_PRESETS, default="balanced")
         self.preset = preset_name
+
+        self.use_mock = _bool_param(params, "use_mock", False)
 
         preset_cfg = get_preset_config(self.preset, WHISPER_TURBO_PRESETS, "balanced")
         use_preset_model = (
@@ -111,54 +104,19 @@ class WhisperTurboEngine(TranscriptionEngine):
         self._model: Any | None = None
         self._pipeline: Any | None = None
 
-        # Buffering state
-        self._buffer = bytearray()
-        self._options: TranscriptionOptions | None = None
-        self._segments: List[TranscriptSegment] = []
-        self._stream_offset_s = 0.0  # Track cumulative time offset for accurate timestamps
-
         # Engine params
-        default_batching = self.preset != "custom"
+        default_batching = (self.preset != "custom") and not self.use_mock
         self.enable_batching = _bool_param(params, "enable_batching", default_batching)
         batch_default = int(params.get("batch_size", "0") or 0) or (8 if self.enable_batching else 1)
         self.batch_size = max(1, batch_default)
         self.word_timestamps = _bool_param(params, "word_timestamps", False)
         self.clean_disfluencies = _bool_param(params, "clean_disfluencies", True)
 
-        # Configurable parameters (could be in config.params)
-        # Use larger window on GPU
-        preset_window = _float_setting(preset_cfg, "window_sec", 30.0 if self.device == "cuda" else 12.0)
-        preset_hop = _float_setting(preset_cfg, "hop_sec", 4.0)
-        self.window_sec = float(params.get("window_sec", preset_window))
-        self.hop_sec = float(params.get("hop_sec", preset_hop))
-        self.min_emit_sec = float(params.get("min_emit_sec", 1.0))
-        self.sample_rate = 16000
-        self.bytes_per_sample = 2  # PCM16 = 2 bytes per sample
-        # Prevent OOM: max buffer size (60 seconds ≈ 1.83MB for 16kHz mono PCM16)
-        self.max_buffer_sec = float(params.get("max_buffer_sec", 60.0))
-        self.max_buffer_bytes = int(self.max_buffer_sec * self.sample_rate * self.bytes_per_sample)
-
         beam_default = _int_setting(preset_cfg, "beam_size", 1)
         self.default_beam_size = int(params.get("default_beam_size", beam_default))
         temp_default = _float_setting(preset_cfg, "temperature", 0.0)
         self.default_temperature = float(params.get("default_temperature", temp_default))
 
-        # Segment arbiter configuration (disabled by default since VAD is off)
-        self.use_segment_arbiter = _bool_param(params, "use_segment_arbiter", False)
-        self.arbiter_min_duration_s = float(params.get("arbiter_min_duration_s", 1.0))
-        self.arbiter_min_words = int(params.get("arbiter_min_words", 4))
-        self.arbiter_hard_break_s = float(params.get("arbiter_hard_break_s", 1.5))
-        self.arbiter_soft_break_s = float(params.get("arbiter_soft_break_s", 0.7))
-
-        # Initialize segment arbiter
-        self._arbiter: SegmentArbiter | None = None
-        if self.use_segment_arbiter:
-            self._arbiter = SegmentArbiter(
-                min_segment_duration_s=self.arbiter_min_duration_s,
-                min_segment_words=self.arbiter_min_words,
-                hard_break_silence_s=self.arbiter_hard_break_s,
-                soft_break_silence_s=self.arbiter_soft_break_s,
-            )
 
     def _resolve_precision(self, preset: str, device: str) -> str:
         preset_cfg = get_preset_config(preset, WHISPER_TURBO_PRESETS, "balanced")
@@ -171,6 +129,30 @@ class WhisperTurboEngine(TranscriptionEngine):
 
     def _lazy_model(self):
         if self._model is not None:
+            return
+
+        if self.use_mock:
+            class _MockSegment:
+                def __init__(self, text: str, start: float, end: float, avg_logprob: float = 0.0):
+                    self.text = text
+                    self.start = start
+                    self.end = end
+                    self.avg_logprob = avg_logprob
+
+            class _MockModel:
+                def transcribe(self, audio_np: np.ndarray, **kwargs):
+                    duration_s = float(len(audio_np)) / 16000.0 if len(audio_np) else 0.0
+                    return [
+                        _MockSegment(
+                            text="mock whisper transcript",
+                            start=0.0,
+                            end=duration_s,
+                            avg_logprob=1.0,
+                        )
+                    ], None
+
+            self._model = _MockModel()
+            self._pipeline = None
             return
         try:
             from faster_whisper import WhisperModel
@@ -190,13 +172,6 @@ class WhisperTurboEngine(TranscriptionEngine):
             download_root=str(self.cache_dir),
             local_files_only=False,  # Allow model download if not cached
         )
-
-        # Provide stable attributes for test doubles
-        if isinstance(self._model, MagicMock):
-            fe = getattr(self._model, "feature_extractor", MagicMock())
-            if isinstance(fe, MagicMock):
-                fe.sampling_rate = 16000
-            self._model.feature_extractor = fe
 
         if self.enable_batching:
             try:
@@ -271,117 +246,9 @@ class WhisperTurboEngine(TranscriptionEngine):
             except OSError:
                 continue
 
-    def start(self, options: TranscriptionOptions) -> None:
-        self._options = options
-        self._buffer.clear()
-        self._segments.clear()
-        self._stream_offset_s = 0.0  # Reset stream offset for new session
-        self._lazy_model()
-
-    # Backward-compatibility for pull-based API used in legacy tests
-    def transcribe_stream(
-        self, chunks: Iterable[AudioChunk], options: TranscriptionOptions
-    ) -> Iterable[TranscriptSegment]:
-        self.start(options)
-        for chunk in chunks:
-            self.push_audio(chunk.samples, int(chunk.start_s * 1000))
-        self.flush()
-        return tuple(self.poll_segments())
-
-    def push_audio(self, pcm16: bytes, timestamp_ms: int) -> None:
-        self._buffer.extend(pcm16)
-        # Prevent buffer overflow: drop oldest audio if exceeds limit
-        if len(self._buffer) > self.max_buffer_bytes:
-            excess = len(self._buffer) - self.max_buffer_bytes
-            bytes_per_sec = self.sample_rate * self.bytes_per_sample
-            logger.warning(
-                f"Buffer overflow: dropping {excess} bytes ({excess / bytes_per_sec:.1f}s) "
-                f"of oldest audio to prevent OOM"
-            )
-            self._buffer = self._buffer[excess:]
-            # Update stream offset to account for dropped audio
-            # This happens before _maybe_process, so consumed audio offset is separate
-            self._stream_offset_s += excess / bytes_per_sec
-        self._maybe_process(force=False)
-
-    def flush(self) -> None:
-        self._maybe_process(force=True)
-
-    def poll_segments(self) -> List[TranscriptSegment]:
-        segs = list(self._segments)
-        self._segments.clear()
-        
-        # Apply segment arbiter if enabled
-        if self._arbiter and segs:
-            segs = self._arbiter.arbitrate(segs)
-        
-        return segs
-
-    def _maybe_process(self, force: bool) -> None:
-        if self._options is None or self._model is None:
-            return
-        options = self._options
-
-        bytes_per_sec = self.sample_rate * self.bytes_per_sample
-        min_bytes = int(self.min_emit_sec * bytes_per_sec)
-        window_bytes = int(self.window_sec * bytes_per_sec)
-
-        if len(self._buffer) < min_bytes and not force:
-            return
-
-        process_bytes = min(len(self._buffer), window_bytes)
-        if process_bytes < min_bytes and not force:
-            return
-
-        # Always consume from the head to preserve chronology
-        audio_chunk = bytes(self._buffer[:process_bytes])
-
-        # Determine how much to consume this round
-        consume_bytes = process_bytes
-
-        if consume_bytes < min_bytes and not force:
-            return
-
-        audio_for_model = audio_chunk[:consume_bytes]
-        audio_np = np.frombuffer(audio_for_model, dtype=np.int16).astype(np.float32) / PCM16_SCALE
-        segments, _ = self._transcribe(audio_np)
-
-        # Convert to TranscriptSegment with stream-relative timestamps
-        for s in segments:
-            text = self._clean_text(s.text) if self.clean_disfluencies else s.text
-            self._segments.append(
-                TranscriptSegment(
-                    text=text,
-                    start_s=self._stream_offset_s + s.start,  # Add cumulative offset
-                    end_s=self._stream_offset_s + s.end,      # Add cumulative offset
-                    language=options.language,
-                    confidence=getattr(s, "avg_logprob", 0.0)
-                )
-            )
-
-        # Update stream offset based on consumed audio
-        consumed_duration_s = consume_bytes / bytes_per_sec
-        self._stream_offset_s += consumed_duration_s
-
-        # Slide window
-        # Drop consumed bytes; keep a small tail for context when streaming
-        self._buffer = self._buffer[consume_bytes:]
-        hop_bytes = int(self.hop_sec * bytes_per_sec)
-        if len(self._buffer) > hop_bytes:
-            # Additional audio is dropped for sliding window; account for it in offset
-            dropped_bytes = len(self._buffer) - hop_bytes
-            self._stream_offset_s += dropped_bytes / bytes_per_sec
-            self._buffer = self._buffer[-hop_bytes:]
-        elif force:
-            self._buffer.clear()
-
-    def _transcribe(self, audio_np: np.ndarray):
-        if self._options is None:
-            raise RuntimeError("Engine options not initialized")
+    def _transcribe(self, audio_np: np.ndarray, options: TranscriptionOptions):
         if self._model is None:
             raise RuntimeError("Model not loaded")
-
-        options = self._options
         model = self._model
 
         beam_size = options.beam_size if options.beam_size is not None else self.default_beam_size
@@ -402,9 +269,6 @@ class WhisperTurboEngine(TranscriptionEngine):
         try:
             pipeline = self._pipeline
             use_pipeline = self.enable_batching and pipeline is not None
-            if use_pipeline and isinstance(model, MagicMock) and not isinstance(pipeline, MagicMock):
-                # Avoid real pipeline path when using MagicMock model doubles (tests)
-                use_pipeline = False
 
             if use_pipeline and pipeline is not None:
                 # BatchedInferencePipeline accepts batch_size
@@ -450,56 +314,27 @@ class WhisperTurboEngine(TranscriptionEngine):
             List of transcript segments with timestamps
         """
         self._lazy_model()
-        
-        # Load audio file
-        audio_np = self._load_audio_file(audio_path)
-        
-        # Transcribe WITHOUT internal VAD (preprocessing handles this)
-        beam_size = options.beam_size if options.beam_size is not None else self.default_beam_size
-        temperature = options.temperature if options.temperature is not None else self.default_temperature
-        
-        kwargs = {
-            "language": options.language,
-            "vad_filter": False,  # Always False - preprocessing handles VAD
-            "word_timestamps": self.word_timestamps,
-            "best_of": 1,
-        }
-        if beam_size is not None:
-            kwargs["beam_size"] = beam_size
-        if temperature is not None:
-            kwargs["temperature"] = temperature
-        if options.prompt:
-            kwargs["initial_prompt"] = options.prompt
-        
-        try:
-            pipeline = self._pipeline
-            use_pipeline = self.enable_batching and pipeline is not None
-            if use_pipeline and isinstance(self._model, MagicMock) and not isinstance(pipeline, MagicMock):
-                # Avoid real pipeline path when using MagicMock model doubles (tests)
-                use_pipeline = False
 
-            if use_pipeline and pipeline is not None:
-                # BatchedInferencePipeline accepts batch_size
-                kwargs["batch_size"] = self.batch_size
-                segments, info = pipeline.transcribe(audio_np, **kwargs)
-            else:
-                # WhisperModel.transcribe does not accept batch_size
-                segments, info = self._model.transcribe(audio_np, **kwargs)
+        audio_np = self._load_audio_file(audio_path)
+
+        try:
+            segments_raw, _ = self._transcribe(audio_np, options)
         except Exception as exc:
             raise RuntimeError(f"Transcription failed: {exc}") from exc
-        
-        # Convert to domain model
+
         result = []
-        for seg in segments:
+        for seg in segments_raw:
             text = self._clean_text(seg.text) if self.clean_disfluencies else seg.text
-            result.append(TranscriptSegment(
-                text=text.strip(),
-                start_s=seg.start,
-                end_s=seg.end,
-                language=options.language,
-                confidence=getattr(seg, 'avg_logprob', 0.0),
-            ))
-        
+            result.append(
+                TranscriptSegment(
+                    text=text.strip(),
+                    start_s=seg.start,
+                    end_s=seg.end,
+                    language=options.language,
+                    confidence=getattr(seg, "avg_logprob", 0.0),
+                )
+            )
+
         return result
     
     def _load_audio_file(self, audio_path: Path) -> np.ndarray:

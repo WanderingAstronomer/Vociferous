@@ -3,21 +3,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Any
+from typing import Callable
 import threading
 
 import structlog
 
-from vociferous.app import TranscriptionSession
-from vociferous.sources import FileSource
+from vociferous.app import transcribe_workflow
 from vociferous.config import load_config
 from vociferous.domain import EngineConfig, TranscriptionOptions
-from vociferous.domain.model import EngineKind, TranscriptionPreset
+from vociferous.domain.model import EngineKind
 from vociferous.engines.factory import build_engine
 from vociferous.engines.model_registry import normalize_model_name
-from vociferous.domain.exceptions import (
-    DependencyError, EngineError, AudioDecodeError, ConfigurationError
-)
 
 logger = structlog.get_logger(__name__)
 
@@ -55,7 +51,6 @@ class TranscriptionTask:
         self.is_running = False
         self.should_stop = False
         self.thread: threading.Thread | None = None
-        self.session: TranscriptionSession | None = None
 
     def start(self) -> None:
         """Start the transcription task in a background thread."""
@@ -98,48 +93,30 @@ class TranscriptionTask:
             
             # Build engine
             engine_adapter = build_engine(self.engine, engine_config)
-            
-            # Create file source
-            source = FileSource(self.file_path)
-            
-            # Create a simple sink that captures text
-            class CapturingSink:
-                def __init__(self, task: TranscriptionTask):
-                    self.task = task
-                    self.text = ""
-                
-                def write_segment(self, segment: Any) -> None:
-                    """Capture segment text."""
-                    text = segment.text if hasattr(segment, 'text') else str(segment)
-                    self.text += text + " "
-                    self.task.transcript = self.text.strip()
-                    if self.task.on_progress:
-                        self.task.on_progress(self.task.transcript)
-                
-                def close(self) -> None:
-                    """Finalize."""
-                    pass
-            
-            sink = CapturingSink(self)
-            
-            # Run transcription
-            self.session = TranscriptionSession()
-            self.session.start(source, engine_adapter, sink, options, engine_kind=self.engine)
-            
-            # Check periodically if we should stop
-            # Note: TranscriptionSession.join() blocks, so we add a timeout
-            # In a production implementation, TranscriptionSession should support cancellation
-            self.session.join()
-            
-            # Check if stopped before completion
-            if self.should_stop:
-                logger.info("Transcription stopped by user")
-                return
-            
-            # Notify completion
-            logger.info("Transcription complete", length=len(self.transcript))
+            keep_flag = not config.artifacts.cleanup_intermediates
+            result = transcribe_workflow(
+                self.file_path,
+                engine_kind=self.engine,
+                engine_config=engine_config,
+                options=options,
+                keep_intermediates=keep_flag,
+                artifact_config=config.artifacts,
+                engine=engine_adapter,
+            )
+
+            accumulated = []
+            for segment in result.segments:
+                if self.should_stop:
+                    logger.info("Transcription stopped by user")
+                    return
+                accumulated.append(segment.text)
+                self.transcript = " ".join(accumulated).strip()
+                if self.on_progress:
+                    self.on_progress(self.transcript)
+
+            logger.info("Transcription complete", length=len(result.text))
             if self.on_complete:
-                self.on_complete(self.transcript)
+                self.on_complete(result.text)
                 
         except Exception as e:
             logger.error("Transcription error", error=str(e))
@@ -152,16 +129,12 @@ class TranscriptionTask:
     def stop(self) -> None:
         """Stop the transcription task.
         
-        Note: This sets a flag to stop the task, but TranscriptionSession
-        doesn't currently support cancellation. The task will complete
-        but the callbacks won't be called after stop() is invoked.
+        Note: This sets a flag to stop the task. The workflow currently
+        runs to completion, but callbacks halt after stop() is invoked.
         """
         logger.info("Stopping transcription task")
         self.should_stop = True
         self.is_running = False
-        # TODO: When TranscriptionSession supports cancellation, call:
-        # if self.session:
-        #     self.session.stop()
 
 
 class GUITranscriptionManager:
@@ -174,7 +147,7 @@ class GUITranscriptionManager:
     def transcribe(
         self,
         file_path: Path,
-        engine: EngineKind = "whisper_turbo",
+        engine: EngineKind = "canary_qwen",
         language: str = "en",
         on_progress: Callable[[str], None] | None = None,
         on_complete: Callable[[str], None] | None = None,

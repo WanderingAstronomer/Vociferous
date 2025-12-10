@@ -38,4 +38,5 @@ def register_decode(app: typer.Typer) -> None:
         size_mb = out_path.stat().st_size / (1024 * 1024)
         typer.echo(f"✓ Output: {out_path.name} (PCM mono 16kHz, {size_mb:.2f} MB)")
 
+    decode_cmd.dev_only = True  # type: ignore[attr-defined]
     return None

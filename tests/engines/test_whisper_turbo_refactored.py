@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 import pytest
-from pathlib import Path
-from unittest.mock import MagicMock, Mock
 import numpy as np
 import wave
-import tempfile
 
 from vociferous.domain.model import (
     EngineConfig,
     TranscriptionOptions,
-    TranscriptSegment,
 )
 from vociferous.engines.whisper_turbo import WhisperTurboEngine
 
@@ -140,48 +136,23 @@ def test_whisper_load_audio_file_validates_format(mock_engine_config, tmp_path):
         engine._load_audio_file(wav_path)
 
 
-def test_whisper_transcribe_uses_vad_filter_false(mock_engine_config, mock_transcription_options):
-    """Transcribe method always passes vad_filter=False to the model."""
-    engine = WhisperTurboEngine(mock_engine_config)
-    
-    # Mock the model directly without calling _lazy_model
-    mock_transcribe = MagicMock(return_value=([], None))
-    engine._model = MagicMock()
-    engine._model.transcribe = mock_transcribe
-    
-    # Call _transcribe
-    audio_np = np.zeros(16000, dtype=np.float32)
-    engine._options = mock_transcription_options
-    engine._transcribe(audio_np)
-    
-    # Verify vad_filter=False was passed
-    mock_transcribe.assert_called_once()
-    call_kwargs = mock_transcribe.call_args[1]
-    assert 'vad_filter' in call_kwargs
-    assert call_kwargs['vad_filter'] is False
+def test_whisper_transcribe_file_mock_mode(sample_wav_file, mock_transcription_options):
+    """use_mock param provides deterministic transcription without unittest.mock."""
+    config = EngineConfig(
+        model_name="tiny",
+        device="cpu",
+        compute_type="int8",
+        params={"use_mock": "true"},
+    )
+    engine = WhisperTurboEngine(config)
 
+    segments = engine.transcribe_file(sample_wav_file, mock_transcription_options)
 
-def test_whisper_backward_compatibility_streaming(mock_engine_config, mock_transcription_options):
-    """Old streaming interface (start/push/flush/poll) still works."""
-    engine = WhisperTurboEngine(mock_engine_config)
-    
-    # These methods should still exist for backward compatibility
-    assert hasattr(engine, 'start')
-    assert hasattr(engine, 'push_audio')
-    assert hasattr(engine, 'flush')
-    assert hasattr(engine, 'poll_segments')
-    
-    # Mock the model
-    engine._model = MagicMock()
-    engine._model.transcribe = MagicMock(return_value=([], None))
-    
-    # Should be able to use old interface
-    engine.start(mock_transcription_options)
-    engine.push_audio(b'\x00\x00' * 16000, timestamp_ms=0)
-    engine.flush()
-    segments = engine.poll_segments()
-    
-    assert isinstance(segments, list)
+    assert segments, "Expected at least one segment"
+    first = segments[0]
+    assert first.text
+    assert first.start_s == pytest.approx(0.0)
+    assert first.end_s > 0
 
 
 def test_whisper_metadata_property(mock_engine_config):

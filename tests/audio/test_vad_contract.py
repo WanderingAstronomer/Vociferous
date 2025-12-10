@@ -8,36 +8,43 @@ import sys
 from pathlib import Path
 import wave
 
+import pytest
+
 SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
 SHORT_FLAC = SAMPLES_DIR / "ASR_Test_30s.flac"
+ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
 
 
-def _run_cli(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+@pytest.fixture(autouse=True)
+def ensure_artifacts_dir() -> None:
+    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _run_cli(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "vociferous.cli.main", *args],
-        cwd=cwd,
+        cwd=ARTIFACTS_DIR,
         capture_output=True,
         text=True,
         timeout=30,
     )
 
 
-def _decode_sample(tmp_path: Path) -> Path:
-    decoded = tmp_path / "ASR_Test_decoded.wav"
+def _decode_sample() -> Path:
+    decoded = ARTIFACTS_DIR / "ASR_Test_decoded.wav"
     result = _run_cli(
         ["decode", str(SHORT_FLAC), "--output", str(decoded)],
-        tmp_path,
     )
     assert result.returncode == 0, f"Decode failed: {result.stderr}"
     assert decoded.exists()
     return decoded
 
 
-def test_vad_produces_timestamps(tmp_path: Path) -> None:
+def test_vad_produces_timestamps() -> None:
     """VAD detects speech and emits JSON timestamps."""
-    decoded = _decode_sample(tmp_path)
+    decoded = _decode_sample()
 
-    result = _run_cli(["vad", str(decoded)], tmp_path)
+    result = _run_cli(["vad", str(decoded)])
     assert result.returncode == 0, f"VAD failed: {result.stderr}"
 
     output_file = decoded.with_name(f"{decoded.stem}_vad_timestamps.json")
@@ -53,9 +60,9 @@ def test_vad_produces_timestamps(tmp_path: Path) -> None:
         assert ts["end"] > ts["start"]
 
 
-def test_vad_returns_empty_for_silence(tmp_path: Path) -> None:
+def test_vad_returns_empty_for_silence() -> None:
     """VAD returns empty list on pure silence input."""
-    silence_path = tmp_path / "silence.wav"
+    silence_path = ARTIFACTS_DIR / "silence.wav"
     with wave.open(str(silence_path), "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
@@ -64,7 +71,6 @@ def test_vad_returns_empty_for_silence(tmp_path: Path) -> None:
 
     result = _run_cli(
         ["vad", str(silence_path), "--threshold", "0.8", "--min-speech-ms", "250"],
-        tmp_path,
     )
     assert result.returncode == 0, f"VAD failed on silence: {result.stderr}"
 
@@ -75,14 +81,13 @@ def test_vad_returns_empty_for_silence(tmp_path: Path) -> None:
     assert timestamps == []
 
 
-def test_vad_respects_custom_output(tmp_path: Path) -> None:
+def test_vad_respects_custom_output() -> None:
     """VAD saves timestamps to custom path when requested."""
-    decoded = _decode_sample(tmp_path)
-    custom_output = tmp_path / "custom_timestamps.json"
+    decoded = _decode_sample()
+    custom_output = ARTIFACTS_DIR / "custom_timestamps.json"
 
     result = _run_cli(
         ["vad", str(decoded), "--output", str(custom_output)],
-        tmp_path,
     )
     assert result.returncode == 0, f"VAD failed: {result.stderr}"
     assert custom_output.exists()

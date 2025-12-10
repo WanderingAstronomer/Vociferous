@@ -3,8 +3,7 @@
 import logging
 import structlog
 
-from .transcription_session import TranscriptionSession, SessionConfig  # noqa: F401
-from .arbiter import SegmentArbiter  # noqa: F401
+from .workflow import transcribe_workflow, transcribe_preprocessed  # noqa: F401
 
 def configure_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -24,9 +23,8 @@ def configure_logging() -> None:
     )
 
 __all__ = [
-    "TranscriptionSession",
-    "SessionConfig",
-    "SegmentArbiter",
+    "transcribe_workflow",
+    "transcribe_preprocessed",
     "configure_logging",
 ]
 

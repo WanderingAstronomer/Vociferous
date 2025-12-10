@@ -7,26 +7,34 @@ import sys
 from pathlib import Path
 import wave
 
+import pytest
+
 SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
 SHORT_FLAC = SAMPLES_DIR / "ASR_Test_30s.flac"
+ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
 
 
-def _run_cli(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+@pytest.fixture(autouse=True)
+def ensure_artifacts_dir() -> None:
+    ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _run_cli(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "vociferous.cli.main", *args],
-        cwd=cwd,
+        cwd=ARTIFACTS_DIR,
         capture_output=True,
         text=True,
         timeout=30,
     )
 
 
-def test_decoder_standardizes_flac_to_pcm_wav(tmp_path: Path) -> None:
+def test_decoder_standardizes_flac_to_pcm_wav() -> None:
     """Decoder converts FLAC to PCM mono 16kHz WAV."""
     input_file = SHORT_FLAC
-    output_file = tmp_path / "ASR_Test_decoded.wav"
+    output_file = ARTIFACTS_DIR / "ASR_Test_decoded.wav"
 
-    result = _run_cli(["decode", str(input_file), "--output", str(output_file)], tmp_path)
+    result = _run_cli(["decode", str(input_file), "--output", str(output_file)])
 
     assert result.returncode == 0, f"Decode failed: {result.stderr}"
     assert output_file.exists(), "Decoded output missing"
@@ -37,12 +45,12 @@ def test_decoder_standardizes_flac_to_pcm_wav(tmp_path: Path) -> None:
         assert wav.getsampwidth() == 2
 
 
-def test_decoder_errors_on_invalid_file(tmp_path: Path) -> None:
+def test_decoder_errors_on_invalid_file() -> None:
     """Decoder returns non-zero on invalid input."""
-    invalid_file = tmp_path / "not_audio.txt"
+    invalid_file = ARTIFACTS_DIR / "not_audio.txt"
     invalid_file.write_text("This is not audio")
 
-    result = _run_cli(["decode", str(invalid_file)], tmp_path)
+    result = _run_cli(["decode", str(invalid_file)])
 
     assert result.returncode != 0
     assert "error" in result.stderr.lower() or "failed" in result.stderr.lower()

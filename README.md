@@ -1,6 +1,6 @@
 # Vociferous
 
-Local-first ASR with faster-whisper (CTranslate2) as the default engine and an offline Voxtral transformer option for smarter punctuation. See `Planning and Documentation` for architecture and requirements.
+Local-first ASR with Canary-Qwen dual-pass as the primary engine, plus legacy Whisper Turbo and Voxtral options for compatibility. See `Planning and Documentation` for architecture and requirements.
 
 ## Requirements
 - Python 3.11+
@@ -22,9 +22,9 @@ Local-first ASR with faster-whisper (CTranslate2) as the default engine and an o
 
 All engines use a simple batch interface - complete audio file in, complete transcript out.
 
-- **`whisper_turbo`** (default): Batch processing via CTranslate2. Fast, accurate, runs offline. Best for general use.
-- **`voxtral_local`**: Batch processing via transformers. Mistral-based with smart punctuation and grammar. Requires `[voxtral]` extra. Slower but produces more natural text.
-- **`canary_qwen`**: Batch processing with dual-pass (ASR + optional refinement) using Canary-Qwen 2.5B. Defaults to a mock, dependency-light mode; set `use_mock=false` and install `transformers` + `torch` to run the real model. See `docs/engines/canary_qwen.md` for details.
+- **`canary_qwen`** (default): Dual-pass (ASR + optional refinement) using Canary-Qwen 2.5B. Defaults to a mock, dependency-light mode; set `use_mock=false` and install `transformers` + `torch` to run the real model. See `docs/engines/canary_qwen.md` for details.
+- **`whisper_turbo`** (legacy): Batch processing via CTranslate2. Fast and offline; kept for compatibility and quick drafts.
+- **`voxtral_local`** (legacy): Batch processing via transformers. Mistral-based with smart punctuation and grammar; slower, legacy option.
 - **`parakeet_rnnt`**: NVIDIA Parakeet RNNT via Riva endpoint (optional, experimental). Note: This engine uses a different architecture for real-time applications.
 
 ### Engine Interface
@@ -55,7 +55,7 @@ Each stage is batch processing - complete file in, complete file out.
 - Simpler architecture (no state management)
 - Easier to test and debug
 
-### Quality Presets (`whisper_turbo` engine)
+### Quality Presets (`whisper_turbo` engine - legacy)
 Control the speed/quality tradeoff with `-p/--preset`:
 
 **`balanced`** (default)
@@ -94,13 +94,13 @@ vociferous transcribe interview.wav -p high_accuracy -o transcript.txt
 **Note**: For fine-grained control beyond presets, edit `~/.config/vociferous/config.toml` to set specific model names, compute types, beam sizes, and batch parameters.
 
 ## Key behaviors
-- `vociferous transcribe` defaults to `whisper_turbo` (local faster-whisper) for offline/low-dependency use.
+- `vociferous transcribe` defaults to `canary_qwen` (mock by default; set `use_mock=false` for the full model). Legacy engines emit a deprecation warning.
 - Disfluency cleaning is on by default for Whisper; toggle with `--no-clean-disfluencies`.
 - Default device/compute/model pull from config; device defaults to CPU unless overridden.
 
 ## Configuration
 - Config file: `~/.config/vociferous/config.toml` (created on first run). CLI flags override config values.
-- Key fields: `engine` (default `whisper_turbo`), `model_cache_dir`, `device`, `compute_type`, `params`.
+- Key fields: `engine` (default `canary_qwen`), `model_name` (default `nvidia/canary-qwen-2.5b`), `model_cache_dir`, `device`, `compute_type`, `params`.
 - Model cache: `~/.cache/vociferous/models` (auto-created).
 - History: JSONL-backed history stored under `~/.cache/vociferous/history/history.jsonl`.
 
@@ -114,13 +114,40 @@ Vociferous provides two help modes to serve different audiences:
 ```bash
 vociferous --help
 ```
-Displays: `transcribe`, `languages`, `check` - everything most users need.
+Displays: `transcribe`, `languages`, `check` — everything most users need.
+
+Example (truncated):
+```bash
+$ vociferous --help
+Usage: vociferous [OPTIONS] COMMAND
+
+Commands:
+	transcribe  Transcribe audio file to text
+	languages   List supported language codes
+	check       Verify system prerequisites
+```
 
 **Developer Help (`--dev-help`)** - Shows all commands including low-level debugging tools:
 ```bash
 vociferous --dev-help
 ```
-Displays: All user commands PLUS `decode`, `vad`, `condense`, `record`, and other components for manual pipeline construction.
+Displays: All user commands PLUS `decode`, `vad`, `condense`, `record`, `transcribe` (workflow orchestration), and `refine` (planned text-only refinement) for manual pipeline construction.
+
+Example (truncated):
+```bash
+$ vociferous --dev-help
+Usage: vociferous [OPTIONS] COMMAND
+
+Audio Components:
+	decode     Normalize audio to PCM mono 16kHz
+	vad        Detect speech boundaries
+	condense   Remove silence using VAD timestamps
+	record     Capture microphone audio
+
+Workflow Commands:
+	transcribe Main transcription workflow (decode → VAD → condense → Canary ASR → Canary Refiner)
+	refine     Text-only refinement (planned; Canary LLM mode)
+```
 
 **When to use each:**
 - New user? Start with `vociferous --help` to see the essentials.
@@ -142,19 +169,18 @@ For manual pipeline debugging and component-level control:
 - `vociferous vad <wav>` - Detect speech boundaries and output timestamps
 - `vociferous condense <timestamps> <wav>` - Remove silence using VAD timestamps
 - `vociferous record` - Capture microphone audio
-- `vociferous transcribe-full <file>` - Full pipeline with all preprocessing steps
-- `vociferous transcribe-canary <file>` - Transcribe using Canary-Qwen engine
+- `vociferous transcribe <file>` - Workflow orchestrator (decode → VAD → condense → Canary ASR → Canary Refiner)
+- `vociferous refine <transcript>` - Text-only refinement (planned developer component)
 
 **Note:** Most users should use `transcribe` instead of manual component chaining. Developer commands are for debugging and understanding the internals.
 
 ### Command Options
 
-- `-e|--engine whisper_turbo|voxtral_local` - Select engine.
+- `-e|--engine canary_qwen|whisper_turbo|voxtral_local` - Select engine (Canary-Qwen default; Whisper/Voxtral are legacy options).
 - `-p|--preset high_accuracy|balanced|fast`; `--fast` shortcut for `preset=fast`.
 - `-l|--language <code>` - Language code (e.g., `en`, `es`, `fr`) or `auto` for detection. See `vociferous languages` for full list.
 - Whisper controls: `--enable-batching/--batch-size`, `--beam-size`, `--vad-filter/--no-vad-filter`, `--word-timestamps`, `--whisper-temperature`.
 - Voxtral controls: `--prompt`, `--max-new-tokens`, `--gen-temperature`.
-- Polisher: `--polish/--no-polish`, `--polish-model`, `--polish-max-tokens`, `--polish-temperature`, `--polish-gpu-layers`, `--polish-context-length`.
 - Output/UX: `--output <path>`, `--clipboard`, `--save-history`.
 
 ## Development

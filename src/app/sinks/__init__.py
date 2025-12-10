@@ -7,7 +7,7 @@ from .sinks import (  # noqa: F401
     HistorySink,
     StdoutSink,
 )
-from .polishing import PolishingSink  # noqa: F401
+from .polishing import RefiningSink  # noqa: F401
 
 __all__ = [
     "ClipboardSink",
@@ -15,5 +15,5 @@ __all__ = [
     "FileSink",
     "HistorySink",
     "StdoutSink",
-    "PolishingSink",
+    "RefiningSink",
 ]

@@ -72,4 +72,5 @@ def register_condense(app: typer.Typer) -> None:
             for path in outputs:
                 typer.echo(f"  - {path}")
 
+    condense_cmd.dev_only = True  # type: ignore[attr-defined]
     return None
