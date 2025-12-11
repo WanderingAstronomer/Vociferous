@@ -1,0 +1,50 @@
+Today is Wednesday, March twentieth, twenty-twenty-five, at exactly nine forty-seven a.m. Eastern Standard Time.
+
+I am testing automatic speech recognition under normal conversational pacing, with deliberate changes in cadence, emphasis, and clarity.
+
+The quick brown fox jumps over the lazy dog — twice — and then pauses.
+
+For numbers, listen carefully: zero, one, two, three, four, five, six, seven, eight, nine, ten.
+Eleven, twelve, thirteen, fourteen, fifteen, sixteen, seventeen, eighteen, nineteen.
+Twenty, thirty, forty, fifty, sixty, seventy, eighty, ninety, one hundred.
+One thousand, ten thousand, one hundred thousand, one million.
+
+Decimal numbers follow: three point one four one five nine.
+Version numbers follow: version two dot seven dot four, build one zero five zero.
+
+Percentages and symbols next.
+CPU usage peaked at ninety-seven percent.
+Battery charge dropped to twelve percent.
+Network latency averaged thirty-two milliseconds.
+
+Here are acronyms spoken deliberately:
+CPU, GPU, RAM, SSD, NVMe, TLS, HTTPS, SSH, VPN, DNS.
+
+Now company and product names:
+OpenAI, GitHub, Kubernetes, PostgreSQL, PostgreSQL again with emphasis,
+JetBrains IntelliJ, Visual Studio Code, Docker Compose, NVIDIA RTX thirty-ninety.
+
+Homophones matter here:
+There, their, and they’re are three different words.
+To, too, and two are also different.
+Its and it’s are not the same.
+
+I will now read a short technical sentence:
+The Java backend communicates with the React frontend through a RESTful API secured by OAuth two point zero and JSON Web Tokens.
+
+Pause.
+
+Now a spelling test spoken naturally, not letter by letter:
+Quarkus, Panache, Hibernate, asynchronous, containerization.
+
+A mild tongue-twister follows:
+She sells secure shells on secure shell servers.
+
+I will briefly change tone and speed.
+THIS SENTENCE IS LOUDER AND MORE EMPHATIC.
+this sentence is quieter and slower.
+
+Finally, punctuation matters in this last line:
+Hello, world! Are you reading this correctly—or not? Let’s find out.
+
+End of transcription test.
