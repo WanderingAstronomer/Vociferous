@@ -34,6 +34,33 @@ logger = logging.getLogger(__name__)
 PCM16_SCALE = 32768.0  # Normalization scale for 16-bit PCM audio
 
 
+def required_packages() -> list[str]:
+    """Return list of required Python packages for Whisper Turbo engine.
+    
+    This function can be called without importing the heavy dependencies,
+    making it safe for dependency checking commands.
+    
+    Returns:
+        List of package names with optional version specifiers
+    """
+    return ["faster-whisper>=1.0.0", "ctranslate2>=4.0.0"]
+
+
+def required_models() -> list[dict[str, str]]:
+    """Return list of required model descriptors for Whisper Turbo engine.
+    
+    Returns:
+        List of dicts with keys: 'name', 'repo_id', 'description'
+    """
+    return [
+        {
+            "name": "Systran/faster-whisper-large-v3",
+            "repo_id": "Systran/faster-whisper-large-v3",
+            "description": "Faster-Whisper Large V3 model (default)",
+        }
+    ]
+
+
 def _bool_param(params: Mapping[str, str], key: str, default: bool) -> bool:
     raw = params.get(key)
     if raw is None:
