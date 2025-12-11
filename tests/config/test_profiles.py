@@ -13,7 +13,9 @@ def test_default_profiles_resolve() -> None:
     segmentation_profile = get_segmentation_profile(cfg)
 
     assert engine_profile.kind == "canary_qwen"
-    assert segmentation_profile.max_speech_duration_s == pytest.approx(40.0)
+    # Default max_chunk_s is now 60.0 (updated for Canary engine limit)
+    assert segmentation_profile.max_chunk_s == pytest.approx(60.0)
+    assert segmentation_profile.max_speech_duration_s == pytest.approx(60.0)  # Legacy alias
     assert segmentation_profile.threshold == pytest.approx(0.5)
 
 

@@ -30,3 +30,18 @@ class ConfigurationError(VociferousError):
 class DependencyError(VociferousError):
     """Raised when a required dependency is missing."""
     pass
+
+
+class AudioProcessingError(VociferousError):
+    """Raised when audio processing (decode, condense, VAD) fails."""
+    pass
+
+
+class UnsplittableSegmentError(AudioProcessingError):
+    """Raised when a single speech segment exceeds max chunk duration and cannot be split.
+    
+    This occurs when VAD produces a continuous speech segment longer than the
+    engine's maximum input duration (e.g., >60s for Canary). The audio may need
+    manual splitting or different VAD parameters.
+    """
+    pass

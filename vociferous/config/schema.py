@@ -71,18 +71,62 @@ class EngineProfileConfig(BaseModel):
 
 
 class SegmentationProfileConfig(BaseModel):
-    """Declarative segmentation profile for Silero VAD + condense."""
+    """Declarative segmentation profile for Silero VAD + intelligent chunking.
+    
+    This profile controls both Voice Activity Detection and the audio chunking
+    system that splits long files into engine-compatible segments.
+    """
 
+    # VAD parameters
     threshold: float = 0.5
     min_silence_ms: int = 500
     min_speech_ms: int = 250
     speech_pad_ms: int = 250
-    max_speech_duration_s: float = 40.0
-    boundary_margin_ms: int = 250
-    min_gap_for_split_s: float = 2.0
     sample_rate: int = 16000
     device: str = "cpu"
     vad_model: str | None = None
+    
+    # Chunking parameters (new intelligent splitting system)
+    max_chunk_s: float = Field(
+        default=60.0,
+        description="Hard ceiling for chunk duration (seconds)",
+        ge=10.0,
+        le=300.0,
+    )
+    chunk_search_start_s: float = Field(
+        default=30.0,
+        description="When to start looking for split points (seconds)",
+        ge=5.0,
+        le=60.0,
+    )
+    min_gap_for_split_s: float = Field(
+        default=3.0,
+        description="Minimum silence gap for natural splits (seconds)",
+        ge=0.5,
+        le=10.0,
+    )
+    boundary_margin_s: float = Field(
+        default=0.30,
+        description="Silence margin at chunk edges (seconds)",
+        ge=0.0,
+        le=1.0,
+    )
+    max_intra_gap_s: float = Field(
+        default=0.8,
+        description="Maximum preserved gap inside chunks (seconds)",
+        ge=0.0,
+        le=5.0,
+    )
+    
+    # Legacy fields (for backward compatibility)
+    max_speech_duration_s: float = Field(
+        default=60.0,
+        description="Legacy alias for max_chunk_s",
+    )
+    boundary_margin_ms: int = Field(
+        default=300,
+        description="Legacy alias for boundary_margin_s * 1000",
+    )
 
     @field_validator("threshold")
     @classmethod
@@ -103,18 +147,11 @@ class SegmentationProfileConfig(BaseModel):
             raise ValueError("values must be non-negative")
         return v
 
-    @field_validator("max_speech_duration_s")
+    @field_validator("max_chunk_s", "max_speech_duration_s")
     @classmethod
-    def validate_positive(cls, v: float) -> float:
+    def validate_positive_duration(cls, v: float) -> float:
         if v <= 0:
-            raise ValueError("max_speech_duration_s must be positive")
-        return v
-
-    @field_validator("min_gap_for_split_s")
-    @classmethod
-    def validate_gap(cls, v: float) -> float:
-        if v < 0:
-            raise ValueError("min_gap_for_split_s must be non-negative")
+            raise ValueError("duration must be positive")
         return v
 
     @field_validator("sample_rate")
@@ -124,17 +161,34 @@ class SegmentationProfileConfig(BaseModel):
             raise ValueError("sample_rate must be positive")
         return v
 
+    @model_validator(mode="after")
+    def validate_search_start(self) -> "SegmentationProfileConfig":
+        """Ensure chunk_search_start_s < max_chunk_s."""
+        if self.chunk_search_start_s >= self.max_chunk_s:
+            raise ValueError(
+                f"chunk_search_start_s ({self.chunk_search_start_s}) must be less than "
+                f"max_chunk_s ({self.max_chunk_s})"
+            )
+        return self
+
     def to_profile(self) -> SegmentationProfile:
         return SegmentationProfile(
+            # VAD parameters
             threshold=self.threshold,
             min_silence_ms=self.min_silence_ms,
             min_speech_ms=self.min_speech_ms,
             speech_pad_ms=self.speech_pad_ms,
-            max_speech_duration_s=self.max_speech_duration_s,
-            boundary_margin_ms=self.boundary_margin_ms,
-            min_gap_for_split_s=self.min_gap_for_split_s,
             sample_rate=self.sample_rate,
             device=self.device,
+            # Chunking parameters
+            max_chunk_s=self.max_chunk_s,
+            chunk_search_start_s=self.chunk_search_start_s,
+            min_gap_for_split_s=self.min_gap_for_split_s,
+            boundary_margin_s=self.boundary_margin_s,
+            max_intra_gap_s=self.max_intra_gap_s,
+            # Legacy fields
+            max_speech_duration_s=self.max_speech_duration_s,
+            boundary_margin_ms=self.boundary_margin_ms,
         )
 
 

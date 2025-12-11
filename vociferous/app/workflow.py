@@ -166,10 +166,8 @@ def transcribe_file_workflow(
             condensed_files = CondenserComponent().condense(
                 timestamps_path,
                 decoded_path,
-                output_path=condensed_target,
-                margin_ms=segmentation_profile.boundary_margin_ms,
-                max_duration_s=segmentation_profile.max_speech_duration_s,
-                min_gap_for_split_s=segmentation_profile.min_gap_for_split_s,
+                output_path=None,  # Allow multiple chunks via profile-driven splitting
+                segmentation_profile=segmentation_profile,
             )
             condensed_paths = condensed_files
 

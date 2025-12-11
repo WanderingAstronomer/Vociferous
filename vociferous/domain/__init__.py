@@ -21,6 +21,8 @@ from .exceptions import (  # noqa: F401
     VociferousError,
     EngineError,
     AudioDecodeError,
+    AudioProcessingError,
+    UnsplittableSegmentError,
     ConfigurationError,
     DependencyError,
 )
@@ -42,6 +44,8 @@ __all__ = [
     "VociferousError",
     "EngineError",
     "AudioDecodeError",
+    "AudioProcessingError",
+    "UnsplittableSegmentError",
     "ConfigurationError",
     "DependencyError",
 ]

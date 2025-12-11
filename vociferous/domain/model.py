@@ -19,17 +19,46 @@ EngineKind = Literal["canary_qwen", "whisper_turbo"]
 
 @dataclass(frozen=True, slots=True)
 class SegmentationProfile:
-    """VAD + condensation parameters used for canonical workflows."""
+    """VAD + condensation parameters used for canonical workflows.
+    
+    This profile controls both Voice Activity Detection (Silero VAD) and
+    the intelligent audio chunking system that splits long audio files
+    into engine-compatible segments.
+    
+    VAD Parameters:
+        threshold: Speech detection sensitivity (0.0-1.0)
+        min_silence_ms: Minimum silence duration to end a speech segment
+        min_speech_ms: Minimum speech duration to be considered valid
+        speech_pad_ms: Padding added around speech segments
+        sample_rate: Audio sample rate for VAD processing
+        device: Device for VAD inference ("cpu", "cuda")
+    
+    Chunking Parameters:
+        max_chunk_s: Hard ceiling for chunk duration (default: 60s for Canary)
+        chunk_search_start_s: When to start looking for split points (default: 30s)
+        min_gap_for_split_s: Minimum silence gap for natural splits (default: 3s)
+        boundary_margin_s: Silence margin at chunk edges (default: 0.3s)
+        max_intra_gap_s: Maximum preserved gap inside chunks (default: 0.8s)
+    """
 
+    # VAD parameters
     threshold: float = 0.5
     min_silence_ms: int = 500
     min_speech_ms: int = 250
     speech_pad_ms: int = 250
-    max_speech_duration_s: float = 40.0
-    boundary_margin_ms: int = 250
-    min_gap_for_split_s: float = 2.0
     sample_rate: int = 16000
     device: str = "cpu"
+    
+    # Chunking parameters (new intelligent splitting system)
+    max_chunk_s: float = 60.0  # Hard ceiling (Canary limit)
+    chunk_search_start_s: float = 30.0  # When to start looking for splits
+    min_gap_for_split_s: float = 3.0  # Minimum silence for natural splits
+    boundary_margin_s: float = 0.30  # Silence at chunk edges
+    max_intra_gap_s: float = 0.8  # Max preserved gap inside chunks
+    
+    # Legacy fields (for backward compatibility)
+    max_speech_duration_s: float = 60.0  # Alias for max_chunk_s
+    boundary_margin_ms: int = 300  # Alias for boundary_margin_s * 1000
 
     def __post_init__(self) -> None:
         if not (0.0 < self.threshold < 1.0):
@@ -42,12 +71,21 @@ class SegmentationProfile:
         ):
             if value < 0:
                 raise ValueError(f"{name} must be non-negative")
-        if self.max_speech_duration_s <= 0:
-            raise ValueError("max_speech_duration_s must be positive")
+        if self.max_chunk_s <= 0:
+            raise ValueError("max_chunk_s must be positive")
+        if self.chunk_search_start_s >= self.max_chunk_s:
+            raise ValueError("chunk_search_start_s must be less than max_chunk_s")
         if self.min_gap_for_split_s < 0:
             raise ValueError("min_gap_for_split_s must be non-negative")
+        if self.boundary_margin_s < 0:
+            raise ValueError("boundary_margin_s must be non-negative")
+        if self.max_intra_gap_s < 0:
+            raise ValueError("max_intra_gap_s must be non-negative")
         if self.sample_rate <= 0:
             raise ValueError("sample_rate must be positive")
+        # Sync legacy fields
+        if self.max_speech_duration_s <= 0:
+            raise ValueError("max_speech_duration_s must be positive")
 
 
 def _sanitize_params(params: Mapping[str, str] | None) -> dict[str, str]:
