@@ -1,11 +1,11 @@
-try:
-    import torch
-except ImportError:  # Optional dependency; fall back to CPU if unavailable.
-    torch = None
-
 def get_optimal_device() -> str:
-    if torch and torch.cuda.is_available():
-        return "cuda"
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return "cuda"
+    except (ImportError, OSError, RuntimeError):
+        # Optional dependency; fall back to CPU if unavailable or broken
+        pass
     return "cpu"
 
 def get_optimal_compute_type(device: str) -> str:

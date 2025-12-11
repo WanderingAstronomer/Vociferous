@@ -24,6 +24,33 @@ from vociferous.engines.model_registry import normalize_model_name
 logger = logging.getLogger(__name__)
 
 
+def required_packages() -> list[str]:
+    """Return list of required Python packages for Canary-Qwen engine.
+    
+    This function can be called without importing the heavy dependencies,
+    making it safe for dependency checking commands.
+    
+    Returns:
+        List of package names with optional version specifiers
+    """
+    return ["transformers>=4.38.0", "torch>=2.0.0", "accelerate>=0.28.0"]
+
+
+def required_models() -> list[dict[str, str]]:
+    """Return list of required model descriptors for Canary-Qwen engine.
+    
+    Returns:
+        List of dicts with keys: 'name', 'repo_id', 'description'
+    """
+    return [
+        {
+            "name": "nvidia/canary-1b",
+            "repo_id": "nvidia/canary-1b",
+            "description": "NVIDIA Canary 1B ASR model (default)",
+        }
+    ]
+
+
 def _bool_param(params: Mapping[str, str], key: str, default: bool) -> bool:
     raw = params.get(key)
     if raw is None:

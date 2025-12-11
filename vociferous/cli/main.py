@@ -22,6 +22,7 @@ from vociferous.cli.commands import (
     register_condense,
     register_record,
     register_refine,
+    register_deps,
 )
 
 try:
@@ -186,6 +187,9 @@ register_vad(app)           # rich_help_panel="Audio Components"
 register_condense(app)      # rich_help_panel="Audio Components"
 register_record(app)        # rich_help_panel="Audio Components"
 register_refine(app)        # rich_help_panel="Audio Components"
+
+# Developer-tier: Dependency management
+register_deps(app)          # rich_help_panel="Utilities"
 
 # User-tier commands are defined below: transcribe, languages, check
 
