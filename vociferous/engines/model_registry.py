@@ -4,28 +4,20 @@ from typing import Dict
 
 from vociferous.domain.model import EngineKind
 
-DEFAULT_WHISPER_MODEL = "deepdml/faster-whisper-large-v3-turbo-ct2"
+# Canary-Qwen (GPU-only)
 DEFAULT_CANARY_MODEL = "nvidia/canary-qwen-2.5b"
-
-# Verified model names for faster-whisper (accepts short names or full Systran paths)
-WHISPER_MODELS: Dict[str, str] = {
-    DEFAULT_WHISPER_MODEL: DEFAULT_WHISPER_MODEL,
-    "openai/whisper-large-v3-turbo": "large-v3-turbo",
-    "distil-whisper/distil-large-v3": "distil-large-v3",
-    "openai/whisper-large-v3": "large-v3",
-    "openai/whisper-medium": "medium",
-    "openai/whisper-small": "small",
-    "openai/whisper-base": "base",
-    "openai/whisper-tiny": "tiny",
-}
-
-VOXTRAL_MODELS: Dict[str, str] = {
-    "mistralai/Voxtral-Mini-3B-2507": "https://huggingface.co/mistralai/Voxtral-Mini-3B-2507",
-    "mistralai/Voxtral-Small-24B-2507": "https://huggingface.co/mistralai/Voxtral-Small-24B-2507",
-}
-
 CANARY_MODELS: Dict[str, str] = {
     DEFAULT_CANARY_MODEL: DEFAULT_CANARY_MODEL,
+}
+
+# Whisper Turbo (CPU-friendly fallback)
+DEFAULT_WHISPER_MODEL = "deepdml/faster-whisper-large-v3-turbo-ct2"
+WHISPER_MODELS: Dict[str, str] = {
+    DEFAULT_WHISPER_MODEL: DEFAULT_WHISPER_MODEL,
+    "large-v3-turbo": DEFAULT_WHISPER_MODEL,
+    "large-v3": "Systran/faster-whisper-large-v3",
+    "medium": "Systran/faster-whisper-medium",
+    "small": "Systran/faster-whisper-small",
 }
 
 
@@ -34,92 +26,87 @@ def _is_invalid_canary_model(name: str, default: str | None) -> bool:
         return True
     if name in CANARY_MODELS or str(name).startswith("nvidia/canary"):
         return False
-    if name in VOXTRAL_MODELS or name in WHISPER_MODELS:
-        return True
     if default and name == default:
         return False
     return True
 
 
+def _is_invalid_whisper_model(name: str, default: str | None) -> bool:
+    if not name:
+        return True
+    if name in WHISPER_MODELS or str(name).lower() in WHISPER_MODELS:
+        return False
+    if default and name == default:
+        return False
+    # Allow Systran/deepdml HF model names
+    if str(name).startswith(("Systran/faster-whisper", "deepdml/faster-whisper")):
+        return False
+    return True
+
+
 _DEFAULTS = {
-    "whisper_turbo": DEFAULT_WHISPER_MODEL,
-    "voxtral": "mistralai/Voxtral-Mini-3B-2507",  # Legacy alias, maps to voxtral_local
-    "voxtral_local": "mistralai/Voxtral-Mini-3B-2507",
     "canary_qwen": DEFAULT_CANARY_MODEL,
+    "whisper_turbo": DEFAULT_WHISPER_MODEL,
 }
 
 _ALIASES: Dict[str, Dict[str, str]] = {
+    "canary_qwen": {
+        "default": DEFAULT_CANARY_MODEL,
+    },
     "whisper_turbo": {
         "default": DEFAULT_WHISPER_MODEL,
-        "balanced": DEFAULT_WHISPER_MODEL,
-        "turbo-ct2": DEFAULT_WHISPER_MODEL,
-        "large-v3-turbo-ct2": DEFAULT_WHISPER_MODEL,
-        "deepdml/faster-whisper-large-v3-turbo-ct2": DEFAULT_WHISPER_MODEL,
-        "turbo": "openai/whisper-large-v3-turbo",
-        "large-v3-turbo": "openai/whisper-large-v3-turbo",
-        "large-v3": "openai/whisper-large-v3",
-        "distil-large-v3": "distil-whisper/distil-large-v3",
-        "medium": "openai/whisper-medium",
-        "small": "openai/whisper-small",
-        "base": "openai/whisper-base",
-        "tiny": "openai/whisper-tiny",
-    },
-    "voxtral": {  # Legacy alias for voxtral_local
-        "voxtral-mini": "mistralai/Voxtral-Mini-3B-2507",
-        "voxtral-small": "mistralai/Voxtral-Small-24B-2507",
-        "mini": "mistralai/Voxtral-Mini-3B-2507",
-        "small": "mistralai/Voxtral-Small-24B-2507",
-    },
-    "voxtral_local": {
-        "voxtral-mini": "mistralai/Voxtral-Mini-3B-2507",
-        "voxtral-small": "mistralai/Voxtral-Small-24B-2507",
-        "mini": "mistralai/Voxtral-Mini-3B-2507",
-        "small": "mistralai/Voxtral-Small-24B-2507",
+        "large-v3-turbo": DEFAULT_WHISPER_MODEL,
+        "large-v3": "Systran/faster-whisper-large-v3",
+        "medium": "Systran/faster-whisper-medium",
+        "small": "Systran/faster-whisper-small",
     },
 }
 
 
-def normalize_model_name(kind: EngineKind, name: str | None) -> str:
-    """Resolve aliases and provide defaults per engine kind.
+def normalize_model_name(kind: str, model_name: str | None) -> str:
+    """Normalize and validate model names for the engine.
 
-    For whisper_turbo: maps full names to shorter faster-whisper compatible names
-    (e.g., "openai/whisper-large-v3" -> "large-v3"). faster-whisper accepts both formats.
+    Args:
+        kind: Engine kind (e.g., "canary_qwen", "whisper_turbo")
+        model_name: User-provided model name or alias
 
-    If a model name from a different engine is passed (e.g., whisper model for voxtral),
-    falls back to the default for the requested engine kind.
+    Returns:
+        Canonical model name
+
+    Raises:
+        ValueError: If model name is invalid for the engine
     """
-    default = _DEFAULTS.get(kind)
-    if not name:
-        name = default or ""
-    else:
-        is_canary_name = name in CANARY_MODELS or name.startswith("nvidia/canary")
-        # Check if this is a model name from a different engine - if so, use default
-        if kind in ("voxtral", "voxtral_local"):
-            # If passed a whisper model, use voxtral default
-            if (
-                name in WHISPER_MODELS
-                or any(name.startswith(p) for p in ["distil-whisper/", "openai/whisper"])
-                or is_canary_name
-            ):
-                name = default or ""
-        elif kind == "whisper_turbo":
-            # If passed a voxtral model, use whisper default
-            if name in VOXTRAL_MODELS or name.startswith("mistralai/") or is_canary_name:
-                name = default or ""
-        elif kind == "canary_qwen":
-            if _is_invalid_canary_model(name, default):
-                name = default or ""
-
-        alias = _ALIASES.get(kind, {})
-        lookup_key = name.lower() if name else ""
-        lookup = alias.get(lookup_key)
-        name = lookup or name or default or ""
-
-    # For whisper_turbo, prefer short names for faster-whisper (better compatibility)
-    if kind == "whisper_turbo" and name in WHISPER_MODELS:
-        return WHISPER_MODELS[name]
-
-    if kind == "canary_qwen" and name in CANARY_MODELS:
-        return CANARY_MODELS[name]
-
-    return name
+    kind_lower = kind.lower()
+    
+    if kind_lower not in ("canary_qwen", "whisper_turbo"):
+        raise ValueError(f"Unknown engine kind: {kind}")
+    
+    # If no model specified, use default
+    if not model_name:
+        return _DEFAULTS[kind_lower]
+    
+    model_lower = model_name.lower()
+    
+    # Check aliases first
+    aliases = _ALIASES.get(kind_lower, {})
+    if model_lower in aliases:
+        return aliases[model_lower]
+    
+    # Validate against allowed models
+    if kind_lower == "canary_qwen":
+        if _is_invalid_canary_model(model_name, _DEFAULTS.get(kind_lower)):
+            raise ValueError(
+                f"Invalid model '{model_name}' for {kind}. "
+                f"Allowed: {list(CANARY_MODELS.keys())}"
+            )
+        return model_name
+    
+    if kind_lower == "whisper_turbo":
+        if _is_invalid_whisper_model(model_name, _DEFAULTS.get(kind_lower)):
+            raise ValueError(
+                f"Invalid model '{model_name}' for {kind}. "
+                f"Allowed: {list(WHISPER_MODELS.keys())}"
+            )
+        return model_name
+    
+    raise ValueError(f"Unknown engine kind: {kind}")

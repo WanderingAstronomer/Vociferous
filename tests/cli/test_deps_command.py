@@ -28,10 +28,8 @@ def test_deps_check_shows_engine_dependencies() -> None:
     """deps check should show required packages and models for an engine."""
     result = _run_cli(["deps", "check", "--engine", "canary_qwen"])
     
-    # Should list the required packages
-    assert "transformers" in result.stdout or "transformers" in result.stderr
-    assert "torch" in result.stdout or "torch" in result.stderr
-    assert "accelerate" in result.stdout or "accelerate" in result.stderr
+    # Should list the required packages for Canary-Qwen
+    assert "nemo_toolkit" in result.stdout or "nemo_toolkit" in result.stderr
     
     # Should mention the model
     assert "canary" in result.stdout.lower() or "canary" in result.stderr.lower()

@@ -6,7 +6,6 @@ import typer
 
 from vociferous.domain import TranscriptSegment, TranscriptSink, TranscriptionResult
 from vociferous.domain.exceptions import DependencyError
-from vociferous.storage.history import HistoryStorage
 
 
 class StdoutSink(TranscriptSink):
@@ -57,21 +56,6 @@ class ClipboardSink(TranscriptSink):
         self._pc.copy(result.text)
         typer.echo("Transcript copied to clipboard")
 
-
-class HistorySink(TranscriptSink):
-    """Writes transcripts to history storage (and optional file)."""
-
-    def __init__(self, storage: HistoryStorage, target: Path | None = None) -> None:
-        self.storage = storage
-        self.target = target
-        self._segments: list[TranscriptSegment] = []
-
-    def handle_segment(self, segment: TranscriptSegment) -> None:
-        self._segments.append(segment)
-
-    def complete(self, result: TranscriptionResult) -> None:
-        self.storage.save_transcription(result, target=self.target)
-        typer.echo("Transcript saved to history")
 
 
 class CompositeSink(TranscriptSink):

@@ -42,19 +42,34 @@ class ArtifactConfig(BaseModel):
 
 
 class AppConfig(BaseModel):
+    """Main application configuration for Vociferous.
+    
+    Essential settings:
+    - engine: ASR engine (canary_qwen or whisper_turbo)
+    - model_name: Model identifier for the engine
+    - device: Target device (auto, cpu, cuda)
+    - compute_type: Precision (auto, int8, float16, float32, etc.)
+    - model_cache_dir: Directory to cache downloaded models
+    
+    Refinement is handled per-engine in the CLI; not config-driven.
+    Audio preprocessing uses the audio module (decode, vad, condense).
+    """
+
+    # Core engine configuration
     model_name: str = DEFAULT_CANARY_MODEL
     engine: EngineKind = "canary_qwen"  # Canary-Qwen is the primary default
     compute_type: str = "auto"
     device: str = "auto"
     model_cache_dir: str | None = Field(default_factory=lambda: str(DEFAULT_MODEL_CACHE_DIR))
     model_parent_dir: str | None = Field(default_factory=lambda: str(DEFAULT_MODEL_CACHE_DIR))
-    allow_local_fallback: bool = False  # Explicit opt-in for auto-fallback to local engines
-    chunk_ms: int = 960
-    history_limit: int = 20
-    history_dir: str = str(Path.home() / ".cache" / "vociferous" / "history")
-    numexpr_max_threads: int | None = None
-    keep_intermediates: bool = False  # Legacy flag; prefer artifacts.cleanup_intermediates
+    
+    # Advanced settings
+    numexpr_max_threads: int | None = None  # Thread limit for numexpr computations
+    
+    # Artifact handling for intermediate files
     artifacts: ArtifactConfig = Field(default_factory=ArtifactConfig)
+    
+    # Engine-specific parameters (for future extensibility)
     params: Mapping[str, str] = Field(
         default_factory=lambda: {
             "enable_batching": "false",
@@ -62,38 +77,6 @@ class AppConfig(BaseModel):
             "word_timestamps": "false",
         }
     )
-    canary_qwen_enabled: bool = True
-    canary_qwen_refine_by_default: bool = True
-    canary_qwen_refinement_instructions: str = (
-        "Fix grammar, add punctuation, improve readability"
-    )
-    # Refinement settings (formerly polish)
-    refinement_enabled: bool = False
-    refinement_model: str | None = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
-    refinement_params: Mapping[str, str] = Field(
-        default_factory=lambda: {
-            "repo_id": "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
-            "max_tokens": "128",
-            "temperature": "0.2",
-            "gpu_layers": "0",
-            "context_length": "2048",
-        }
-    )
-    # Legacy polish fields (kept for config compatibility)
-    polish_enabled: bool | None = None
-    polish_model: str | None = None
-    polish_params: Mapping[str, str] | None = None
-    # Audio preprocessing options (opt-in for backward compatibility)
-    preprocessing_enabled: bool = False
-    preprocessing_trim_head: bool = True
-    preprocessing_trim_tail: bool = True
-    preprocessing_head_margin_ms: int = 500
-    preprocessing_tail_margin_ms: int = 500
-    preprocessing_split_on_gaps: bool = True
-    preprocessing_gap_threshold_ms: int = 5000
-    preprocessing_energy_threshold_db: float = -40.0
-    preprocessing_min_speech_duration_ms: int = 300
-    preprocessing_min_silence_duration_ms: int = 500
 
     @field_validator("compute_type")
     @classmethod
@@ -110,26 +93,11 @@ class AppConfig(BaseModel):
             raise ValueError("model_parent_dir must be set")
         return str(Path(v).expanduser())
 
-    @field_validator("chunk_ms")
-    @classmethod
-    def validate_chunk_ms(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("chunk_ms must be positive")
-        return v
-
-    @field_validator("history_limit")
-    @classmethod
-    def validate_history_limit(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("history_limit must be positive")
-        return v
-
     @classmethod
     def model_validate(cls, obj: Mapping[str, object] | object, *args, **kwargs):  # type: ignore[override]
-        # Allow legacy polish fields to populate refinement defaults
+        # Migrate legacy keep_intermediates → artifacts.cleanup_intermediates
         if isinstance(obj, Mapping):
             data = dict(obj)
-            # Migrate legacy keep_intermediates → artifacts.cleanup_intermediates
             if "artifacts" not in data and "keep_intermediates" in data:
                 keep_flag = bool(data.get("keep_intermediates"))
                 data["artifacts"] = {
@@ -138,12 +106,6 @@ class AppConfig(BaseModel):
                     "output_directory": str(Path(".").resolve()),
                     "naming_pattern": "{input_stem}_{step}.{ext}",
                 }
-            if "refinement_enabled" not in data and "polish_enabled" in data:
-                data["refinement_enabled"] = data.get("polish_enabled")
-            if "refinement_model" not in data and data.get("polish_model"):
-                data["refinement_model"] = data.get("polish_model")
-            if "refinement_params" not in data and data.get("polish_params"):
-                data["refinement_params"] = data.get("polish_params")
             return super().model_validate(data, *args, **kwargs)
         return super().model_validate(obj, *args, **kwargs)
 

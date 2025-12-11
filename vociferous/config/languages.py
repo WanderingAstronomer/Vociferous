@@ -1,11 +1,18 @@
 """Language constants shared across CLI and engines.
 
-These are ISO 639-1 codes for Whisper-compatible languages and a curated
-subset for Voxtral core performance.
+Language support varies by engine:
+- Canary-Qwen 2.5B: English only (trained on 234.5k hours of English data)
+- Whisper Turbo: 99 languages (multilingual, supports speech translation)
+
+When selecting an engine, the CLI validates language support accordingly.
 """
 
 from __future__ import annotations
 
+# Canary-Qwen 2.5B language support (English-only model)
+CANARY_SUPPORTED_LANGUAGES: list[str] = ["en"]
+
+# Whisper Turbo language support (99 languages from OpenAI tokenizer)
 WHISPER_LANGUAGES: dict[str, str] = {
     "af": "Afrikaans",
     "am": "Amharic",
@@ -109,15 +116,4 @@ WHISPER_LANGUAGES: dict[str, str] = {
     "yue": "Cantonese",
 }
 
-VOXTRAL_CORE_LANGUAGES: list[str] = [
-    "en",
-    "es",
-    "fr",
-    "de",
-    "it",
-    "pt",
-    "hi",
-    "nl",
-]
-
-__all__ = ["WHISPER_LANGUAGES", "VOXTRAL_CORE_LANGUAGES"]
+__all__ = ["CANARY_SUPPORTED_LANGUAGES", "WHISPER_LANGUAGES"]

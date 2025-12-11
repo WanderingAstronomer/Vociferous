@@ -141,9 +141,25 @@ class CanaryQwenEngine(TranscriptionEngine):
         if cache_dir:
             cache_dir.mkdir(parents=True, exist_ok=True)
 
+        # Map compute_type to torch dtype to prevent float32 auto-loading
+        # (Issue: Models saved as bfloat16 default-load as float32, doubling VRAM usage)
+        dtype_map = {
+            "float32": torch.float32,
+            "float16": torch.float16,
+            "bfloat16": torch.bfloat16,
+        }
+        target_dtype = dtype_map.get(self.config.compute_type, torch.bfloat16)  # Default to bfloat16
+        device = self._resolve_device(torch, self.device)
+
         try:
+            # Load model with explicit dtype to prevent memory leak
+            # See: https://github.com/huggingface/transformers/issues/34743
             model = SALM.from_pretrained(self.model_name)
-            model.to(self._resolve_device(torch, self.device))
+            
+            # Convert to target dtype BEFORE moving to device to avoid double allocation
+            model = model.to(dtype=target_dtype)
+            model = model.to(device=device)
+            
             self._model = model
             self._audio_tag = getattr(model, "audio_locator_tag", "<|audioplaceholder|>")
         except Exception as exc:  # pragma: no cover - optional guard

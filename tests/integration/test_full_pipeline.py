@@ -7,8 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
-SHORT_FLAC = SAMPLES_DIR / "ASR_Test_30s.flac"
+SAMPLES_DIR = Path(__file__).resolve().parents[1] / "audio" / "sample_audio"
+SHORT_FLAC = SAMPLES_DIR / "ASR_Test.flac"
 
 
 def _run_cli(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:

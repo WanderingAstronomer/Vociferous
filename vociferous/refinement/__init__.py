@@ -6,17 +6,15 @@ from .base import (
 	Refiner,
 	RefinerConfig,
 	NullRefiner,
-	RuleBasedRefiner,
 )
 from .factory import build_refiner
-from .llama_cpp_refiner import LlamaCppRefiner, LlamaRefinerOptions
+from .canary_refiner import CanaryRefiner
 
 __all__ = [
 	"Refiner",
 	"RefinerConfig",
 	"NullRefiner",
-	"RuleBasedRefiner",
 	"build_refiner",
-	"LlamaCppRefiner",
-	"LlamaRefinerOptions",
+	"CanaryRefiner",
 ]
+

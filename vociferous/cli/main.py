@@ -9,8 +9,8 @@ import sys
 from vociferous.app import configure_logging, transcribe_workflow
 from vociferous.app.sinks import RefiningSink
 from vociferous.config import load_config
-from vociferous.config.languages import WHISPER_LANGUAGES, VOXTRAL_CORE_LANGUAGES
-from vociferous.domain.model import TranscriptionPreset, EngineKind
+from vociferous.config.languages import WHISPER_LANGUAGES
+from vociferous.domain.model import EngineKind
 from vociferous.domain.exceptions import (
     DependencyError, EngineError, AudioDecodeError, ConfigurationError
 )
@@ -285,8 +285,7 @@ def transcribe(
         rich_help_panel="Core Options",
         help=(
             "Transcription engine to use. "
-            "'canary_qwen' is the primary default (dual ASR + LLM). "
-            "'whisper_turbo' and 'voxtral_local' are legacy options."
+            "'canary_qwen' (GPU-optimized, default) or 'whisper_turbo' (CPU-friendly fallback)."
         ),
     ),
     language: str = typer.Option(
@@ -303,15 +302,6 @@ def transcribe(
         metavar="PATH",
         rich_help_panel="Core Options",
         help="Save transcript to file (default: stdout)",
-    ),
-    preset: TranscriptionPreset | None = typer.Option(
-        None,
-        "--preset",
-        "-p",
-        rich_help_panel="Core Options",
-        help="Quality preset: 'fast' (speed), 'balanced' (default), 'high_accuracy' (best quality).",
-        case_sensitive=False,
-        show_default=False,
     ),
     keep_intermediates: bool | None = typer.Option(
         None,
@@ -338,25 +328,19 @@ def transcribe(
     """Transcribe an audio file to text using local ASR engines.
 
     ENGINES:
-            canary_qwen   - Dual-pass ASR + refinement (default, mock-friendly)
-            whisper_turbo - Fast, accurate, works offline (legacy)
-            voxtral_local - Smart punctuation & grammar (legacy, slower)
-
-    PRESETS:
-      fast           - Speed optimized (small model, batch)
-      balanced       - Quality/speed tradeoff (default)
-      high_accuracy  - Quality optimized (large model, beam search)
+        canary_qwen   - GPU-optimized dual-mode ASR + refinement (default, requires CUDA)
+        whisper_turbo - CPU-friendly fallback (faster-whisper, works without GPU)
 
     EXAMPLES:
       vociferous transcribe meeting.wav
-      vociferous transcribe podcast.mp3 -e voxtral_local -o podcast.txt
-      vociferous transcribe recording.wav -l es --preset high_accuracy
+      vociferous transcribe podcast.mp3 -e whisper_turbo -o podcast.txt
+      vociferous transcribe recording.wav -l es --refine "Fix grammar and add punctuation"
 
     ADVANCED:
     Edit ~/.config/vociferous/config.toml for:
-            - Model selection, device (CPU/GPU), compute precision
-            - Batching, VAD, chunk sizes, refinement settings
-            - Toggle refinement per run with --refine / --no-refine
+        - Model selection, device (CPU/GPU), compute precision
+        - Refinement settings (Canary-Qwen LLM mode)
+        - Toggle refinement per run with --refine / --no-refine
         
     SEE ALSO:
       vociferous languages  - List supported language codes
@@ -370,13 +354,15 @@ def transcribe(
         app_config=config,
         engine=engine,
         language=language,
-        preset=preset,
         refine=refine,
     )
 
-    # Resolve intermediate retention (CLI overrides config)
-    base_keep = config.keep_intermediates or (not config.artifacts.cleanup_intermediates)
-    keep_intermediates_choice = keep_intermediates if keep_intermediates is not None else base_keep
+    # Resolve intermediate retention (CLI overrides config artifact cleanup setting)
+    keep_intermediates_choice = (
+        keep_intermediates
+        if keep_intermediates is not None
+        else not config.artifacts.cleanup_intermediates
+    )
     
     # Apply numexpr thread limit if configured
     if bundle.numexpr_threads is not None:
@@ -384,11 +370,8 @@ def transcribe(
         os.environ["NUMEXPR_MAX_THREADS"] = str(bundle.numexpr_threads)
 
     # Derive refinement preference
-    refine_enabled = refine
-    if refine_enabled is None:
-        # Default: follow config when using Canary-Qwen; otherwise disable
-        refine_enabled = engine == "canary_qwen" and config.canary_qwen_refine_by_default
-    refine_text = refine_instructions or config.canary_qwen_refinement_instructions
+    # CLI --refine/--no-refine overrides engine default (Canary-Qwen supports refinement by default)
+    refine_enabled = refine if refine is not None else (engine == "canary_qwen")
 
     # Build engine and optional refiner
     refiner = None
@@ -455,7 +438,7 @@ def transcribe(
             keep_intermediates=keep_intermediates_choice,
             artifact_config=config.artifacts,
             refine=refine_enabled,
-            refine_instructions=refine_text if refine_enabled else None,
+            refine_instructions=refine_instructions if refine_enabled else None,
             engine=engine_adapter,
         )
         for segment in result.segments:
@@ -573,18 +556,31 @@ def check() -> None:
 
 @app.command(rich_help_panel="Utilities")
 def languages() -> None:
-    """[bold cyan]List all supported language codes[/bold cyan] for transcription.
+    """[bold cyan]List supported language codes[/bold cyan] by engine.
 
-    Shows ISO 639-1 language codes supported by Whisper and Voxtral engines.
-    Use these codes with the [cyan]--language[/cyan] or [cyan]-l[/cyan] flag.
+    Language support varies by ASR engine:
+    - [yellow]Canary-Qwen[/yellow] (GPU-optimized): English only
+    - [yellow]Whisper Turbo[/yellow] (CPU-friendly): 99 languages (multilingual + translation)
+
+    Use language codes with the [cyan]--language[/cyan] or [cyan]-l[/cyan] flag.
     
     [bold]Examples:[/bold]
-      vociferous transcribe audio.wav -l es      Spanish
-      vociferous transcribe audio.mp3 -l fr      French
-      vociferous transcribe audio.flac -l ja     Japanese
+      vociferous transcribe audio.wav -e whisper_turbo -l es      Spanish (Whisper only)
+      vociferous transcribe english.wav                            English (default, works with both)
     """
-    # Create main table for Whisper
-    table = Table(title="Whisper (CTranslate2) - All Engines", 
+    from vociferous.config.languages import CANARY_SUPPORTED_LANGUAGES
+    
+    console.print("\n[bold yellow]Engine Language Support[/bold yellow]\n")
+    
+    # Canary section
+    console.print("[bold cyan]Canary-Qwen 2.5B[/bold cyan] (GPU-optimized, requires CUDA)")
+    console.print(f"  Supported: {', '.join(CANARY_SUPPORTED_LANGUAGES)}\n")
+    
+    # Whisper section with table
+    console.print("[bold cyan]Whisper Turbo[/bold cyan] (CPU-friendly, via faster-whisper)")
+    console.print(f"  Total supported: {len(WHISPER_LANGUAGES)} languages\n")
+    
+    table = Table(title="Whisper Turbo Supported Languages", 
                   show_header=True, header_style="bold cyan",
                   title_style="bold yellow")
     table.add_column("Code", style="cyan", width=6)
@@ -612,21 +608,6 @@ def languages() -> None:
     console.print()
     console.print(table)
     console.print(f"\n[dim]Total: {len(WHISPER_LANGUAGES)} languages[/dim]")
-    
-    # Create Voxtral table
-    voxtral_table = Table(title="Voxtral (Mistral-based) - Core Languages", 
-                          show_header=True, header_style="bold cyan",
-                          title_style="bold magenta")
-    voxtral_table.add_column("Code", style="cyan", width=6)
-    voxtral_table.add_column("Language", style="white")
-    
-    # All Voxtral core languages are guaranteed to be in WHISPER_LANGUAGES
-    for code in VOXTRAL_CORE_LANGUAGES:
-        voxtral_table.add_row(code, WHISPER_LANGUAGES[code])
-    
-    console.print()
-    console.print(voxtral_table)
-    console.print("[dim]Note: Voxtral supports 30+ languages with best performance on the above.[/dim]")
     
     # Usage examples
     console.print()

@@ -11,8 +11,8 @@ import wave
 
 import pytest
 
-SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
-SHORT_FLAC = SAMPLES_DIR / "ASR_Test_30s.flac"
+SAMPLES_DIR = Path(__file__).resolve().parent / "sample_audio"
+SHORT_FLAC = SAMPLES_DIR / "ASR_Test.flac"
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
 
 

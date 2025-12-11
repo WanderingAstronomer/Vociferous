@@ -18,7 +18,7 @@ def register_record(app: typer.Typer) -> None:
             "--output",
             "-o",
             metavar="PATH",
-            help="Optional output path (default: recording_<timestamp>.wav in CWD)",
+            help="Optional output path (default: ~/.cache/vociferous/recordings/recording_<timestamp>.wav)",
         ),
         sample_rate: int = typer.Option(16000, help="Sample rate for capture (Hz)"),
         device: str | None = typer.Option(None, help="Optional sounddevice input name"),

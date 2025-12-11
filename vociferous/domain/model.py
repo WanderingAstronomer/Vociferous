@@ -11,11 +11,8 @@ DEFAULT_MODEL_CACHE_DIR = Path.home() / ".cache" / "vociferous" / "models"
 DEFAULT_WHISPER_MODEL = "deepdml/faster-whisper-large-v3-turbo-ct2"
 DEFAULT_CANARY_MODEL = "nvidia/canary-qwen-2.5b"
 
-# Local engines only; "voxtral" is deprecated alias for "voxtral_local"
-EngineKind = Literal["whisper_turbo", "voxtral_local", "voxtral", "canary_qwen"]
-
-# Transcription presets for accuracy vs speed trade-offs
-TranscriptionPreset = Literal["high_accuracy", "balanced", "fast"]
+# Supported engines: canary_qwen (GPU-optimized), whisper_turbo (CPU-friendly)
+EngineKind = Literal["canary_qwen", "whisper_turbo"]
 
 
 def _sanitize_params(params: Mapping[str, str] | None) -> dict[str, str]:
@@ -38,52 +35,6 @@ class AudioChunk(BaseModel):
 class AudioSource(Protocol):
     def stream(self) -> Iterator[AudioChunk]:
         ...
-
-
-class SpeechMap(BaseModel):
-    """Analysis results from audio preprocessing/VAD.
-    
-    Contains speech boundaries and silence gap information for
-    intelligent audio segmentation.
-    """
-    model_config = ConfigDict(frozen=True)
-    first_speech_ms: int
-    last_speech_ms: int
-    silence_gaps: Sequence[tuple[int, int, int]] = Field(default_factory=tuple)  # (start_ms, end_ms, duration_ms)
-    
-    
-class PreprocessingConfig(BaseModel):
-    """Configuration for audio preprocessing pipeline."""
-    model_config = ConfigDict(frozen=True)
-    
-    # Trimming
-    trim_head: bool = True
-    trim_tail: bool = True
-    head_margin_ms: int = 500
-    tail_margin_ms: int = 500
-    
-    # Splitting
-    split_on_gaps: bool = True
-    gap_threshold_ms: int = 5000  # Only split at 5+ second gaps
-    
-    # VAD settings
-    energy_threshold_db: float = -40.0
-    min_speech_duration_ms: int = 300
-    min_silence_duration_ms: int = 500
-    
-    @field_validator("head_margin_ms", "tail_margin_ms", "gap_threshold_ms", "min_speech_duration_ms", "min_silence_duration_ms")
-    @classmethod
-    def validate_positive_ms(cls, v: int) -> int:
-        if v < 0:
-            raise ValueError("Time values must be non-negative")
-        return v
-    
-    @field_validator("energy_threshold_db")
-    @classmethod
-    def validate_energy_threshold(cls, v: float) -> float:
-        if v > 0:
-            raise ValueError("Energy threshold must be negative (dB)")
-        return v
 
 
 class TranscriptSegment(BaseModel):
@@ -109,7 +60,7 @@ class EngineMetadata(BaseModel):
 
 class EngineConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
-    model_name: str = DEFAULT_WHISPER_MODEL
+    model_name: str = DEFAULT_CANARY_MODEL
     compute_type: str = "auto"
     device: str = "auto"
     model_cache_dir: str | None = str(DEFAULT_MODEL_CACHE_DIR)
@@ -142,7 +93,6 @@ class EngineConfig(BaseModel):
 class TranscriptionOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
     language: str = "en"
-    preset: TranscriptionPreset | None = None
     max_duration_s: float | None = None
     beam_size: int | None = None
     temperature: float | None = None

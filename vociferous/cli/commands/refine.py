@@ -6,6 +6,7 @@ import typer
 
 from vociferous.cli.helpers import build_refiner_config
 from vociferous.config import load_config
+from vociferous.domain.model import DEFAULT_CANARY_MODEL
 from vociferous.domain.exceptions import ConfigurationError, DependencyError
 from vociferous.refinement.factory import build_refiner
 
@@ -55,7 +56,7 @@ def register_refine(app: typer.Typer) -> None:
             raise typer.Exit(code=2)
 
         config = load_config()
-        base_params = dict(config.refinement_params)
+        base_params = dict(config.params)
         # Allow CLI overrides for core LLM knobs
         base_params.update(
             {
@@ -68,7 +69,7 @@ def register_refine(app: typer.Typer) -> None:
 
         refiner_config = build_refiner_config(
             enabled=True,
-            model=model or config.refinement_model,
+            model=model or DEFAULT_CANARY_MODEL,
             base_params=base_params,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -82,7 +83,7 @@ def register_refine(app: typer.Typer) -> None:
             typer.echo(f"Refiner initialization error: {exc}", err=True)
             raise typer.Exit(code=3) from exc
 
-        refined = refiner.refine(raw_text, instructions or config.canary_qwen_refinement_instructions)
+        refined = refiner.refine(raw_text, instructions)
 
         if output:
             output.write_text(refined, encoding="utf-8")

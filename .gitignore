@@ -181,4 +181,3 @@ output/
 # Test artifacts (keep structure, ignore files)
 tests/*/artifacts/*
 !tests/*/artifacts/.gitkeep
-vociferous/audio/recordings/*. wav

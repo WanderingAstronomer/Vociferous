@@ -1,4 +1,9 @@
-"""Contract tests for CanaryQwenEngine using mock mode with real audio input."""
+"""Contract tests for CanaryQwenEngine with real model loading.
+
+NOTE: These tests require CUDA GPU with sufficient VRAM (~3GB free minimum).
+They load the actual Canary-Qwen 2.5B model which is memory-intensive.
+Tests will be skipped if GPU memory is insufficient.
+"""
 
 from __future__ import annotations
 
@@ -9,9 +14,12 @@ import pytest
 from vociferous.domain.model import EngineConfig, TranscriptionOptions
 from vociferous.engines.canary_qwen import CanaryQwenEngine
 
-SAMPLES_DIR = Path(__file__).resolve().parents[2] / "samples"
-SAMPLE_WAV = SAMPLES_DIR / "ASR_Test_30s.wav"
+SAMPLES_DIR = Path(__file__).resolve().parent.parent / "audio" / "sample_audio"
+SAMPLE_WAV = SAMPLES_DIR / "ASR_Test_preprocessed.wav"  # Preprocessed: decoded → VAD → condensed
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
+
+# Skip all Canary tests if insufficient GPU memory
+# pytestmark = pytest.mark.skip(reason="Canary tests require GPU with ~3GB+ free VRAM. Run manually on GPU systems with sufficient memory.")
 
 
 @pytest.fixture(autouse=True)
@@ -23,9 +31,8 @@ def ensure_artifacts_dir() -> None:
 def canary_engine() -> CanaryQwenEngine:
     config = EngineConfig(
         model_name="nvidia/canary-qwen-2.5b",
-        device="cpu",
-        compute_type="float32",
-        params={"use_mock": "true"},
+        device="cuda",  # Canary requires CUDA
+        compute_type="float16",
     )
     return CanaryQwenEngine(config)
 
@@ -72,4 +79,4 @@ def test_canary_metadata(canary_engine: CanaryQwenEngine) -> None:
     meta = canary_engine.metadata
 
     assert "canary" in meta.model_name.lower()
-    assert meta.device == "cpu"
+    assert meta.device == "cuda"  # Canary requires CUDA
