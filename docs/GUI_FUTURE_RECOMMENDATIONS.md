@@ -10,7 +10,6 @@ Following the KivyMD best practices audit and corrections, this document outline
 **Benefit:** Enhanced user preference support
 - Implement theme selector in Settings (Light/Dark mode toggle)
 - Add accent color customization options
-- Consider adding preset themes (e.g., "High Contrast", "Eye Comfort")
 - Store theme preferences in config file
 
 **Implementation Approach:**
@@ -155,14 +154,7 @@ session.start(source, engine, sink, options)
 
 ## Priority 4: Polish & Professional Features
 
-### 4.1 Settings Presets
-**Benefit:** Quick switching between workflows
-- Save named configuration presets
-- Quick preset switcher dropdown
-- Export/import presets as JSON
-- Default presets: "Fast", "Accurate", "Interview", "Lecture"
-
-### 4.2 Waveform Visualization
+### 4.1 Waveform Visualization
 **Benefit:** Visual audio analysis
 - Show waveform in HomeScreen
 - Highlight speech vs silence (VAD visualization)
@@ -177,7 +169,7 @@ from kivymd.uix.graph import MDGraph
 # Display in scrollable graph widget
 ```
 
-### 4.3 Multi-Language Support (i18n)
+### 4.2 Multi-Language Support (i18n)
 **Benefit:** Global accessibility
 - English (default)
 - Spanish
@@ -187,13 +179,13 @@ from kivymd.uix.graph import MDGraph
 - Use gettext for translations
 - Language selector in Settings
 
-### 4.4 Dark/Light Theme Scheduling
+### 4.3 Dark/Light Theme Scheduling
 **Benefit:** Eye comfort
 - Auto-switch based on time of day
 - System theme synchronization (if available)
 - Manual override always available
 
-### 4.5 Cloud Storage Integration
+### 4.4 Cloud Storage Integration
 **Benefit:** Cross-device workflow
 - Optional cloud save for transcripts
 - Sync settings across devices
@@ -334,7 +326,6 @@ class TooltipButton(MDRaisedButton, MDTooltip):
 2. Audio playback integration
 3. Waveform visualization
 4. Real-time transcription
-5. Settings presets
 
 ### Phase 4 (Advanced - 3-6 months)
 1. Multi-language i18n

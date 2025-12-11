@@ -1,40 +1,36 @@
 # Vociferous
 
-Local-first ASR with Canary-Qwen dual-pass as the primary engine, plus legacy Whisper Turbo and Voxtral options for compatibility. See `Planning and Documentation` for architecture and requirements.
+Local-first ASR with Canary-Qwen dual-pass as the primary engine, plus Whisper Turbo as a fallback option. See `docs/ARCHITECTURE.md` for detailed architecture and requirements.
 
 ## Requirements
 - Python 3.11+
 - `ffmpeg` available on PATH for decode.
 - `sounddevice`/PortAudio for microphone capture (installed with the base package; ensure OS-specific PortAudio libs are available).
-- GPU optional; CPU runs are supported. Models cache to `~/.cache/vociferous/models` automatically.
+- **NVIDIA GPU with CUDA required for Canary-Qwen** (default engine). Whisper Turbo works on CPU.
+- Models cache to `~/.cache/vociferous/models` automatically.
 
 ## Installation
-- Base install (includes faster-whisper and Silero VAD): `pip install -e .`
+- Base install: `pip install -e .`
+  - Includes: NeMo toolkit, torch>=2.6.0, faster-whisper, Silero VAD, and all required dependencies
 - Optional extras:
-    - `pip install -e .[polish]` for grammar/fluency polishing (llama.cpp + HF hub download)
     - `pip install -e .[gui]` for the Vociferous GUI (KivyMD-based graphical interface)
-    - `pip install -e .[voxtral]` for Voxtral local transformer support (transformers + torch)
     - `pip install -e .[dev]` for tests, typing, and linting tools
 
 All dependencies are managed in `pyproject.toml` as the single source of truth.
 
-## Engines and Presets
-
-### Engines
+## Engines
 
 All engines use a simple batch interface - complete audio file in, complete transcript out.
 
-- **`canary_qwen`** (default): Dual-pass (ASR + optional refinement) using Canary-Qwen 2.5B. Defaults to a mock, dependency-light mode; set `use_mock=false` and install `transformers` + `torch` to run the real model. See `docs/engines/canary_qwen.md` for details.
-- **`whisper_turbo`** (legacy): Batch processing via CTranslate2. Fast and offline; kept for compatibility and quick drafts.
-- **`voxtral_local`** (legacy): Batch processing via transformers. Mistral-based with smart punctuation and grammar; slower, legacy option.
-- **`parakeet_rnnt`**: NVIDIA Parakeet RNNT via Riva endpoint (optional, experimental). Note: This engine uses a different architecture for real-time applications.
+- **`canary_qwen`** (default): Dual-pass (ASR + refinement) using Canary-Qwen 2.5B via NeMo. **Requires CUDA GPU** with ~6GB free VRAM. Produces high-quality transcripts with grammar and punctuation refinement.
+- **`whisper_turbo`** (fallback): Batch processing via CTranslate2/faster-whisper. Works on CPU and GPU. Fast and offline; use when GPU is unavailable or for quick drafts.
 
 ### Engine Interface
 
 Engines use a simple batch interface:
 
 ```python
-segments = engine.transcribe_file(audio_path)
+segments = engine.transcribe_file(audio_path, options)
 ```
 
 The engine receives a preprocessed audio file (decoded, VAD-filtered, silence removed) and returns the complete transcript in one operation.
@@ -57,48 +53,11 @@ Each stage is batch processing - complete file in, complete file out.
 - Simpler architecture (no state management)
 - Easier to test and debug
 
-### Quality Presets (`whisper_turbo` engine - legacy)
-Control the speed/quality tradeoff with `-p/--preset`:
-
-**`balanced`** (default)
-- **Model**: `openai/whisper-large-v3-turbo` (optimized variant)
-- **Compute**: `float16` on GPU, `int8` on CPU
-- **Beam size**: 1 (greedy decoding)
-- **Batch size**: 12
-- **Use case**: Best general-purpose option. Good accuracy with reasonable speed.
-
-**`fast`**
-- **Model**: `openai/whisper-large-v3-turbo`
-- **Compute**: `int8_float16` mixed precision (speed optimized)
-- **Beam size**: 1 (greedy decoding)
-- **Batch size**: 16 (larger batches for throughput)
-- **Use case**: Maximum speed for quick drafts or when processing many files. Slightly lower accuracy.
-
-**`high_accuracy`**
-- **Model**: `openai/whisper-large-v3` (full model, not turbo)
-- **Compute**: `float16` on GPU, `int8` on CPU
-- **Beam size**: 2 (beam search explores multiple hypotheses)
-- **Batch size**: 8 (smaller batches, more careful processing)
-- **Use case**: Best quality for important transcriptions. Significantly slower but more accurate, especially with difficult audio.
-
-**Examples**:
-```bash
-# Default balanced preset
-vociferous transcribe meeting.wav
-
-# Fast preset for quick turnaround
-vociferous transcribe podcast.mp3 --preset fast
-
-# High accuracy for important content
-vociferous transcribe interview.wav -p high_accuracy -o transcript.txt
-```
-
-**Note**: For fine-grained control beyond presets, edit `~/.config/vociferous/config.toml` to set specific model names, compute types, beam sizes, and batch parameters.
-
 ## Key behaviors
-- `vociferous transcribe` defaults to `canary_qwen` (mock by default; set `use_mock=false` for the full model). Legacy engines emit a deprecation warning.
+- `vociferous transcribe` defaults to `canary_qwen` (requires CUDA GPU). Use `--engine whisper_turbo` for CPU fallback.
+- Canary-Qwen includes automatic refinement (grammar, punctuation) in a second pass using the same model.
 - Disfluency cleaning is on by default for Whisper; toggle with `--no-clean-disfluencies`.
-- Default device/compute/model pull from config; device defaults to CPU unless overridden.
+- Default device is `cuda` for Canary-Qwen, `auto` for Whisper Turbo.
 
 ## Configuration
 - Config file: `~/.config/vociferous/config.toml` (created on first run). CLI flags override config values.
@@ -133,7 +92,7 @@ Commands:
 ```bash
 vociferous --dev-help
 ```
-Displays: All user commands PLUS `decode`, `vad`, `condense`, `record`, `transcribe` (workflow orchestration), and `refine` (planned text-only refinement) for manual pipeline construction.
+Displays: All user commands PLUS `decode`, `vad`, `condense`, `record`, `transcribe` (workflow orchestration), and `refine` (text-only refinement) for manual pipeline construction.
 
 Example (truncated):
 ```bash
@@ -146,9 +105,11 @@ Audio Components:
 	condense   Remove silence using VAD timestamps
 	record     Capture microphone audio
 
+Refinement Components:
+	refine     Text-only refinement (Canary LLM mode)
+
 Workflow Commands:
 	transcribe Main transcription workflow (decode → VAD → condense → Canary ASR → Canary Refiner)
-	refine     Text-only refinement (planned; Canary LLM mode)
 ```
 
 **When to use each:**
@@ -158,9 +119,10 @@ Workflow Commands:
 
 ### Main Commands
 
-- `vociferous transcribe <file>` - Transcribe audio file to stdout. Common flags: `-e`/`--engine`, `-l`/`--language`, `-o`/`--output`, `-p`/`--preset`.
-  - Example: `vociferous transcribe recording.wav -e voxtral_local -o transcript.txt`
-- `vociferous languages` - List all supported language codes (ISO 639-1) for Whisper and Voxtral engines.
+- `vociferous transcribe <file>` - Transcribe audio file to stdout. Common flags: `-e`/`--engine`, `-l`/`--language`, `-o`/`--output`, `--refine`/`--no-refine`.
+  - Example: `vociferous transcribe recording.wav -o transcript.txt`
+  - Example (CPU): `vociferous transcribe recording.wav -e whisper_turbo`
+- `vociferous languages` - List all supported language codes (ISO 639-1).
 - `vociferous check` - Verify local prerequisites (ffmpeg, sounddevice).
 - `vociferous-gui` - Launch the graphical user interface (requires `[gui]` extra).
 
@@ -171,20 +133,20 @@ For manual pipeline debugging and component-level control:
 - `vociferous vad <wav>` - Detect speech boundaries and output timestamps
 - `vociferous condense <timestamps> <wav>` - Remove silence using VAD timestamps
 - `vociferous record` - Capture microphone audio
-- `vociferous transcribe <file>` - Workflow orchestrator (decode → VAD → condense → Canary ASR → Canary Refiner)
-- `vociferous refine <transcript>` - Text-only refinement (planned developer component)
+- `vociferous refine <transcript>` - Text-only refinement via Canary LLM
 
 **Note:** Most users should use `transcribe` instead of manual component chaining. Developer commands are for debugging and understanding the internals.
 
 ### Command Options
 
-- `-e|--engine canary_qwen|whisper_turbo|voxtral_local` - Select engine (Canary-Qwen default; Whisper/Voxtral are legacy options).
-- `-p|--preset high_accuracy|balanced|fast`; `--fast` shortcut for `preset=fast`.
+- `-e|--engine canary_qwen|whisper_turbo` - Select engine (Canary-Qwen default, requires GPU; Whisper Turbo for CPU).
+- `--refine/--no-refine` - Toggle second-pass refinement (Canary-Qwen only).
 - `-l|--language <code>` - Language code (e.g., `en`, `es`, `fr`) or `auto` for detection. See `vociferous languages` for full list.
-- Whisper controls: `--enable-batching/--batch-size`, `--beam-size`, `--vad-filter/--no-vad-filter`, `--word-timestamps`, `--whisper-temperature`.
-- Voxtral controls: `--prompt`, `--max-new-tokens`, `--gen-temperature`.
+- Whisper controls: `--beam-size`, `--vad-filter/--no-vad-filter`, `--word-timestamps`.
 - Output/UX: `--output <path>`, `--clipboard`, `--save-history`.
 
 ## Development
-- Run tests: `pytest` (strict type hints enforced).
+- Run tests: `pytest` (64 tests, all using real files - no mocks).
+- Full test suite takes ~4 minutes with CUDA GPU.
 - Code style: frozen dataclasses in domain; adapters avoid importing UI/app layers (ports-and-adapters).
+- Type checking: `mypy --strict` on all modules.

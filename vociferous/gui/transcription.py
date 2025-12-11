@@ -86,7 +86,6 @@ class TranscriptionTask:
             # Create transcription options
             options = TranscriptionOptions(
                 language=self.language,
-                preset=None,
                 prompt=None,
                 params={},
             )

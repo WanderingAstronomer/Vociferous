@@ -79,7 +79,7 @@ class WhisperTurboEngine(TranscriptionEngine):
         segments_iter, _ = self._model.transcribe(
             audio,
             language=options.language if options.language != "auto" else None,
-            beam_size=1,  # Greedy decoding (no presets)
+            beam_size=1,  # Greedy decoding for speed
             word_timestamps=False,
             vad_filter=False,  # Disable internal VAD - we handle VAD manually
         )
