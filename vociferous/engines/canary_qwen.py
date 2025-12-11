@@ -9,7 +9,7 @@ raises a DependencyError so the CLI can fail loudly with guidance.
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from vociferous.domain.model import (
     EngineConfig,

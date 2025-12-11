@@ -8,8 +8,6 @@ from .workflow import transcribe_file_workflow, transcribe_workflow  # noqa: F40
 def configure_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     # Silence verbose engine/VAD progress logs that write to stdout
-    logging.getLogger("faster_whisper").setLevel(logging.ERROR)
-    logging.getLogger("faster_whisper.transcribe").setLevel(logging.ERROR)
     logging.getLogger("whisper").setLevel(logging.ERROR)
     structlog.configure(
         processors=[

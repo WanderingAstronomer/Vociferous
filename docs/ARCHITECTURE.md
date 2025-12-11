@@ -1,15 +1,18 @@
 # Vociferous: Executive Architecture Philosophy & Design Principles
 
 **Date:** December 2025
-**Version:** 2.1
-**Status:** Core Architecture Complete (v0.2.0 Alpha)
+**Version:** 2.2
+**Status:** Core Architecture Complete (v0.3.4 Alpha)
+
+> **Note:** The authoritative specification is [Redesign.md](Redesign.md).
+> If this document and the Redesign Document disagree, the Redesign Document wins.
 
 ## Module Implementation Status
 
 | Module | Status | Notes |
 |--------|--------|-------|
 | **audio** | ✅ Implemented | Audio primitives (decoder, vad, condenser, recorder) - all contract tests passing |
-| **engines** | ✅ Implemented | Canary-Qwen dual-pass working; Whisper Turbo available as fallback |
+| **engines** | ✅ Implemented | Canary-Qwen dual-pass working; Official OpenAI Whisper available as fallback |
 | **refinement** | ✅ Implemented | Canary LLM refinement mode integrated and tested |
 | **cli** | ✅ Implemented | Commands and interface adapters; two-tier help system |
 | **app** | ✅ Implemented | Transparent workflow functions (no sessions, no arbiters) |
@@ -603,10 +606,11 @@ Each engine declares its required packages and models explicitly. The `deps chec
 | Engine | Required Packages | Model Repository | Model Cache Location |
 |--------|------------------|------------------|---------------------|
 | **canary_qwen** | `nemo_toolkit[asr,tts]>=2.1.0`<br/>`torch>=2.6.0`<br/>`sacrebleu>=2.0.0` | `nvidia/canary-qwen-2.5b` (NeMo SALM checkpoint) | `~/.cache/vociferous/models/` |
-| **whisper_turbo** | `faster-whisper>=1.0.0`<br/>`ctranslate2>=4.0.0` | `Systran/faster-whisper-large-v3` | `~/.cache/vociferous/models/` |
+| **whisper_turbo** | `openai-whisper>=20240930` | `turbo` (official OpenAI model) | `~/.cache/vociferous/models/` |
 
 **Notes:**
 - **NeMo, torch, and sacrebleu are required dependencies** - included in `pyproject.toml` (not optional)
+- **Whisper uses the official OpenAI Whisper package** (NOT faster-whisper, NOT CTranslate2)
 - Package versions are minimum requirements; newer versions typically work
 - Models are downloaded automatically on first use if not cached
 - Canary-Qwen is a NeMo SpeechLM (SALM) model, not a Transformers checkpoint
@@ -706,7 +710,7 @@ if _bool_param(params, "use_mock", False):
 1. **Install the package (includes all required dependencies):**
    ```bash
    pip install -e .
-   # Installs: nemo_toolkit, torch>=2.6.0, sacrebleu, faster-whisper, etc.
+   # Installs: nemo_toolkit, torch>=2.6.0, sacrebleu, openai-whisper, etc.
    ```
 
 2. **Check dependencies:**

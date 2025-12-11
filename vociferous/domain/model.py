@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .constants import Device, ComputeType
 
 DEFAULT_MODEL_CACHE_DIR = Path.home() / ".cache" / "vociferous" / "models"
-DEFAULT_WHISPER_MODEL = "deepdml/faster-whisper-large-v3-turbo-ct2"
+DEFAULT_WHISPER_MODEL = "turbo"  # Official OpenAI Whisper Turbo
 DEFAULT_CANARY_MODEL = "nvidia/canary-qwen-2.5b"
 
 # Supported engines: canary_qwen (GPU-optimized), whisper_turbo (CPU-friendly)

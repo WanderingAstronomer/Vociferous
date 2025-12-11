@@ -333,7 +333,7 @@ def transcribe(
 
     ENGINES:
         canary_qwen   - GPU-optimized dual-mode ASR + refinement (default, requires CUDA)
-        whisper_turbo - CPU-friendly fallback (faster-whisper, works without GPU)
+        whisper_turbo - CPU-friendly fallback (official OpenAI Whisper, works without GPU)
 
     EXAMPLES:
       vociferous transcribe meeting.wav
@@ -585,7 +585,7 @@ def languages() -> None:
     console.print(f"  Supported: {', '.join(CANARY_SUPPORTED_LANGUAGES)}\n")
     
     # Whisper section with table
-    console.print("[bold cyan]Whisper Turbo[/bold cyan] (CPU-friendly, via faster-whisper)")
+    console.print("[bold cyan]Whisper Turbo[/bold cyan] (CPU-friendly, official OpenAI Whisper)")
     console.print(f"  Total supported: {len(WHISPER_LANGUAGES)} languages\n")
     
     table = Table(title="Whisper Turbo Supported Languages", 

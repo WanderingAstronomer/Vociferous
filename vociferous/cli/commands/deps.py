@@ -90,12 +90,12 @@ def _get_engine_requirements(engine: str) -> tuple[list[str], list[dict[str, str
             }
         ]
     elif engine == "whisper_turbo":
-        packages = ["faster-whisper>=1.0.0", "ctranslate2>=4.0.0"]
+        packages = ["openai-whisper>=20240930"]
         models = [
             {
-                "name": "Systran/faster-whisper-large-v3",
-                "repo_id": "Systran/faster-whisper-large-v3",
-                "description": "Faster-Whisper Large V3 model (default)",
+                "name": "turbo",
+                "repo_id": "openai/whisper-turbo",
+                "description": "Official OpenAI Whisper Turbo model (default)",
             }
         ]
     else:

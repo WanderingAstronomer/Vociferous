@@ -10,14 +10,18 @@ CANARY_MODELS: Dict[str, str] = {
     DEFAULT_CANARY_MODEL: DEFAULT_CANARY_MODEL,
 }
 
-# Whisper Turbo (CPU-friendly fallback)
-DEFAULT_WHISPER_MODEL = "deepdml/faster-whisper-large-v3-turbo-ct2"
+# Official OpenAI Whisper models (NOT faster-whisper, NOT CTranslate2)
+# See: https://github.com/openai/whisper
+DEFAULT_WHISPER_MODEL = "turbo"
 WHISPER_MODELS: Dict[str, str] = {
-    DEFAULT_WHISPER_MODEL: DEFAULT_WHISPER_MODEL,
-    "large-v3-turbo": DEFAULT_WHISPER_MODEL,
-    "large-v3": "Systran/faster-whisper-large-v3",
-    "medium": "Systran/faster-whisper-medium",
-    "small": "Systran/faster-whisper-small",
+    "turbo": "turbo",           # Whisper Turbo (recommended, fastest)
+    "large-v3": "large-v3",     # Whisper V3 Large
+    "large-v2": "large-v2",     # Whisper V2 Large
+    "large": "large",           # Whisper Large (original)
+    "medium": "medium",
+    "small": "small",
+    "base": "base",
+    "tiny": "tiny",
 }
 
 
@@ -34,12 +38,10 @@ def _is_invalid_canary_model(name: str, default: str | None) -> bool:
 def _is_invalid_whisper_model(name: str, default: str | None) -> bool:
     if not name:
         return True
+    # Official Whisper model names: turbo, large-v3, large-v2, large, medium, small, base, tiny
     if name in WHISPER_MODELS or str(name).lower() in WHISPER_MODELS:
         return False
     if default and name == default:
-        return False
-    # Allow Systran/deepdml HF model names
-    if str(name).startswith(("Systran/faster-whisper", "deepdml/faster-whisper")):
         return False
     return True
 
@@ -55,10 +57,10 @@ _ALIASES: Dict[str, Dict[str, str]] = {
     },
     "whisper_turbo": {
         "default": DEFAULT_WHISPER_MODEL,
-        "large-v3-turbo": DEFAULT_WHISPER_MODEL,
-        "large-v3": "Systran/faster-whisper-large-v3",
-        "medium": "Systran/faster-whisper-medium",
-        "small": "Systran/faster-whisper-small",
+        "large-v3-turbo": "turbo",  # Map old alias to turbo
+        "large-v3": "large-v3",
+        "medium": "medium",
+        "small": "small",
     },
 }
 

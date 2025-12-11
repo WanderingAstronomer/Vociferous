@@ -51,9 +51,8 @@ def test_deps_check_whisper_turbo() -> None:
     """deps check should work with whisper_turbo engine."""
     result = _run_cli(["deps", "check", "--engine", "whisper_turbo"])
     
-    # Should list whisper-specific packages
-    assert "faster-whisper" in result.stdout or "faster-whisper" in result.stderr
-    assert "ctranslate2" in result.stdout or "ctranslate2" in result.stderr
+    # Should list whisper-specific packages (official openai-whisper)
+    assert "openai-whisper" in result.stdout or "openai-whisper" in result.stderr
 
 
 def test_deps_check_shows_cache_location() -> None:
