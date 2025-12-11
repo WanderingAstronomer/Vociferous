@@ -22,6 +22,22 @@ from vociferous.domain.model import EngineKind
 console = Console()
 
 
+def _extract_package_name(package_spec: str) -> str:
+    """Extract base package name from a package specification.
+    
+    Args:
+        package_spec: Package spec like 'torch>=2.0.0' or 'pkg>=1.0,<2.0'
+    
+    Returns:
+        Base package name without version specifiers
+    """
+    # Split on common version operators to extract package name
+    for sep in [">=", "==", "<=", "!=", "~=", "<", ">", "["]:
+        if sep in package_spec:
+            return package_spec.split(sep)[0].strip()
+    return package_spec.strip()
+
+
 def _check_package_installed(package_name: str) -> tuple[bool, str | None]:
     """Check if a Python package is installed.
     
@@ -32,7 +48,7 @@ def _check_package_installed(package_name: str) -> tuple[bool, str | None]:
         Tuple of (is_installed, version_or_none)
     """
     # Extract base package name without version specifier
-    base_name = package_name.split(">=")[0].split("==")[0].split("<")[0].strip()
+    base_name = _extract_package_name(package_name)
     
     try:
         mod = importlib.import_module(base_name)
@@ -46,6 +62,14 @@ def _check_package_installed(package_name: str) -> tuple[bool, str | None]:
 
 def _get_engine_requirements(engine: str) -> tuple[list[str], list[dict[str, str]]]:
     """Get requirements for a specific engine without importing heavy dependencies.
+    
+    Note: Requirements are defined inline here rather than imported from engine modules
+    to avoid triggering heavy imports (torch, transformers, etc.) which may fail if
+    dependencies are missing. This is the whole point of the deps check command.
+    
+    Maintenance: When adding new engines or changing requirements, update both:
+    1. Engine module metadata functions (required_packages, required_models)
+    2. This function's inline definitions
     
     Args:
         engine: Engine name (e.g., 'canary_qwen', 'whisper_turbo')
@@ -167,7 +191,7 @@ def register_deps(app: typer.Typer) -> None:
         for pkg in packages:
             is_installed, version = _check_package_installed(pkg)
             if is_installed:
-                installed_packages.append((pkg.split(">=")[0].split("==")[0], version or "unknown"))
+                installed_packages.append((_extract_package_name(pkg), version or "unknown"))
             else:
                 missing_packages.append(pkg)
         
@@ -196,7 +220,7 @@ def register_deps(app: typer.Typer) -> None:
             table.add_row(pkg_name, "[green]OK[/green]", f"v{version}")
         
         for pkg in missing_packages:
-            pkg_name = pkg.split(">=")[0].split("==")[0]
+            pkg_name = _extract_package_name(pkg)
             table.add_row(pkg_name, "[red]MISSING[/red]", pkg)
         
         # Add model rows
