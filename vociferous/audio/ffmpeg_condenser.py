@@ -10,7 +10,6 @@ import logging
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Sequence
 
 from vociferous.domain.exceptions import AudioDecodeError
 

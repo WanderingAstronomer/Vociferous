@@ -24,33 +24,6 @@ from vociferous.engines.model_registry import normalize_model_name
 logger = logging.getLogger(__name__)
 
 
-def required_packages() -> list[str]:
-    """Return list of required Python packages for Canary-Qwen engine.
-    
-    This function can be called without importing the heavy dependencies,
-    making it safe for dependency checking commands.
-    
-    Returns:
-        List of package names with optional version specifiers
-    """
-    return ["transformers>=4.38.0", "torch>=2.0.0", "accelerate>=0.28.0"]
-
-
-def required_models() -> list[dict[str, str]]:
-    """Return list of required model descriptors for Canary-Qwen engine.
-    
-    Returns:
-        List of dicts with keys: 'name', 'repo_id', 'description'
-    """
-    return [
-        {
-            "name": "nvidia/canary-1b",
-            "repo_id": "nvidia/canary-1b",
-            "description": "NVIDIA Canary 1B ASR model (default)",
-        }
-    ]
-
-
 def _bool_param(params: Mapping[str, str], key: str, default: bool) -> bool:
     raw = params.get(key)
     if raw is None:
@@ -82,7 +55,7 @@ class CanaryQwenEngine(TranscriptionEngine):
             raise ConfigurationError("Mock mode is disabled for Canary-Qwen. Remove params.use_mock=true.")
         self.use_mock = False
         self._model: Any | None = None
-        self._processor: Any | None = None
+        self._audio_tag: str = "<|audioplaceholder|>"
         self._lazy_model()
 
     @property
@@ -95,10 +68,31 @@ class CanaryQwenEngine(TranscriptionEngine):
 
     # Batch interface ----------------------------------------------------
     def transcribe_file(self, audio_path: Path, options: TranscriptionOptions) -> list[TranscriptSegment]:
+        if self._model is None:
+            raise DependencyError(
+                "Canary-Qwen model not loaded; install NeMo trunk: pip install \"nemo_toolkit[asr,tts] @ git+https://github.com/NVIDIA/NeMo.git\""
+            )
+
         pcm_bytes = self._load_audio_bytes(audio_path)
-        transcript_text = self._transcribe_bytes(pcm_bytes)
         duration_s = self._estimate_duration(pcm_bytes)
         language = options.language if options and options.language else "en"
+
+        prompts = [
+            [
+                {
+                    "role": "user",
+                    "content": f"Transcribe the following: {self._audio_tag}",
+                    "audio": [str(audio_path)],
+                }
+            ]
+        ]
+
+        answer_ids = self._model.generate(
+            prompts=prompts,
+            max_new_tokens=self._resolve_asr_tokens(options),
+        )
+        transcript_text = self._model.tokenizer.ids_to_text(answer_ids[0].cpu())
+
         segment = TranscriptSegment(
             text=transcript_text,
             start_s=0.0,
@@ -114,22 +108,33 @@ class CanaryQwenEngine(TranscriptionEngine):
         if not cleaned:
             return ""
 
-        if self._model is None or self._processor is None:
-            raise DependencyError("Canary-Qwen model not loaded; install transformers/torch/accelerate and retry.")
+        if self._model is None:
+            raise DependencyError(
+                "Canary-Qwen model not loaded; install NeMo trunk: pip install \"nemo_toolkit[asr,tts] @ git+https://github.com/NVIDIA/NeMo.git\""
+            )
 
-        # Real refinement path placeholder; keep API stable for future model wiring.
-        return cleaned if cleaned else ""
+        prompts = [[{"role": "user", "content": f"{prompt}\n\n{cleaned}"}]]
+        with self._model.llm.disable_adapter():
+            answer_ids = self._model.generate(
+                prompts=prompts,
+                max_new_tokens=self._resolve_refine_tokens(cleaned),
+            )
+
+        refined = self._model.tokenizer.ids_to_text(answer_ids[0].cpu()).strip()
+        return refined
 
     # Internals ---------------------------------------------------------
     def _lazy_model(self) -> None:
         if self._model is not None:
             return
         try:
-            from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor  # pragma: no cover - optional
             import torch  # pragma: no cover - optional
+            from nemo.collections.speechlm2.models import SALM  # pragma: no cover - optional
         except ImportError:  # pragma: no cover - dependency guard
             raise DependencyError(
-                "Missing dependencies for Canary-Qwen. Install with: pip install 'transformers' 'torch' 'accelerate'"
+                "Missing dependencies for Canary-Qwen SALM. Install NeMo trunk (requires torch>=2.6): "
+                "pip install \"nemo_toolkit[asr,tts] @ git+https://github.com/NVIDIA/NeMo.git\"\n"
+                "Then run: vociferous deps check --engine canary_qwen"
             )
 
         cache_dir = Path(self.config.model_cache_dir).expanduser() if self.config.model_cache_dir else None
@@ -137,38 +142,15 @@ class CanaryQwenEngine(TranscriptionEngine):
             cache_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            self._processor = AutoProcessor.from_pretrained(self.model_name, cache_dir=cache_dir)
-            self._model = AutoModelForSpeechSeq2Seq.from_pretrained(
-                self.model_name,
-                torch_dtype=self._resolve_dtype(torch, self.precision),
-                cache_dir=cache_dir,
-            )
-            self._model.to(self.device if self.device != "auto" else "cpu")
+            model = SALM.from_pretrained(self.model_name)
+            model.to(self._resolve_device(torch, self.device))
+            self._model = model
+            self._audio_tag = getattr(model, "audio_locator_tag", "<|audioplaceholder|>")
         except Exception as exc:  # pragma: no cover - optional guard
             raise DependencyError(
                 f"Failed to load Canary-Qwen model '{self.model_name}': {exc}\n"
-                "Ensure the model is accessible and dependencies are installed."
+                "Ensure NeMo toolkit is installed from trunk: pip install \"nemo_toolkit[asr,tts] @ git+https://github.com/NVIDIA/NeMo.git\""
             ) from exc
-
-    def _transcribe_bytes(self, data: bytes) -> str:
-        if not data:
-            return ""
-        if self._model is None or self._processor is None:
-            raise DependencyError("Canary-Qwen model not loaded; install dependencies and retry.")
-
-        import torch  # pragma: no cover - optional heavy path
-        import numpy as np  # pragma: no cover - optional heavy path
-
-        samples = np.frombuffer(data, dtype=np.int16).astype("float32")
-        max_val = float(np.iinfo(np.int16).max)
-        samples = samples / (max_val + 1.0)
-        array = torch.from_numpy(samples)
-        inputs = self._processor(array, sampling_rate=16000, return_tensors="pt")
-        inputs = {k: v.to(self._model.device) for k, v in inputs.items()}
-        with torch.no_grad():
-            generated_ids = self._model.generate(**inputs, max_length=256)
-        transcription = self._processor.batch_decode(generated_ids, skip_special_tokens=True)
-        return transcription[0] if transcription else ""
 
     def _load_audio_bytes(self, audio_path: Path) -> bytes:
         try:
@@ -186,6 +168,29 @@ class CanaryQwenEngine(TranscriptionEngine):
         # PCM16 audio stores one sample per 2 bytes.
         samples = len(data) / 2
         return float(samples) / float(sample_rate)
+
+    @staticmethod
+    def _resolve_device(torch_module: Any, requested: str) -> Any:
+        if requested == "cpu":
+            return torch_module.device("cpu")
+        if requested == "cuda" and torch_module.cuda.is_available():
+            return torch_module.device("cuda")
+        # auto or unavailable cuda falls back to cpu
+        return torch_module.device("cuda" if torch_module.cuda.is_available() else "cpu")
+
+    @staticmethod
+    def _resolve_asr_tokens(options: TranscriptionOptions) -> int:
+        try:
+            raw = options.params.get("max_new_tokens") if options and options.params else None
+            return int(raw) if raw is not None else 256
+        except (TypeError, ValueError):
+            return 256
+
+    @staticmethod
+    def _resolve_refine_tokens(text: str) -> int:
+        # Keep headroom for longer refinements; cap at 2048 tokens.
+        length_hint = max(512, min(len(text) // 2, 2048))
+        return length_hint
 
     @staticmethod
     def _resolve_dtype(torch_module: Any, precision: str) -> Any:

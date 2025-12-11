@@ -27,6 +27,13 @@
 - Silero VAD path now fails fast when the dependency is missing or invalid parameters are provided.
 - Recorder enforces configured sample width; condenser raises when called without timestamps and cleans temp concat lists via context.
 
+### Engines Module Updates
+
+- Shared `audio_loader` utility eliminates duplicate WAV-to-numpy logic and PCM scaling constants.
+- Voxtral engine now publishes `required_packages`/`required_models` and reuses the shared loader; Whisper Turbo uses extracted CUDA helper and typed model handles.
+- Canary-Qwen refine_text explicitly marks the unimplemented path; factory stops blanket deprecation warning.
+- Cache manager validates inputs and minimum model size; hardware detection logs CUDA initialization failures instead of failing silently.
+
 ## Architecture Refactor Progress
 
 **Completed:**
@@ -489,14 +496,15 @@ Each engine declares its required packages and models explicitly. The `deps chec
 
 | Engine | Required Packages | Model Repository | Model Cache Location |
 |--------|------------------|------------------|---------------------|
-| **canary_qwen** | `transformers>=4.38.0`<br/>`torch>=2.0.0`<br/>`accelerate>=0.28.0` | `nvidia/canary-qwen-2.5b` | `~/.cache/vociferous/models/` |
+| **canary_qwen** | `nemo_toolkit[asr,tts] @ git+https://github.com/NVIDIA/NeMo.git`<br/>`torch>=2.6.0` | `nvidia/canary-qwen-2.5b` (NeMo SALM checkpoint) | `~/.cache/vociferous/models/` |
 | **whisper_turbo** | `faster-whisper>=1.0.0`<br/>`ctranslate2>=4.0.0` | `Systran/faster-whisper-large-v3` | `~/.cache/vociferous/models/` |
 
 **Notes:**
 - Package versions are minimum requirements; newer versions typically work
 - Models are downloaded automatically on first use if not cached
+- Canary-Qwen is a NeMo SpeechLM (SALM) model, not a Transformers checkpoint; install the NeMo trunk build via `pip install "nemo_toolkit[asr,tts] @ git+https://github.com/NVIDIA/NeMo.git"` (requires torch>=2.6.0)
 - Cache location can be configured via `model_cache_dir` in `~/.config/vociferous/config.toml`
-- GPU support requires appropriate CUDA-capable `torch` installation
+- GPU support requires an appropriate CUDA-capable `torch` installation; CPU is possible but slow
 
 ---
 

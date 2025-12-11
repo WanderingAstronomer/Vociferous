@@ -43,13 +43,6 @@ def build_engine(kind: EngineKind, config: EngineConfig) -> TranscriptionEngine:
         )
         kind = "voxtral_local"
 
-    if kind != "canary_qwen":
-        logger.warning(
-            "⚠ Engine '%s' is deprecated. Canary-Qwen is the primary engine. "
-            "Use --engine canary_qwen for best results.",
-            kind,
-        )
-
     normalized_name = normalize_model_name(kind, config.model_name)
     config = config.model_copy(update={"model_name": normalized_name})
 

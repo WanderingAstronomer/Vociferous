@@ -9,12 +9,16 @@ This module ensures consistent caching behavior across all engines:
 
 from __future__ import annotations
 
+import logging
 import os
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator
-from contextlib import contextmanager
 
 from vociferous.domain.model import DEFAULT_MODEL_CACHE_DIR
+
+logger = logging.getLogger(__name__)
+MIN_MODEL_SIZE_MB = 10
 
 
 def get_cache_root() -> Path:
@@ -98,9 +102,21 @@ def ensure_model_cached(
         ValueError: If skip_download=True and file not found
         RuntimeError: If huggingface_hub is not installed or download fails
     """
-    # Check if file exists AND has non-zero size (catches incomplete downloads)
-    if model_path.exists() and model_path.stat().st_size > 0:
-        return model_path
+    if not repo_id or not repo_id.strip():
+        raise ValueError("repo_id cannot be empty")
+    if not filename or not filename.strip():
+        raise ValueError("filename cannot be empty")
+
+    if model_path.exists():
+        size_mb = model_path.stat().st_size / (1024 * 1024)
+        if size_mb >= MIN_MODEL_SIZE_MB:
+            return model_path
+        logger.warning(
+            "Model file %s is only %.1fMB (<%dMB); forcing re-download",
+            model_path.name,
+            size_mb,
+            MIN_MODEL_SIZE_MB,
+        )
     
     if skip_download:
         raise ValueError(f"Model not found at {model_path}")

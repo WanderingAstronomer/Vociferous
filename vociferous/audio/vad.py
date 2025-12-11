@@ -73,13 +73,13 @@ class VadWrapper:
             return
 
         self._torch = self._try_import_torch()
-        if device == "cuda" and self._torch is None:
-            raise ConfigurationError(
-                "CUDA device requested but PyTorch with CUDA support is not installed; "
-                "install the appropriate torch build or use device='cpu'"
-            )
-        if not self._torch:
-            return
+        if self._torch is None:
+            if device == "cuda":
+                raise ConfigurationError(
+                    "CUDA device requested but PyTorch with CUDA support is not installed; "
+                    "install the appropriate torch build or use device='cpu'"
+                )
+            return  # CPU mode can proceed without torch in some scenarios
 
         try:
             # silero_vad package returns just the model, not (model, utils)

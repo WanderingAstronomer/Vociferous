@@ -104,10 +104,16 @@ class FfmpegDecoder:
         )
 
     def _check_ffmpeg(self) -> bool:
+        import os
         import shutil
         import subprocess
 
-        path = shutil.which(self.ffmpeg_path)
+        # Check if it's already a full path
+        if os.path.isfile(self.ffmpeg_path) and os.access(self.ffmpeg_path, os.X_OK):
+            path = self.ffmpeg_path
+        else:
+            path = shutil.which(self.ffmpeg_path)
+        
         if path is None:
             return False
 

@@ -81,12 +81,12 @@ def _get_engine_requirements(engine: str) -> tuple[list[str], list[dict[str, str
     # which have heavy dependencies (torch, transformers, etc.)
     
     if engine == "canary_qwen":
-        packages = ["transformers>=4.38.0", "torch>=2.0.0", "accelerate>=0.28.0"]
+        packages = ["nemo_toolkit[asr]>=2.0.0"]
         models = [
             {
                 "name": "nvidia/canary-qwen-2.5b",
                 "repo_id": "nvidia/canary-qwen-2.5b",
-                "description": "NVIDIA Canary-Qwen 2.5B ASR model (default)",
+                "description": "NVIDIA Canary-Qwen 2.5B NeMo ASR model (default)",
             }
         ]
     elif engine == "whisper_turbo":

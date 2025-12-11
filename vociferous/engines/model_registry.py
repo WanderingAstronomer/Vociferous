@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import Dict
 
-from vociferous.domain.model import DEFAULT_CANARY_MODEL, DEFAULT_WHISPER_MODEL, EngineKind
+from vociferous.domain.model import EngineKind
+
+DEFAULT_WHISPER_MODEL = "deepdml/faster-whisper-large-v3-turbo-ct2"
+DEFAULT_CANARY_MODEL = "nvidia/canary-qwen-2.5b"
 
 # Verified model names for faster-whisper (accepts short names or full Systran paths)
 WHISPER_MODELS: Dict[str, str] = {

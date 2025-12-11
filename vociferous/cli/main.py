@@ -23,6 +23,7 @@ from vociferous.cli.commands import (
     register_condense,
     register_record,
     register_refine,
+    register_deps,
 )
 
 try:
@@ -213,7 +214,10 @@ register_decode(app)        # rich_help_panel="Audio Components"
 register_vad(app)           # rich_help_panel="Audio Components"
 register_condense(app)      # rich_help_panel="Audio Components"
 register_record(app)        # rich_help_panel="Audio Components"
-register_refine(app)        # rich_help_panel="Audio Components"
+register_refine(app)        # rich_help_panel="Refinement Components"
+
+# Utility commands (available to all users)
+register_deps(app)          # rich_help_panel="Utilities"
 
 # User-tier commands are defined below: transcribe, languages, check
 
@@ -515,23 +519,55 @@ def check() -> None:
     # Check model cache
     cfg = load_config()
     cache_path = Path(cfg.model_cache_dir) if cfg.model_cache_dir else None
+    models_missing = False
     if cache_path and cache_path.exists():
         table.add_row("Model cache", "[green]OK[/green]", str(cache_path))
+        
+        # Check if default engine model is fully downloaded
+        canary_model_path = cache_path / "models--nvidia--canary-qwen-2.5b"
+        if canary_model_path.exists():
+            # Check for essential files in snapshots (model weights, preprocessor config, etc.)
+            snapshots = list(canary_model_path.glob("snapshots/*/"))
+            if snapshots:
+                snapshot_dir = snapshots[0]
+                # Check for key files that indicate complete download
+                has_preprocessor = (snapshot_dir / "preprocessor_config.json").exists()
+                has_model = any(snapshot_dir.glob("*.safetensors")) or any(snapshot_dir.glob("*.bin"))
+                
+                if has_preprocessor and has_model:
+                    table.add_row("Canary-Qwen", "[green]OK[/green]", "Model downloaded")
+                else:
+                    table.add_row("Canary-Qwen", "[yellow]INCOMPLETE[/yellow]", "Partial download detected")
+                    models_missing = True
+            else:
+                table.add_row("Canary-Qwen", "[yellow]MISSING[/yellow]", "Model not downloaded")
+                models_missing = True
+        else:
+            table.add_row("Canary-Qwen", "[yellow]MISSING[/yellow]", "Model not downloaded")
+            models_missing = True
     elif cache_path:
         table.add_row("Model cache", "[yellow]WARN[/yellow]", f"{cache_path} (will be created)")
+        table.add_row("Canary-Qwen", "[yellow]MISSING[/yellow]", "Model not downloaded")
+        models_missing = True
     else:
         table.add_row("Model cache", "[dim]N/A[/dim]", "Not configured")
+        models_missing = True
 
     console.print(table)
 
-    if ok:
-        console.print("\n[bold green]Core checks passed! Ready to transcribe files.[/bold green]")
+    if ok and not models_missing:
+        console.print("\n[bold green]All checks passed! Ready to transcribe.[/bold green]")
         if sounddevice_warn:
-            console.print("[yellow]Warning: sounddevice not installed; microphone capture disabled.[/yellow]")
+            console.print("[yellow]Note: sounddevice not installed; microphone capture disabled.[/yellow]")
+    elif ok:
+        console.print("\n[bold yellow]Core checks passed, but models need downloading.[/bold yellow]")
+        console.print("[yellow]Run 'vociferous transcribe <file>' to auto-download models on first use.[/yellow]")
+        if sounddevice_warn:
+            console.print("[yellow]Note: sounddevice not installed; microphone capture disabled.[/yellow]")
     else:
         console.print("\n[bold red]Some prerequisites missing. Install them for full functionality.[/bold red]")
         if sounddevice_warn:
-            console.print("[yellow]Warning: sounddevice not installed; microphone capture disabled.[/yellow]")
+            console.print("[yellow]Note: sounddevice not installed; microphone capture disabled.[/yellow]")
         raise typer.Exit(code=1)
 
 

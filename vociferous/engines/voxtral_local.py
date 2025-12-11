@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import wave
 from pathlib import Path
-from typing import Any
-
-import numpy as np
+from typing import TYPE_CHECKING
 
 from vociferous.domain.model import (
     DEFAULT_MODEL_CACHE_DIR,
@@ -15,12 +12,29 @@ from vociferous.domain.model import (
     TranscriptionOptions,
 )
 from vociferous.domain.exceptions import DependencyError, EngineError
-from vociferous.engines.model_registry import normalize_model_name
-from vociferous.engines.hardware import get_optimal_device, get_optimal_compute_type
+from vociferous.engines.audio_loader import load_audio_file
 from vociferous.engines.cache_manager import configure_hf_cache
+from vociferous.engines.hardware import get_optimal_device, get_optimal_compute_type
+from vociferous.engines.model_registry import normalize_model_name
 
-# Audio format constants
-PCM16_SCALE = 32768.0  # Normalization scale for 16-bit PCM audio
+if TYPE_CHECKING:
+    from transformers import VoxtralForConditionalGeneration, AutoProcessor  # type: ignore
+
+
+def required_packages() -> list[str]:
+    """Return list of required Python packages for Voxtral engine."""
+    return ["transformers>=4.38.0", "torch>=2.0.0", "accelerate>=0.28.0"]
+
+
+def required_models() -> list[dict[str, str]]:
+    """Return list of required model descriptors for Voxtral engine."""
+    return [
+        {
+            "name": "mistralai/Voxtral-Mini-3B-2507",
+            "repo_id": "mistralai/Voxtral-Mini-3B-2507",
+            "description": "Mistral Voxtral Mini 3B model (default)",
+        }
+    ]
 
 
 class VoxtralLocalEngine(TranscriptionEngine):
@@ -41,8 +55,8 @@ class VoxtralLocalEngine(TranscriptionEngine):
         cache_root = Path(config.model_cache_dir or DEFAULT_MODEL_CACHE_DIR).expanduser()
         cache_root.mkdir(parents=True, exist_ok=True)
         self.cache_dir = cache_root
-        self._model: Any | None = None
-        self._processor: Any | None = None
+        self._model: VoxtralForConditionalGeneration | None = None
+        self._processor: AutoProcessor | None = None
 
     def _lazy_model(self):
         if self._model is not None:
@@ -95,7 +109,7 @@ class VoxtralLocalEngine(TranscriptionEngine):
         import torch
 
         # Load audio file
-        audio_np = self._load_audio_file(audio_path)
+        audio_np = load_audio_file(audio_path)
 
         processor = self._processor
         model = self._model
@@ -135,34 +149,6 @@ class VoxtralLocalEngine(TranscriptionEngine):
             ))
 
         return result
-    
-    def _load_audio_file(self, audio_path: Path) -> np.ndarray:
-        """Load audio file and convert to numpy array for transcription.
-        
-        Note: This method is duplicated in both WhisperTurboEngine and VoxtralLocalEngine
-        to keep engines independent. Future refactoring could extract to shared utility.
-        
-        Args:
-            audio_path: Path to audio file (should be 16kHz mono PCM WAV)
-            
-        Returns:
-            Normalized float32 numpy array of audio samples
-        """
-        # Read WAV file
-        with wave.open(str(audio_path), 'rb') as wf:
-            if wf.getnchannels() != 1:
-                raise ValueError(f"Expected mono audio, got {wf.getnchannels()} channels")
-            if wf.getsampwidth() != 2:
-                raise ValueError(f"Expected 16-bit audio, got {wf.getsampwidth() * 8}-bit")
-            if wf.getframerate() != 16000:
-                raise ValueError(f"Expected 16kHz audio, got {wf.getframerate()}Hz")
-            
-            # Read all frames
-            frames = wf.readframes(wf.getnframes())
-        
-        # Convert to numpy array and normalize
-        audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / PCM16_SCALE
-        return audio_np
 
     @property
     def metadata(self) -> EngineMetadata:

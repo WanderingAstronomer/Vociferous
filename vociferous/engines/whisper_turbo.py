@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import logging
-import re
-import wave
-from pathlib import Path
-from typing import Any, Mapping
 import os
+import re
+from pathlib import Path
+from typing import Mapping, TYPE_CHECKING
 
 import numpy as np
 
@@ -19,8 +18,10 @@ from vociferous.domain.model import (
     TranscriptionOptions,
 )
 from vociferous.domain.exceptions import DependencyError, ConfigurationError
-from vociferous.engines.model_registry import normalize_model_name
+from vociferous.engines.audio_loader import load_audio_file
+from vociferous.engines.cuda_utils import ensure_cuda_libs_available
 from vociferous.engines.hardware import get_optimal_device, get_optimal_compute_type
+from vociferous.engines.model_registry import normalize_model_name
 from vociferous.engines.presets import (
     WHISPER_TURBO_PRESETS,
     WhisperPreset,
@@ -28,10 +29,10 @@ from vociferous.engines.presets import (
     resolve_preset_name,
 )
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from faster_whisper import BatchedInferencePipeline, WhisperModel
 
-# Audio format constants
-PCM16_SCALE = 32768.0  # Normalization scale for 16-bit PCM audio
+logger = logging.getLogger(__name__)
 
 
 def required_packages() -> list[str]:
@@ -130,8 +131,8 @@ class WhisperTurboEngine(TranscriptionEngine):
         cache_root.mkdir(parents=True, exist_ok=True)
         self.cache_dir = cache_root
 
-        self._model: Any | None = None
-        self._pipeline: Any | None = None
+        self._model: WhisperModel | None = None
+        self._pipeline: BatchedInferencePipeline | None = None
 
         # Engine params
         default_batching = (self.preset != "custom") and not self.use_mock
@@ -167,7 +168,7 @@ class WhisperTurboEngine(TranscriptionEngine):
             ) from exc
 
         # Ensure CUDA libs (cuDNN) are visible to faster-whisper if installed via PyPI wheels
-        self._ensure_cuda_libs()
+        ensure_cuda_libs_available()
 
         logger.info(f"Loading model {self.model_name} on {self.device} with {self.precision} (preset={self.preset})")
         self._model = WhisperModel(
@@ -320,7 +321,7 @@ class WhisperTurboEngine(TranscriptionEngine):
         """
         self._lazy_model()
 
-        audio_np = self._load_audio_file(audio_path)
+        audio_np = load_audio_file(audio_path)
 
         try:
             segments_raw, _ = self._transcribe(audio_np, options)
@@ -341,35 +342,6 @@ class WhisperTurboEngine(TranscriptionEngine):
             )
 
         return result
-    
-    def _load_audio_file(self, audio_path: Path) -> np.ndarray:
-        """Load audio file and convert to numpy array for transcription.
-        
-        Note: This method is duplicated in both WhisperTurboEngine and VoxtralLocalEngine
-        to keep engines independent. Future refactoring could extract to shared utility.
-        
-        Args:
-            audio_path: Path to audio file (should be 16kHz mono PCM WAV)
-            
-        Returns:
-            Normalized float32 numpy array of audio samples
-        """
-        # Read WAV file
-        with wave.open(str(audio_path), 'rb') as wf:
-            if wf.getnchannels() != 1:
-                raise ValueError(f"Expected mono audio, got {wf.getnchannels()} channels")
-            if wf.getsampwidth() != 2:
-                raise ValueError(f"Expected 16-bit audio, got {wf.getsampwidth() * 8}-bit")
-            if wf.getframerate() != 16000:
-                raise ValueError(f"Expected 16kHz audio, got {wf.getframerate()}Hz")
-            
-            # Read all frames
-            frames = wf.readframes(wf.getnframes())
-        
-        # Convert to numpy array and normalize
-        audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / PCM16_SCALE
-        return audio_np
-
     @property
     def metadata(self) -> EngineMetadata:
         """Return engine metadata for result building."""
