@@ -281,7 +281,7 @@ class FFmpegCondenser:
                     gap = silence_gaps[i]
                     if gap[2] >= min_gap_s:
                         # Found natural split point
-                        logger.info(
+                        logger.debug(
                             f"Natural split after segment {i}: "
                             f"{gap[2]:.1f}s silence gap, "
                             f"chunk duration {chunk_duration:.1f}s"
@@ -292,7 +292,7 @@ class FFmpegCondenser:
                 
                 # Force-split if hitting ceiling
                 if chunk_duration >= max_chunk_s:
-                    logger.warning(
+                    logger.debug(
                         f"Force-split triggered: chunk duration {chunk_duration:.1f}s "
                         f"exceeds {max_chunk_s:.1f}s, no {min_gap_s:.1f}s+ gap found"
                     )
@@ -393,7 +393,7 @@ class FFmpegCondenser:
                 max_chunk_s=max_chunk_s,
             )
         
-        logger.warning(
+        logger.debug(
             f"Force-split at segment {best_idx}: "
             f"chunk duration {best_duration:.1f}s "
             f"(target was {target_duration:.1f}s)"

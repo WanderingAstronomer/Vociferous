@@ -24,8 +24,28 @@ from .workflow import transcribe_file_workflow, transcribe_workflow
 
 def configure_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    # Silence verbose engine/VAD progress logs that write to stdout
-    logging.getLogger("whisper").setLevel(logging.ERROR)
+    
+    # Silence verbose third-party logging that pollutes Rich progress display
+    # These libraries produce INFO/WARNING messages during model loading
+    noisy_loggers = [
+        "whisper",           # OpenAI Whisper
+        "nemo",              # NVIDIA NeMo framework
+        "nemo_logging",      # NeMo internal logging
+        "nemo.collections",  # NeMo collections
+        "transformers",      # Hugging Face Transformers
+        "huggingface_hub",   # HF Hub downloads
+        "pytorch_lightning", # Lightning framework
+        "lightning",         # Lightning framework
+        "peft",              # LoRA adapters
+        "onelogger",         # NeMo OneLogger
+        "numexpr",           # NumExpr threading
+        "urllib3",           # HTTP client
+        "filelock",          # File locking
+        "tqdm",              # Progress bars (we use Rich instead)
+    ]
+    for logger_name in noisy_loggers:
+        logging.getLogger(logger_name).setLevel(logging.ERROR)
+    
     structlog.configure(
         processors=[
             structlog.processors.add_log_level,

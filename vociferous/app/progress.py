@@ -299,14 +299,18 @@ class TranscriptionProgress:
         self._tracker.complete(task_id)
 
     def start_transcribe(self, chunk_count: int) -> Any:
-        """Start transcription step with known chunk count."""
+        """Start transcription step with known chunk count.
+        
+        Uses an indeterminate spinner because batch transcription is atomic
+        and we cannot provide per-chunk progress updates.
+        """
         return self._tracker.add_step(
-            f"[cyan]Transcribing {chunk_count} chunks...",
-            total=chunk_count,
+            f"[cyan]Transcribing {chunk_count} chunk{'s' if chunk_count > 1 else ''}...",
+            total=None,  # Indeterminate - batch transcription is atomic
         )
 
     def update_transcribe(self, task_id: Any, current: int, total: int) -> None:
-        """Update transcription progress."""
+        """Update transcription progress (for sequential transcription only)."""
         self._tracker.update(
             task_id,
             description=f"[cyan]Transcribing chunk {current}/{total}...",
@@ -314,7 +318,7 @@ class TranscriptionProgress:
         )
 
     def advance_transcribe(self, task_id: Any) -> None:
-        """Advance transcription by one chunk."""
+        """Advance transcription by one chunk (for sequential transcription only)."""
         self._tracker.advance(task_id, 1.0)
 
     def complete_transcribe(self, task_id: Any) -> None:

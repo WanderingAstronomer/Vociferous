@@ -21,8 +21,10 @@ class ComputeType(str, Enum):
     INT8_FLOAT16 = "int8_float16"
     FLOAT16 = "float16"
     FLOAT32 = "float32"
+    BFLOAT16 = "bfloat16"
     FP16 = "fp16"
     FP32 = "fp32"
+    BF16 = "bf16"
 
 
 # Note: EngineKind remains as a Literal type in model.py for backward compatibility

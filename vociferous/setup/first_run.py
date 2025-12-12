@@ -360,12 +360,25 @@ class FirstRunManager:
         # Download with progress
         logger.info(f"Downloading {self.model_name} to {cache_dir}")
 
-        # Simple download without complex progress (huggingface_hub handles its own progress)
-        local_dir = snapshot_download(
-            repo_id=self.model_name,
-            cache_dir=str(cache_dir),
-            local_dir=str(model_dir),
-        )
+        # Suppress HuggingFace's tqdm progress bars - we use Rich instead
+        # Setting HF_HUB_DISABLE_PROGRESS_BARS env var doesn't fully work,
+        # so we also set quiet=True
+        import os
+        old_hf_progress = os.environ.get("HF_HUB_DISABLE_PROGRESS_BARS")
+        os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+        
+        try:
+            local_dir = snapshot_download(
+                repo_id=self.model_name,
+                cache_dir=str(cache_dir),
+                local_dir=str(model_dir),
+            )
+        finally:
+            # Restore original env var state
+            if old_hf_progress is None:
+                os.environ.pop("HF_HUB_DISABLE_PROGRESS_BARS", None)
+            else:
+                os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = old_hf_progress
 
         if progress_callback:
             progress_callback(100, 100)
