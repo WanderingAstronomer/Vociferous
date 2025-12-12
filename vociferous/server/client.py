@@ -54,9 +54,12 @@ class DaemonError(VociferousError):
     def __init__(
         self,
         message: str = "Daemon error",
-        **kwargs,
+        *,
+        cause: Exception | None = None,
+        context: dict[str, Any] | None = None,
+        suggestions: list[str] | None = None,
     ) -> None:
-        super().__init__(message, **kwargs)
+        super().__init__(message, cause=cause, context=context, suggestions=suggestions)
 
 
 class DaemonNotRunningError(DaemonError):
@@ -65,15 +68,18 @@ class DaemonNotRunningError(DaemonError):
     def __init__(
         self,
         message: str = "Daemon is not running or unreachable",
-        **kwargs,
+        *,
+        cause: Exception | None = None,
+        context: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
             message,
+            cause=cause,
+            context=context,
             suggestions=[
                 "Start the daemon: vociferous daemon start",
                 "Check if port 8765 is in use: ss -tlnp | grep 8765",
             ],
-            **kwargs,
         )
 
 
@@ -83,16 +89,19 @@ class DaemonTimeoutError(DaemonError):
     def __init__(
         self,
         message: str = "Daemon request timed out",
-        **kwargs,
+        *,
+        cause: Exception | None = None,
+        context: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(
             message,
+            cause=cause,
+            context=context,
             suggestions=[
                 "The request may be taking longer than expected",
                 "Check daemon logs: vociferous daemon logs",
                 "Try restarting the daemon: vociferous daemon restart",
             ],
-            **kwargs,
         )
 
 
@@ -121,7 +130,7 @@ def is_daemon_running(
         )
         if response.ok:
             data = response.json()
-            return data.get("model_loaded", False)
+            return bool(data.get("model_loaded", False))
         return False
     except RequestException:
         return False
@@ -194,7 +203,7 @@ class DaemonClient:
             )
             if response.ok:
                 data = response.json()
-                return data.get("model_loaded", False)
+                return bool(data.get("model_loaded", False))
             return False
         except RequestException:
             return False
@@ -214,7 +223,7 @@ class DaemonClient:
                 timeout=2.0,
             )
             response.raise_for_status()
-            return response.json()
+            return dict(response.json())
         except ConnectionError as e:
             raise DaemonNotRunningError("Cannot connect to daemon. Is it running?") from e
         except RequestException as e:
@@ -316,7 +325,7 @@ class DaemonClient:
             if not data.get("success"):
                 raise DaemonError("Daemon refinement failed")
 
-            return data["refined_text"]
+            return str(data["refined_text"])
 
         except Timeout as e:
             raise DaemonTimeoutError("Daemon refinement timed out") from e

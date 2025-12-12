@@ -10,7 +10,11 @@ import logging
 from abc import ABC, abstractmethod
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from rich.console import Console
+    from rich.progress import Progress
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +50,7 @@ class ProgressTracker(ABC):
     def __enter__(self) -> ProgressTracker:
         return self
 
-    def __exit__(self, *args) -> None:
+    def __exit__(self, *args: object) -> None:
         """Allow context manager usage without requiring cleanup."""
         return None
 
@@ -112,8 +116,8 @@ class RichProgressTracker(ProgressTracker):
 
     def __init__(self, verbose: bool = True):
         self.verbose = verbose
-        self._progress = None
-        self._console = None
+        self._progress: Progress | None = None
+        self._console: Console | None = None
         self._started = False
 
     def _ensure_started(self) -> None:
@@ -158,7 +162,7 @@ class RichProgressTracker(ProgressTracker):
         self._ensure_started()
         return self
 
-    def __exit__(self, *args) -> None:
+    def __exit__(self, *args: object) -> None:
         if self._progress is not None:
             self._progress.stop()
             self._progress = None
@@ -186,14 +190,13 @@ class RichProgressTracker(ProgressTracker):
                 print(f"    {description}", flush=True)
             return
 
-        kwargs = {}
-        if description is not None:
-            kwargs["description"] = description
-        if completed is not None:
-            kwargs["completed"] = completed
-
-        if kwargs:
-            self._progress.update(task_id, **kwargs)
+        # Call update with explicit kwargs to satisfy type checker
+        if description is not None and completed is not None:
+            self._progress.update(task_id, description=description, completed=completed)
+        elif description is not None:
+            self._progress.update(task_id, description=description)
+        elif completed is not None:
+            self._progress.update(task_id, completed=completed)
 
     def advance(self, task_id: Any, amount: float = 1.0) -> None:
         if not self.verbose or task_id is None or self._progress is None:
@@ -254,7 +257,7 @@ class TranscriptionProgress:
         self._tracker.__enter__()
         return self
 
-    def __exit__(self, *args) -> None:
+    def __exit__(self, *args: object) -> None:
         self._tracker.__exit__(*args)
 
     # High-level workflow steps

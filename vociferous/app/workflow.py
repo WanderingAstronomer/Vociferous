@@ -116,9 +116,11 @@ class EngineWorker:
             
             if self._daemon_mode == "always":
                 # Auto-start if not running
+                # Pass the underlying tracker, not the high-level wrapper
+                progress_tracker = self._progress._tracker if self._progress else None
                 self._daemon_available = manager.ensure_running(
                     auto_start=True,
-                    progress=self._progress,
+                    progress=progress_tracker,
                 )
             else:
                 # "auto" mode - just check, don't start

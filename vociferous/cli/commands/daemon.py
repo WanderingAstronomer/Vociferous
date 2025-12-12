@@ -49,7 +49,7 @@ def _is_daemon_running() -> bool:
             f"http://{DAEMON_HOST}:{DAEMON_PORT}/health",
             timeout=2.0,
         )
-        return response.ok
+        return bool(response.ok)
     except Exception:
         return False
 

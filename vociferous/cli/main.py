@@ -163,7 +163,7 @@ class DevHelpAwareGroup(BrightTyperGroup):
         show_dev_help = "--dev-help" in sys.argv
         
         # Hide developer-only commands unless --dev-help is present
-        if hasattr(cmd.callback, "dev_only") and cmd.callback.dev_only:
+        if cmd.callback is not None and hasattr(cmd.callback, "dev_only") and cmd.callback.dev_only:
             if not show_dev_help:
                 cmd.hidden = True
             else:

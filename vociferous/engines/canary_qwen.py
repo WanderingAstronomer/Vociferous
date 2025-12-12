@@ -390,7 +390,7 @@ class CanaryQwenEngine(TranscriptionEngine):
             return
         try:
             import torch  # pragma: no cover - optional
-            from nemo.collections.speechlm2.models import SALM  # pragma: no cover - optional
+            from nemo.collections.speechlm2.models import SALM  # type: ignore[import-untyped]  # pragma: no cover - optional
         except ImportError as exc:  # pragma: no cover - dependency guard
             raise DependencyError(
                 "Missing dependencies for Canary-Qwen SALM. Install NeMo trunk (requires torch>=2.6): "

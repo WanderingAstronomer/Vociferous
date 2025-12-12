@@ -256,7 +256,14 @@ class AppConfig(BaseModel):
         return str(Path(v).expanduser())
 
     @classmethod
-    def model_validate(cls, obj: Mapping[str, object] | object, *args, **kwargs):  # type: ignore[override]
+    def model_validate(  # type: ignore[override]
+        cls,
+        obj: Mapping[str, object] | object,
+        *,
+        strict: bool | None = None,
+        from_attributes: bool | None = None,
+        context: dict[str, object] | None = None,
+    ) -> "AppConfig":
         # Migrate legacy keep_intermediates → artifacts.cleanup_intermediates
         if isinstance(obj, Mapping):
             data = dict(obj)
@@ -268,8 +275,12 @@ class AppConfig(BaseModel):
                     "output_directory": str(Path(".").resolve()),
                     "naming_pattern": "{input_stem}_{step}.{ext}",
                 }
-            return super().model_validate(data, *args, **kwargs)
-        return super().model_validate(obj, *args, **kwargs)
+            return super().model_validate(
+                data, strict=strict, from_attributes=from_attributes, context=context
+            )
+        return super().model_validate(
+            obj, strict=strict, from_attributes=from_attributes, context=context
+        )
 
 
 
@@ -278,9 +289,9 @@ class AppConfig(BaseModel):
         """Inject default profiles if empty and validate profile references."""
         # Inject defaults if profiles are empty
         if not self.engine_profiles:
-            self.engine_profiles = _default_engine_profiles()  # type: ignore[misc]
+            self.engine_profiles = _default_engine_profiles()
         if not self.segmentation_profiles:
-            self.segmentation_profiles = _default_segmentation_profiles()  # type: ignore[misc]
+            self.segmentation_profiles = _default_segmentation_profiles()
         
         # Validate profile references
         if self.default_engine_profile not in self.engine_profiles:

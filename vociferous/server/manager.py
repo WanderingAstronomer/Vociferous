@@ -233,7 +233,7 @@ class DaemonManager:
         # Wait for health check
         start_time = time.time()
         check_interval = 1.0
-        last_progress_update = 0
+        last_progress_update = 0.0
 
         while time.time() - start_time < timeout:
             time.sleep(check_interval)

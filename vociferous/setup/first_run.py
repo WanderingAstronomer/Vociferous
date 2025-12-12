@@ -54,10 +54,10 @@ class FirstRunManager:
     ) -> None:
         self.cache_dir = cache_dir or CACHE_DIR
         self.model_name = model_name
-        self._console = None
-        self._progress = None
+        self._console: object = None
+        self._progress: object = None
 
-    def _get_console(self):
+    def _get_console(self) -> object:
         """Lazy-load Rich console."""
         if self._console is None:
             try:
@@ -199,9 +199,9 @@ class FirstRunManager:
 
                 # Simulate progress during model loading (actual loading blocks)
                 warmup_done = threading.Event()
-                warmup_error = [None]
+                warmup_error: list[BaseException | None] = [None]
 
-                def warmup_thread():
+                def warmup_thread() -> None:
                     try:
                         self._warm_model()
                     except Exception as e:
@@ -213,7 +213,7 @@ class FirstRunManager:
                 thread.start()
 
                 # Update progress while waiting
-                elapsed = 0
+                elapsed = 0.0
                 max_warmup_time = 120  # 2 minutes max
                 while not warmup_done.is_set() and elapsed < max_warmup_time:
                     time.sleep(0.5)
@@ -275,9 +275,10 @@ class FirstRunManager:
             if step_id == "dependencies":
                 self._check_dependencies()
             elif step_id == "model":
-                self._download_model_with_progress(
-                    (lambda c, t, step=step_id: on_progress(step, c, t) if on_progress else None)
-                )
+                def progress_cb(c: int, t: int, step: str = step_id) -> None:
+                    if on_progress:
+                        on_progress(step, c, t)
+                self._download_model_with_progress(progress_cb)
             elif step_id == "gpu":
                 self._check_gpu()
             elif step_id == "warmup":
@@ -289,9 +290,9 @@ class FirstRunManager:
 
         print("\n✓ Setup complete! Ready to transcribe.\n")
 
-    def _check_dependencies(self) -> dict:
+    def _check_dependencies(self) -> dict[str, object]:
         """Check system dependencies."""
-        result = {
+        result: dict[str, object] = {
             "ffmpeg": False,
             "cuda": False,
             "python_version": sys.version_info[:2],
@@ -309,9 +310,9 @@ class FirstRunManager:
 
         return result
 
-    def _check_gpu(self) -> dict:
+    def _check_gpu(self) -> dict[str, object]:
         """Check GPU availability and info."""
-        result = {
+        result: dict[str, object] = {
             "available": False,
             "name": None,
             "memory_gb": 0.0,
@@ -380,7 +381,7 @@ class FirstRunManager:
         logger.info("Warming up Canary-Qwen model...")
 
         try:
-            from vociferous.domain.model import EngineConfig, EngineKind
+            from vociferous.domain.model import EngineConfig
             from vociferous.engines.factory import build_engine
 
             config = EngineConfig(
@@ -390,10 +391,11 @@ class FirstRunManager:
             )
 
             # Build and warm the engine (this loads the model)
-            engine = build_engine(EngineKind.CANARY_QWEN, config)
+            engine = build_engine("canary_qwen", config)
 
             # Do a simple text refinement to ensure LLM path is warm too
-            _ = engine.refine_text("This is a warm-up test.")
+            if hasattr(engine, "refine_text"):
+                _ = engine.refine_text("This is a warm-up test.")
 
             logger.info("Model warmup complete")
 

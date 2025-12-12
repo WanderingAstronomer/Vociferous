@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import tempfile
 import time
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any
@@ -149,7 +150,7 @@ def _load_model() -> Any:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Lifecycle manager for model loading/unloading."""
     global _model, _model_loaded_at
 
