@@ -161,7 +161,7 @@ class CanaryQwenEngine(TranscriptionEngine):
         # Parse results
         results: list[list[TranscriptSegment]] = []
         for idx, (answer_ids, duration_s, _audio_path) in enumerate(
-            zip(answer_ids_batch, durations, audio_paths)
+            zip(answer_ids_batch, durations, audio_paths, strict=True)
         ):
             transcript_text = self._model.tokenizer.ids_to_text(answer_ids.cpu())
             segment = TranscriptSegment(

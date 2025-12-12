@@ -105,8 +105,6 @@ class VociferousError(Exception):
 class EngineError(VociferousError):
     """Raised when an ASR engine encounters an error during initialization or inference."""
 
-    pass
-
 
 class AudioDecodeError(VociferousError):
     """Raised when audio decoding fails.
@@ -215,8 +213,6 @@ class DependencyError(VociferousError):
 
 class AudioProcessingError(VociferousError):
     """Raised when audio processing (decode, condense, VAD) fails."""
-
-    pass
 
 
 class VADError(AudioProcessingError):

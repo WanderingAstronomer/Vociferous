@@ -393,7 +393,7 @@ def transcribe_file_workflow(
         # Apply time offsets to each chunk's segments
         all_segments: list[TranscriptSegment] = []
         offset = 0.0
-        for chunk_segments, duration in zip(all_chunk_segments, chunk_durations):
+        for chunk_segments, duration in zip(all_chunk_segments, chunk_durations, strict=True):
             all_segments.extend(_offset_segments(chunk_segments, offset))
             offset += duration
 

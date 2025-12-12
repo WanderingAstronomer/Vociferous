@@ -45,7 +45,6 @@ LOG_FILE = CACHE_DIR / "daemon.log"
 
 class DaemonStartError(DaemonError):
     """Raised when daemon fails to start."""
-    pass
 
 
 def _ensure_cache_dir() -> None:

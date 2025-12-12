@@ -51,6 +51,7 @@
 - **Dead code removal:** Unused `_resolve_dtype` in Canary engine, unused `load_audio_file` in Whisper engine removed.
 - **Inference optimization:** Both engines now use `torch.inference_mode()` context for faster inference.
 - **Token calculation improved:** Refinement token limits now based on character-to-token ratio (4 chars/token) with 50% expansion headroom.
+- **Batch result validation (v0.7.4):** Uses `zip(..., strict=True)` to catch length mismatches between batch inputs and outputs early, preventing silent data loss.
 
 ### Refinement Module Updates
 

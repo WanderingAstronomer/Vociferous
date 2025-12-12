@@ -41,7 +41,7 @@ def _get_app() -> Any:
 
 class TooltipButton(MDRaisedButton, MDTooltip):
     """Button with tooltip support."""
-    pass
+
 
 
 class HomeScreen(Screen):
