@@ -45,19 +45,34 @@ This is the refined output with proper punctuation.
         assert "This is the refined output with proper punctuation." == result
 
     def test_incomplete_think_mode_fallback(self, mock_engine):
-        """When model gets stuck in thinking, fallback to original text."""
+        """When model gets stuck in thinking with only think content, fallback to original."""
+        # This input has ONLY think content with no useful text before or after
         raw = """<|im_start|>user
 Refine the following...
 <|im_end|>
 <|im_start|>assistant
 <think>
-Okay, let me analyze this transcript. The user wants me to..."""
+thinking"""
 
         original = "Today is Monday december 8th 2025..."
         result = mock_engine._extract_assistant_response(raw, original)
         
-        # Should return the original text as fallback
+        # Should return the original text as fallback (think content is too short)
         assert result == original, f"Should fallback to original, got: {result}"
+
+    def test_incomplete_think_with_salvageable_content(self, mock_engine):
+        """When think block has a newline with useful content, salvage it."""
+        raw = """<|im_start|>assistant
+<think>
+Okay, let me analyze this transcript. The user wants me to fix grammar.
+
+This is the actual refined output that I should return."""
+
+        original = "original text"
+        result = mock_engine._extract_assistant_response(raw, original)
+        
+        # Should salvage the content after the newline in the think block
+        assert "actual refined output" in result.lower(), f"Should salvage content, got: {result}"
 
     def test_clean_output_no_markers(self, mock_engine):
         """Clean text without any markers passes through unchanged."""
@@ -92,17 +107,31 @@ Today is Monday, December 8th, 2025 at 8 PM.
 
     def test_empty_original_with_failed_extraction(self, mock_engine):
         """When extraction fails and original is empty, return empty string."""
+        # This input has only a short think content that can't be salvaged
         raw = """<|im_start|>assistant
 <think>
-Just thinking forever..."""
+short"""
 
         result = mock_engine._extract_assistant_response(raw, "")
         
-        # Should return empty string as fallback
+        # Should return empty string as fallback (content too short to salvage)
         assert result == ""
 
+    def test_empty_original_with_salvageable_think_content(self, mock_engine):
+        """When original is empty but think has useful content, salvage it."""
+        raw = """<|im_start|>assistant
+<think>
+Let me think...
+
+Actually this is the refined text I should output."""
+
+        result = mock_engine._extract_assistant_response(raw, "")
+        
+        # Should salvage the longer content after newline
+        assert "refined text" in result.lower()
+
     def test_multiple_think_blocks(self, mock_engine):
-        """Handle output with multiple think blocks (take content after last)."""
+        """Handle output with multiple think blocks - all should be removed."""
         raw = """<|im_start|>assistant
 <think>First thought</think>
 Intermediate text.
@@ -112,8 +141,11 @@ Final refined output here.
 
         result = mock_engine._extract_assistant_response(raw, "original")
         
-        assert "Final refined output here." == result.strip()
+        # All think blocks should be removed, leaving both text parts
+        assert "Intermediate text." in result
+        assert "Final refined output here." in result
         assert "<think>" not in result
+        assert "</think>" not in result
 
     def test_endoftext_marker_removed(self, mock_engine):
         """The <|endoftext|> marker should be stripped."""
@@ -124,23 +156,30 @@ Final refined output here.
         assert "<|endoftext|>" not in result
 
     def test_prompt_leakage_detection(self, mock_engine):
-        """If output contains prompt fragments, fallback to original."""
+        """Prompt leakage is detected by _validate_refinement, not extraction."""
         raw = """Refine the following transcript by:
 1. Correcting grammar and punctuation
 
 This should not happen."""
 
         original = "Clean original text"
-        result = mock_engine._extract_assistant_response(raw, original)
+        # Extraction returns the text as-is (no chat markers to strip)
+        extracted = mock_engine._extract_assistant_response(raw, original)
         
-        # Output contains prompt fragment, should fallback
+        # Validation should catch the prompt leakage and return original
+        result = mock_engine._validate_refinement(original, extracted)
         assert result == original, f"Should detect prompt leakage, got: {result}"
 
-    def test_short_output_fallback(self, mock_engine):
-        """Very short output triggers fallback to original."""
+    def test_short_output_validation(self, mock_engine):
+        """Very short output triggers fallback via _validate_refinement."""
         raw = "<|im_start|>assistant\nOK\n<|im_end|>"
         original = "This is the original transcript with more content."
-        result = mock_engine._extract_assistant_response(raw, original)
+        
+        # Extraction just extracts
+        extracted = mock_engine._extract_assistant_response(raw, original)
+        
+        # Validation catches short output
+        result = mock_engine._validate_refinement(original, extracted)
         
         # "OK" is too short, should fallback
         assert result == original

@@ -4,6 +4,14 @@ import logging
 import structlog
 
 from .workflow import transcribe_file_workflow, transcribe_workflow  # noqa: F401
+from .progress import (  # noqa: F401
+    TranscriptionProgress,
+    ProgressTracker,
+    RichProgressTracker,
+    SimpleProgressTracker,
+    NullProgressTracker,
+    transcription_progress,
+)
 
 def configure_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -24,5 +32,11 @@ __all__ = [
     "transcribe_workflow",
     "transcribe_file_workflow",
     "configure_logging",
+    "TranscriptionProgress",
+    "ProgressTracker",
+    "RichProgressTracker",
+    "SimpleProgressTracker", 
+    "NullProgressTracker",
+    "transcription_progress",
 ]
 

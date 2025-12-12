@@ -24,6 +24,11 @@ from vociferous.domain.model import (
 from vociferous.engines.factory import build_engine
 from vociferous.sources import FileSource, Source
 
+# Import progress tracking (use TYPE_CHECKING to avoid circular imports)
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from vociferous.app.progress import TranscriptionProgress
+
 
 def _segments_to_text(segments: Iterable[TranscriptSegment]) -> str:
     """Join segment text into a single transcript string."""
@@ -222,6 +227,7 @@ def transcribe_file_workflow(
     condensed_path: Path | None = None,
     engine_worker: EngineWorker | None = None,
     use_daemon: bool = False,
+    progress: "TranscriptionProgress | None" = None,
 ) -> TranscriptionResult:
     """Canonical decode → VAD → condense → transcribe workflow.
 
@@ -242,6 +248,7 @@ def transcribe_file_workflow(
         condensed_path: Pre-condensed audio path (skip VAD)
         engine_worker: Pre-configured engine worker
         use_daemon: Use warm model daemon if available
+        progress: Optional progress tracker for UI feedback
     """
     artifact_cfg = artifact_config or ArtifactConfig()
     # CLI override wins; otherwise follow config cleanup flag
@@ -274,7 +281,14 @@ def transcribe_file_workflow(
             timestamps_path = _name("decoded_vad_timestamps", "json")
             condensed_target = _name("decoded_condensed", "wav")
 
+            # Step 1: Decode
+            decode_task = progress.start_decode() if progress else None
             decoded_path = DecoderComponent().decode_to_wav(target_audio, decoded_path)
+            if progress:
+                progress.complete_decode(decode_task)
+            
+            # Step 2: VAD
+            vad_task = progress.start_vad() if progress else None
             timestamps = VADComponent(sample_rate=segmentation_profile.sample_rate, device=segmentation_profile.device).detect(
                 decoded_path,
                 output_path=timestamps_path,
@@ -286,7 +300,11 @@ def transcribe_file_workflow(
             )
             if not timestamps:
                 raise ValueError("No speech detected during VAD; aborting transcription.")
+            if progress:
+                progress.complete_vad(vad_task, len(timestamps))
 
+            # Step 3: Condense
+            condense_task = progress.start_condense() if progress else None
             condensed_files = CondenserComponent().condense(
                 timestamps_path,
                 decoded_path,
@@ -294,6 +312,8 @@ def transcribe_file_workflow(
                 segmentation_profile=segmentation_profile,
             )
             condensed_paths = condensed_files
+            if progress:
+                progress.complete_condense(condense_task, len(condensed_paths))
 
             if should_cleanup:
                 cleanup_paths.extend([decoded_path, timestamps_path, *condensed_paths])
@@ -303,8 +323,14 @@ def transcribe_file_workflow(
         # Get durations for offset calculation
         chunk_durations = [_wav_duration(p) for p in condensed_paths]
         
+        # Step 4: Transcribe chunks
+        transcribe_task = progress.start_transcribe(len(condensed_paths)) if progress else None
+        
         # Use batch transcription for significant speedup (single inference call for all chunks)
         all_chunk_segments = worker.transcribe_batch(condensed_paths)
+        
+        if progress:
+            progress.complete_transcribe(transcribe_task)
         
         # Apply time offsets to each chunk's segments
         all_segments: list[TranscriptSegment] = []
@@ -315,11 +341,20 @@ def transcribe_file_workflow(
 
         text = _segments_to_text(all_segments)
 
+        # Step 5: Refinement
         if refine:
+            refine_task = progress.start_refine() if progress else None
             try:
                 text = worker.refine_text(text, refine_instructions)
+                if progress:
+                    progress.complete_refine(refine_task)
             except Exception as exc:  # pragma: no cover - safeguard
                 warnings.append(f"Refinement failed: {exc}")
+                if progress:
+                    progress.warning(f"Refinement failed: {exc}")
+
+        if progress:
+            progress.success("Transcription complete")
 
         metadata = worker.metadata
         return TranscriptionResult(

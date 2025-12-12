@@ -1,38 +1,21 @@
-"""Tests for FastAPI server endpoints."""
+"""Tests for FastAPI server endpoints.
+
+These tests verify:
+1. Pydantic request/response models (unit tests, no server needed)
+2. Segment conversion helper (unit test, no server needed)
+3. Endpoint behavior (uses FastAPI TestClient with isolated test app)
+
+Note: For real end-to-end daemon tests, see test_daemon_integration.py
+"""
 
 from __future__ import annotations
 
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-
-
-class TestHealthEndpoint:
-    """Test /health endpoint."""
-
-    def test_health_returns_status(self) -> None:
-        """Test that health endpoint returns proper response structure."""
-        from fastapi.testclient import TestClient
-        
-        # Import with mocked model loading
-        with patch("vociferous.server.api._load_model") as mock_load:
-            mock_engine = Mock()
-            mock_load.return_value = mock_engine
-            
-            from vociferous.server.api import app
-            client = TestClient(app)
-            
-            response = client.get("/health")
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert "status" in data
-            assert "model_loaded" in data
-            assert "requests_handled" in data
 
 
 class TestProtocolModels:
-    """Test Pydantic request/response models."""
+    """Test Pydantic request/response models (pure unit tests)."""
 
     def test_refine_request_validation(self) -> None:
         """Test RefineRequest validates text field."""

@@ -22,14 +22,22 @@ from vociferous.domain.exceptions import DependencyError
 from vociferous.engines.model_registry import normalize_model_name
 
 logger = logging.getLogger(__name__)
+
+# System prompt that explicitly disables Qwen3's thinking mode
+REFINE_SYSTEM_PROMPT = (
+    "You are a transcript editor. Output ONLY the corrected text. "
+    "Never explain your changes. Never add commentary. "
+    "Never use <think> tags. Just output the corrected text directly."
+)
+
 DEFAULT_REFINE_PROMPT = (
     "Refine the following transcript by:\n"
     "1. Correcting grammar and punctuation\n"
     "2. Fixing capitalization\n"
-    "3. Removing filler words and false starts\n"
+    "3. Removing filler words (um, uh, like) and false starts\n"
     "4. Improving fluency while preserving meaning\n"
     "5. Maintaining the speaker's intent\n\n"
-    "Do not add or remove information. Only improve clarity and correctness."
+    "Output the corrected text and nothing else."
 )
 
 
@@ -179,18 +187,19 @@ class CanaryQwenEngine(TranscriptionEngine):
                 "Canary-Qwen model not loaded; install NeMo trunk: pip install \"nemo_toolkit[asr,tts] @ git+https://github.com/NVIDIA/NeMo.git\""
             )
 
-        # Qwen3 models have a "thinking mode" by default that generates <think>...</think>
-        # content before the actual response. We disable this by appending the instruction
-        # to respond directly without reasoning.
-        refine_prompt = (
+        # Build prompt that explicitly instructs no thinking/explanation
+        # Note: SALM only supports 'user' and 'assistant' roles, not 'system'
+        full_prompt = (
+            f"{REFINE_SYSTEM_PROMPT}\n\n"
             f"{prompt}\n\n"
-            "Respond with ONLY the refined transcript. Do not explain your changes or "
-            "show your reasoning. Output the corrected text directly.\n\n"
-            f"{cleaned}"
+            f"Text to edit:\n{cleaned}\n\n"
+            f"Edited text:"
         )
         
-        prompts = [[{"role": "user", "content": refine_prompt}]]
+        prompts = [[{"role": "user", "content": full_prompt}]]
+        
         with self._model.llm.disable_adapter():
+            # Generate with balanced settings for quality and consistency
             answer_ids = self._model.generate(
                 prompts=prompts,
                 max_new_tokens=self._resolve_refine_tokens(cleaned),
@@ -201,6 +210,10 @@ class CanaryQwenEngine(TranscriptionEngine):
         
         # Extract clean assistant response from chat template format
         refined = self._extract_assistant_response(raw_output, cleaned)
+        
+        # Validate the refinement output
+        refined = self._validate_refinement(cleaned, refined)
+        
         return refined
 
     def _extract_assistant_response(self, raw_output: str, original_text: str = "") -> str:
@@ -212,11 +225,13 @@ class CanaryQwenEngine(TranscriptionEngine):
         - <think>internal reasoning</think> (Qwen's chain-of-thought)
         
         This method strips all template artifacts to return only the final answer.
+        Uses regex to remove ALL thinking blocks, not just trailing ones.
         
         Args:
             raw_output: The raw tokenizer output containing chat template
             original_text: The original input text (fallback if extraction fails)
         """
+        import re
         output = raw_output
         
         # Step 1: Extract content after the last <|im_start|>assistant marker
@@ -234,29 +249,41 @@ class CanaryQwenEngine(TranscriptionEngine):
         # Step 2: Remove <|im_end|> closing tags
         output = output.replace("<|im_end|>", "")
         
-        # Step 3: Remove Qwen's <think>...</think> internal reasoning blocks
-        # The model may output: <think>reasoning here</think>actual answer
-        if "</think>" in output:
-            # Take everything after the closing </think> tag
-            parts = output.split("</think>")
-            output = parts[-1]
-        elif "<think>" in output:
-            # Incomplete thinking block - the model didn't finish thinking
-            # Take everything BEFORE the <think> tag as that may contain the answer
-            before_think = output.split("<think>")[0].strip()
-            if before_think and len(before_think) >= 20:
+        # Step 3: Remove ALL Qwen's <think>...</think> internal reasoning blocks
+        # This regex handles:
+        # - Multiple thinking blocks
+        # - Thinking blocks anywhere in the output (not just at end)
+        # - Multi-line thinking content
+        output = re.sub(
+            r'<think>.*?</think>',
+            '',
+            output,
+            flags=re.DOTALL | re.IGNORECASE
+        )
+        
+        # Step 4: Handle incomplete thinking blocks
+        # If <think> exists without matching </think>, the model got stuck
+        if "<think>" in output.lower():
+            # Take everything BEFORE the <think> tag
+            before_think = re.split(r'<think>', output, flags=re.IGNORECASE)[0].strip()
+            if before_think and len(before_think) >= 10:
                 output = before_think
             else:
-                # Nothing useful before <think> - model got stuck in thinking mode
-                # This is a generation failure; return original text as fallback
-                logger.warning(
-                    "Model entered thinking mode without completing. "
-                    "The model may need more tokens or different prompting. "
-                    "Falling back to original transcript."
-                )
-                return original_text if original_text else ""
+                # Nothing useful before <think>
+                # Try to salvage by just removing the incomplete <think>... content
+                # Sometimes the model outputs: <think>reasoning\nActual output
+                # where reasoning continues without </think>
+                after_think_match = re.search(r'<think>[^<]*\n+([^<]+)', output, flags=re.IGNORECASE)
+                if after_think_match and len(after_think_match.group(1).strip()) >= 10:
+                    output = after_think_match.group(1).strip()
+                else:
+                    logger.warning(
+                        "Model entered thinking mode without completing. "
+                        "Falling back to original transcript."
+                    )
+                    return original_text if original_text else ""
         
-        # Step 4: Remove any remaining chat template markers
+        # Step 5: Remove any remaining chat template markers
         markers_to_remove = [
             "<|im_start|>",
             "<|im_end|>",
@@ -268,31 +295,94 @@ class CanaryQwenEngine(TranscriptionEngine):
         for marker in markers_to_remove:
             output = output.replace(marker, "")
         
-        # Step 5: Clean up whitespace
+        # Step 6: Remove common response artifacts/preambles
+        # These patterns indicate the model is explaining rather than just outputting
+        artifact_patterns = [
+            r'^\s*Edited text:\s*',
+            r'^\s*Here is the (?:corrected|refined|edited) (?:text|version|transcript):\s*',
+            r'^\s*The (?:corrected|refined|edited) (?:text|version|transcript):\s*',
+            r'^\s*Corrected text:\s*',
+            r'^\s*Refined text:\s*',
+            r'^\s*Output:\s*',
+        ]
+        for pattern in artifact_patterns:
+            output = re.sub(pattern, '', output, flags=re.IGNORECASE)
+        
+        # Step 7: Clean up whitespace
         output = output.strip()
         
-        # Step 6: Check if output looks valid
-        # If output is empty, too short, or still contains the prompt, fallback
-        prompt_fragments = [
-            "Refine the following transcript",
-            "Correcting grammar and punctuation",
-            "Respond with ONLY the refined",
+        return output
+
+    def _validate_refinement(self, original: str, refined: str) -> str:
+        """Validate refinement output is reasonable.
+        
+        Returns the original text if refinement appears to have failed or
+        produced garbage output.
+        """
+        # If refinement is empty, return original
+        if not refined:
+            logger.warning("Refinement output is empty, using original")
+            return original
+        
+        # For short inputs (< 50 chars), be more lenient with length comparisons
+        # since small changes can result in larger percentage differences
+        is_short_input = len(original) < 50
+        
+        # If refinement is too short compared to original (likely truncated or garbage)
+        # Use different thresholds for short vs long inputs
+        min_ratio = 0.2 if is_short_input else 0.3
+        if len(refined) < len(original) * min_ratio:
+            logger.warning(
+                f"Refinement output suspiciously short ({len(refined)} vs {len(original)} chars), "
+                "using original"
+            )
+            return original
+        
+        # If refinement is way too long, it probably includes thinking/explanation
+        max_ratio = 3.0 if is_short_input else 2.5
+        if len(refined) > len(original) * max_ratio:
+            logger.warning(
+                f"Refinement output suspiciously long ({len(refined)} vs {len(original)} chars), "
+                "using original"
+            )
+            return original
+        
+        # Check for obvious artifacts that indicate failed extraction
+        artifacts = [
+            "here is the corrected",
+            "here is the refined",
+            "here is the edited",
+            "i have corrected",
+            "i have refined",
+            "the edited version",
+            "the corrected version",
+            "<think>",
+            "</think>",
+            "explanation:",
+            "changes made:",
+            "note:",
         ]
         
-        is_valid = (
-            len(output) >= 20 and  # Reasonable minimum length
-            not any(frag in output for frag in prompt_fragments)  # No prompt leakage
-        )
+        refined_lower = refined.lower()
+        for artifact in artifacts:
+            if artifact in refined_lower:
+                logger.warning(f"Refinement contains artifact '{artifact}', using original")
+                return original
         
-        if not is_valid:
-            logger.warning(
-                f"Refinement extraction failed (output length: {len(output)} chars). "
-                "Falling back to original text. Check model generation settings."
-            )
-            # Return original text as fallback (no refinement is better than garbage)
-            return original_text if original_text else output
+        # Check if output looks like it's mostly prompt leakage
+        prompt_fragments = [
+            "refine the following transcript",
+            "correcting grammar and punctuation",
+            "removing filler words",
+            "maintaining the speaker",
+            "text to edit:",
+        ]
         
-        return output
+        if any(frag in refined_lower for frag in prompt_fragments):
+            logger.warning("Refinement contains prompt leakage, using original")
+            return original
+        
+        return refined
 
     # Internals ---------------------------------------------------------
     def _lazy_model(self) -> None:

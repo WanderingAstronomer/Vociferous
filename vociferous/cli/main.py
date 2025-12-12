@@ -9,6 +9,7 @@ import sys
 from vociferous.app import configure_logging, transcribe_file_workflow
 from vociferous.app.workflow import EngineWorker
 from vociferous.app.sinks import RefiningSink
+from vociferous.app.progress import TranscriptionProgress
 from vociferous.config import load_config, get_segmentation_profile
 from vociferous.config.languages import WHISPER_LANGUAGES
 from vociferous.domain.model import EngineKind, EngineProfile
@@ -424,6 +425,17 @@ def transcribe(
 
     segmentation_profile = get_segmentation_profile(config)
 
+    # Check for first-run setup (only for Canary-Qwen which requires model download)
+    if engine == "canary_qwen":
+        try:
+            from vociferous.setup import is_first_run, FirstRunManager
+            if is_first_run():
+                manager = FirstRunManager()
+                manager.run_first_time_setup()
+        except Exception as exc:
+            # Don't block transcription if setup check fails
+            console.print(f"[dim]Setup check skipped: {exc}[/dim]")
+
     # Pretty startup banner
     file_size_mb = file.stat().st_size / (1024 * 1024)
     banner = Panel(
@@ -436,16 +448,21 @@ def transcribe(
     )
     console.print(banner)
 
+    # Create progress tracker for live feedback
+    progress = TranscriptionProgress(verbose=True)
+
     try:
-        result = transcribe_file_workflow(
-            FileSource(file),
-            engine_profile,
-            segmentation_profile,
-            refine=refine_enabled,
-            refine_instructions=refine_instructions if refine_enabled else None,
-            keep_intermediates=keep_intermediates_choice,
-            artifact_config=config.artifacts,
-        )
+        with progress:
+            result = transcribe_file_workflow(
+                FileSource(file),
+                engine_profile,
+                segmentation_profile,
+                refine=refine_enabled,
+                refine_instructions=refine_instructions if refine_enabled else None,
+                keep_intermediates=keep_intermediates_choice,
+                artifact_config=config.artifacts,
+                progress=progress,
+            )
         for segment in result.segments:
             sink.handle_segment(segment)
         sink.complete(result)
