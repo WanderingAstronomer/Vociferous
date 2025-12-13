@@ -1,26 +1,35 @@
-"""Pytest configuration for integration-heavy CLI tests.
-
-This file ensures the project root is on ``PYTHONPATH`` so that
-``python -m vociferous.cli.main`` works when running from the source
-tree without an editable install. The environment modification is
-process-wide and inherited by subprocess-based CLI invocations used
-throughout the test suite.
 """
-
-from __future__ import annotations
-
+Pytest configuration and fixtures for Vociferous tests.
+"""
+import sys
 import os
-from pathlib import Path
+import pytest
+
+# Add src to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 
-def _ensure_repo_on_path() -> None:
-    repo_root = Path(__file__).resolve().parent.parent
-    existing = os.environ.get("PYTHONPATH")
-    paths = [str(repo_root)]
-    if existing:
-        paths.append(existing)
-    os.environ["PYTHONPATH"] = ":".join(paths)
+@pytest.fixture(scope="session", autouse=True)
+def init_config():
+    """Initialize ConfigManager once for all tests."""
+    from utils import ConfigManager
+    ConfigManager.initialize()
+    yield ConfigManager
 
 
-_ensure_repo_on_path()
+@pytest.fixture
+def config_manager(init_config):
+    """Provide ConfigManager instance."""
+    return init_config
 
+
+@pytest.fixture
+def key_listener():
+    """Create and yield a KeyListener, stopping it after test."""
+    from key_listener import KeyListener
+    kl = KeyListener()
+    yield kl
+    try:
+        kl.stop()
+    except Exception:
+        pass

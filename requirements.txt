@@ -1,0 +1,50 @@
+# Vociferous - Simple Speech-to-Text Dictation
+# Python 3.12+ compatible dependencies
+
+# Speech Recognition & Audio Processing
+faster-whisper>=1.2.0
+ctranslate2>=4.6.2
+av>=16.0.0  # PyAV for audio decoding
+sounddevice>=0.5.0
+numpy>=2.0.0
+webrtcvad-wheels>=2.0.11
+
+# GPU Support (cuDNN for onnxruntime VAD)
+nvidia-cudnn-cu12>=9.0.0
+
+# Model Management & Downloads
+huggingface-hub>=1.0.0
+tokenizers>=0.22.0
+tqdm>=4.67.0  # Progress bars for model downloads
+filelock>=3.20.0  # File locking for huggingface-hub
+fsspec>=2025.12.0  # Filesystem interfaces
+typing-extensions>=4.15.0  # Type hints
+httpx>=0.28.0  # HTTP client for huggingface-hub
+hf-xet>=1.2.0  # Hugging Face XET support
+shellingham>=1.5.0  # Shell detection for huggingface-hub
+typer-slim>=0.20.0  # CLI framework for huggingface-hub
+certifi>=2025.11.0  # SSL certificates
+anyio>=4.12.0  # Async framework for httpx
+httpcore>=1.0.0  # HTTP protocol implementation
+h11>=0.16.0  # HTTP/1.1 parser
+idna>=3.0  # Internationalized domain names
+
+# User Interface & Display
+PyQt5>=5.15.0
+
+# Input & Output (Linux-specific keyboard/clipboard)
+pynput>=1.8.0
+evdev>=1.9.0
+pyperclip>=1.11.0
+python-xlib>=0.33  # Required by pynput on Linux
+
+# Configuration & Utilities
+PyYAML>=6.0
+
+# VAD (Voice Activity Detection)
+onnxruntime>=1.14.0  # Required for VAD filtering
+
+# Development & Testing
+pytest>=9.0.0
+pytest-timeout>=2.4.0
+ruff>=0.14.0  # Linter and formatter

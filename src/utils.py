@@ -1,0 +1,309 @@
+"""
+Configuration Management Module
+================================
+
+This module implements a thread-safe singleton ConfigManager that handles all
+application configuration using modern Python patterns (3.12+).
+
+Design Patterns Used
+--------------------
+1. **Singleton Pattern**: Only one ConfigManager instance exists application-wide.
+   This ensures consistent configuration state across all modules.
+
+2. **Double-Checked Locking**: Thread-safe initialization without performance penalty.
+   The lock is only acquired when the instance doesn't exist yet.
+
+3. **Schema-Driven Configuration**: Configuration structure is defined in YAML schema,
+   providing validation, documentation, and default values in one place.
+
+Key Python 3.12+ Features Demonstrated
+--------------------------------------
+- `match/case` statements for structural pattern matching (PEP 634)
+- Modern type hints: `dict[str, Any]`, `Path | str | None` union syntax
+- `pathlib.Path` for all file operations (cleaner than os.path)
+- `contextlib.suppress` for cleaner exception handling
+
+Why This Approach?
+------------------
+- **Thread Safety**: Multiple threads (UI, recording, transcription) access config
+- **Hot Reloading**: Config can be reloaded without restarting the application
+- **Schema Validation**: YAML schema provides self-documenting configuration
+- **Separation of Concerns**: Config management is isolated from business logic
+
+Example Usage
+-------------
+    >>> ConfigManager.initialize()
+    >>> model = ConfigManager.get_config_value('model_options', 'model')
+    >>> ConfigManager.set_config_value('tiny', 'model_options', 'model')
+"""
+import logging
+import threading
+from contextlib import suppress
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+# Module-level constants define file locations used throughout the application.
+# Using Path objects (not strings) enables cross-platform compatibility and
+# provides a rich API for path manipulation (parent, /, exists, read_text, etc.)
+_DEFAULT_CONFIG_PATH = Path('src') / 'config.yaml'
+_SCHEMA_FILENAME = 'config_schema.yaml'
+
+# Each module gets its own logger using __name__ (the module's dotted path).
+# This enables fine-grained log filtering: logging.getLogger('utils').setLevel(DEBUG)
+logger = logging.getLogger(__name__)
+
+
+class ConfigManager:
+    """
+    Thread-safe singleton configuration manager.
+
+    This class uses the Singleton pattern to ensure exactly one configuration
+    instance exists. The double-checked locking pattern provides thread safety
+    without the overhead of acquiring a lock on every access.
+
+    Attributes:
+        _instance: The singleton instance (class-level, shared by all)
+        _lock: Threading lock for safe initialization
+        config: The current configuration dictionary
+        schema: The configuration schema (defines structure and defaults)
+    """
+
+    # Class-level attributes shared by all instances (though only one exists)
+    # The type hint 'ConfigManager | None' uses Python 3.10+ union syntax
+    _instance: 'ConfigManager | None' = None
+    _lock = threading.Lock()
+
+    def __init__(self) -> None:
+        """Initialize the ConfigManager instance."""
+        self.config: dict[str, Any] = {}
+        self.schema: dict[str, Any] = {}
+        self._print_enabled: bool = True
+
+    @classmethod
+    def initialize(cls, schema_path: Path | str | None = None) -> None:
+        """
+        Initialize the ConfigManager singleton.
+
+        This method uses the "double-checked locking" pattern for thread safety:
+        1. First check: Quick return if already initialized (no lock overhead)
+        2. Acquire lock: Only one thread can enter the critical section
+        3. Second check: Another thread might have initialized while we waited
+        4. Create instance: Safe to create since we hold the lock
+
+        This pattern is essential in multi-threaded applications where multiple
+        threads might try to initialize the config simultaneously (e.g., during
+        startup when UI thread and worker threads race to access config).
+
+        Args:
+            schema_path: Optional path to the configuration schema YAML file.
+                         If None, uses the default schema in the src/ directory.
+        """
+        if cls._instance is None:
+            with cls._lock:
+                # Double-check pattern for thread safety
+                if cls._instance is None:
+                    instance = cls()
+                    instance.schema = instance.load_config_schema(schema_path)
+                    instance.config = instance.load_default_config()
+                    instance.load_user_config()
+                    cls._instance = instance
+
+    @classmethod
+    def get_schema(cls) -> dict[str, Any]:
+        """Get the configuration schema."""
+        if cls._instance is None:
+            raise RuntimeError("ConfigManager not initialized")
+        return cls._instance.schema
+
+    @classmethod
+    def get_config_section(cls, *keys: str) -> dict[str, Any]:
+        """
+        Navigate through nested config dictionaries to get a section.
+
+        Uses Python 3.10+ `match/case` for structural pattern matching.
+        The pattern `case dict() if key in section:` matches only if:
+        1. `section` is a dictionary (structural match)
+        2. AND the `key` exists in that dictionary (guard condition)
+
+        This is more readable than the equivalent if/isinstance chain:
+            if isinstance(section, dict) and key in section:
+                section = section[key]
+            else:
+                return {}
+
+        Args:
+            *keys: Sequence of keys to traverse (e.g., 'model_options', 'model')
+
+        Returns:
+            The configuration section dict, or empty dict if path doesn't exist.
+
+        Example:
+            >>> ConfigManager.get_config_section('model_options')
+            {'model': 'distil-large-v3', 'device': 'cuda', ...}
+        """
+        if cls._instance is None:
+            raise RuntimeError("ConfigManager not initialized")
+
+        section: Any = cls._instance.config
+        for key in keys:
+            match section:
+                case dict() if key in section:
+                    section = section[key]
+                case _:
+                    return {}
+        return section
+
+    @classmethod
+    def get_config_value(cls, *keys: str) -> Any:
+        """Get a specific configuration value using nested keys."""
+        if cls._instance is None:
+            raise RuntimeError("ConfigManager not initialized")
+
+        value: Any = cls._instance.config
+        for key in keys:
+            match value:
+                case dict() if key in value:
+                    value = value[key]
+                case _:
+                    return None
+        return value
+
+    @classmethod
+    def set_config_value(cls, value: Any, *keys: str) -> None:
+        """
+        Set a nested configuration value, creating intermediate dicts as needed.
+
+        The lock ensures atomic updates - no other thread can read a partially
+        updated config. The `match config.get(key)` pattern uses "as" binding:
+        `case dict() as nested:` both matches the pattern AND binds the matched
+        value to `nested` for use in the case body.
+
+        Args:
+            value: The value to set
+            *keys: Path to the config key (e.g., 'model_options', 'model')
+
+        Raises:
+            RuntimeError: If ConfigManager not initialized
+            ValueError: If no keys provided
+        """
+        if cls._instance is None:
+            raise RuntimeError("ConfigManager not initialized")
+        if not keys:
+            raise ValueError("At least one key required")
+
+        with cls._lock:
+            config = cls._instance.config
+            for key in keys[:-1]:
+                match config.get(key):
+                    case dict() as nested:
+                        config = nested
+                    case _:
+                        config[key] = {}
+                        config = config[key]
+            config[keys[-1]] = value
+
+    @staticmethod
+    def load_config_schema(schema_path: Path | str | None = None) -> dict[str, Any]:
+        """Load the configuration schema from a YAML file."""
+        if schema_path is None:
+            schema_path = Path(__file__).parent / _SCHEMA_FILENAME
+        else:
+            schema_path = Path(schema_path)
+
+        return yaml.safe_load(schema_path.read_text())
+
+    def load_default_config(self) -> dict[str, Any]:
+        """
+        Extract default values from the schema using recursive pattern matching.
+
+        The schema format is:
+            category:
+              setting:
+                value: "default"  <- This is what we extract
+                type: str
+                description: "..."
+
+        The `match` statement handles three cases:
+        1. `{'value': val}` - Leaf node with explicit default value
+        2. `dict()` - Nested structure, recurse into children
+        3. `_` - Any other type, return as-is (shouldn't happen in valid schema)
+
+        This is a great example of how match/case simplifies recursive data
+        structure processing that would otherwise require nested if/elif chains.
+        """
+        def extract_value(item: Any) -> Any:
+            match item:
+                case {'value': val}:
+                    return val
+                case dict():
+                    return {k: extract_value(v) for k, v in item.items()}
+                case _:
+                    return item
+
+        return {category: extract_value(settings) for category, settings in self.schema.items()}
+
+    def load_user_config(self, config_path: Path | str | None = None) -> None:
+        """
+        Load and merge user configuration with defaults (deep merge).
+
+        Uses `contextlib.suppress` for cleaner exception handling:
+            with suppress(yaml.YAMLError):
+                ...
+        Is equivalent to:
+            try:
+                ...
+            except yaml.YAMLError:
+                pass
+
+        The deep_update function uses tuple pattern matching to decide
+        whether to merge recursively or overwrite:
+        - `(dict(), dict())` - Both are dicts: merge recursively
+        - `_` - Anything else: overwrite the source value
+
+        Args:
+            config_path: Path to user's config.yaml (optional)
+        """
+        path = Path(config_path) if config_path else _DEFAULT_CONFIG_PATH
+
+        def deep_update(source: dict, overrides: dict) -> None:
+            for key, value in overrides.items():
+                match (source.get(key), value):
+                    case (dict() as existing, dict()):
+                        deep_update(existing, value)
+                    case _:
+                        source[key] = value
+
+        if path.is_file():
+            with suppress(yaml.YAMLError):
+                user_config = yaml.safe_load(path.read_text())
+                if user_config:
+                    deep_update(self.config, user_config)
+
+    @classmethod
+    def save_config(cls, config_path: Path | str | None = None) -> None:
+        """Save the current configuration to a YAML file."""
+        path = Path(config_path) if config_path else _DEFAULT_CONFIG_PATH
+        if cls._instance is None:
+            raise RuntimeError("ConfigManager not initialized")
+        path.write_text(yaml.dump(cls._instance.config, default_flow_style=False))
+
+    @classmethod
+    def reload_config(cls) -> None:
+        """Reload the configuration from the file."""
+        if cls._instance is None:
+            raise RuntimeError("ConfigManager not initialized")
+        cls._instance.config = cls._instance.load_default_config()
+        cls._instance.load_user_config()
+
+    @classmethod
+    def config_file_exists(cls) -> bool:
+        """Check if a valid config file exists."""
+        return _DEFAULT_CONFIG_PATH.is_file()
+
+    @classmethod
+    def console_print(cls, message: str) -> None:
+        """Log a message if console output is enabled."""
+        if cls._instance and cls._instance.config.get('misc', {}).get('print_to_terminal', True):
+            logger.info(message)

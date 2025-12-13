@@ -1,2209 +1,948 @@
-# Vociferous: Executive Architecture Philosophy & Design Principles
-
-**Date:** December 2025
-**Version:** 2.5
-**Status:** Production GUI (v0.8.1 Alpha)
-
-> **Note:** The authoritative specification is [Redesign.md](Redesign.md).
-> If this document and the Redesign Document disagree, the Redesign Document wins.
-
-## Module Implementation Status
-
-| Module | Status | Notes |
-|--------|--------|-------|
-| **audio** | ✅ Implemented | Audio primitives (decoder, vad, condenser, recorder) - all contract tests passing |
-| **engines** | ✅ Implemented | Canary-Qwen dual-pass working; Official OpenAI Whisper available as fallback |
-| **refinement** | ✅ Implemented | Canary LLM refinement mode integrated and tested |
-| **cli** | ✅ Implemented | Commands and interface adapters; two-tier help system |
-| **app** | ✅ Implemented | Transparent workflow functions (no sessions, no arbiters) |
-| **config** | ✅ Implemented | Config loading and management working |
-| **domain** | ✅ Implemented | Core types, models, exceptions defined |
-| **sources** | ✅ Implemented | File sources and microphone capture working |
-| **server** | ✅ Implemented | FastAPI daemon for warm model inference (v0.5.0) |
-| **gui** | ✅ Implemented | KivyMD GUI with production screens, widgets, animations (v0.8.1) |
-
-**Legend:** ✅ Implemented · 🚧 In Progress · ❌ Not Started · 🔄 Needs Refactor
-
-### GUI Implementation (v0.8.1 Alpha)
-
-The GUI module provides a complete KivyMD-based graphical interface following Design.md:
-
-#### Screen Architecture
-
-| Screen | File | Description |
-|--------|------|-------------|
-| **EnhancedHomeScreen** | `home_screen.py` | Main transcription workflow with mode switcher, drag-drop, progress |
-| **HistoryScreen** | `history_screen.py` | SQLite-backed history browser with search/filter |
-| **EnhancedSettingsScreen** | `settings_screen.py` | Tabbed settings (Profiles, Engine, Segmentation, Appearance) |
-
-#### Widget Library (`widgets.py`)
-
-Reusable components following Material Design:
-
-| Widget | Purpose |
-|--------|---------|
-| `Colors` | Material Design color constants (SUCCESS, WARNING, ERROR, INFO, SURFACE) |
-| `AudioFileCard` | Displays audio metadata (duration, format, sample rate, channels) |
-| `PipelineStageIndicator` | Visual Decode→VAD→Condense→Transcribe→Refine progress |
-| `ProgressCard` | Progress display with elapsed time, RTF metric, stage indicator |
-| `DaemonStatusWidget` | Daemon state (running/starting/stopped/error) with model info |
-| `PresetCard` | Visual preset selector with selection state |
-| `TooltipButton` | Button with tooltip support |
-
-#### Error Dialogs (`error_dialogs.py`)
-
-Enhanced error handling with structured recovery:
-
-```python
-from vociferous.gui.error_dialogs import show_error, show_transcription_error
-
-# Generic error with suggestions
-show_error(
-    title="Transcription Failed",
-    message="Model failed to load",
-    details="CUDA out of memory",
-    suggestions=["Try a smaller model", "Close other GPU applications"],
-    show_retry=True,
-    on_retry=retry_callback,
-)
-
-# Stage-specific error with auto-generated suggestions
-show_transcription_error(
-    message="Audio decode failed",
-    stage="decode",  # Provides decode-specific recovery steps
-    audio_file="/path/to/audio.mp3",
-)
-```
-
-#### Animation Utilities (`animations.py`)
-
-```python
-from vociferous.gui.animations import FadeTransition, AnimatedProgressBar, LoadingSpinner
-
-# Fade widget in/out
-FadeTransition.fade_in(widget, duration=0.3)
-FadeTransition.fade_out(widget, duration=0.3)
-
-# Animated progress bar (smooth transitions)
-progress = AnimatedProgressBar()
-progress.set_progress(50, animate=True)
-
-# Loading spinner with message
-spinner = LoadingSpinner(message="Loading model...")
-spinner.is_active = True
-```
-
-#### Keyboard Shortcuts
-
-| Shortcut | Action | Context |
-|----------|--------|---------|
-| `Ctrl+O` | Browse files | Home screen |
-| `Ctrl+T` | Start transcription | Home screen |
-| `Ctrl+S` | Save transcript | Home screen |
-| `Ctrl+,` | Open settings | Global |
-| `Esc` | Cancel/close drawer | Global |
-| `F5` | Refresh history | History screen |
-
-### GUI-Ready Backend Infrastructure (v0.8.0 Alpha)
-
-The following subsystems were added to support GUI integration:
-
-#### Progress Callback System
-
-- `ProgressCallback` protocol in `domain/protocols.py` enables GUI to receive structured progress updates
-- `ProgressUpdateData` frozen dataclass contains: stage, progress (0-100), message, optional details
-- Three progress modes supported: `"rich"` (CLI with Rich), `"callback"` (GUI), `"silent"` (tests)
-- `CallbackProgressTracker` in `app/progress.py` wraps callbacks with thread-safe updates
-
-```python
-from vociferous.domain.protocols import ProgressCallback, ProgressUpdateData
-
-def gui_callback(update: ProgressUpdateData) -> None:
-    update_progress_bar(update.progress, update.message)
-
-# Pass to workflow
-transcribe_file(audio_path, progress_callback=gui_callback)
-```
-
-#### Error Serialization
-
-- All `VociferousError` subclasses now support `to_dict()` / `from_dict()` for IPC
-- `ErrorDict` TypedDict in `domain/error_schema.py` ensures type-safe serialization
-- `format_error_for_dialog()` in `gui/errors.py` produces GUI-ready error data
-- Errors include ISO 8601 `timestamp` and preserve `caused_by` chain
-
-```python
-from vociferous.domain.exceptions import TranscriptionError
-
-try:
-    transcribe_file(audio_path)
-except TranscriptionError as e:
-    error_dict = e.to_dict()  # Serialize for IPC
-    # {"error_type": "TranscriptionError", "message": "...", "timestamp": "..."}
-```
-
-#### Audio File Validation
-
-- `validate_audio_file()` in `audio/validation.py` extracts metadata via ffprobe
-- Returns `AudioFileInfo` with duration, format, channels, sample_rate, codec
-- `is_supported_format()` checks against `SUPPORTED_EXTENSIONS` frozenset
-- Enables upfront validation before heavy model loading
-
-```python
-from vociferous.audio.validation import validate_audio_file
-
-info = validate_audio_file(Path("lecture.mp3"))
-print(f"Duration: {info.duration}s, Format: {info.format_name}")
-```
-
-#### Async Daemon Startup
-
-- `start_async()` method on `DaemonManager` returns immediately (non-blocking)
-- Returns `AsyncStartupResult` with thread-safe status polling
-- Enables responsive GUI during slow model loading
-- Supports progress callbacks during async startup
-
-```python
-from vociferous.server.manager import DaemonManager
-
-manager = DaemonManager()
-result = manager.start_async()
-
-while result.status == "starting":
-    update_spinner()
-    time.sleep(0.1)
-
-if result.status == "running":
-    # Daemon ready
-elif result.status == "failed":
-    show_error(result.error)
-```
-
-#### Config Schema for GUI
-
-- `ConfigFieldSchema` in `gui/config_schema.py` describes fields for auto-generated forms
-- `get_config_schema()` extracts schema from Pydantic models and dataclasses
-- `FIELD_METADATA` dict provides widget type, help text, choices for GUI
-- `format_validation_errors()` converts Pydantic errors to user-friendly messages
-
-```python
-from vociferous.gui.config_schema import get_config_schema
-from vociferous.config import EngineConfig
-
-schema = get_config_schema(EngineConfig)
-for field in schema:
-    print(f"{field.name}: {field.widget_type} - {field.help_text}")
-```
-
-#### Configuration Presets
-
-- `PresetInfo[T]` generic class in `config/presets.py` with name, description, config
-- `ENGINE_PRESETS`: accuracy_focus, speed_focus, balanced, low_memory
-- `SEGMENTATION_PRESETS`: precise, fast, conversation, podcast, default
-- Getter functions return lists of presets for GUI dropdowns
-
-```python
-from vociferous.config.presets import get_engine_presets
-
-for preset in get_engine_presets():
-    print(f"{preset.name}: {preset.description}")
-```
-
-### Domain Types and Contracts
-
-- `TranscriptSegment` is a frozen dataclass with `id`, `start`, `end`, `raw_text`, and optional `refined_text`/`language`/`confidence`; legacy accessors `text`, `start_s`, and `end_s` remain for compatibility.
-- `TranscriptionEngine` protocol: batch-only `transcribe_file(audio_path: Path, options: TranscriptionOptions | None = None) -> list[TranscriptSegment]` plus `metadata` for device/precision reporting.
-- `RefinementEngine` protocol: `refine_segments(list[TranscriptSegment], instructions|None) -> list[TranscriptSegment]` for grammar/punctuation-only second pass.
-
-### Audio Module Hardening
-
-- Centralize audio utility exports from `vociferous.audio` (`chunk_pcm_bytes`, `apply_noise_gate`, etc.) to keep a single import surface.
-- Decoder advertises format support only when FFmpeg is discoverable; WAV detection normalizes extensions consistently.
-- Silero VAD path now fails fast when the dependency is missing or invalid parameters are provided.
-- Silero VAD pads/merges spans and enforces ≤40s segments by default (configurable via `speech_pad_ms`/`max_speech_duration_s`).
-- Recorder enforces configured sample width; condenser raises when called without timestamps and cleans temp concat lists via context; condensation uses seconds-based 40s chunking with silence-gap splitting.
-- All audio contract tests use real files from `tests/audio/sample_audio/` - no mocks.
-
-### Engines Module Updates
-
-- **Canary-Qwen 2.5B is now the default production engine** with full dual-pass (ASR + refinement) working.
-- **Critical VRAM fix implemented:** Explicit dtype handling prevents PyTorch's float32 auto-loading memory leak (20GB → 5GB).
-- Whisper Turbo remains available as a fallback engine for compatibility.
-- Mock mode removed from Canary engine - real model only (no `use_mock` parameter).
-- Cache manager validates inputs and minimum model size; hardware detection logs CUDA initialization failures.
-- **Hardware detection hardened (v0.7.2):** Validates CUDA device properties before returning "cuda" to catch driver issues early.
-- **Model registry simplified:** Removed redundant validation functions; cleaner error messages with available model lists.
-- **Dead code removal:** Unused `_resolve_dtype` in Canary engine, unused `load_audio_file` in Whisper engine removed.
-- **Inference optimization:** Both engines now use `torch.inference_mode()` context for faster inference.
-- **Token calculation improved:** Refinement token limits now based on character-to-token ratio (4 chars/token) with 50% expansion headroom.
-- **Batch result validation (v0.7.4):** Uses `zip(..., strict=True)` to catch length mismatches between batch inputs and outputs early, preventing silent data loss.
-
-### Refinement Module Updates
-
-- Canary LLM refinement mode fully integrated - uses same model as ASR (no reload overhead).
-- Rule-based refiner available as lightweight fallback.
-- Refiner contract tests passing with real CLI invocations.
-
-## Architecture Refactor Progress
-
-**Completed (v0.8.0 Alpha):**
-- [x] Progress callback system for GUI integration
-- [x] Error serialization with to_dict()/from_dict()
-- [x] Audio file validation with ffprobe metadata extraction
-- [x] Async daemon startup for responsive GUI
-- [x] Config schema extraction for auto-generated forms
-- [x] Configuration presets (engine + segmentation)
-- [x] 114 new tests for GUI-readiness features
-
-**Completed (v0.2.0):**
-- [x] Audio preprocessing pipeline (decode, vad, condense, record)
-- [x] Real-file contract testing philosophy (no mocks)
-- [x] Module-based test organization
-- [x] Move CLI adapter components to cli.components (separation of concerns)
-- [x] Two-tier help system implementation
-- [x] Canary-Qwen dual-pass architecture with VRAM optimization
-- [x] Remove SegmentArbiter over-engineering
-- [x] Remove TranscriptionSession
-- [x] Transparent transcribe workflow
-- [x] Refinement module integrated (Canary LLM mode)
-- [x] Test quality pass - removed 25 weak/mock tests, 64 high-value tests passing
-- [x] NeMo + torch as required dependencies (not optional)
-- [x] Single source of truth for dependencies (pyproject.toml only)
-
-**Future Work:**
-- [ ] Performance optimization for Canary-Qwen (currently slower than Whisper)
-- [ ] Prompt engineering for better refinement quality
-- [ ] `vociferous deps install` automated dependency installation
-- [ ] `vociferous deps download` explicit model pre-download
+# Vociferous Architecture Guide
+
+> A comprehensive guide to the design, patterns, and implementation of Vociferous - a modern Python speech-to-text dictation application.
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [User Experience](#user-experience)
+3. [High-Level Architecture](#high-level-architecture)
+4. [Module Reference](#module-reference)
+5. [Design Patterns](#design-patterns)
+6. [Data Flow](#data-flow)
+7. [Threading Model](#threading-model)
+8. [Platform Compatibility](#platform-compatibility)
+9. [Dependencies](#dependencies)
+10. [Configuration System](#configuration-system)
+11. [Python 3.12+ Features](#python-312-features)
 
 ---
 
-## Core Philosophy
+## Overview
 
-### **"Components, Not Monoliths"**
+Vociferous is a speech-to-text dictation tool for Linux. Press a hotkey to start recording, press again to transcribe your speech and inject the text into any application.
 
-Vociferous is built on the principle that **every meaningful unit of functionality must be independently verifiable, composable, and debuggable.**
+### Key Characteristics
 
-**Guiding Principle:**
-
-> If you can't run it from the command line with real files and see real output, it's not a component—it's just code.
+- **Wayland-first**: Works on modern Linux (Wayland and X11)
+- **GPU-accelerated**: Uses faster-whisper with CUDA for real-time transcription
+- **Minimal UI**: System tray icon + floating status window
+- **Modern Python**: Leverages Python 3.12+ features throughout
 
 ---
 
-## Architectural Hierarchy
+## User Experience
 
-### **Three-Tier Structure**
+### Typical Usage Flow
 
 ```mermaid
-graph TD
-    M["MODULE<br/>Organizational grouping"]
-    C["COMPONENT<br/>Independently executable"]
-    U["UTILITY<br/>Internal helper"]
+sequenceDiagram
+    participant User
+    participant Vociferous
+    participant Whisper
+    participant TargetApp as Target Application
 
-    M --> C
-    C --> U
+    Note over User,TargetApp: Application is running in background
+    User->>Vociferous: Press activation key (Right Alt)
+    Vociferous->>Vociferous: Start recording
+    Note over Vociferous: Status window appears:<br/>🎤 "Recording..."
+    
+    User->>Vociferous: Speaks into microphone
+    Note over Vociferous: Audio buffered with VAD filtering
+    
+    User->>Vociferous: Press activation key again
+    Vociferous->>Vociferous: Stop recording
+    Note over Vociferous: Status window updates:<br/>✏️ "Transcribing..."
+    
+    Vociferous->>Whisper: Process audio buffer
+    Whisper-->>Vociferous: Return transcribed text
+    
+    Vociferous->>TargetApp: Inject text via input simulation
+    Note over TargetApp: Text appears as if typed
+    
+    Vociferous->>Vociferous: Return to idle
+    Note over Vociferous: Status window disappears
 ```
 
-### **Definitions**
+### Step-by-Step Workflow
 
-| Term | Definition | CLI Accessible? | Example |
-| --- | --- | --- | --- |
-| **Module** | Collection of related components with unified purpose | No  | `audio`, `engines` |
-| **Component** | Independently executable, testable, chainable unit | **Yes** | `vociferous decode`, `vociferous vad` |
-| **Utility** | Internal helper used by components | No  | `VadWrapper`, `FFmpegHelper` |
-
----
-
-## Component Design Principles
-
-### **1. Independent Executability**
-
-**Requirement:** Every component must be callable via CLI.
-
-**Example:**
+#### 1. Launch & Initialization
 
 ```bash
-# Component: Decoder
-vociferous decode audio.mp3
-# ✅ Runs standalone, no dependencies on other components
-
-# Component: VAD
-vociferous vad audio_decoded.wav
-# ✅ Runs standalone, operates on standardized input
-
-# Component: Condenser
-vociferous condense timestamps.json audio_decoded.wav
-# ✅ Runs standalone, explicit dependencies
+./vociferous.sh  # or python run.py
 ```
 
-**Anti-pattern:**
+**What happens:**
+- GPU libraries configured (if CUDA available)
+- Whisper model loaded into memory (~1-2GB VRAM for distil-large-v3)
+- System tray icon appears (no main window)
+- Hotkey listener starts monitoring keyboard
+- Status: **Idle** (waiting for activation)
 
-```python
-# ❌ This is NOT a component (no CLI interface)
-class InternalAudioProcessor:
-    def process(self, data): ...
+#### 2. Start Recording
+
+**User action:** Press activation key (default: Right Alt)
+
+**What happens:**
+- Status window appears at bottom-center of screen
+- Shows microphone icon 🎤 and "Recording..." text
+- Audio capture begins (16kHz mono, buffered in queue)
+- VAD (Voice Activity Detection) monitors for speech
+- Status: **Recording**
+
+**Visual feedback:**
+```
+╔═══════════════════════════════╗
+║  🎤  Recording...             ║
+╚═══════════════════════════════╝
 ```
 
----
+#### 3. Speaking
 
-### **2. Observable Outputs**
+**User action:** Speak naturally into microphone
 
-**Requirement:** Components must produce real, inspectable files.
+**What happens:**
+- Audio frames continuously captured by sounddevice
+- WebRTC VAD analyzes each 30ms frame for speech
+- Speech frames added to buffer, silence trimmed
+- Recording continues until user stops (or VAD timeout in voice_activity_detection mode)
+
+**Alternative modes:**
+- **press_to_toggle** (default): Press once to start, again to stop
+- **hold_to_record**: Hold key down, release to stop
+- **voice_activity_detection**: Auto-stops after 900ms silence
+
+#### 4. Stop Recording
+
+**User action:** Press activation key again
+
+**What happens:**
+- Audio capture stops
+- Status window updates to pencil icon ✏️
+- Text changes to "Transcribing..."
+- Audio buffer sent to Whisper model
+- Status: **Transcribing**
+
+**Visual feedback:**
+```
+╔═══════════════════════════════╗
+║  ✏️  Transcribing...          ║
+╚═══════════════════════════════╝
+```
+
+#### 5. Transcription Processing
+
+**What happens behind the scenes:**
+- Audio converted from int16 → float32
+- VAD filter applied (removes silence)
+- Whisper processes audio in segments
+- Text segments combined and post-processed
+- Trailing space added (if configured)
+
+**Timing:**
+- Short phrase (5 seconds): ~0.5-1 second
+- Long recording (30 seconds): ~2-4 seconds
+- GPU (float16) is ~4x faster than CPU
+
+#### 6. Text Injection
+
+**What happens:**
+- Focus remains on the application you were using
+- Transcribed text injected via configured method:
+  - **pynput** (X11): Simulated keystrokes via XTEST
+  - **dotool/ydotool** (Wayland): Virtual uinput device
+  - **clipboard** (fallback): Text copied for manual paste
+- Text appears as if you typed it character-by-character
 
 **Example:**
-
-```bash
-vociferous decode input.mp3
-# → Creates:  input_decoded.wav (you can listen to it)
-
-vociferous vad input_decoded.wav
-# → Creates: input_decoded_vad_timestamps.json (you can read it)
-
-vociferous condense timestamps.json input_decoded.wav
-# → Creates: input_decoded_condensed.wav (you can verify quality)
+```
+You said: "Hello world, this is a test."
+Result:   Hello world, this is a test. ← appears in focused app
 ```
 
-**Why:** If output is only in memory or internal state, you can't verify correctness.
+#### 7. Return to Idle
+
+**What happens:**
+- Status window fades out and closes
+- System tray icon remains active
+- Hotkey listener continues monitoring
+- Ready for next dictation
+- Status: **Idle**
+
+### Configuration Options
+
+Users can customize behavior via `~/.config/vociferous/config.yaml`:
+
+```yaml
+recording_options:
+  activation_key: alt_right        # Default: Right Alt
+  recording_mode: press_to_toggle  # or hold_to_record, voice_activity_detection
+  silence_duration: 900            # Auto-stop after 900ms silence (VAD mode)
+  input_backend: evdev             # or pynput, auto
+
+model_options:
+  model: distil-large-v3           # Fast, accurate distilled model
+  device: cuda                     # or cpu, auto
+  compute_type: float16            # or float32, int8
+
+output_options:
+  input_method: pynput             # or ydotool, dotool, clipboard
+  add_trailing_space: true         # Space after transcription
+```
+
+### Common Usage Patterns
+
+#### Email Composition
+1. Open email client, click in message body
+2. Press activation key
+3. Dictate: "Hi team, I wanted to follow up on yesterday's meeting..."
+4. Press activation key
+5. Text appears in email
+
+#### Terminal Commands
+1. Open terminal
+2. Press activation key
+3. Dictate: "git commit dash m fix bug in authentication module"
+4. Press activation key
+5. Edit the injected text as needed
+
+#### Document Writing
+1. Open text editor
+2. Press activation key repeatedly for paragraphs
+3. Dictate each paragraph, pause between
+4. Minimal editing needed due to Whisper's accuracy
+
+### Error Handling
+
+**No microphone detected:**
+- Error logged to terminal
+- Status window shows error state briefly
+- Returns to idle
+
+**CUDA libraries missing:**
+- App falls back to CPU automatically
+- Warning logged, but continues working
+
+**Input simulation fails (Wayland permission issue):**
+- Falls back to clipboard method
+- User pastes with Ctrl+V manually
+- Logs suggest running with input group or using dotool
+
+**Model download needed:**
+- First run downloads model from Hugging Face
+- Progress bar shown in terminal
+- Cached in `~/.cache/huggingface/` for subsequent runs
+
+### Performance Characteristics
+
+| Scenario | GPU (float16) | CPU (float32) |
+|----------|---------------|---------------|
+| 5-second clip | ~0.5 sec | ~2 sec |
+| 30-second clip | ~2 sec | ~8 sec |
+| Memory usage | 2GB VRAM | 4GB RAM |
+| First-time load | 3-5 sec | 5-10 sec |
+
+### Background Operation
+
+Vociferous runs continuously in the background:
+
+- **System Resources**: ~200MB RAM idle, 1-2GB during transcription
+- **CPU Usage**: Near-zero when idle, spikes during transcription
+- **GPU Usage**: 0% idle, 20-40% during transcription
+- **No Polling**: Event-driven architecture (no CPU wasted checking for keys)
 
 ---
 
-### **3. Manual Chainability**
-
-**Requirement:** Components must be manually chainable for debugging.
-
-**Example:**
-
-```bash
-# Debug by running each step manually
-vociferous decode lecture.mp3
-vociferous vad lecture_decoded.wav
-vociferous condense lecture_decoded_vad_timestamps.json lecture_decoded.wav
-vlc lecture_decoded_condensed.wav  # ← Listen to verify!
-vociferous transcribe lecture_decoded_condensed.wav
-```
-
-**Why:** When the pipeline fails, you can isolate exactly which component broke.
-
----
-
-### **4. Automatic Composition**
-
-**Requirement:** Provide convenience commands that chain components automatically.
-
-**Example:**
-
-```bash
-# Convenience:  runs decode → vad → condense → transcribe → refine
-vociferous transcribe lecture.mp3
-```
-
-**But:** Manual chaining must always remain possible.
-
----
-
-### **5. Single Responsibility**
-
-**Requirement:** Each component does exactly one thing.
-
-| Component | Responsibility | NOT Responsible For |
-| --- | --- | --- |
-| **Decoder** | Normalize to PCM mono 16kHz | ❌ VAD, ❌ Transcription |
-| **VAD** | Detect speech boundaries | ❌ Audio format, ❌ Silence removal |
-| **Condenser** | Remove silence using timestamps | ❌ VAD detection, ❌ Decoding |
-| **Recorder** | Capture microphone audio | ❌ Preprocessing, ❌ Transcription |
-| **Refiner** | Improve grammar/punctuation using LLM | ❌ ASR decoding, ❌ Audio preprocessing |
-
-**Note:** Engines are infrastructure modules called by workflows, not CLI-accessible components themselves. The CLI exposes workflow commands like `transcribe` which orchestrate engine usage internally.
-
-**Anti-pattern:**
-
-```python
-# ❌ Engine doing VAD (violates single responsibility)
-class WhisperEngine:
-    def transcribe(self, audio):
-        # Detect speech (❌ should be separate component)
-        vad_segments = self.detect_speech(audio)
-        # Remove silence (❌ should be separate component)
-        clean_audio = self.remove_silence(audio, vad_segments)
-        # Transcribe (✅ correct responsibility)
-        return self.transcribe(clean_audio)
-```
-
----
-
-### **6. Fail Loudly**
-
-**Requirement:** Components must fail with clear error messages, not silent failures.
-
-**Example:**
-
-```bash
-$ vociferous condense missing. json audio.wav
-❌ Error:  Timestamps file not found:  missing.json
-
-$ vociferous decode invalid.txt
-❌ Error: Not a valid audio file: invalid.txt
-```
-
-**Anti-pattern:**
-
-```python
-# ❌ Silent failure (returns empty, no error)
-def detect_speech(audio):
-    try:
-        return vad.process(audio)
-    except:
-        return []  # ❌ Hides the problem!
-```
-
----
-
-## Testing Philosophy
-
-### **"No Mocks, Real Files Only"**
-
-**Problem Identified:**
-
-- Had 100+ mock-based unit tests
-
-- All tests passed ✅
-
-- Program was completely broken 🔴
-
-
-**Root Cause:** Tests tested mocks, not real behavior.
-
-**Solution Implemented (December 2025):**
-- Removed 25 weak/mock-based tests
-- Kept 64 high-value contract tests using real files
-- All tests use subprocess calls and real audio samples
-- Test suite runs in ~4 minutes with CUDA GPU
-
----
-
-### **New Testing Standard**
-
-**Requirement:** Tests must use real files and subprocess calls.
-
-**Example:**
-
-```python
-def test_vad_detects_speech():
-    """VAD detects speech in real audio file."""
-
-    # ✅ Real file from test fixtures
-    audio_file = Path("tests/audio/sample_audio/ASR_Test.flac")
-
-    # ✅ Real CLI call via subprocess
-    result = subprocess.run(
-        ["vociferous", "vad", str(audio_file)],
-        capture_output=True,
-        timeout=30,  # ← Catches hangs!
-    )
-
-    # ✅ Real output verification
-    assert result.returncode == 0
-    timestamps_file = Path("ASR_Test_vad_timestamps.json")
-    assert timestamps_file.exists()
-
-    with open(timestamps_file) as f:
-        timestamps = json.load(f)
-    assert len(timestamps) > 0
-```
-
-**Engine Tests Use Preprocessed Audio:**
-
-```python
-def test_canary_asr_mode():
-    """Canary ASR produces transcript from preprocessed audio."""
-
-    # ✅ Preprocessed audio (decoded → VAD → condensed)
-    SAMPLE_WAV = Path("tests/audio/sample_audio/ASR_Test_preprocessed.wav")
-
-    config = EngineConfig(
-        model_name="nvidia/canary-qwen-2.5b",
-        device="cuda",  # Canary requires CUDA
-        compute_type="float16",
-    )
-    engine = CanaryQwenEngine(config)
-    segments = engine.transcribe_file(SAMPLE_WAV, TranscriptionOptions(language="en"))
-
-    assert segments, "No segments produced"
-    for seg in segments:
-        assert seg.text.strip()
-```
-
-**Why This Works:**
-
-- If component hangs → timeout catches it
-
-- If component fails → returncode ≠ 0
-
-- If output wrong → file assertions fail
-
-- **Tests prove real behavior, not mocked behavior**
-
-### **App-Level Orchestration Tests**
-
-App-level tests (e.g., `tests/app/test_batch.py`) may use `monkeypatch` or lightweight stubs when:
-- Full workflow requires loading heavy ML models (Canary-Qwen, Whisper)
-- Real-file tests would take minutes per test
-- The test is verifying orchestration logic, not component behavior
-
-**Acceptable in app tests:**
-- `monkeypatch.setattr()` for workflow functions
-- Stub classes that return fixed values
-- Testing configuration and routing logic
-
-**Still required:**
-- Dataclass and utility function tests use direct instantiation (no mocks)
-- Type annotations on all test methods
-- Clear documentation of why mocking is necessary
-
----
-
-### **Test Organization**
+## High-Level Architecture
 
 ```mermaid
-graph TD
-    T["tests/"]
-    A["audio/"]
-    E["engines/"]
-    R["refinement/"]
-    C["cli/"]
-    AP["app/"]
-    G["gui/"]
-    I["integration/"]
-    F["audio/sample_audio/"]
+graph TB
+    subgraph Entry["Entry Point"]
+        run[run.py]
+    end
 
-    T --> A
-    T --> E
-    T --> R
-    T --> C
-    T --> AP
-    T --> G
-    T --> I
-    T --> F
+    subgraph Core["Core Application"]
+        main[main.py<br/>VociferousApp]
+        config[utils.py<br/>ConfigManager]
+    end
 
-    A --> A1["test_decoder_contract.py"]
-    A --> A2["test_vad_contract.py"]
-    A --> A3["test_condenser_contract.py"]
-    A --> AA["artifacts/<br/>test outputs"]
+    subgraph Input["Input Handling"]
+        listener[key_listener.py<br/>KeyListener]
+        evdev[EvdevBackend<br/>Wayland]
+        pynput_in[PynputBackend<br/>X11]
+    end
 
-    E --> E1["test_whisper_turbo_refactored.py"]
-    E --> E2["test_canary_qwen_contract.py"]
-    E --> EA["artifacts/<br/>test outputs"]
+    subgraph Audio["Audio Pipeline"]
+        result[result_thread.py<br/>ResultThread]
+        transcribe[transcription.py<br/>Whisper]
+    end
 
-    R --> R1["test_refiner_contract.py"]
-    R --> RA["artifacts/<br/>test outputs"]
+    subgraph Output["Text Output"]
+        simulator[input_simulation.py<br/>InputSimulator]
+        dotool[dotool/ydotool<br/>Wayland]
+        pynput_out[pynput<br/>X11]
+    end
 
-    C --> C1["test_transcribe_command.py"]
-    C --> C2["test_decode_command.py"]
+    subgraph UI["User Interface"]
+        status[StatusWindow]
+        base[BaseWindow]
+        tray[System Tray]
+    end
 
-    AP --> AP1["test_workflow.py"]
-    AP --> AP2["test_config_resolution.py"]
+    run --> main
+    main --> config
+    main --> listener
+    main --> result
+    main --> simulator
+    main --> status
+    main --> tray
 
-    G --> G1["test_gui_integration.py"]
+    listener --> evdev
+    listener --> pynput_in
 
-    I --> I1["test_full_pipeline.py"]
-    I --> IA["artifacts/<br/>test outputs"]
+    result --> transcribe
 
-    F --> F1["ASR_Test.flac"]
-    F --> F2["ASR_Test_preprocessed.wav"]
-    F --> F3["Recording 1.flac"]
-    F --> F4["Recording 2.flac"]
-    F --> F5["ASR_Test_Text.txt"]
+    simulator --> dotool
+    simulator --> pynput_out
+
+    status --> base
 ```
-
-**Organization Principles:**
-
-- Tests mirror the `src/` module structure
-- Each module has its own test directory
-- `artifacts/` subdirectories contain test outputs (overwritten each run)
-- `tests/audio/sample_audio/` contains shared test audio/text fixtures
-- `ASR_Test_preprocessed.wav` is the preprocessed (decoded → VAD → condensed) audio for engine tests
-- `integration/` tests full workflows across modules
-- **64 tests passing** - all use real files, no mocks
-
-**Principle:** If a test passes, the component works. If it fails, the component is broken.
 
 ---
 
-## Data Flow Architecture
+## Module Reference
 
-### **Linear Pipeline, No Cycles**
+### `run.py` - Application Entry Point
+
+**Purpose**: Bootstrap the application with correct environment setup.
+
+**Key Responsibilities**:
+- Configure LD_LIBRARY_PATH for CUDA libraries (re-exec pattern)
+- Set up Python path for `src/` imports
+- Configure logging
+- Launch main application
+
+**Why it exists**: LD_LIBRARY_PATH must be set *before* Python loads CUDA libraries. This requires process re-execution.
+
+---
+
+### `src/main.py` - Application Orchestrator
+
+**Purpose**: Wire all components together and manage lifecycle.
+
+**Key Classes**:
+- `VociferousApp(QObject)` - Main application coordinator
+
+**Responsibilities**:
+- Create and manage all components
+- Handle hotkey callbacks
+- Route signals between components
+- System tray management
+
+```mermaid
+classDiagram
+    class VociferousApp {
+        +QApplication app
+        +KeyListener key_listener
+        +WhisperModel local_model
+        +ResultThread result_thread
+        +StatusWindow status_window
+        +InputSimulator input_simulator
+        +QSystemTrayIcon tray_icon
+        +initialize_components()
+        +on_activation()
+        +on_deactivation()
+        +cleanup()
+        +run()
+    }
+```
+
+---
+
+### `src/utils.py` - Configuration Management
+
+**Purpose**: Thread-safe, singleton configuration manager with schema validation.
+
+**Key Classes**:
+- `ConfigManager` - Singleton configuration manager
+
+**Design Patterns**:
+- **Singleton**: One global configuration instance
+- **Double-Checked Locking**: Thread-safe initialization
+- **Schema-Driven**: YAML schema defines valid configuration
+
+```mermaid
+classDiagram
+    class ConfigManager {
+        -_instance: ConfigManager$
+        -_lock: threading.Lock$
+        -_initialized: bool$
+        +_config: dict
+        +_schema: dict
+        +initialize()$
+        +get_config_value(section, key)$
+        +set_config_value(section, key, value)$
+        +load_default_config()
+        +load_user_config()
+    }
+```
+
+---
+
+### `src/key_listener.py` - Hotkey Detection
+
+**Purpose**: Monitor keyboard for activation hotkey across display servers.
+
+**Key Classes**:
+- `InputBackend(Protocol)` - Interface for input backends
+- `KeyChord` - Represents key combination
+- `KeyListener` - Manages backends and chord detection
+- `EvdevBackend` - Linux evdev implementation (Wayland)
+- `PynputBackend` - pynput implementation (X11)
+
+**Design Patterns**:
+- **Strategy Pattern**: Swappable input backends
+- **Protocol (Structural Typing)**: Duck-typed backend interface
+- **Observer Pattern**: Callback-based activation notification
+
+```mermaid
+classDiagram
+    class InputBackend {
+        <<Protocol>>
+        +is_available() bool
+        +start()
+        +stop()
+        +on_input_event(event)
+    }
+
+    class EvdevBackend {
+        +devices: list
+        +thread: Thread
+        +stop_event: Event
+        +start()
+        +stop()
+        -_listen_loop()
+    }
+
+    class PynputBackend {
+        +keyboard_listener
+        +mouse_listener
+        +start()
+        +stop()
+    }
+
+    class KeyListener {
+        +backends: list
+        +active_backend: InputBackend
+        +key_chord: KeyChord
+        +callbacks: dict
+        +start()
+        +stop()
+        +add_callback()
+    }
+
+    InputBackend <|.. EvdevBackend
+    InputBackend <|.. PynputBackend
+    KeyListener o-- InputBackend
+    KeyListener o-- KeyChord
+```
+
+---
+
+### `src/result_thread.py` - Audio Recording & Transcription
+
+**Purpose**: Handle audio capture and transcription in background thread.
+
+**Key Classes**:
+- `ResultThread(QThread)` - Background worker for audio pipeline
+
+**Key Features**:
+- WebRTC VAD for voice activity detection
+- Queue-based audio buffering
+- Qt signals for cross-thread communication
+
+```mermaid
+sequenceDiagram
+    participant Main as Main Thread
+    participant RT as ResultThread
+    participant SD as sounddevice
+    participant VAD as WebRTC VAD
+    participant Whisper as faster-whisper
+
+    Main->>RT: start()
+    RT->>RT: emit('recording')
+    RT->>SD: InputStream(callback)
+
+    loop Audio Capture
+        SD-->>RT: audio frames (via Queue)
+        RT->>VAD: is_speech(frame)?
+        alt Speech detected
+            RT->>RT: Continue recording
+        else Silence threshold
+            RT->>RT: Stop recording
+        end
+    end
+
+    RT->>RT: emit('transcribing')
+    RT->>Whisper: transcribe(audio)
+    Whisper-->>RT: text result
+
+    RT->>RT: emit('idle')
+    RT->>Main: resultSignal(text)
+```
+
+---
+
+### `src/transcription.py` - Whisper Integration
+
+**Purpose**: Interface with faster-whisper for speech-to-text.
+
+**Key Functions**:
+- `create_local_model()` - Factory for WhisperModel
+- `transcribe()` - Convert audio to text
+- `post_process_transcription()` - Clean up output
+
+**Features**:
+- GPU/CPU auto-selection
+- VAD filtering in Whisper
+- Configurable model size and compute type
+
+---
+
+### `src/input_simulation.py` - Text Injection
+
+**Purpose**: Type transcribed text into the focused application.
+
+**Key Classes**:
+- `InputSimulator` - Multi-backend text injector
+
+**Supported Backends**:
+| Backend | Protocol | How It Works |
+|---------|----------|--------------|
+| pynput | X11 | XTEST extension |
+| ydotool | Wayland | Virtual uinput device |
+| dotool | Wayland | Persistent uinput process |
+| clipboard | Any | Copy for manual paste |
+
+---
+
+### `src/ui/base_window.py` - Custom Window Base
+
+**Purpose**: Frameless, draggable window with rounded corners.
+
+**Key Classes**:
+- `BaseWindow(QMainWindow)` - Custom window base class
+
+**Features**:
+- Translucent background with custom painting
+- Drag-to-move from anywhere
+- Custom title bar with close button
+
+---
+
+### `src/ui/status_window.py` - Status Display
+
+**Purpose**: Floating indicator showing recording/transcribing state.
+
+**Key Classes**:
+- `StatusWindow(BaseWindow)` - Status indicator window
+
+**Features**:
+- Auto-positioning at screen bottom
+- Icon changes based on state
+- Stays on top of other windows
+
+---
+
+## Design Patterns
+
+### 1. Singleton Pattern (ConfigManager)
+
+```python
+class ConfigManager:
+    _instance = None
+    _lock = threading.Lock()
+
+    @classmethod
+    def initialize(cls):
+        if cls._instance is None:
+            with cls._lock:  # Double-checked locking
+                if cls._instance is None:
+                    cls._instance = cls()
+```
+
+**Why**: Configuration should be consistent across the entire application. A singleton ensures all modules see the same config.
+
+---
+
+### 2. Strategy Pattern (Input Backends)
+
+```python
+class KeyListener:
+    def __init__(self):
+        self.backends = [cls() for cls in [EvdevBackend, PynputBackend]
+                        if cls.is_available()]
+        self.active_backend = self.backends[0]
+```
+
+**Why**: Different display servers (X11, Wayland) require different input methods. Strategy pattern lets us swap implementations without changing the KeyListener.
+
+---
+
+### 3. Protocol (Structural Typing)
+
+```python
+@runtime_checkable
+class InputBackend(Protocol):
+    def start(self) -> None: ...
+    def stop(self) -> None: ...
+```
+
+**Why**: More Pythonic than ABC. Classes don't need to inherit from Protocol - they just need matching methods. Enables easy mocking in tests.
+
+---
+
+### 4. Observer Pattern (Callbacks)
+
+```python
+class KeyListener:
+    def add_callback(self, event: str, callback: Callable):
+        self.callbacks[event].append(callback)
+
+    def _trigger_callbacks(self, event: str):
+        for callback in self.callbacks.get(event, []):
+            callback()
+```
+
+**Why**: Decouples the key listener from the main app. KeyListener doesn't know about VociferousApp - it just calls callbacks when events occur.
+
+---
+
+### 5. Mediator Pattern (VociferousApp)
+
+```python
+class VociferousApp:
+    def __init__(self):
+        self.key_listener.add_callback("on_activate", self.on_activation)
+        self.result_thread.resultSignal.connect(self.on_transcription_complete)
+```
+
+**Why**: VociferousApp coordinates communication between components. KeyListener, ResultThread, StatusWindow don't know about each other - they communicate through VociferousApp.
+
+---
+
+## Data Flow
+
+```mermaid
+flowchart LR
+    subgraph Input
+        KB[Keyboard]
+    end
+
+    subgraph Detection
+        EV[evdev/pynput]
+        KL[KeyListener]
+        KC[KeyChord]
+    end
+
+    subgraph Recording
+        SD[sounddevice]
+        Q[Queue]
+        VAD[WebRTC VAD]
+    end
+
+    subgraph Transcription
+        RT[ResultThread]
+        WH[faster-whisper]
+    end
+
+    subgraph Output
+        IS[InputSimulator]
+        APP[Target App]
+    end
+
+    KB --> EV --> KL --> KC
+    KC -->|activate| RT
+    SD --> Q --> VAD --> RT
+    RT --> WH --> IS --> APP
+```
+
+---
+
+## Threading Model
+
+```mermaid
+graph TB
+    subgraph MainThread["Main Thread (Qt Event Loop)"]
+        App[VociferousApp]
+        UI[StatusWindow]
+        Tray[System Tray]
+        Signals[Signal Handlers]
+    end
+
+    subgraph EvdevThread["Evdev Listener Thread (daemon)"]
+        Listen[_listen_loop]
+        Select[select() on devices]
+    end
+
+    subgraph AudioThread["OS Audio Thread"]
+        Callback[audio_callback]
+    end
+
+    subgraph ResultThread["QThread"]
+        Record[_record_audio]
+        Transcribe[transcribe]
+    end
+
+    EvdevThread -->|callbacks| MainThread
+    AudioThread -->|Queue| ResultThread
+    ResultThread -->|Qt Signals| MainThread
+```
+
+### Thread Safety Mechanisms
+
+| Mechanism | Used By | Purpose |
+|-----------|---------|---------|
+| `threading.Lock` | ConfigManager | Protect singleton init |
+| `QMutex` | ResultThread | Protect is_running/is_recording |
+| `Queue` | ResultThread | Thread-safe audio buffer |
+| `threading.Event` | EvdevBackend | Graceful shutdown signal |
+| Qt Signals | All | Cross-thread communication |
+
+---
+
+## Platform Compatibility
+
+### Display Server Support
 
 ```mermaid
 graph LR
-  IN[Input Audio]
-  D["Decoder<br/>standardized.wav"]
-  V["VAD<br/>timestamps.json"]
-  C["Condenser<br/>condensed.wav"]
-  ASR["Canary ASR<br/>raw text"]
-  R["Canary Refiner<br/>refined text"]
-  OUT[Output]
+    subgraph Wayland
+        evdev[evdev backend]
+        dotool[dotool output]
+        ydotool[ydotool output]
+    end
 
-  IN --> D --> V --> C --> ASR --> R --> OUT
+    subgraph X11
+        pynput_in[pynput input]
+        pynput_out[pynput output]
+    end
+
+    subgraph Both
+        clipboard[Clipboard fallback]
+    end
 ```
 
-**Key Principles:**
+### Why Two Input Backends?
 
-- Each stage produces a **file** (not just in-memory data)
+| Feature | evdev | pynput |
+|---------|-------|--------|
+| Works on Wayland | ✅ | ❌ (limited) |
+| Requires `input` group | ✅ | ❌ |
+| Works on X11 | ✅ | ✅ |
+| Complexity | Higher | Lower |
 
-- Each stage can be **run independently**
-
-- No component depends on another component's **internal state**
-
-- Data flows **forward only** (no backwards dependencies)
-
-- Workflow orchestration is explicit and stateless—there is no `TranscriptionSession` or `SegmentArbiter`. Canary ASR receives condensed audio and must emit non-overlapping segments; refinement is a second pass over the resulting text.
-
-### Canonical Workflow (app)
-
-`transcribe_file_workflow(source, engine_profile, segmentation_profile, refine=True)` encodes the pipeline once:
-- `source.resolve_to_path()` yields a real file (file/mic/etc.)
-- `decode → vad → condense` with Silero parameters from `SegmentationProfile`, splitting to ≤40s chunks
-- `EngineWorker` loads the chosen engine once and transcribes each condensed chunk (timestamps offset by chunk order)
-- Optional refinement runs via the engine seam, which can later be swapped for an out-of-process worker.
-
+**Decision**: Use evdev by default (Wayland support), fall back to pynput.
 
 ---
 
-## Canary-Qwen Dual-Pass Architecture
+## Dependencies
 
-### **Two-Phase Processing**
-
-The Canary-Qwen engine implements a sophisticated dual-pass design that separates speech recognition from text refinement:
-
-**Pass 1: ASR Mode (Speech → Raw Text)**
-- Model configured as Automatic Speech Recognition (ASR)
-- Converts audio directly to raw transcribed text
-- Fast, focused on accurate speech-to-text conversion
-- Output: Unrefined text with potential artifacts
-
-**Pass 2: LLM Mode (Raw Text → Refined Text)**
-- Same model reconfigured as Language Model (LLM)
-- Takes raw text as input and applies linguistic refinement
-- Fixes grammar, punctuation, capitalization
-- Output: Clean, publication-ready text
-
-### **Key Optimization**
-
-**Model stays loaded between passes.** This is critical for performance:
-- No model reload overhead between ASR and refinement
-- Memory footprint remains constant (single model in VRAM/RAM)
-- Makes dual-pass practical for batch processing
-
-### **VRAM Optimization (Critical Fix)**
-
-**Problem Solved:** PyTorch's `from_pretrained()` defaults to loading models as float32, even when saved as bfloat16. This caused 2x memory inflation:
-- Expected: 5GB for 2.5B params in float16
-- Actual before fix: 20GB (float32 loading + device transfer overhead)
-
-**Solution Implemented:**
-```python
-# Map compute_type to torch dtype to prevent float32 auto-loading
-dtype_map = {"float32": torch.float32, "float16": torch.float16, "bfloat16": torch.bfloat16}
-target_dtype = dtype_map.get(self.config.compute_type, torch.bfloat16)
-
-# Convert to target dtype BEFORE moving to device
-model = SALM.from_pretrained(self.model_name)
-model = model.to(dtype=target_dtype)  # Convert first
-model = model.to(device=device)       # Then move to GPU
-```
-
-**Result:** VRAM usage reduced from 20GB to ~5GB (75% reduction), enabling Canary-Qwen on consumer GPUs.
-
-### **Architecture Diagram**
-
-```mermaid
-graph LR
-    A[Condensed Audio] --> ASR[Canary ASR<br/>Pass 1: Speech→Text]
-    ASR --> RAW[Raw Transcription<br/>unrefined text]
-    RAW --> LLM[Canary Refiner<br/>Pass 2: Text→Refined]
-    LLM --> OUT[Final Output<br/>refined text]
-
-    style ASR fill:#e1f5ff
-    style LLM fill:#fff4e1
-```
-
-### **Usage**
-
-```bash
-# Run both passes (ASR + refinement)
-vociferous transcribe audio.wav --engine canary_qwen --refine
-
-# Run ASR only (skip refinement)
-vociferous transcribe audio.wav --engine canary_qwen --no-refine
-
-# Custom refinement instructions
-vociferous transcribe audio.wav --engine canary_qwen --refine \
-  --refinement-instructions "Medical terminology, formal tone"
-```
-
-### **Refinement Modes**
-
-The refinement module now supports multiple named modes with centralized prompt templates:
-
-**Available Modes:**
-- `grammar_only` (default) - Fix grammar, punctuation, capitalization, remove fillers
-- `summary` - Produce a concise summary of key points
-- `bullet_points` - Convert to structured bullet points
-
-**CLI Usage:**
-```bash
-# Default grammar refinement
-vociferous refine transcript.txt
-
-# Summary mode
-vociferous refine transcript.txt --mode summary
-
-# Custom instructions override
-vociferous refine transcript.txt --instructions "Make it formal"
-```
-
-**Segment-Based Refinement:**
-
-The refinement module operates on `list[TranscriptSegment]` to preserve timestamp alignment:
-- Accepts segments with `raw_text`
-- Returns same segments with `refined_text` filled in
-- Never drops or reorders segments
-- Maintains temporal alignment for downstream tools
-
-### **Design Rationale**
-
-1. **Separation of Concerns:** Speech recognition and text refinement are fundamentally different tasks
-2. **Flexibility:** Users can skip refinement for speed or run it for quality
-3. **Performance:** Single model load, dual-purpose usage maximizes efficiency
-4. **Quality:** Dedicated refinement pass produces better results than single-pass ASR
-5. **Alignment Preservation:** Segment-based refinement keeps timestamps intact for subtitle generation, etc.
-
----
-
-## Provisioner & Engine Requirements
-
-### **Explicit Dependency Management**
-
-Vociferous follows a **fail-loud** principle: engines do not automatically install dependencies or download models. Instead, the system provides explicit provisioning commands to check and manage requirements.
-
-**Core Principle:** No implicit installs, no silent downloads, no mocks in production.
-
-### **Provisioner Commands**
-
-The `vociferous deps` command group provides explicit dependency management:
-
-```bash
-# Check for missing dependencies and models
-vociferous deps check --engine canary_qwen
-
-# Example output shows missing packages and provides install commands
-```
-
-**Available Commands:**
-
-| Command | Purpose | Behavior |
-|---------|---------|----------|
-| `deps check` | Detect missing Python packages and model weights | Non-invasive; reports status and provides actionable commands |
-| `deps install` | (Future) Automated dependency installation | Will install required packages via pip |
-| `deps download` | (Future) Explicit model download | Will pre-download models to cache |
-
-**Exit Codes:**
-- `0` - All dependencies satisfied
-- `2` - Missing dependencies or models detected
-
-**Philosophy:** Dependencies are managed explicitly by the user, not implicitly by the application. This prevents surprise installations, respects user control, and makes dependency issues visible immediately.
-
----
-
-### **Engine Requirements Table**
-
-Each engine declares its required packages and models explicitly. The `deps check` command inspects these requirements without triggering heavy imports.
-
-| Engine | Required Packages | Model Repository | Model Cache Location |
-|--------|------------------|------------------|---------------------|
-| **canary_qwen** | `nemo_toolkit[asr,tts]>=2.1.0`<br/>`torch>=2.6.0`<br/>`sacrebleu>=2.0.0` | `nvidia/canary-qwen-2.5b` (NeMo SALM checkpoint) | `~/.cache/vociferous/models/` |
-| **whisper_turbo** | `openai-whisper>=20240930` | `turbo` (official OpenAI model) | `~/.cache/vociferous/models/` |
-
-**Notes:**
-- **NeMo, torch, and sacrebleu are required dependencies** - included in `pyproject.toml` (not optional)
-- **Whisper uses the official OpenAI Whisper package** (NOT faster-whisper, NOT CTranslate2)
-- Package versions are minimum requirements; newer versions typically work
-- Models are downloaded automatically on first use if not cached
-- Canary-Qwen is a NeMo SpeechLM (SALM) model, not a Transformers checkpoint
-- Cache location can be configured via `model_cache_dir` in `~/.config/vociferous/config.toml`
-- **Canary-Qwen requires CUDA** - CPU mode is not supported for this engine
-- Whisper Turbo works on both CPU and GPU
-
----
-
-### **Cache Behavior**
-
-**Model Cache Directory:** `~/.cache/vociferous/models/` (default)
-
-**Behavior:**
-- Models are downloaded on first use to the cache directory
-- Subsequent runs reuse cached models (no re-download)
-- Cache can be pre-populated using `deps download` (planned)
-- Cache location is configurable via `config.toml`
-
-**Hugging Face Cache Integration:**
-- Models use Hugging Face Hub's cache structure
-- Cache entries follow `models/hub/model--<org>--<name>/` pattern
-- Compatible with `HF_HOME` environment variable
-
-**Cache Verification:**
-- `deps check` inspects cache for model presence
-- Reports "CACHED" for available models, "NOT CACHED" otherwise
-- Does not validate model integrity (assumes cached = valid)
-
----
-
-### **Fail-Loud Contract**
-
-**Principle:** If a dependency is missing, the system must fail immediately with a clear, actionable error message.
-
-**What This Means:**
-- ❌ **No implicit installs** - The system never runs `pip install` automatically
-- ❌ **No silent downloads** - Model downloads are explicit and visible
-- ❌ **No mock fallbacks** - Production code must use real implementations
-- ✅ **Clear error messages** - Missing dependencies trigger errors with installation instructions
-- ✅ **Explicit provisioning** - User controls when and how dependencies are installed
-
-**Example Error Flow:**
-
-```bash
-$ vociferous transcribe audio.wav --engine canary_qwen
-
-❌ Error: Missing dependencies for Canary-Qwen SALM. Install NeMo:
-   pip install "nemo_toolkit[asr,tts]>=2.1.0"
-
-Then run: vociferous deps check --engine canary_qwen
-```
-
-**Anti-Pattern (What We Don't Do):**
-
-```python
-# ❌ Silent fallback to mock (REMOVED - mock mode is disabled in production)
-# Canary engine now raises ConfigurationError if use_mock=true is passed
-try:
-    from transformers import AutoModel
-    use_mock = False
-except ImportError:
-    use_mock = True  # User doesn't know they're not getting real results!
-
-# ❌ Implicit dependency installation (violates user control)
-try:
-    import torch
-except ImportError:
-    print("Installing torch...")
-    subprocess.run(["pip", "install", "torch"])  # Surprise!
-```
-
-**Correct Pattern (What We Do):**
-
-```python
-# ✅ Explicit check with clear error
-try:
-    from nemo.collections.speechlm2.models import SALM
-except ImportError:
-    raise DependencyError(
-        "Missing dependencies for Canary-Qwen SALM. Install NeMo:\n"
-        "pip install nemo_toolkit[asr,tts]>=2.1.0\n"
-        "Then run: vociferous deps check --engine canary_qwen"
-    )
-
-# ✅ Mock mode explicitly disabled
-if _bool_param(params, "use_mock", False):
-    raise ConfigurationError("Mock mode is disabled for Canary-Qwen. Remove params.use_mock=true.")
-```
-
----
-
-### **Developer Workflow**
-
-**Setting Up for Canary-Qwen (Default Engine):**
-
-1. **Install the package (includes all required dependencies):**
-   ```bash
-   pip install -e .
-   # Installs: nemo_toolkit, torch>=2.6.0, sacrebleu, openai-whisper, etc.
-   ```
-
-2. **Check dependencies:**
-   ```bash
-   vociferous deps check --engine canary_qwen
-   # Should show: ✓ All dependencies satisfied
-   ```
-
-3. **First run (downloads model ~5GB):**
-   ```bash
-   vociferous transcribe audio.wav
-   # Model downloads to ~/.cache/vociferous/models/ on first use
-   # Requires CUDA GPU with ~6GB free VRAM
-   ```
-
-**Setting Up for Whisper Turbo (Fallback/CPU):**
-
-```bash
-vociferous transcribe audio.wav --engine whisper_turbo
-# Works on CPU, faster but less accurate than Canary
-```
-
-**CI/Offline Workflows:**
-
-For environments without internet access:
-1. Pre-populate model cache on a machine with internet
-2. Copy `~/.cache/vociferous/models/` to offline environment
-3. `deps check` verifies cached models are present
-4. Transcription runs without network access
-
-**Future Enhancements (Planned):**
-
-```bash
-# Explicit dependency installation (Issue #1 follow-up)
-vociferous deps install --engine canary_qwen --yes
-
-# Explicit model download (Issue #1 follow-up)
-vociferous deps download --engine canary_qwen
-```
-
----
-
-## Module Architecture
-
-### **Complete Module List**
-
-Vociferous is organized into **9 modules**, each with a clear responsibility and visibility boundary:
-
-| Module | Purpose | CLI Components? | Key Responsibilities |
-|--------|---------|-----------------|---------------------|
-| **audio** | Audio processing primitives | ❌ No (primitives only) | FfmpegDecoder, SileroVAD, FFmpegCondenser, SoundDeviceRecorder |
-| **engines** | Speech-to-text conversion | ❌ No (infrastructure) | Canary-Qwen (default), Whisper Turbo (fallback) |
-| **refinement** | Text post-processing via Canary LLM pass | ❌ No (internal) | Grammar/punctuation refinement, prompt handling |
-| **cli** | Command-line interface | ✅ Yes | Typer commands, argument parsing, help system, interface adapters (cli.components) |
-| **app** | Workflow orchestration | ❌ No | Transparent workflow functions (no sessions, no arbiters) |
-| **config** | Configuration management | ❌ No | Settings, defaults, config file handling |
-| **domain** | Core domain models & protocols | ❌ No | Typed data structures, contracts, errors |
-| **sources** | Audio input abstractions | ❌ No | File/memory/microphone sources producing files (FileSource, MemorySource, MicSource) |
-| **gui** | Graphical user interface | ❌ No (separate interface) | KivyMD screens, widgets, animations, error dialogs |
-
-**Notes:**
-- **Canary-Qwen is the default production engine** with dual-pass (ASR + refinement) fully working.
-- Whisper Turbo is available as a fallback for CPU-only systems or faster processing.
-- Engines and refinement are infrastructure invoked by workflows; not exposed as standalone CLI commands.
-- The `app` module coordinates workflows explicitly—there is **no** `TranscriptionSession` or `SegmentArbiter`.
-- **Audio module contains only primitives** (decoder, VAD, condenser, recorder classes); **CLI adapters** (DecoderComponent, VADComponent, etc.) are in `cli.components`.
-- **Config module centralizes profiles**: engine profiles (kind, precision, model name) and segmentation profiles (Silero VAD/condense parameters) live in `~/.config/vociferous/config.toml` with defaults `canary_qwen_fp16` and `default`.
-- **GUI module is self-contained**: All screens, widgets, and animations are composable and use backend infrastructure (progress callbacks, error serialization, config schema).
-
-### **GUI Module Organization**
-
-The GUI module (`vociferous/gui/`) is organized into distinct layers:
-
-**Screens (Top-Level Views)**
-- `home_screen.py` - Main transcription workflow (EnhancedHomeScreen)
-- `history_screen.py` - History browser with SQLite persistence (HistoryScreen)
-- `settings_screen.py` - Tabbed settings interface (EnhancedSettingsScreen)
-- `splash.py` - First-run splash screen
-
-**Widgets (Reusable Components)**
-- `widgets.py` - Core widget library (Colors, AudioFileCard, ProgressCard, PresetCard, etc.)
-
-**Support (Error Handling & Effects)**
-- `error_dialogs.py` - Structured error display with recovery suggestions
-- `animations.py` - Animation utilities (fade, slide, pulse, loading spinner)
-
-**Integration (Backend Bridge)**
-- `config_schema.py` - Auto-generate forms from config classes
-- `errors.py` - Format exceptions for dialog display
-- `validation.py` - User-friendly validation error messages
-
-**GUI Design Principles:**
-- **Mode switching**: Simple/Advanced/Expert controls UI complexity
-- **Transparency**: Pipeline stages visible via PipelineStageIndicator
-- **Fail-loud**: Enhanced error dialogs with expandable details
-- **Responsive**: Async operations with loading spinners
-- **Consistent**: Material Design colors and spacing throughout
-
-### **Module Organization Principles**
-
-**1. CLI-Accessible Commands (via cli.components)**
-
-These components can be invoked directly from the command line:
-- `vociferous decode` - Audio format normalization (DecoderComponent)
-- `vociferous vad` - Voice activity detection (VADComponent)
-- `vociferous condense` - Silence removal (CondenserComponent)
-- `vociferous record` - Microphone capture (RecorderComponent)
-
-**2. Infrastructure Modules (engines, refinement)**
-
-These modules are called by workflows, not directly by users:
-- Engines provide transcription capabilities
-- Refinement modules improve text quality
-- Accessed through high-level commands like `transcribe`
-
-**3. Support Modules (config, domain, sources)**
-
-These modules provide supporting functionality:
-- Configuration management
-- Data structure definitions
-- I/O abstractions that emit files for downstream processing (FileSource, MemorySource, MicSource)
-
-**Sources Abstractions**
-
-All sources are file-first and resolve to a concrete path before the audio pipeline runs:
-- `FileSource(path)` – validates file input, feeds decode/VAD/condense
-- `MemorySource(pcm, sample_rate, channels)` – wraps in-memory PCM into a temporary WAV
-- `MicSource(duration_seconds, recorder=...)` – records a bounded clip (defaults to `SoundDeviceRecorder`, recorder injectable for tests)
-
-Design principles:
-- No streaming surfaces exposed beyond file outputs
-- Duration-bound microphone capture to avoid interactive hangs
-- Dependency injection for recorders enables hardware-free testing
-
----
-
-## User Help vs Developer Help
-
-### **Two-Tier Help System**
-
-Vociferous provides separate help interfaces for users and developers:
-
-**User-Facing Commands (`--help`)**
-
-These are production-ready commands intended for end users:
-- `vociferous transcribe` - Complete transcription workflow
-- `vociferous bench` - Benchmark pipeline performance with RTF metrics
-- `vociferous languages` - List supported languages
-- `vociferous check` - Verify system dependencies
-
-**Developer-Facing Commands (`--dev-help`)**
-
-These are individual components for debugging and development:
-- `vociferous decode` - Test audio decoding
-- `vociferous vad` - Test voice activity detection
-- `vociferous condense` - Test silence removal
-- `vociferous refine` - Text-only refinement (Canary LLM mode)
-- `vociferous record` - Test microphone capture
-- `vociferous transcribe` - Full workflow orchestrator (shows how components chain)
-
-**Rationale:**
-
-- **Users** want simple, high-level workflows that "just work"
-- **Developers** need access to individual components for debugging
-- Separating help prevents overwhelming users with internal details
-- Makes component-level testing possible without exposing complexity
-
----
-
-## Benchmark & Performance Contracts
-
-### **Bench Command**
-
-The `bench` command provides performance testing and RTF (Real-Time Factor) measurement across audio corpora:
-
-```bash
-# Basic benchmark with default profiles
-vociferous bench ./test_corpus/
-
-# Custom engine and segmentation profiles
-vociferous bench ./corpus/ \
-  --engine-profile canary_qwen_bf16 \
-  --segmentation-profile aggressive
-
-# Enable refinement (increases processing time)
-vociferous bench ./corpus/ --refine
-
-# Benchmark specific file types
-vociferous bench ./corpus/ --pattern "*.mp3"
-```
-
-**Metrics:**
-- **RTF (Real-Time Factor):** `wall_clock_time / audio_duration` — lower is better
-- **Throughput:** `total_audio_seconds / wall_clock_time` — how many seconds of audio processed per second
-- **Per-file breakdown:** Duration, wall time, and RTF for each file
-- **Aggregate statistics:** Total duration, total wall time, aggregate RTF, overall throughput
-
-**Performance Rating:**
-- RTF < 0.1: Excellent (>10x realtime) — green
-- RTF < 0.5: Good (>2x realtime) — yellow  
-- RTF ≥ 0.5: Below realtime — red
-
-**Use Cases:**
-- Validate engine configuration changes
-- Compare profile performance (FP16 vs BF16, different VAD settings)
-- Establish performance baselines before optimization
-- Verify RTF targets (e.g., ≥30x realtime for 3090, ≥200x stretch goal)
-
-**Future:** WER calculation support via `--reference-dir` (flagged for implementation)
-
----
-
-## Artifact Management
-
-### **Test Artifacts**
-
-**Location:** `tests/<module>/artifacts/`
-
-Tests produce artifacts (audio files, timestamps, transcripts) for verification:
-
-```
-tests/
-  audio/
-    artifacts/
-      test_decode_output.wav
-      test_vad_timestamps.json
-  engines/
-    artifacts/
-      test_transcription.json
-  integration/
-    artifacts/
-      test_full_pipeline_output.txt
-```
-
-**Fixtures:** Canonical audio/text inputs live in `tests/audio/sample_audio/` (moved from root `sample_audio/` to keep test inputs co-located with tests).
-
-**Behavior:**
-- Artifacts are **overwritten on each test run**
-- Allows developers to inspect test outputs
-- Not committed to git (in `.gitignore`)
-- Helps debug test failures
-
-### **User-Facing Artifacts**
-
-**Default Behavior:** Temporary files
-
-```bash
-# Creates temp files, cleans up automatically
-vociferous transcribe lecture.mp3
-# → Uses /tmp/vociferous-XXXXX/ for intermediates
-# → Only final output kept: lecture_transcript.txt
-```
-
-**Debugging Mode:** Keep intermediate files
-
-```bash
-# Keeps all intermediate files for inspection
-vociferous transcribe lecture.mp3 --keep-intermediates
-# → Creates: lecture_decoded.wav
-# → Creates: lecture_vad_timestamps.json
-# → Creates: lecture_condensed.wav
-# → Creates: lecture_transcript.txt
-```
-
-### **Manual Component Execution**
-
-When running components manually, files are **always kept**:
-
-```bash
-vociferous decode lecture.mp3
-# → Creates lecture_decoded.wav (permanent file)
-
-vociferous vad lecture_decoded.wav
-# → Creates lecture_decoded_vad_timestamps.json (permanent file)
-
-vociferous condense lecture_decoded_vad_timestamps.json lecture_decoded.wav
-# → Creates lecture_decoded_condensed.wav (permanent file)
-```
-
-**Rationale:** When debugging, you want to inspect every step's output.
-
----
-
-## Separation of Concerns
-
-### **Audio Module vs Engine Module**
-
-| Concern | Audio Module | Engine Module |
-| --- | --- | --- |
-| **Responsibility** | Prepare audio for transcription | Convert speech to text |
-| **Operations** | Decode, VAD, condense, record | Transcribe (ASR), provide segments for refinement |
-| **Output** | Clean audio files | Text segments (non-overlapping) |
-| **No Overlap** | ❌ No transcription | ❌ No audio preprocessing |
-
-**Anti-pattern (Old Architecture):**
-
-```python
-# ❌ Engine doing audio preprocessing
-class WhisperEngine:
-    def __init__(self, vad_service):  # ❌ Shouldn't have VAD
-        self.vad = vad_service
-
-    def transcribe(self, audio):
-        # ❌ Engine shouldn't do VAD
-        segments = self.vad.detect_speech(audio)
-        # ❌ Engine shouldn't remove silence
-        clean = self.remove_silence(audio, segments)
-        return self.whisper_model.transcribe(clean)
-```
-
-**Correct Architecture:**
-
-```python
-# ✅ Audio Module handles preprocessing
-decoded = decoder.decode("audio.mp3")
-timestamps = vad.detect_speech(decoded)
-condensed = condenser.condense(decoded, timestamps)
-
-# ✅ Engine only transcribes
-segments = engine.transcribe(condensed)
-```
-
----
-
-## Module Architecture
-
-### **What is a Module?**
-
-**Definition:** A module is a logical collection of related functionality that serves a specific architectural purpose. Not all modules need CLI-accessible components - some provide infrastructure (config, domain), orchestration (app), or interfaces (cli, gui).
-
-**Key Characteristics:**
-- **Cohesive Purpose:** All code in a module serves a unified architectural goal
-- **Clear Boundaries:** Modules interact through well-defined interfaces
-- **Varying Accessibility:** Some modules expose CLI components, others provide internal infrastructure
-
----
-
-### **Complete Module Inventory**
-
-| Module | Purpose | Contains Components? | Key Responsibilities |
-| --- | --- | --- | --- |
-| **audio** | Audio preprocessing | ✅ Yes | Decode, VAD, condense, record - prepares audio for transcription |
-| **engines** | Speech-to-text transcription | ❌ No* | Canary-Qwen (default), Whisper Turbo (fallback) - invoked by workflows |
-| **refinement** | Text post-processing via Canary LLM | ❌ No (internal) | Grammar/punctuation refinement, prompt handling |
-| **cli** | Command-line interface | ✅ Yes (workflows) | Typer commands, argument parsing, help tiers |
-| **app** | Workflow orchestration | ❌ No | Transparent workflow functions; no sessions, no arbiters |
-| **config** | Configuration management | ❌ No | Load/validate settings from files and CLI arguments |
-| **domain** | Core types and contracts | ❌ No | Models, exceptions, protocols, constants |
-| **sources** | Audio input sources | ❌ No | File readers, memory buffers, microphone capture |
-| **gui** | Graphical interface | ❌ No | KivyMD application, screens, UI components |
-
-**\*Note:** Engines are not directly CLI-accessible. They are infrastructure called by workflow commands such as `transcribe`. Canary-Qwen is the default engine and requires CUDA GPU.
-
----
-
-### **Module Categories**
-
-Modules fall into four architectural categories:
-
-#### **1. Processing Modules**
-- **audio**: Transforms raw audio into standardized, preprocessed files
-- **engines**: Converts preprocessed audio into text transcripts
-- **refinement**: Runs Canary LLM refinement over transcripts
-
-**Characteristic:** These modules perform domain transformations (audio → text → refined text)
-
-#### **2. Interface Modules**
-- **cli**: Command-line user interface
-- **gui**: Graphical user interface
-
-**Characteristic:** These modules expose functionality to users but don't contain business logic
-
-#### **3. Infrastructure Modules**
-- **config**: Manages system configuration
-- **domain**: Defines core types and contracts
-- **sources**: Provides audio input abstractions
-
-**Characteristic:** These modules provide foundational services used by other modules
-
-#### **4. Orchestration Modules**
-- **app**: Coordinates workflows and manages execution
-
-**Characteristic:** This module composes components from other modules into complete workflows
-
----
-
-### **Module Boundaries and Interactions**
-
-#### **What Belongs Where**
-
-| If you're implementing... | It belongs in... | NOT in... |
-| --- | --- | --- |
-| Audio format conversion (primitive) | `audio` | ❌ `engines`, ❌ `app` |
-| Speech detection (VAD primitive) | `audio` | ❌ `engines`, ❌ `cli` |
-| File-IO adapter for audio primitives | `cli.components` | ❌ `audio`, ❌ `app` |
-| Transcription algorithm | `engines` | ❌ `audio`, ❌ `app` |
-| Text grammar fixes | `refinement` | ❌ `engines`, ❌ `audio` |
-| Command parsing | `cli` | ❌ `app`, ❌ `audio` |
-| Pipeline coordination | `app` | ❌ `cli`, ❌ `engines` |
-| Configuration loading | `config` | ❌ `cli`, ❌ `app` |
-| Data models | `domain` | ❌ Any specific module |
-| File/microphone input | `sources` | ❌ `audio`, ❌ `cli` |
-| UI screens | `gui` | ❌ `cli`, ❌ `app` |
-
-#### **Module Interaction Flow**
+### Core Dependencies
 
 ```mermaid
 graph TD
-        CLI[cli Module]
-        GUI[gui Module]
-        APP[app Module]
-        CFG[config Module]
-        SRC[sources Module]
-        AUD[audio Module]
-        ENG[engines Module]
-        REF[refinement Module]
-        DOM[domain Module]
+    subgraph ML["Machine Learning"]
+        FW[faster-whisper 1.2.1]
+        CT[ctranslate2 4.6.2]
+        AV[av 16.0.0]
+    end
 
-        CLI --> APP
-        GUI --> APP
-        APP --> CFG
-        APP --> SRC
-        APP --> AUD
-        APP --> ENG
-        APP --> REF
+    subgraph Audio["Audio Processing"]
+        SD[sounddevice 0.5.3]
+        VAD[webrtcvad]
+    end
 
-        AUD --> DOM
-        ENG --> DOM
-        REF --> DOM
-        SRC --> DOM
-        CFG --> DOM
+    subgraph UI["User Interface"]
+        Qt[PyQt5 5.15.11]
+    end
 
-        style CLI fill:#e1f5ff
-        style GUI fill:#e1f5ff
-        style APP fill:#fff4e1
-        style AUD fill:#e8f5e9
-        style ENG fill:#e8f5e9
-        style REF fill:#e8f5e9
-        style CFG fill:#f3e5f5
-        style DOM fill:#f3e5f5
-        style SRC fill:#f3e5f5
+    subgraph Input["Input/Output"]
+        ED[evdev 1.9.2]
+        PN[pynput 1.8.1]
+    end
+
+    FW --> CT
+    FW --> AV
 ```
 
-**Data Flow Example:**
-```
-User Input (cli/gui)
-    → app orchestrates workflow (no session objects)
-    → sources provides audio input
-    → audio preprocesses (decode → VAD → condense)
-    → engines transcribe preprocessed audio
-    → refinement improves transcript text via Canary LLM
-    → app returns results to the user interface
-```
+### Dependency Purposes
+
+| Package | Purpose |
+|---------|---------|
+| **faster-whisper** | CTranslate2-based Whisper, 4x faster than original |
+| **ctranslate2** | Optimized inference engine for transformers |
+| **av** (PyAV) | Audio decoding (required by faster-whisper) |
+| **sounddevice** | Cross-platform audio I/O |
+| **webrtcvad** | Google's Voice Activity Detection |
+| **PyQt5** | Cross-platform GUI framework |
+| **evdev** | Linux input device interface |
+| **pynput** | Cross-platform keyboard/mouse control |
 
 ---
 
-### **Infrastructure vs Components Distinction**
+## Configuration System
 
-**Critical Understanding:** Not all modules need CLI-accessible components.
+### Schema-Driven Configuration
 
-**Modules WITH Components (CLI-accessible)**
+The configuration is defined in `config_schema.yaml`:
 
-**audio module:**
-```bash
-vociferous decode audio.mp3       # ✅ Component
-vociferous vad audio.wav          # ✅ Component
-vociferous condense timestamps.json audio.wav  # ✅ Component
-vociferous record                 # ✅ Component
+```yaml
+recording_options:
+  activation_key:
+    type: str
+    default: "ctrl+shift+space"
+  input_backend:
+    type: str
+    default: "auto"
+    options: ["auto", "evdev", "pynput"]
 ```
 
-Recorder component implementation lives in `vociferous/cli/components/recorder.py` and wraps the low-level `SoundDeviceRecorder` primitive defined in `vociferous/audio/recorder.py`.
-
-**cli module (workflows):**
-```bash
-vociferous transcribe audio.mp3   # ✅ Workflow orchestrator (calls components + engines)
-vociferous refine transcript.txt  # ✅ Text-only refinement via Canary LLM
-```
-
-#### **Modules WITHOUT Components (Infrastructure)**
-
-**engines module:**
-```python
-# ❌ NOT directly callable via CLI
-# ✅ Called by app workflow functions
-engine = build_engine("canary_qwen")
-segments = engine.transcribe_file(audio_path)
-```
-
-**refinement module:**
-```python
-# ✅ Accessible via CLI with `vociferous refine`
-# ✅ Also invoked by workflows for Canary LLM pass
-refined = engine.refine_text(raw_text, instructions)
-```
-
-**config module:**
-```python
-# ❌ NOT a component
-# ✅ Infrastructure used by all modules
-config = load_config()
-```
-
-**domain module:**
-```python
-# ❌ NOT a component
-# ✅ Core types used everywhere
-segment = TranscriptSegment(text="...", start=0.0, end=1.0)
-```
-
-**sources module:**
-```python
-# ❌ NOT a component
-# ✅ Infrastructure providing input abstractions
-source = FileSource(path)
-audio_data = source.read()
-```
-
-**gui module:**
-```python
-# ❌ NOT CLI-accessible (separate interface)
-# ✅ Alternative UI layered on workflows
-app = VociferousGUI()
-app.run()
-```
-
----
-
-### **Module Design Guidelines**
-
-When adding functionality, ask:
-
-1. **Which module's purpose does this serve?**
-   - Audio transformation → `audio`
-   - Transcription → `engines`
-    - Text refinement → `refinement`
-   - User interaction → `cli` or `gui`
-   - Workflow coordination → `app`
-   - Configuration → `config`
-   - Core types → `domain`
-   - Input handling → `sources`
-    - Persistence helpers → handled within workflows as needed (not a separate module)
-
-2. **Does it need to be a CLI component?**
-   - Independently testable operation → Consider making it a component
-   - Infrastructure/helper → Keep it as internal module functionality
-   - Workflow coordination → Keep in `app`, expose via `cli` component
-
-3. **What are its dependencies?**
-   - Depends on specific module → It might belong in that module
-   - Used by multiple modules → Consider `domain` or infrastructure module
-   - Orchestrates multiple modules → Belongs in `app`
-
-4. **Is it independently verifiable?**
-   - Yes, produces observable output → Strong candidate for component
-   - No, internal transformation → Keep as module internal
-
----
-
-## Batch vs Streaming
-
-### **Design Decision: Batch Processing**
-
-**What is Batch Processing?**
-
-Batch processing means: **complete file in → complete result out**. The entire audio file is processed as a single unit, from start to finish, producing the complete transcription before returning.
-
-**Use Case:**
-
-Vociferous is designed for users who submit **complete audio files** for transcription, not continuous real-time streams. Examples:
-- Pre-recorded lectures
-- Meeting recordings
-- Podcast episodes
-- Completed interviews
-
-**Why Batch is Correct for Vociferous:**
-
-1. **Simpler Architecture:** No buffering state, no overlap handling, no partial results
-2. **Matches ML APIs:** Whisper, Canary-Qwen, and similar models expect complete audio inputs
-3. **Matches Use Case:** Users have complete files they want transcribed, not live microphone streams
-4. **Eliminates Complexity:** No need to handle chunk boundaries, duplicates, or partial segments
-5. **Easier to Test:** Deterministic input/output relationships
-
-**Architecture:**
-
-```python
-# ✅ Simple batch interface
-class TranscriptionEngine:
-    def transcribe_file(self, audio_path: Path) -> list[TranscriptSegment]:
-        """Transcribe entire file in one operation."""
-        ...
-```
-
-**Anti-pattern (Old Architecture):**
-
-```python
-# ❌ Unnecessary streaming complexity for batch use case
-class TranscriptionEngine:
-    def start(self): ...
-    def push_audio(self, chunk: bytes): ...  # Why chunks for complete files?
-    def flush(): ...
-    def poll_segments(): ...  # When to poll? How to handle overlaps?
-```
-
-**Guardrail:** Any `start/push_audio/flush/poll` API you see is legacy—do not reintroduce streaming abstractions. Engines take a **file path in** and return **full-sequence segments out**.
-
-**Note:** While Vociferous uses batch processing, individual components like `record` can still capture audio from the microphone. The difference is that recording produces a **complete file** which is then processed in batch, rather than streaming audio chunks directly to the transcription engine.
-
-
----
-
-## Configuration Philosophy
-
-### **Sane Defaults, Explicit Overrides**
-
-**Principle:** System should work out-of-the-box, but allow customization.
-
-**Example:**
-
-```bash
-# ✅ Works with defaults
-vociferous transcribe audio.mp3
-
-# ✅ Override when needed
-vociferous transcribe audio.mp3 \
-  --engine canary_qwen \
-  --language es \
-  --refine
-```
-
-**Configuration Hierarchy:**
-
-1. **Hardcoded defaults** (in code)
-
-2. **Config file** (`~/.config/vociferous/config.toml`)
-
-3. **CLI flags** (highest priority)
-
-
----
-
-## Error Handling Strategy
-
-### **Fail Fast, Fail Clear**
-
-**Principle:** Better to crash with a clear error than continue silently broken.
-
-**Example:**
-
-```python
-# ✅ Explicit validation
-def condense(audio_path:  Path, timestamps_path: Path):
-    if not timestamps_path.exists():
-        raise FileNotFoundError(
-            f"Timestamps file not found: {timestamps_path}\n"
-            f"Run 'vociferous vad {audio_path}' first."
-        )
-
-    timestamps = json.loads(timestamps_path.read_text())
-    if not timestamps:
-        raise ValueError(
-            f"No speech detected in {audio_path}.\n"
-            f"Audio may be silent or VAD threshold too high."
-        )
-
-    # ... proceed with condensation
-```
-
-**Anti-pattern:**
-
-```python
-# ❌ Silent failure
-def condense(audio_path, timestamps_path):
-    try:
-        timestamps = json.loads(timestamps_path.read_text())
-    except:
-        timestamps = []  # ❌ Hides the problem!
-
-    if not timestamps:
-        return audio_path  # ❌ No error, user doesn't know it failed
-```
-
----
-
-## Dependency Management
-
-### **Components Declare Dependencies Explicitly**
-
-**Principle:** If Component B needs Component A's output, it should **require the file**, not call Component A internally.
-
-**Example:**
-
-```bash
-# ✅ Explicit dependency (user provides VAD output)
-vociferous condense timestamps.json audio.wav
-
-# ❌ Implicit dependency (condenser calls VAD internally)
-# This would hide the VAD step and make debugging impossible
-vociferous condense audio.wav  # Where are timestamps?
-```
-
-**Why:** Makes data flow visible and debuggable.
-
----
-
-## Daemon Architecture (v0.5.0)
-
-### **Warm Model Service**
-
-The daemon provides a persistent inference service to eliminate model loading overhead (~40-50 seconds per invocation).
-
-**Architecture:**
+### Configuration Flow
 
 ```mermaid
-graph TD
-    CLI["vociferous transcribe<br/>CLI Command"]
-    DAEMON["FastAPI Server<br/>Port 8765"]
-    MODEL["Canary-Qwen Model<br/>Loaded in VRAM"]
-    FALLBACK["Direct Inference<br/>Cold Start"]
-
-    CLI -->|"use_daemon=True"| DAEMON
-    CLI -->|"fallback"| FALLBACK
-    DAEMON -->|"warm inference"| MODEL
-
-    style DAEMON fill:#a8d5ff
-    style MODEL fill:#d5ffd5
-    style FALLBACK fill:#fff3a8
+flowchart LR
+    Schema[config_schema.yaml] --> Default[Default Config]
+    User[~/.config/vociferous/config.yaml] --> Merge
+    Default --> Merge[Merged Config]
+    Merge --> Runtime[Runtime Config]
 ```
 
-### **Design Principles**
+### Why Schema-Driven?
 
-| Principle | Implementation |
-|-----------|----------------|
-| **Optional Enhancement** | Daemon is opt-in; system works without it |
-| **Graceful Fallback** | Client returns None on failure; caller falls back to cold start |
-| **Localhost Only** | Server binds to 127.0.0.1 (no network exposure) |
-| **Standard HTTP** | Uses FastAPI + uvicorn (no custom protocols) |
-| **File-Based** | Transcription uses temp file uploads (no streaming) |
+1. **Validation**: Invalid values caught at load time
+2. **Defaults**: New settings get sensible defaults
+3. **Documentation**: Schema serves as config reference
+4. **Type Safety**: Schema defines expected types
 
-### **Server Module Structure**
+---
 
-```
-vociferous/server/
-├── __init__.py       # Public API exports
-├── api.py            # FastAPI application and endpoints
-└── client.py         # HTTP client for daemon communication
-```
+## Python 3.12+ Features
 
-### **API Endpoints**
+Vociferous uses modern Python features throughout:
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/health` | GET | Status, uptime, model state |
-| `/transcribe` | POST | Single file transcription (multipart upload) |
-| `/refine` | POST | Text refinement (JSON body) |
-| `/batch-transcribe` | POST | Multiple files (JSON paths array) |
-
-### **CLI Integration**
-
-```bash
-# Daemon lifecycle
-vociferous daemon start      # Start server (background)
-vociferous daemon stop       # Stop server
-vociferous daemon status     # Check status
-vociferous daemon logs       # View logs
-
-# Automatic daemon usage
-vociferous transcribe --use-daemon audio.mp3
-```
-
-### **Workflow Integration**
-
-The `EngineWorker` class accepts `use_daemon=True` to transparently use the daemon:
+### Match/Case Statements
 
 ```python
-from vociferous.app.workflow import transcribe_file_workflow
+# Status handling
+match status:
+    case 'recording':
+        self.show()
+    case 'transcribing':
+        self.icon_label.setPixmap(self.pencil_pixmap)
+    case 'idle' | 'error':  # Pattern union
+        self.close()
 
-# Tries daemon first, falls back to cold start
-segments = transcribe_file_workflow(
-    audio_path=Path("audio.mp3"),
-    use_daemon=True
-)
+# Error handling with type matching
+match error:
+    case BlockingIOError() if error.errno == errno.EAGAIN:
+        return True
+    case OSError() if error.errno in (errno.EBADF, errno.ENODEV):
+        return False
 ```
 
-**Performance Impact:**
-
-| Mode | First File | Subsequent Files |
-|------|------------|------------------|
-| Cold Start | ~50s | ~50s each |
-| Warm Daemon | ~50s (startup) | ~2-5s each |
-
----
-
-## Performance Optimization Strategy
-
-### **Correctness First, Speed Second**
-
-**Principle:** Optimize only after proving correctness.
-
-**Workflow:**
-
-1. Implement simple, correct version
-
-2. Test thoroughly with real files
-
-3. Profile to find bottlenecks
-
-4. Optimize hot paths only
-
-5. Re-test to ensure correctness preserved
-
-
-**Example:**
+### Modern Type Hints
 
 ```python
-# Phase 1: Correct but slow
-def condense(audio, timestamps):
-    segments = []
-    for start, end in timestamps:
-        segment = extract_audio_range(audio, start, end)
-        segments.append(segment)
-    return concatenate(segments)
+# Union syntax (no Optional import needed)
+local_model: WhisperModel | None = None
 
-# Phase 2: Optimized (only after profiling showed this was slow)
-def condense(audio, timestamps):
-    # Use FFmpeg concat demuxer (O(n) instead of O(n²))
-    return ffmpeg_concat_segments(audio, timestamps)
+# Generic collections (no typing import needed)
+backends: list[InputBackend] = []
+callbacks: dict[str, list[Callable[[], None]]] = {}
+
+# Complex unions
+keys: set[KeyCode | frozenset[KeyCode]]
 ```
 
----
-
-## Documentation Standards
-
-### **Every Component Needs:**
-
-1. **Purpose** - What does it do?
-
-2. **CLI Usage** - How to run it?
-
-3. **Input Format** - What does it expect?
-
-4. **Output Format** - What does it produce?
-
-5. **Example** - Real command with real files
-
-6. **Error Cases** - What can go wrong?
-
-
-**Example:**
-
-````markdown
-## Condenser Component
-
-**Purpose:** Remove silence from audio using VAD timestamps.
-
-**Usage:**
-```bash
-vociferous condense <timestamps.json> <audio.wav> [--output <path>]
-````
-
-**Input:**
-
-- `timestamps.json`: Speech boundaries from VAD (format: `[{"start": 0.0, "end": 2.5}, ...]`)
-
-- `audio.wav`: Decoded audio file (PCM mono 16kHz)
-
-
-**Output:**
-
-- Condensed WAV file with silence removed
-
-**Example:**
-
-```bash
-vociferous vad lecture.wav
-vociferous condense lecture_vad_timestamps.json lecture.wav
-# → Creates lecture_condensed.wav
-```
-
-**Errors:**
-
-- `FileNotFoundError`: Timestamps file doesn't exist
-
-- `ValueError`: Timestamps list is empty (no speech detected)
-
----
-
-## Version Control Strategy
-
-### **Commit Message Standard**
-
-**Format:**
-Commit messages must follow this structure and be limited to a single affected file or logical change:
-
-```markdown
-[CREATE/UPDATE/DELETE]: file1, file2, ...
-```
-
-**Changes:**
-
-- A bullet point description of what changed
-- Why it changed
-- Impact on system
-
-**Testing:**
-
-- A bullet point description of tests added/modified
-- What scenarios are covered
-- How it ensures correctness
-
-**Example:**
-
-```markdown
-[CREATE]: vociferous/cli/components/vad.py, tests/audio/test_vad_contract.py
-
-**Changes:**
-
-- Added VAD component with CLI interface
-- Implements speech boundary detection using Silero
-- Returns timestamps as JSON for downstream components
-
-**Testing:**
-
-- Added contract test using real 30s audio sample
-- Verifies JSON output format and timestamp validity
-- Includes timeout protection (catches hangs)
-```
-
----
-
-## Deprecation Policy
-
-### **Don't Break, Replace**
-
-**Principle:** When refactoring, keep old interface working until new interface proven.
-
-**Workflow:**
-
-1. Implement new interface
-2. Add tests for new interface
-3. Mark old interface as deprecated
-4. Run both in parallel for one release
-5. Remove old interface only after new one stable
-
-**Example:**
+### Dataclasses with Slots
 
 ```python
-# Old interface (deprecated but still works)
-@deprecated("Use transcribe_file() instead")
-def push_audio(self, chunk: bytes):
-    # ...code
-
-# New interface
-def transcribe_file(self, audio_path: Path):
-    # ... code
+@dataclass(slots=True)
+class KeyChord:
+    keys: set[KeyCode | frozenset[KeyCode]]
+    pressed_keys: set[KeyCode] = field(default_factory=set)
 ```
 
-## CLI Design - Two-Tier Help System
-
-### **Philosophy: User Convenience vs Developer Transparency**
-
-**Problem:**
-
-- End users want simple, focused commands for everyday transcription tasks
-- Developers need access to low-level components for debugging and manual pipeline execution
-- Showing all commands in default help creates clutter and overwhelms new users
-
-**Solution:** Two separate help flags targeting different audiences.
-
----
-
-### **`--help` (User-Facing)**
-
-Shows only high-level commands for typical use cases.
-
-**Target Audience:** End users who want to transcribe audio files.
-
-**Commands Included:**
-
-- `transcribe` - Main transcription workflow (audio → text)
-- `languages` - List supported language codes
-- `check` - Verify system prerequisites (ffmpeg, dependencies)
-
-**Example Output:**
-
-```bash
-$ vociferous --help
-
-Usage: vociferous [OPTIONS] COMMAND [ARGS]...
-
-Vociferous - Local-first speech transcription. No cloud. No telemetry. Local engines only.
-
-╭─ Options ──────────────────────────────────────────────────────╮
-│ --dev-help          Show developer commands and components     │
-│ --help              Show this message and exit.                │
-╰────────────────────────────────────────────────────────────────╯
-╭─ Core Commands ────────────────────────────────────────────────╮
-│ transcribe   Transcribe an audio file to text using local ASR  │
-╰────────────────────────────────────────────────────────────────╯
-╭─ Utilities ────────────────────────────────────────────────────╮
-│ check        Verify system prerequisites before transcribing.  │
-│ languages    List all supported language codes                 │
-╰────────────────────────────────────────────────────────────────╯
-
-For developer tools (decode, vad, condense, record), use: vociferous --dev-help
-```
-
-**Design Goal:** Keep it simple - users see only what they need for daily work.
-
----
-
-### **`--dev-help` (Developer-Facing)**
-
-Shows all components including low-level debugging tools.
-
-**Target Audience:** Developers debugging issues, building custom pipelines, or understanding internals.
-
-**Commands Included:**
-
-**Audio Components:**
-- `decode` - Normalize audio to PCM mono 16kHz
-- `vad` - Detect speech boundaries (Voice Activity Detection)
-- `condense` - Remove silence using VAD timestamps
-- `record` - Capture microphone audio
-
-**Refinement Components:**
-- `refine` - Text-only refinement (Canary LLM pass)
-
-**Workflow Commands:**
-- `transcribe` - Main transcription workflow (decode → VAD → condense → Canary ASR → Canary Refiner)
-
-**Utilities:**
-- `languages` - List supported language codes
-- `check` - Verify system prerequisites
-
-**Example Output:**
-
-```bash
-$ vociferous --dev-help
-
-Usage: vociferous [OPTIONS] COMMAND [ARGS]...
-
-Vociferous - Local-first speech transcription. No cloud. No telemetry. Local engines only.
-
-╭─ Options ──────────────────────────────────────────────────────╮
-│ --dev-help          Show developer commands and components     │
-│ --help              Show this message and exit.                │
-╰────────────────────────────────────────────────────────────────╯
-╭─ Audio Components ─────────────────────────────────────────────╮
-│ decode                                                         │
-│ vad                                                            │
-│ condense                                                       │
-│ record                                                         │
-╰────────────────────────────────────────────────────────────────╯
-╭─ Refinement Components ────────────────────────────────────────╮
-│ refine       Refine a transcript text file using refinement    │
-╰────────────────────────────────────────────────────────────────╯
-╭─ Core Commands ────────────────────────────────────────────────╮
-│ transcribe   Transcribe an audio file to text using local ASR  │
-╰────────────────────────────────────────────────────────────────╯
-╭─ Utilities ────────────────────────────────────────────────────╮
-│ check        Verify system prerequisites before transcribing.  │
-│ languages    List all supported language codes                 │
-╰────────────────────────────────────────────────────────────────╯
-
-For developer tools (decode, vad, condense, record), use: vociferous --dev-help
-```
-
-**Design Goal:** Full transparency - developers see everything.
-
----
-
-### **Command Categorization Criteria**
-
-**User Help (`--help`) includes:**
-
-- ✅ High-level workflows (transcribe audio → get text)
-- ✅ Configuration/setup utilities (languages, check)
-- ✅ Commands 90% of users need
-- ❌ No low-level components
-- ❌ No manual pipeline steps
-
-**Developer Help (`--dev-help`) includes:**
-
-- ✅ All commands from user help
-- ✅ Low-level audio processing components (decode, vad, condense)
-- ✅ Workflow orchestrators (transcribe) and refinement tools (`refine`)
-- ✅ Recording and capture tools
-- ✅ Everything needed for manual debugging
-
-**Decision Rule:**
-
-> *If a user needs to understand the internal pipeline to use it → Developer Help*
-> *If a user just wants results without internal knowledge → User Help*
-
----
-
-### **Implementation**
-
-**Status:** ✅ Implemented (December 2025)
-
-The two-tier help system is implemented via `DevHelpAwareGroup`, a custom Typer group class that dynamically hides/shows commands based on the presence of `--dev-help` in command-line arguments.
-
-**Architecture:**
-
-1. **Custom Group Class:** `DevHelpAwareGroup` extends `BrightTyperGroup`
-2. **Dynamic Visibility:** Overrides `get_command()` to check `sys.argv` for `--dev-help`
-3. **Command Marking:** Commands register as developer-only via `dev_only = True` attribute
-4. **Rich Panels:** Typer's `rich_help_panel` provides visual grouping
-
-**Code Pattern:**
+### Protocol for Structural Typing
 
 ```python
-class DevHelpAwareGroup(BrightTyperGroup):
-    """Extended TyperGroup that handles --dev-help command visibility."""
-
-    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
-        """Override command retrieval to apply dev-only hiding."""
-        cmd = super().get_command(ctx, cmd_name)
-        if cmd is None:
-            return None
-
-        # Check if we should show developer commands
-        show_dev_help = "--dev-help" in sys.argv
-
-        # Hide developer-only commands unless --dev-help is present
-        if hasattr(cmd.callback, "dev_only") and cmd.callback.dev_only:
-            if not show_dev_help:
-                cmd.hidden = True
-            else:
-                cmd.hidden = False
-
-        return cmd
+@runtime_checkable
+class InputBackend(Protocol):
+    def start(self) -> None: ...
+    def stop(self) -> None: ...
 ```
 
-**Command Registration:**
+### Pathlib for Path Operations
 
 ```python
-# Developer-facing command (hidden from --help, shown in --dev-help)
-def register_decode(app: typer.Typer) -> None:
-    @app.command("decode", rich_help_panel="Audio Components")
-    def decode_cmd(...):
-        """Normalize audio to PCM mono 16kHz."""
-        pass
+# Modern
+venv_path = Path(__file__).parent / '.venv'
+cudnn_lib = site_packages / 'nvidia' / 'cudnn' / 'lib'
 
-    decode_cmd.dev_only = True  # Marks as developer-only
+# Instead of
+venv_path = os.path.join(os.path.dirname(__file__), '.venv')
 ```
 
-**Verification:**
+### contextlib.suppress
 
-- ✅ `vociferous --help` shows only user commands (transcribe, check, languages)
-- ✅ `vociferous --dev-help` shows all commands including developer tools
-- ✅ Both outputs use Rich panels for clear visual organization
-- ✅ Commands remain fully functional regardless of visibility
+```python
+# Clean exception suppression
+from contextlib import suppress
 
----
+with suppress(ProcessLookupError, OSError):
+    proc.terminate()
 
-### **User Experience Goals**
-
-**For New Users:**
-
-- See 3-5 essential commands, not 10+
-- Understand "what can I do?" in 5 seconds
-- Get hint about developer commands without overwhelming
-
-**For Developers:**
-
-- Access all components for debugging
-- Understand component responsibilities
-- Manually chain pipeline steps when needed
-
-**For Everyone:**
-
-- Consistent command naming and behavior
-- Clear error messages explaining what went wrong
-- Discoverable features through progressive disclosure
-
----
-
-## Summary: Core Tenets
-
-1. **Components over monoliths** - Every meaningful unit must be independently executable
-
-2. **Real files over mocks** - Tests must use actual I/O to prove correctness
-
-3. **Observable outputs** - Every component produces inspectable files
-
-4. **Manual chainability** - Pipeline must be debuggable step-by-step
-
-5. **Single responsibility** - Each component does exactly one thing
-
-6. **Fail loudly** - Explicit errors over silent failures
-
-7. **Batch over streaming** - Simpler architecture for preprocessed audio
-
-8. **Separation of concerns** - Audio preprocessing ≠ transcription
-
-9. **Correctness first** - Optimize only after proving correctness
-
-10. **Sane defaults** - Works out-of-the-box, customizable when needed
-
-
----
-
-## Architecture Diagram
-
-### **Component vs Workflow Distinction**
-
-```mermaid
-graph TD
-    U["USER INPUT<br/>audio.mp3"]
-
-    %% CLI-Accessible Components (solid boxes)
-    D_CMD["vociferous decode<br/>CLI Component"]
-    D_OUT["audio_decoded.wav<br/>observable file"]
-
-    V_CMD["vociferous vad<br/>CLI Component"]
-    V_OUT["audio_vad_timestamps.json<br/>observable file"]
-
-    C_CMD["vociferous condense<br/>CLI Component"]
-    C_OUT["audio_condensed.wav<br/>observable file"]
-
-    %% Workflow Orchestrator (dashed box)
-    T_WORKFLOW["vociferous transcribe<br/>Workflow Orchestrator"]
-
-    %% Internal Components (rounded boxes)
-    ASR["Canary ASR<br/>Internal: Pass 1"]
-    REF["Canary Refiner<br/>Internal: Pass 2"]
-
-    T_OUT["transcript.txt<br/>observable file"]
-
-    %% Data Flow (solid arrows)
-    U --> D_CMD
-    D_CMD --> D_OUT
-    D_OUT --> V_CMD
-    V_CMD --> V_OUT
-    D_OUT --> C_CMD
-    V_OUT --> C_CMD
-    C_CMD --> C_OUT
-
-    %% Workflow Orchestration (dotted arrows)
-    C_OUT -.-> T_WORKFLOW
-    T_WORKFLOW -.calls.-> ASR
-    ASR -.raw text.-> REF
-    REF -.refined.-> T_WORKFLOW
-    T_WORKFLOW --> T_OUT
-
-    style D_CMD fill:#a8d5ff
-    style V_CMD fill:#a8d5ff
-    style C_CMD fill:#a8d5ff
-    style T_WORKFLOW fill:#fff3a8
-    style ASR fill:#d5ffd5
-    style REF fill:#d5ffd5
+# Instead of
+try:
+    proc.terminate()
+except (ProcessLookupError, OSError):
+    pass
 ```
 
-**Legend:**
-- **Solid Boxes (Blue)**: CLI-accessible components - users can run these directly
-- **Dashed Box (Yellow)**: Workflow orchestrator - coordinates multiple operations
-- **Rounded Boxes (Green)**: Internal components - called by workflows, not directly accessible
-- **Solid Arrows**: Data flow - files passed between components
-- **Dotted Arrows**: Orchestration - workflow calls and coordinates
+---
 
-**Key Principles:**
-- CLI components produce **observable files** that can be inspected
-- Workflows **coordinate** components but don't expose internal steps
-- Internal components (Canary ASR, Refiner) are implementation details
-- Each data flow arrow represents an **independently testable** transition
+## Directory Structure
+
+```
+vociferous/
+├── run.py                 # Entry point (GPU setup)
+├── src/
+│   ├── main.py           # Application orchestrator
+│   ├── utils.py          # ConfigManager singleton
+│   ├── key_listener.py   # Hotkey detection
+│   ├── result_thread.py  # Audio recording & transcription
+│   ├── transcription.py  # Whisper integration
+│   ├── input_simulation.py # Text injection
+│   ├── config_schema.yaml # Configuration schema
+│   └── ui/
+│       ├── base_window.py   # Custom frameless window
+│       └── status_window.py # Status indicator
+├── assets/
+│   ├── ww-logo.png
+│   ├── microphone.png
+│   └── pencil.png
+├── tests/
+│   └── ...
+└── docs/
+    └── ARCHITECTURE.md   # This file
+```
 
 ---
 
-**Architecture Validation Checklist:**
+## Further Reading
 
-Each arrow (→) represents a relationship that is:
-- ✅ Independently testable
-- ✅ Manually runnable (for components)
-- ✅ Produces observable output
-- ✅ Single responsibility
-
----
-
-**This is the agreed architecture philosophy for Vociferous.** All future development must adhere to these principles.
+- [faster-whisper documentation](https://github.com/guillaumekln/faster-whisper)
+- [PyQt5 documentation](https://www.riverbankcomputing.com/static/Docs/PyQt5/)
+- [evdev documentation](https://python-evdev.readthedocs.io/)
+- [Python 3.12 release notes](https://docs.python.org/3.12/whatsnew/3.12.html)
