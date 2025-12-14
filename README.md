@@ -1,15 +1,15 @@
 # Vociferous
 
-A modern Python 3.12+ speech-to-text dictation application using OpenAI's Whisper model via faster-whisper.
+A modern Python 3.12+ speech-to-text dictation application for Linux using OpenAI's Whisper model via faster-whisper.
 
 ## Features
 
 - **Fast transcription** using faster-whisper (CTranslate2 backend)
-- **Hotkey activation** with press-to-toggle or hold-to-record modes
+- **Hotkey activation** with press-to-toggle recording mode
 - **Voice Activity Detection** automatically stops when you stop speaking
 - **Transcription history** with JSONL storage and export (txt, csv, markdown)
-- **Collapsible day grouping** for easy navigation
-- **Friendly timestamps** ("2 min ago", "Yesterday at 3:45 PM")
+- **Collapsible day grouping** with auto-collapse for past days
+- **Editable transcriptions** - single-click to load, edit, and save
 - **Dark theme UI** with system tray integration
 - **Live settings** with immediate effect (no restart needed)
 - **Clipboard workflow** - transcriptions auto-copy for easy paste
@@ -19,8 +19,8 @@ A modern Python 3.12+ speech-to-text dictation application using OpenAI's Whispe
 ### Quick Install (Recommended)
 
 ```bash
-chmod +x install.sh
-./install.sh
+chmod +x scripts/install.sh
+./scripts/install.sh
 ```
 
 ### Manual Installation
@@ -86,7 +86,7 @@ This wrapper exports `LD_LIBRARY_PATH` so `ctranslate2` can load cuDNN/cuBLAS fr
 - Standard path (CPU or if your system libraries already resolve correctly):
 
 ```bash
-python run.py
+python scripts/run.py
 ```
 
 If you see a warning in the console about CUDA libraries not being discoverable, use `./vociferous.sh`.
@@ -95,14 +95,15 @@ If you see a warning in the console about CUDA libraries not being discoverable,
 
 1. **Start recording**: Press the activation key (default: Right Alt)
 2. **Speak**: Voice Activity Detection captures your speech
-3. **Stop recording**: VAD auto-stops when you pause, or press the key again
+3. **Stop recording**: Press the key again (or VAD auto-stops after silence)
 4. **Paste**: Transcription is copied to clipboard - paste with Ctrl+V
 
 ## Configuration
 
 Settings are defined in `src/config_schema.yaml`.
 
-- `model_options.compute_type`: `float16` (fast, recommended) or `float32`
+- `model_options.device`: `auto` (auto-detect), `cuda` (GPU), or `cpu`
+- `model_options.compute_type`: `float16` (GPU, fastest), `float32` (any), or `int8` (CPU, quantized)
 - `model_options.language`: ISO-639-1 language code (e.g., `en`, `es`, `de`)
 - `recording_options.activation_key`: Key to trigger recording
 
@@ -111,7 +112,7 @@ Settings are defined in `src/config_schema.yaml`.
 Open the settings dialog from:
 
 - **System tray**: Right-click → Settings...
-- **Main window**: Settings button in toolbar
+- **Main window**: Settings menu → Preferences
 
 All options are editable, including the activation hotkey. Changes apply immediately.
 
@@ -130,19 +131,21 @@ Transcription history is stored at `~/.config/vociferous/history.jsonl`.
 
 ### Features
 
-- **Collapsible day groups**: Click headers to expand/collapse
-- **Friendly timestamps**: "2 min ago", "Yesterday at 3:45 PM"
-- **Context menu**: Right-click entries to Copy, Re-inject, or Delete
+- **Collapsible day groups**: Click headers to expand/collapse (past days auto-collapse)
+- **Single-click to edit**: Load any entry into the editor panel
+- **Double-click to copy**: Quick copy to clipboard
+- **Context menu**: Right-click entries to Copy or Delete
 - **Export**: Save history to txt, csv, or markdown format
 - **Clear All**: Remove all history with confirmation dialog
+- **Auto-rotation**: Oldest entries removed when exceeding limit (default 1000)
 
 ### Export Formats
 
 | Format | Description |
 |--------|-------------|
-| `.txt` | Plain text, one entry per line |
-| `.csv` | Columns: id, timestamp, text |
-| `.md` | Day headers (##), time headers (###), quoted text |
+| `.txt` | Timestamped entries, one per block |
+| `.csv` | Columns: Timestamp, Text, Duration (ms) |
+| `.md` | Day headers (##), time headers (###), text content |
 
 ## Clipboard
 

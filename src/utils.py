@@ -329,7 +329,7 @@ class ConfigManager(QObject):
         """Log a message if console output is enabled."""
         if not cls._instance:
             return
-        print_enabled = cls._instance.config.get('misc', {}).get(
+        print_enabled = cls._instance.config.get('output_options', {}).get(
             'print_to_terminal', True
         )
         if print_enabled:

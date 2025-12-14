@@ -195,6 +195,56 @@ class HistoryManager:
 
         return entries
 
+    def update_entry(self, timestamp: str, new_text: str) -> bool:
+        """
+        Update an existing entry with new text.
+
+        Args:
+            timestamp: ISO timestamp of the entry to update
+            new_text: New transcribed text
+
+        Returns:
+            True if updated, False if entry not found
+        """
+        try:
+            entries = []
+            found = False
+
+            # Read all entries
+            with open(self.history_file, encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = HistoryEntry.from_json(line)
+                        if entry.timestamp == timestamp:
+                            # Update this entry
+                            entry = HistoryEntry(
+                                timestamp=timestamp,
+                                text=new_text,
+                                duration_ms=entry.duration_ms
+                            )
+                            found = True
+                        entries.append(entry)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Skipping invalid history line: {line[:50]}")
+
+            if not found:
+                return False
+
+            # Write all entries back
+            with open(self.history_file, 'w', encoding='utf-8') as f:
+                for entry in entries:
+                    f.write(entry.to_json() + '\n')
+
+            logger.info(f"Updated history entry: {timestamp}")
+            return True
+
+        except OSError as e:
+            logger.error(f"Failed to update history entry: {e}")
+            return False
+
     def clear(self) -> None:
         """Clear all history (truncate file)."""
         try:

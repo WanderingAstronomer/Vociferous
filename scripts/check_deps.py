@@ -98,7 +98,7 @@ def main():
         print("  pip install -r requirements.txt")
         print()
         print("Or use the installation script:")
-        print("  ./install.sh")
+        print("  ./scripts/install.sh")
         sys.exit(1)
     else:
         print("✅ All required dependencies installed!")

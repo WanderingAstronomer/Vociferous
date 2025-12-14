@@ -137,6 +137,10 @@ def create_local_model() -> 'WhisperModel':
     match (device, compute_type):
         case ('auto', _):
             device = 'cuda'  # Try CUDA first, faster-whisper will fall back to CPU
+        case ('cpu', 'float16'):
+            # float16 doesn't work on CPU, downgrade to float32
+            compute_type = 'float32'
+            ConfigManager.console_print('float16 not supported on CPU, using float32 instead.')
         case (_, 'int8'):
             device = 'cpu'
             ConfigManager.console_print('Using int8 quantization, forcing CPU.')

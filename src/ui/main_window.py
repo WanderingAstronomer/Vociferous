@@ -54,7 +54,6 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QPushButton,
     QShortcut,
-    QSplitter,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -77,6 +76,9 @@ class MainWindow(QMainWindow):
 
         # History manager (create default if not provided)
         self.history_manager = history_manager or HistoryManager()
+        
+        # Track currently loaded entry for editing
+        self._current_entry_timestamp: str | None = None
 
         self._init_ui()
         self._create_menu_bar()
@@ -96,22 +98,20 @@ class MainWindow(QMainWindow):
         # Recording status indicator with pulse animation
         self._setup_recording_indicator()
 
-        # Splitter for resizable panels
-        self.splitter = QSplitter(Qt.Horizontal)
-        self.splitter.setHandleWidth(1)
+        # Fixed panels without resize handle: use horizontal layout
+        panels_layout = QHBoxLayout()
+        panels_layout.setContentsMargins(0, 0, 0, 0)
+        panels_layout.setSpacing(8)
 
         # Left: History panel with header
         history_panel = self._create_history_panel()
-        self.splitter.addWidget(history_panel)
-
         # Right: Current transcription display
         current_panel = self._create_current_panel()
-        self.splitter.addWidget(current_panel)
 
-        # Initial splitter ratio (30% history, 70% current)
-        self.splitter.setSizes([300, 700])
+        panels_layout.addWidget(history_panel, 1)
+        panels_layout.addWidget(current_panel, 1)
 
-        main_layout.addWidget(self.splitter)
+        main_layout.addLayout(panels_layout)
 
         central.setLayout(main_layout)
         self.setCentralWidget(central)
@@ -146,6 +146,7 @@ class MainWindow(QMainWindow):
         # History widget
         self.history_widget = HistoryWidget()
         self.history_widget.load_history(self.history_manager)
+        
         content_layout.addWidget(self.history_widget)
 
         # Button row: Export (left) and Clear All (right)
@@ -196,17 +197,18 @@ class MainWindow(QMainWindow):
         content_layout = QVBoxLayout()
         content_layout.setContentsMargins(8, 0, 8, 8)
 
-        # Large text display
+        # Large text display - now editable
         self.transcription_display = QTextEdit()
-        self.transcription_display.setReadOnly(True)
+        self.transcription_display.setReadOnly(False)
         self.transcription_display.setPlaceholderText(
             "Transcriptions will appear here..."
         )
         self.transcription_display.setFont(QFont("Monospace", 11))
         self.transcription_display.setAccessibleName("Current Transcription")
         self.transcription_display.setAccessibleDescription(
-            "Display of the most recent transcription result."
+            "Display of the most recent transcription result. Editable with Save button."
         )
+        self.transcription_display.textChanged.connect(self._on_text_edited)
         content_layout.addWidget(self.transcription_display)
 
         # Button row with recording indicator in center
@@ -218,6 +220,14 @@ class MainWindow(QMainWindow):
         self.copy_btn.clicked.connect(self._copy_current)
         self.copy_btn.setAccessibleName("Copy Current Transcription")
         button_layout.addWidget(self.copy_btn)
+        
+        self.save_btn = QPushButton("Save")
+        self.save_btn.setObjectName("transcriptionButton")
+        self.save_btn.setToolTip("Save edited transcription (Ctrl+S)")
+        self.save_btn.clicked.connect(self._save_current)
+        self.save_btn.setAccessibleName("Save Edited Transcription")
+        self.save_btn.setEnabled(False)  # Disabled until editing
+        button_layout.addWidget(self.save_btn)
 
         # Recording indicator centered between buttons
         button_layout.addStretch()
@@ -289,10 +299,14 @@ class MainWindow(QMainWindow):
         # Ctrl+L: Clear display
         clear_shortcut = QShortcut(QKeySequence("Ctrl+L"), self)
         clear_shortcut.activated.connect(self._clear_current)
+        
+        # Ctrl+S: Save current
+        save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        save_shortcut.activated.connect(self._save_current)
 
     def _setup_recording_indicator(self) -> None:
         """Create compact pulsing recording indicator label."""
-        self.recording_indicator = QLabel("● Recording")
+        self.recording_indicator = QLabel("Recording")
         self.recording_indicator.setObjectName("recordingIndicator")
         self.recording_indicator.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.recording_indicator.setVisible(False)
@@ -387,7 +401,6 @@ class MainWindow(QMainWindow):
                 outline: none;
                 color: #d4d4d4;
                 font-size: 11pt;
-                padding: 8px 16px 8px 8px;  /* extra right padding for scrollbar */
             }
 
             /* Hide horizontal scrollbar in history */
@@ -399,29 +412,19 @@ class MainWindow(QMainWindow):
                 padding: 12px;
                 margin: 4px;
                 border: 1px solid #3c3c3c;
-                border-radius: 4px;
+                border-radius: 6px;
                 background-color: #2a2a2a;
                 outline: none;
             }
             
-            /* Alternating row colors */
-            QListWidget::item:alternate {
-                background-color: #252526;
-                border: 1px solid #3c3c3c;
-                border-radius: 4px;
-            }
-            
             QListWidget::item:selected {
                 background-color: #2d5a7b;
-                color: #5a9fd4;
                 border: 1px solid #5a9fd4;
-                border-radius: 4px;
             }
             
             QListWidget::item:hover {
                 background-color: #2d3d4d;
                 border: 1px solid #5a9fd4;
-                border-radius: 4px;
             }
             
             /* Current transcription display */
@@ -541,46 +544,7 @@ class MainWindow(QMainWindow):
                 color: #5a9fd4;
             }
             
-            /* Splitter handle - visible centered grab bar */
-            QSplitter::handle {
-                background-color: #1e1e1e;
-                width: 12px;
-            }
-
-            QSplitter::handle:horizontal {
-                width: 12px;
-                background: qlineargradient(
-                    x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #1e1e1e,
-                    stop:0.3 #1e1e1e,
-                    stop:0.35 #5a5a5a,
-                    stop:0.4 #5a5a5a,
-                    stop:0.45 #1e1e1e,
-                    stop:0.5 #1e1e1e,
-                    stop:0.55 #5a5a5a,
-                    stop:0.6 #5a5a5a,
-                    stop:0.65 #1e1e1e,
-                    stop:0.7 #1e1e1e,
-                    stop:1 #1e1e1e
-                );
-            }
-
-            QSplitter::handle:hover {
-                background: qlineargradient(
-                    x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #1e1e1e,
-                    stop:0.3 #1e1e1e,
-                    stop:0.35 #5a9fd4,
-                    stop:0.4 #5a9fd4,
-                    stop:0.45 #1e1e1e,
-                    stop:0.5 #1e1e1e,
-                    stop:0.55 #5a9fd4,
-                    stop:0.6 #5a9fd4,
-                    stop:0.65 #1e1e1e,
-                    stop:0.7 #1e1e1e,
-                    stop:1 #1e1e1e
-                );
-            }
+            /* Splitter handle tweaks are done via a custom handle class. */
             
             /* Scrollbars - dark with blue accent */
             QScrollBar:vertical {
@@ -622,6 +586,16 @@ class MainWindow(QMainWindow):
             QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
                 width: 0px;
             }
+            
+            /* Tooltips - match button appearance */
+            QToolTip {
+                background-color: #252526;
+                color: #5a9fd4;
+                border: 1px solid #5a9fd4;
+                border-radius: 4px;
+                padding: 4px 8px;
+                font-size: 11px;
+            }
         """)
 
     def on_settings_requested(self, handler) -> None:
@@ -637,13 +611,13 @@ class MainWindow(QMainWindow):
         """Update recording indicator based on transcription status."""
         match status:
             case "recording":
-                self.recording_indicator.setText("● Recording")
-                self.recording_indicator.setStyleSheet("color: #ff6b6b;")
+                self.recording_indicator.setText("Recording")
+                self.recording_indicator.setStyleSheet("color: #ff6b6b; font-size: 16px;")
                 self._start_recording_pulse()
             case "transcribing":
                 self._stop_recording_pulse()
-                self.recording_indicator.setText("● Transcribing")
-                self.recording_indicator.setStyleSheet("color: #ffa500;")
+                self.recording_indicator.setText("Transcribing")
+                self.recording_indicator.setStyleSheet("color: #ffa500; font-size: 16px;")
                 self.indicator_opacity.setOpacity(1.0)
                 self.recording_indicator.setVisible(True)
             case "error" | _:
@@ -652,7 +626,7 @@ class MainWindow(QMainWindow):
     def display_transcription(self, text: str) -> None:
         """Display new transcription in current panel and add to history."""
         self.transcription_display.setPlainText(text)
-
+        
         # Add to history widget
         entry = HistoryEntry(
             timestamp=datetime.now().isoformat(),
@@ -660,6 +634,10 @@ class MainWindow(QMainWindow):
             duration_ms=0,  # Duration tracked elsewhere
         )
         self.history_widget.add_entry(entry)
+        
+        # Track new entry as current (for potential edits)
+        self._current_entry_timestamp = entry.timestamp
+        self.save_btn.setEnabled(False)  # Reset save button state
 
     def show_and_raise(self) -> None:
         """Ensure the window is visible and focused."""
@@ -691,6 +669,52 @@ class MainWindow(QMainWindow):
     def _clear_current(self) -> None:
         """Clear current transcription display."""
         self.transcription_display.clear()
+        self._current_entry_timestamp = None
+        self.save_btn.setEnabled(False)
+    
+    def _on_text_edited(self) -> None:
+        """Enable save button when text is edited."""
+        if self._current_entry_timestamp:
+            self.save_btn.setEnabled(True)
+    
+    def _save_current(self) -> None:
+        """Save the edited transcription back to history."""
+        if not self._current_entry_timestamp:
+            return
+        
+        new_text = self.transcription_display.toPlainText()
+        if not new_text:
+            return
+        
+        # Update in history manager
+        success = self.history_manager.update_entry(
+            self._current_entry_timestamp,
+            new_text
+        )
+        
+        if success:
+            # Reload history to show updated entry
+            self.history_widget.load_history(self.history_manager)
+            self.save_btn.setEnabled(False)
+            self.statusBar().showMessage("Saved changes", 2000)
+        else:
+            QMessageBox.warning(
+                self,
+                "Save Failed",
+                "Could not save changes. Entry may have been deleted."
+            )
+    
+    def load_entry_for_edit(self, text: str, timestamp: str) -> None:
+        """Load a history entry into the transcription display for editing."""
+        self.transcription_display.setPlainText(text)
+        self._current_entry_timestamp = timestamp
+        self.save_btn.setEnabled(False)  # Not edited yet
+        
+        # Set focus and cursor at end
+        self.transcription_display.setFocus()
+        cursor = self.transcription_display.textCursor()
+        cursor.movePosition(cursor.End)
+        self.transcription_display.setTextCursor(cursor)
 
     def _export_history(self) -> None:
         """Show file dialog and export history."""
@@ -699,6 +723,7 @@ class MainWindow(QMainWindow):
             "Export History",
             str(Path.home() / "vociferous_history.txt"),
             "Text Files (*.txt);;CSV Files (*.csv);;Markdown Files (*.md)",
+            options=QFileDialog.DontUseNativeDialog,
         )
 
         if not file_path:
@@ -769,7 +794,6 @@ class MainWindow(QMainWindow):
     def _restore_geometry(self) -> None:
         """Restore window geometry from settings."""
         geometry = self.settings.value("geometry")
-        splitter_state = self.settings.value("splitter_state")
 
         if geometry:
             self.restoreGeometry(geometry)
@@ -777,8 +801,7 @@ class MainWindow(QMainWindow):
             self.resize(1000, 700)
             self._center_on_screen()
 
-        if splitter_state:
-            self.splitter.restoreState(splitter_state)
+            # No splitter state to restore with fixed panels
 
     def _center_on_screen(self) -> None:
         """Center window on screen."""
@@ -791,19 +814,14 @@ class MainWindow(QMainWindow):
         """Handle window resize with responsive layout."""
         width = event.size().width()
 
-        if width < 700:
-            # Small screen: Stack vertically
-            self.splitter.setOrientation(Qt.Vertical)
-        else:
-            # Normal screen: Side-by-side
-            self.splitter.setOrientation(Qt.Horizontal)
+            # No splitter orientation when using fixed layout
 
         super().resizeEvent(event)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Hide to tray and emit a one-time notification before exiting."""
         self.settings.setValue("geometry", self.saveGeometry())
-        self.settings.setValue("splitter_state", self.splitter.saveState())
+            # No splitter state to save with fixed panels
 
         event.ignore()
         self.hide()

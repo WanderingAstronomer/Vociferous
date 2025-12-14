@@ -220,10 +220,11 @@ class VociferousApp(QObject):
         self.main_window.setWindowIcon(self._build_tray_icon())
         self.main_window.on_settings_requested(self.show_settings)
 
-        # Connect history widget re-inject signal
-        self.main_window.history_widget.reinjectRequested.connect(
-            self.on_reinject_requested
+        # Connect history widget selection to load into editor
+        self.main_window.history_widget.entrySelected.connect(
+            self.on_edit_entry_requested
         )
+
 
         # System tray
         self.create_tray_icon()
@@ -513,6 +514,19 @@ class VociferousApp(QObject):
         """
         logger.info(f"Re-copying from history: {text[:50]}...")
         self._copy_to_clipboard(text)
+
+    def on_edit_entry_requested(self, text: str, timestamp: str) -> None:
+        """
+        Handle edit entry request from history.
+
+        Loads entry into the transcription editor.
+
+        Args:
+            text: The transcription text
+            timestamp: ISO timestamp of the entry
+        """
+        logger.info(f"Loading entry for edit: {timestamp}")
+        self.main_window.load_entry_for_edit(text, timestamp)
 
     def _copy_to_clipboard(self, text: str) -> None:
         """Copy text to clipboard using available method."""

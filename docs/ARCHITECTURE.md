@@ -300,7 +300,7 @@ graph TB
 
 ## Module Reference
 
-### `run.py` - Application Entry Point
+### `scripts/run.py` - Application Entry Point
 
 **Purpose**: Bootstrap the application with correct environment setup.
 
@@ -555,17 +555,17 @@ sequenceDiagram
 ```python
 @dataclass(slots=True)
 class HistoryEntry:
+    timestamp: str  # ISO8601 format
     text: str
-    timestamp: float
-    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    duration_ms: int
 ```
 
 **Export Formats**:
 | Format | Structure |
 |--------|-----------|
-| txt | Plain text, one entry per line |
-| csv | Columns: id, timestamp, text |
-| md | Day headers (##), time headers (###), quoted text |
+| txt | Timestamped entries, one per block |
+| csv | Columns: Timestamp, Text, Duration (ms) |
+| md | Day headers (##), time headers (###), text content |
 
 ---
 
@@ -578,8 +578,9 @@ class HistoryEntry:
 
 **Features**:
 - Dark theme (#1e1e1e background, #5a9fd4 accents)
-- Horizontal splitter layout (history left, current right)
+- Fixed 50/50 horizontal layout (no resize handle)
 - Recording indicator with pulse animation
+- Editable transcription with Save button
 - System tray integration
 - Settings dialog access
 
@@ -595,8 +596,8 @@ class HistoryEntry:
 │  │    day groups)     │  │   ├─────────────────────────┤   │
 │  ├────────────────────┤  │   │                         │   │
 │  │ Export │ Clear All │  │   │   Transcription Text    │   │
-│  └────────────────────┘  │   │   (read-only display)   │   │
-└──────────────────────────┴───┴─────────────────────────────┘
+│  └────────────────────┘  │   │   (editable + Save)     │   │
+└──────────────────────────┴─────────────────────────────────┘
 ```
 
 **Recording States**:
@@ -611,29 +612,27 @@ class HistoryEntry:
 **Purpose**: Display transcription history with collapsible day grouping.
 
 **Key Classes**:
+- `HistoryDelegate(QStyledItemDelegate)` - Custom rendering with blue timestamps
 - `HistoryWidget(QListWidget)` - Custom list with day headers
 
 **Features**:
-- Day grouping with collapsible headers (▼/▶ indicators)
-- Friendly timestamps ("2 min ago", "Yesterday at 3:45 PM")
-- Right-click context menu (Copy, Re-inject, Delete)
-- Visual nesting with indentation and header styling
+- Day grouping with collapsible headers (auto-collapse past days)
+- Blue timestamps ("10:03 a.m.") with preview text
+- Single-click to load entry into editor for editing
+- Double-click to copy to clipboard
+- Right-click context menu (Copy, Delete)
+- Custom delegate for styled rendering
 
 **Custom Data Roles**:
 ```python
-ROLE_DAY_KEY = Qt.UserRole + 1      # Day identifier for grouping
-ROLE_IS_HEADER = Qt.UserRole + 2    # Boolean: is this a header item?
+ROLE_DAY_KEY = Qt.UserRole + 1       # Day identifier for grouping
+ROLE_IS_HEADER = Qt.UserRole + 2     # Boolean: is this a header item?
+ROLE_TIME = Qt.UserRole + 3          # Formatted timestamp string
+ROLE_TIMESTAMP_ISO = Qt.UserRole + 4 # ISO timestamp for editing
 ```
 
-**Header Toggle Logic**:
-```python
-def _toggle_day_collapse(self, day_key: str) -> None:
-    if day_key in self._collapsed_days:
-        self._collapsed_days.discard(day_key)
-    else:
-        self._collapsed_days.add(day_key)
-    self._update_item_visibility()
-```
+**Signals**:
+- `entrySelected(text, timestamp)` - Emitted when entry clicked for editing
 
 ---
 

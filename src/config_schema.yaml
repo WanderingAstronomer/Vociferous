@@ -14,12 +14,15 @@ model_options:
   device:
     value: auto
     type: str
-    description: "Device for inference (auto-detected)."
-    _internal: true
+    description: "Device for inference (auto for auto-detect, cuda for GPU, cpu for CPU)."
+    options:
+      - auto
+      - cuda
+      - cpu
   compute_type:
     value: float16
     type: str
-    description: "Compute precision. float16 for GPU, int8 for CPU."
+    description: "Compute precision. float16 (GPU only, fastest), float32 (any device, slower), int8 (CPU only, quantized)."
     options:
       - float16
       - float32
@@ -68,11 +71,12 @@ output_options:
     value: 1000
     type: int
     description: "Maximum history entries to keep."
+  # Internal options
   print_to_terminal:
     value: true
     type: bool
     description: "Print status messages to terminal."
-  # Internal options
+    _internal: true
   add_trailing_space:
     value: true
     type: bool

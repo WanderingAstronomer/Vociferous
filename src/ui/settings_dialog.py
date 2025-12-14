@@ -23,6 +23,17 @@ from ui.hotkey_widget import HotkeyWidget
 from utils import ConfigManager
 
 
+def _has_gpu() -> bool:
+    """Check if CUDA/GPU is available."""
+    try:
+        import ctranslate2
+        # Try to detect if GPU is available
+        available_devices = ctranslate2.get_cuda_device_count() > 0
+        return available_devices
+    except Exception:
+        return False
+
+
 class SettingsDialog(QDialog):
     """Modal settings dialog with schema-driven forms."""
 
@@ -37,6 +48,7 @@ class SettingsDialog(QDialog):
         self.key_listener = key_listener
         self.schema = ConfigManager.get_schema()
         self.widgets: dict[tuple[str, str], QWidget] = {}
+        self.has_gpu = _has_gpu()
 
         self.tab_widget = QTabWidget(self)
         self._build_tabs()
@@ -129,8 +141,23 @@ class SettingsDialog(QDialog):
 
         if value_type == 'str' and options:
             combo = QComboBox(self)
-            combo.addItems(options)
-            combo.setCurrentText(str(value) if value else options[0])
+            
+            # Dynamic filtering for compute_type based on device
+            if section == 'model_options' and key == 'compute_type':
+                filtered_options = self._get_filtered_compute_types()
+                combo.addItems(filtered_options)
+                combo.setCurrentText(str(value) if str(value) in filtered_options else filtered_options[0])
+                
+                # Connect device changes to refilter compute types
+                device_combo = self.widgets.get(('model_options', 'device'))
+                if device_combo and isinstance(device_combo, QComboBox):
+                    device_combo.currentTextChanged.connect(
+                        lambda: self._update_compute_type_options(combo)
+                    )
+            else:
+                combo.addItems(options)
+                combo.setCurrentText(str(value) if value else options[0])
+            
             combo.setToolTip(tooltip)
             return combo
 
@@ -147,6 +174,49 @@ class SettingsDialog(QDialog):
         fallback = QLineEdit(str(value) if value else '', self)
         fallback.setToolTip(tooltip)
         return fallback
+
+    def _get_filtered_compute_types(self) -> list[str]:
+        """Get available compute types based on current device setting."""
+        device_widget = self.widgets.get(('model_options', 'device'))
+        if not device_widget or not isinstance(device_widget, QComboBox):
+            # Fallback to current config value
+            device = ConfigManager.get_config_value('model_options', 'device')
+        else:
+            device = device_widget.currentText()
+        
+        # Logic:
+        # - cuda: all (float16, float32, int8)
+        # - cpu: float32, int8 only
+        # - auto: if GPU available, all; otherwise float32, int8
+        match device:
+            case 'cuda':
+                return ['float16', 'float32', 'int8']
+            case 'cpu':
+                return ['float32', 'int8']
+            case 'auto':
+                if self.has_gpu:
+                    return ['float16', 'float32', 'int8']
+                else:
+                    return ['float32', 'int8']
+            case _:
+                return ['float16', 'float32', 'int8']
+
+    def _update_compute_type_options(self, compute_combo: QComboBox) -> None:
+        """Update compute_type options when device changes."""
+        current_value = compute_combo.currentText()
+        filtered_options = self._get_filtered_compute_types()
+        
+        compute_combo.blockSignals(True)
+        compute_combo.clear()
+        compute_combo.addItems(filtered_options)
+        
+        # Restore previous selection if still available, else use first option
+        if current_value in filtered_options:
+            compute_combo.setCurrentText(current_value)
+        else:
+            compute_combo.setCurrentText(filtered_options[0])
+        
+        compute_combo.blockSignals(False)
 
     def _format_label(self, text: str) -> str:
         return text.replace('_', ' ').title()

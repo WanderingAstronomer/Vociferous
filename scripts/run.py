@@ -127,7 +127,8 @@ def _preflight_env() -> None:
     if os.environ.get('_VOCIFEROUS_ENV_READY') == '1':
         return
 
-    venv_path = Path(__file__).parent / '.venv'
+    # venv lives at project root; this script is under scripts/
+    venv_path = Path(__file__).parent.parent / '.venv'
 
     # Find Python version dynamically
     lib_path = venv_path / 'lib'
@@ -156,8 +157,8 @@ def _preflight_env() -> None:
     os.environ.setdefault('CUDA_VISIBLE_DEVICES', '0')
 
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / 'src'))
+# Add src to path (src is at project root; this script is under scripts/)
+sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 if __name__ == '__main__':
     _configure_logging()

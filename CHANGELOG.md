@@ -2,6 +2,57 @@
 
 ---
 
+# v1.0.1 Beta - UI Polish & Editing Support
+
+**Date:** December 2025  
+**Status:** Beta
+
+---
+
+## Summary
+
+Refinement release focusing on UI polish and introducing editable transcriptions. History entries can now be edited directly in the main window, and the layout has been simplified to a fixed 50/50 split.
+
+---
+
+## Changes
+
+### History Widget Behavior
+
+- **Single-click** on history entry loads it into editor for modification
+- **Double-click** copies entry to clipboard
+- **Removed**: Re-inject functionality (replaced by copy/paste workflow)
+- **Removed**: Tooltips on history items (cleaner appearance)
+- **Fixed**: Timestamp format now consistently shows "10:03 a.m." style
+
+### Main Window Layout
+
+- **Replaced**: QSplitter with fixed 50/50 horizontal layout (no resize handle)
+- **Added**: Editable transcription panel with Save button
+- **Added**: `update_entry()` in HistoryManager for saving edits
+
+### Settings Dialog
+
+- **Added**: Device setting (auto/cuda/cpu) exposed in UI
+- **Added**: Dynamic compute_type filtering based on device selection
+- **Fixed**: float16 automatically falls back to float32 on CPU
+
+### Project Structure
+
+- **Moved**: Scripts reorganized into `scripts/` folder
+  - `run.py` → `scripts/run.py`
+  - `install.sh` → `scripts/install.sh`
+  - `check_deps.py` → `scripts/check_deps.py`
+- **Updated**: `vociferous.sh` references `scripts/run.py`
+
+### Documentation
+
+- **Updated**: README.md to match current codebase
+- **Updated**: ARCHITECTURE.md with accurate module descriptions
+- **Fixed**: Install and run paths reference `scripts/` folder
+
+---
+
 # v1.0.0 Beta - Polished UI & History System
 
 **Date:** December 2025  
