@@ -4,6 +4,7 @@
 
 ## Table of Contents
 
+0. [Gallery](#gallery)
 1. [Overview](#overview)
 2. [User Experience](#user-experience)
 3. [High-Level Architecture](#high-level-architecture)
@@ -18,6 +19,10 @@
 
 ---
 
+## Gallery
+
+![Main Window](images/Main_Window.png)
+
 ## Overview
 
 Vociferous is a speech-to-text dictation tool for Linux. Press a hotkey to start recording, press again to transcribe your speech. The text is copied to clipboard for pasting into any application.
@@ -26,6 +31,7 @@ Vociferous is a speech-to-text dictation tool for Linux. Press a hotkey to start
 
 - **Wayland-first**: Works on modern Linux (Wayland and X11)
 - **GPU-accelerated**: Uses faster-whisper with CUDA for real-time transcription
+- **Custom frameless window**: Unified title bar with menu, drag support, and window controls
 - **Full-featured UI**: Main window with history, settings dialog, system tray
 - **Modern Python**: Leverages Python 3.12+ features throughout
 
@@ -549,6 +555,7 @@ sequenceDiagram
 **Features**:
 - JSONL storage at `~/.config/vociferous/history.jsonl`
 - Configurable entry limit with automatic cleanup
+- Persistent deletion via `delete_entry()` method
 - Export to multiple formats (txt, csv, md)
 - Markdown export with day/time heading hierarchy
 
@@ -571,23 +578,28 @@ class HistoryEntry:
 
 ### `src/ui/main_window.py` - Primary Application Window
 
-**Purpose**: Full application window with history panel and transcription display.
+**Purpose**: Full application window with custom title bar, history panel, and transcription display.
 
 **Key Classes**:
+- `TitleBar(QWidget)` - Custom frameless title bar with menu, drag, and window controls
 - `MainWindow(QMainWindow)` - Primary application window
 
 **Features**:
+- Custom frameless window with unified title bar (menu + title + controls)
+- Wayland-native drag via `startSystemMove()` with X11 fallback
 - Dark theme (#1e1e1e background, #5a9fd4 accents)
 - Fixed 50/50 horizontal layout (no resize handle)
 - Recording indicator with pulse animation
-- Editable transcription with Save button
+- Editable transcription with Save and Cancel buttons
+- Export controls disabled when history is empty
+- History menu with Open History File action
 - System tray integration
 - Settings dialog access
 
 **Layout Structure**:
 ```
 ┌────────────────────────────────────────────────────────────┐
-│                        MainWindow                          │
+│  File  History  Settings  │  Vociferous  │  — ▢ ✕         │
 ├──────────────────────────┬─────────────────────────────────┤
 │    History Panel         │      Current Transcription      │
 │  ┌────────────────────┐  │   ┌─────────────────────────┐   │
@@ -597,30 +609,39 @@ class HistoryEntry:
 │  ├────────────────────┤  │   │                         │   │
 │  │ Export │ Clear All │  │   │   Transcription Text    │   │
 │  └────────────────────┘  │   │   (editable + Save)     │   │
+│                          │   │ [Copy] [Save] [Clear] [Cancel] │
 └──────────────────────────┴─────────────────────────────────┘
 ```
 
 **Recording States**:
 - `idle` - Ready state, no indicator visible
 - `recording` - Pulsing red indicator
-- `transcribing` - Static indicator
+- `transcribing` - Static orange indicator
+
+**Signals**:
+- `windowCloseRequested` - Emitted when window is closed (for tray notification)
+- `cancelRecordingRequested` - Emitted when Cancel button clicked (aborts recording)
 
 ---
 
 ### `src/ui/history_widget.py` - Collapsible History List
 
-**Purpose**: Display transcription history with collapsible day grouping.
+**Purpose**: Display transcription history with collapsible day grouping and file watching.
 
 **Key Classes**:
 - `HistoryDelegate(QStyledItemDelegate)` - Custom rendering with blue timestamps
-- `HistoryWidget(QListWidget)` - Custom list with day headers
+- `HistoryWidget(QListWidget)` - Custom list with day headers and file watching
 
 **Features**:
 - Day grouping with collapsible headers (auto-collapse past days)
 - Blue timestamps ("10:03 a.m.") with preview text
 - Single-click to load entry into editor for editing
 - Double-click to copy to clipboard
+- Delete key with persistent deletion (removes from JSONL file)
 - Right-click context menu (Copy, Delete)
+- QFileSystemWatcher with 200ms debounce for external file changes
+- Automatic day header removal when last entry deleted
+- Fallback selection after deletion (previous entry preferred)
 - Custom delegate for styled rendering
 
 **Custom Data Roles**:
@@ -633,6 +654,7 @@ ROLE_TIMESTAMP_ISO = Qt.UserRole + 4 # ISO timestamp for editing
 
 **Signals**:
 - `entrySelected(text, timestamp)` - Emitted when entry clicked for editing
+- `historyCountChanged(count)` - Emitted when entry count changes (for UI state)
 
 ---
 

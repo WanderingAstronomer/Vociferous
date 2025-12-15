@@ -30,5 +30,8 @@ if [[ -d "$LIB_DIR" ]]; then
   fi
 fi
 
+# Default to suppress verbose wgpu Vulkan warnings unless user overrides
+export RUST_LOG="${RUST_LOG:-error}"
+
 # Run the application
 exec "$PYTHON_CMD" "$PROJECT_ROOT/scripts/run.py" "$@"

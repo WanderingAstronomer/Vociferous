@@ -2,6 +2,74 @@
 
 ---
 
+# v1.1.0 Beta - Custom Title Bar & History Enhancements
+
+**Date:** December 2025  
+**Status:** Beta
+
+---
+
+## Summary
+
+Feature release introducing a custom frameless title bar with unified menu/controls, enhanced history management with file watching and persistent deletion, a Cancel button for aborting recordings, and bundled application icons.
+
+---
+
+## Changes
+
+### Custom Title Bar
+
+- **Added**: Custom frameless `TitleBar` widget with menu bar, centered title, and window controls (minimize, maximize, close) in a single row
+- **Added**: Wayland-native drag support via `startSystemMove()` for proper window dragging on Wayland compositors
+- **Added**: X11 fallback drag handling for traditional window movement
+- **Added**: Double-click title bar to maximize/restore window
+- **Added**: Styled window controls with hover effects (blue highlight for min/max, red for close)
+- **Added**: Border styling for frameless window (`1px solid #3c3c3c`, `border-radius: 6px`)
+- **Added**: `QT_WAYLAND_DISABLE_WINDOWDECORATION=1` environment variable for client-side decorations on Wayland
+
+### History Widget Enhancements
+
+- **Added**: `QFileSystemWatcher` with 200ms debounce to auto-reload history when file changes externally
+- **Added**: `delete_entry()` method in HistoryManager for persistent deletion from JSONL file
+- **Added**: Delete key shortcut with `Qt.ApplicationShortcut` context for reliable deletion even when focus shifts
+- **Added**: `historyCountChanged` signal to track entry count for UI state updates
+- **Added**: `entry_count()` helper method for counting non-header entries
+- **Added**: Automatic fallback selection after deletion (prefers previous entry, then next)
+- **Added**: Automatic day header removal when all entries under a day are deleted
+- **Fixed**: History widget now accepts `HistoryManager` in constructor for proper initialization order
+
+### Main Window Improvements
+
+- **Added**: Cancel button in current transcription panel to abort recording without transcribing
+- **Added**: `cancelRecordingRequested` signal connected to `_cancel_recording()` in main app
+- **Added**: History menu "Open History File" action to open JSONL file in system default handler
+- **Added**: `_update_history_actions()` method to enable/disable Export controls based on history count
+- **Fixed**: Export button, menu action, and Ctrl+E shortcut now disabled when history is empty
+- **Fixed**: Guard added to `_export_history()` to show status message when nothing to export
+- **Changed**: `display_transcription()` now accepts `HistoryEntry` for consistent timestamps
+- **Changed**: `load_entry_for_edit()` no longer steals focus (cursor position preserved)
+- **Changed**: Placeholder text updated to "Your transcription will appear here..."
+
+### Application Icons
+
+- **Added**: Bundled icon assets in `icons/` directory:
+  - `512x512.png` - High-resolution application icon
+  - `192x192.png` - Medium-resolution icon
+  - `favicon.ico` - Windows/multi-resolution icon
+- **Changed**: Tray icon now loads from bundled assets with fallback to theme icon
+
+### Launcher Script
+
+- **Added**: `RUST_LOG=error` environment variable to suppress verbose wgpu/Vulkan warnings
+
+### Bug Fixes
+
+- **Fixed**: Unused `datetime` import removed from main_window.py (ruff compliance)
+- **Fixed**: Result thread now properly sets `self.result_thread = None` on completion to prevent stale references
+- **Fixed**: History widget initialization order ensures buttons exist before loading history (prevents AttributeError)
+
+---
+
 # v1.0.1 Beta - UI Polish & Editing Support
 
 **Date:** December 2025  

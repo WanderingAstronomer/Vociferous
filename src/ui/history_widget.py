@@ -23,11 +23,13 @@ from contextlib import suppress
 from datetime import datetime
 
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QRect, QSize
-from PyQt5.QtGui import QBrush, QColor, QFont, QPen
+from PyQt5.QtCore import QFileSystemWatcher
+from PyQt5.QtGui import QBrush, QColor, QFont, QPen, QKeySequence
 from PyQt5.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMenu,
+    QShortcut,
     QStyledItemDelegate,
     QStyle,
 )
@@ -158,6 +160,7 @@ class HistoryWidget(QListWidget):
     """
 
     entrySelected = pyqtSignal(str, str)
+    historyCountChanged = pyqtSignal(int)
 
     # Custom data roles
     ROLE_DAY_KEY = Qt.UserRole + 1  # Store day key on headers and entries
@@ -165,14 +168,31 @@ class HistoryWidget(QListWidget):
     ROLE_TIME = Qt.UserRole + 3  # Store formatted timestamp string
     ROLE_TIMESTAMP_ISO = Qt.UserRole + 4  # Store ISO timestamp
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, history_manager: HistoryManager | None = None, parent=None) -> None:
         super().__init__(parent)
+
+        self.history_manager = history_manager
+        self._file_watcher = QFileSystemWatcher(self)
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.timeout.connect(self._reload_from_file)
 
         # Track collapsed day groups
         self._collapsed_days: set[str] = set()
 
         # Set custom delegate for rendering
         self.setItemDelegate(HistoryDelegate(self.ROLE_TIME, self))
+
+        # Adjust item sizes to current width without user interaction
+        self.setSizeAdjustPolicy(QListWidget.AdjustToContents)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setResizeMode(QListWidget.Adjust)
+        self.setFocusPolicy(Qt.StrongFocus)
+
+        # Keyboard shortcut for deletion even if focus momentarily leaves the list
+        delete_shortcut = QShortcut(QKeySequence.Delete, self)
+        delete_shortcut.setContext(Qt.ApplicationShortcut)
+        delete_shortcut.activated.connect(self._delete_current)
 
         # Enable custom context menu
         self.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -189,6 +209,9 @@ class HistoryWidget(QListWidget):
         self.setAccessibleDescription(
             "List of recent transcriptions. Double-click to copy, right-click for options. Click day headers to collapse/expand."
         )
+
+        self._init_file_watch()
+        self._emit_count_changed()
 
     def add_entry(self, entry: HistoryEntry) -> None:
         """Add a single history entry, inserting a day header if needed."""
@@ -234,11 +257,23 @@ class HistoryWidget(QListWidget):
         if day_key in self._collapsed_days:
             item.setHidden(True)
 
-    def load_history(self, history_manager: HistoryManager) -> None:
+        self._refresh_layout()
+        self._emit_count_changed()
+
+    def load_history(self, history_manager: HistoryManager | None = None) -> None:
         """Load recent history entries grouped by day with headers."""
+        if history_manager:
+            self.history_manager = history_manager
+
+        # Ensure watcher tracks the current file
+        self._reset_file_watch()
+
+        if not self.history_manager:
+            return
+
         self.clear()
         self._collapsed_days.clear()
-        entries = history_manager.get_recent(limit=100)
+        entries = self.history_manager.get_recent(limit=100)
 
         # Get today's date for auto-collapse logic
         today_key = datetime.now().date().isoformat()
@@ -284,6 +319,9 @@ class HistoryWidget(QListWidget):
                 item.setHidden(True)
             
             self.addItem(item)
+
+        self._refresh_layout()
+        self._emit_count_changed()
 
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
         """Handle single click: header toggles collapse, entry selects for edit."""
@@ -350,7 +388,7 @@ class HistoryWidget(QListWidget):
         menu.addSeparator()
 
         delete_action = menu.addAction("Delete Entry")
-        delete_action.triggered.connect(lambda: self.takeItem(self.row(item)))
+        delete_action.triggered.connect(lambda: self._delete_item(item))
 
         menu.exec_(self.mapToGlobal(position))
 
@@ -376,12 +414,147 @@ class HistoryWidget(QListWidget):
                     self._copy_item(current_item)
 
             case Qt.Key_Delete:
-                # Delete key → remove item
+                # Delete key → remove item (with persistence)
                 if current_item:
-                    self.takeItem(self.row(current_item))
+                    self._delete_item(current_item)
+                    event.accept()
+                    return
 
             case _:
                 super().keyPressEvent(event)
+
+    def _delete_current(self) -> None:
+        """Delete the currently selected item (shortcut helper)."""
+        item = self.currentItem()
+        if item and not item.data(self.ROLE_IS_HEADER):
+            self._delete_item(item)
+
+    def _delete_item(self, item: QListWidgetItem) -> None:
+        """Remove an entry from the list and persistent storage."""
+        if item.data(self.ROLE_IS_HEADER):
+            return
+
+        ts_iso = item.data(self.ROLE_TIMESTAMP_ISO)
+        day_key = item.data(self.ROLE_DAY_KEY)
+        current_row = self.row(item)
+
+        # Remove from UI
+        self.takeItem(self.row(item))
+
+        # Persist deletion
+        if self.history_manager and ts_iso:
+            self.history_manager.delete_entry(ts_iso)
+
+        # Remove header if no more entries under that day
+        self._remove_header_if_empty(day_key)
+
+        # Select a sensible fallback item (previous entry preferred)
+        self._select_fallback_after_delete(current_row)
+        self._emit_count_changed()
+
+    def _remove_header_if_empty(self, day_key: str | None) -> None:
+        """Delete the day header if it has no remaining entries."""
+        if not day_key:
+            return
+
+        # Check for any remaining entries in the same day
+        has_entries = False
+        header_row = None
+        for i in range(self.count()):
+            item = self.item(i)
+            if item.data(self.ROLE_DAY_KEY) != day_key:
+                continue
+            if item.data(self.ROLE_IS_HEADER):
+                header_row = i
+            else:
+                has_entries = True
+                break
+
+        if not has_entries and header_row is not None:
+            self.takeItem(header_row)
+
+    def _select_fallback_after_delete(self, deleted_row: int) -> None:
+        """After deletion, select the nearest entry and emit selection, or clear."""
+        # Prefer previous items above the deleted row
+        for i in range(deleted_row - 1, -1, -1):
+            candidate = self.item(i)
+            if candidate and not candidate.data(self.ROLE_IS_HEADER):
+                self.setCurrentItem(candidate)
+                self._emit_entry_selected(candidate)
+                return
+
+        # Fall back to the next items below
+        for i in range(deleted_row, self.count()):
+            candidate = self.item(i)
+            if candidate and not candidate.data(self.ROLE_IS_HEADER):
+                self.setCurrentItem(candidate)
+                self._emit_entry_selected(candidate)
+                return
+
+        # No entries left - signal clear
+        self.entrySelected.emit("", "")
+
+    def entry_count(self) -> int:
+        """Return number of non-header history entries."""
+        count = 0
+        for i in range(self.count()):
+            item = self.item(i)
+            if item and not item.data(self.ROLE_IS_HEADER):
+                count += 1
+        return count
+
+    def _emit_count_changed(self) -> None:
+        self.historyCountChanged.emit(self.entry_count())
+
+    def _emit_entry_selected(self, item: QListWidgetItem) -> None:
+        """Emit entrySelected for the given item."""
+        full_text = item.data(Qt.UserRole)
+        ts_iso = item.data(self.ROLE_TIMESTAMP_ISO) or ""
+        self.entrySelected.emit(full_text, ts_iso)
+
+    def _refresh_layout(self) -> None:
+        """Force item relayout to respect current viewport width."""
+        self.doItemsLayout()
+        self.updateGeometries()
+        if self.viewport():
+            self.viewport().update()
+
+    def _init_file_watch(self) -> None:
+        """Start watching the history file for external changes."""
+        self._reset_file_watch()
+
+    def _reset_file_watch(self) -> None:
+        """Reset watcher to follow the current history file path."""
+        if not self.history_manager:
+            return
+
+        path = getattr(self.history_manager, "history_file", None)
+        if not path:
+            return
+
+        # Ensure file exists so watcher can attach
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch(exist_ok=True)
+        except Exception:
+            return
+
+        with suppress(TypeError):
+            self._file_watcher.fileChanged.disconnect(self._on_history_file_changed)
+
+        self._file_watcher.removePaths(self._file_watcher.files())
+        self._file_watcher.addPath(str(path))
+        self._file_watcher.fileChanged.connect(self._on_history_file_changed)
+
+    def _on_history_file_changed(self, _) -> None:
+        """Debounce reload when the history file changes on disk."""
+        self._debounce_timer.start(200)
+
+    def _reload_from_file(self) -> None:
+        """Reload history after an external file change."""
+        # Reattach watcher in case the file was recreated
+        self._reset_file_watch()
+        self.load_history()
 
     # ---------- Helpers ----------
 

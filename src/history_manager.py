@@ -245,6 +245,40 @@ class HistoryManager:
             logger.error(f"Failed to update history entry: {e}")
             return False
 
+    def delete_entry(self, timestamp: str) -> bool:
+        """Delete a history entry by timestamp."""
+        try:
+            entries = []
+            removed = False
+
+            with open(self.history_file, encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = HistoryEntry.from_json(line)
+                        if entry.timestamp == timestamp:
+                            removed = True
+                            continue
+                        entries.append(entry)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Skipping invalid history line: {line[:50]}")
+
+            if not removed:
+                return False
+
+            with open(self.history_file, 'w', encoding='utf-8') as f:
+                for entry in entries:
+                    f.write(entry.to_json() + '\n')
+
+            logger.info(f"Deleted history entry: {timestamp}")
+            return True
+
+        except OSError as e:
+            logger.error(f"Failed to delete history entry: {e}")
+            return False
+
     def clear(self) -> None:
         """Clear all history (truncate file)."""
         try:

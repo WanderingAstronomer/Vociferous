@@ -97,9 +97,11 @@ Python 3.12+ Features:
 - `list[tuple]` generic type hints without imports
 """
 import logging
+import os
 import subprocess
 import sys
 from contextlib import suppress
+from pathlib import Path
 
 from PyQt5.QtCore import QObject
 from PyQt5.QtGui import QIcon
@@ -121,6 +123,9 @@ except ImportError:
     HAS_PYPERCLIP = False
 
 logger = logging.getLogger(__name__)
+
+# Prefer client-side decorations on Wayland so we can draw our own frame
+os.environ.setdefault("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1")
 
 
 class VociferousApp(QObject):
@@ -224,6 +229,9 @@ class VociferousApp(QObject):
         self.main_window.history_widget.entrySelected.connect(
             self.on_edit_entry_requested
         )
+
+        # Cancel recording without transcribing
+        self.main_window.cancelRecordingRequested.connect(self._cancel_recording)
 
 
         # System tray
@@ -341,8 +349,22 @@ class VociferousApp(QObject):
         ConfigManager.console_print("Model reloaded successfully.")
 
     def _build_tray_icon(self) -> QIcon:
-        """Return a non-empty icon for the tray using theme or Qt defaults."""
-        icon = QIcon.fromTheme('microphone-sensitivity-high')
+        """Return a non-empty icon for the tray using bundled assets with fallbacks."""
+        icons_dir = Path(__file__).resolve().parent.parent / "icons"
+        candidates = [
+            icons_dir / "512x512.png",
+            icons_dir / "192x192.png",
+            icons_dir / "favicon.ico",
+        ]
+
+        icon = QIcon()
+        for candidate in candidates:
+            if candidate.is_file():
+                icon.addFile(str(candidate))
+
+        if icon.isNull():
+            icon = QIcon.fromTheme('microphone-sensitivity-high')
+
         if icon.isNull():
             app_instance = QApplication.instance()
             style = self.app.style() if hasattr(self, 'app') else app_instance.style()
@@ -446,9 +468,15 @@ class VociferousApp(QObject):
         self._disconnect_thread_signals()
         if self.result_thread:
             self.result_thread.deleteLater()
+            self.result_thread = None
 
     def stop_result_thread(self) -> None:
         """Stop the recording/transcription thread."""
+        if self.result_thread and self.result_thread.isRunning():
+            self.result_thread.stop()
+
+    def _cancel_recording(self) -> None:
+        """Cancel recording early without transcribing."""
         if self.result_thread and self.result_thread.isRunning():
             self.result_thread.stop()
 
@@ -498,9 +526,9 @@ class VociferousApp(QObject):
         if not result:
             return
 
-        # Add to history and display in window
-        self.history_manager.add_entry(result)
-        self.main_window.display_transcription(result)
+        # Add to history and display using the persisted entry to keep timestamps aligned
+        entry = self.history_manager.add_entry(result)
+        self.main_window.display_transcription(entry)
 
         # Always copy to clipboard for manual paste
         self._copy_to_clipboard(result)

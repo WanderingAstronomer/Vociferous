@@ -5,12 +5,15 @@ A modern Python 3.12+ speech-to-text dictation application for Linux using OpenA
 ## Features
 
 - **Fast transcription** using faster-whisper (CTranslate2 backend)
+- **Custom frameless window** with unified title bar, menu, and window controls
 - **Hotkey activation** with press-to-toggle recording mode
 - **Voice Activity Detection** automatically stops when you stop speaking
-- **Transcription history** with JSONL storage and export (txt, csv, markdown)
+- **Transcription history** with JSONL storage, file watching, and export (txt, csv, markdown)
 - **Collapsible day grouping** with auto-collapse for past days
 - **Editable transcriptions** - single-click to load, edit, and save
-- **Dark theme UI** with system tray integration
+- **Delete with persistence** - Delete key removes entries from UI and storage
+- **Cancel recording** - abort mid-recording without transcribing
+- **Dark theme UI** with Wayland-native drag support and system tray integration
 - **Live settings** with immediate effect (no restart needed)
 - **Clipboard workflow** - transcriptions auto-copy for easy paste
 
@@ -81,7 +84,7 @@ chmod +x vociferous.sh
 ./vociferous.sh
 ```
 
-This wrapper exports `LD_LIBRARY_PATH` so `ctranslate2` can load cuDNN/cuBLAS from the venv.
+This wrapper exports `LD_LIBRARY_PATH` so `ctranslate2` can load cuDNN/cuBLAS from the venv, and sets `RUST_LOG=error` to suppress verbose Vulkan warnings.
 
 - Standard path (CPU or if your system libraries already resolve correctly):
 
@@ -97,6 +100,13 @@ If you see a warning in the console about CUDA libraries not being discoverable,
 2. **Speak**: Voice Activity Detection captures your speech
 3. **Stop recording**: Press the key again (or VAD auto-stops after silence)
 4. **Paste**: Transcription is copied to clipboard - paste with Ctrl+V
+
+### Window Controls
+
+The custom title bar provides:
+- **Drag anywhere** on the title to move the window (Wayland-native on supported compositors)
+- **Double-click** to maximize/restore
+- **Minimize/Maximize/Close** buttons with styled hover effects
 
 ## Configuration
 
@@ -134,8 +144,11 @@ Transcription history is stored at `~/.config/vociferous/history.jsonl`.
 - **Collapsible day groups**: Click headers to expand/collapse (past days auto-collapse)
 - **Single-click to edit**: Load any entry into the editor panel
 - **Double-click to copy**: Quick copy to clipboard
+- **Delete key**: Remove selected entry from UI and persistent storage
 - **Context menu**: Right-click entries to Copy or Delete
-- **Export**: Save history to txt, csv, or markdown format
+- **File watching**: History auto-reloads when the JSONL file changes externally
+- **Open History File**: Menu action to open the JSONL file in your default editor
+- **Export**: Save history to txt, csv, or markdown format (disabled when empty)
 - **Clear All**: Remove all history with confirmation dialog
 - **Auto-rotation**: Oldest entries removed when exceeding limit (default 1000)
 
@@ -163,5 +176,4 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed technical document
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
+The Unlicense - see [LICENSE](LICENSE) for details.

@@ -33,16 +33,20 @@ Python 3.12+ Features:
 - Union type hints with |
 """
 
-from datetime import datetime
 from pathlib import Path
 
 from PyQt5.QtCore import (
+    QPoint,
     QPropertyAnimation,
     QSettings,
+    QSize,
     Qt,
+    QEvent,
+    QTimer,
+    QUrl,
     pyqtSignal,
 )
-from PyQt5.QtGui import QFont, QGuiApplication, QKeySequence
+from PyQt5.QtGui import QDesktopServices, QFont, QGuiApplication, QKeySequence
 from PyQt5.QtWidgets import (
     QAction,
     QFileDialog,
@@ -53,8 +57,10 @@ from PyQt5.QtWidgets import (
     QMenuBar,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QShortcut,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -63,13 +69,175 @@ from history_manager import HistoryEntry, HistoryManager
 from ui.history_widget import HistoryWidget
 
 
+class TitleBar(QWidget):
+    """Custom title bar with menu, drag, and window controls in one row."""
+
+    def __init__(self, window: QMainWindow, menu_bar: QMenuBar) -> None:
+        super().__init__(window)
+        self._window = window
+        self._drag_pos: QPoint | None = None
+        self._menu_bar = menu_bar
+
+        self.setObjectName("titleBar")
+        self.setFixedHeight(44)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(8)
+
+        self._menu_bar.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+
+        self.title_label = QLabel("Vociferous", self)
+        self.title_label.setObjectName("titleBarLabel")
+        self.title_label.setAlignment(Qt.AlignCenter)
+        self.title_label.setMinimumWidth(0)
+
+        btn_size = QSize(36, 28)
+
+        def make_btn(text: str, obj: str) -> QToolButton:
+            button = QToolButton(self)
+            button.setText(text)
+            button.setObjectName(obj)
+            button.setFixedSize(btn_size)
+            button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+            button.setFocusPolicy(Qt.NoFocus)
+            return button
+
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(6)
+
+        self.min_btn = make_btn("—", "titleBarControl")
+        self.min_btn.clicked.connect(self._window.showMinimized)
+        button_layout.addWidget(self.min_btn)
+
+        self.max_btn = make_btn("▢", "titleBarControl")
+        self.max_btn.clicked.connect(self._toggle_maximize)
+        button_layout.addWidget(self.max_btn)
+
+        self.close_btn = make_btn("✕", "titleBarClose")
+        self.close_btn.clicked.connect(self._window.close)
+        button_layout.addWidget(self.close_btn)
+
+        self._controls = QWidget()
+        self._controls.setLayout(button_layout)
+        self._controls.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+        self.title_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+
+        self._left_slot = QWidget(self)
+        left_l = QHBoxLayout(self._left_slot)
+        left_l.setContentsMargins(0, 0, 0, 0)
+        left_l.setSpacing(0)
+        left_l.addWidget(self._menu_bar)
+        left_l.addStretch(1)
+
+        self._right_slot = QWidget(self)
+        right_l = QHBoxLayout(self._right_slot)
+        right_l.setContentsMargins(0, 0, 0, 0)
+        right_l.setSpacing(0)
+        right_l.addStretch(1)
+        right_l.addWidget(self._controls)
+
+        layout.addWidget(self._left_slot)
+        layout.addWidget(self.title_label, 1)
+        layout.addWidget(self._right_slot)
+
+        # Allow dragging from title text
+        self.title_label.installEventFilter(self)
+
+        QTimer.singleShot(0, self._sync_side_slots)
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._sync_side_slots()
+
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        if event.button() == Qt.LeftButton:
+            if QGuiApplication.platformName() == "wayland":
+                if self._try_wayland_system_move():
+                    event.accept()
+                    self._drag_pos = None
+                    return
+            self._drag_pos = event.globalPos() - self._window.frameGeometry().topLeft()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
+        if (
+            QGuiApplication.platformName() != "wayland"
+            and event.buttons() & Qt.LeftButton
+            and self._drag_pos
+            and not self._window.isMaximized()
+        ):
+            self._window.move(event.globalPos() - self._drag_pos)
+        super().mouseMoveEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:  # type: ignore[override]
+        if event.button() == Qt.LeftButton:
+            self._toggle_maximize()
+        super().mouseDoubleClickEvent(event)
+
+    def _toggle_maximize(self) -> None:
+        if self._window.isMaximized():
+            self._window.showNormal()
+            self.max_btn.setText("▢")
+        else:
+            self._window.showMaximized()
+            self.max_btn.setText("❐")
+
+    def sync_state(self) -> None:
+        """Sync maximize icon with window state."""
+        self.max_btn.setText("❐" if self._window.isMaximized() else "▢")
+
+    def _try_wayland_system_move(self) -> bool:
+        """Request compositor-driven move on Wayland."""
+        if self._window.isMaximized():
+            return False
+        self._window.winId()  # Force native handle creation
+        window_handle = self._window.windowHandle()
+        if not window_handle:
+            return False
+        if hasattr(window_handle, "startSystemMove"):
+            return bool(window_handle.startSystemMove())
+        return False
+
+    def eventFilter(self, source, event):  # type: ignore[override]
+        if source is self.title_label:
+            if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+                if QGuiApplication.platformName() == "wayland" and self._try_wayland_system_move():
+                    self._drag_pos = None
+                    event.accept()
+                    return True
+                self._drag_pos = event.globalPos() - self._window.frameGeometry().topLeft()
+            elif event.type() == QEvent.MouseMove and event.buttons() & Qt.LeftButton:
+                if (
+                    QGuiApplication.platformName() != "wayland"
+                    and self._drag_pos
+                    and not self._window.isMaximized()
+                ):
+                    self._window.move(event.globalPos() - self._drag_pos)
+                    return True
+            elif event.type() == QEvent.MouseButtonRelease:
+                self._drag_pos = None
+        return super().eventFilter(source, event)
+
+    def _sync_side_slots(self) -> None:
+        """Match left/right slot widths so the title stays truly centered."""
+        menu_w = self._menu_bar.sizeHint().width()
+        ctrl_w = self._controls.sizeHint().width()
+        width = max(menu_w, ctrl_w)
+        self._left_slot.setFixedWidth(width)
+        self._right_slot.setFixedWidth(width)
+
+
 class MainWindow(QMainWindow):
     """Primary application window with history and transcription display."""
 
     windowCloseRequested = pyqtSignal()
+    cancelRecordingRequested = pyqtSignal()
 
     def __init__(self, history_manager: HistoryManager | None = None) -> None:
         super().__init__()
+        self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint | Qt.CustomizeWindowHint)
         self.settings = QSettings("Vociferous", "MainWindow")
         self._tray_icon = None
         self._hide_notification_shown = False
@@ -80,6 +248,12 @@ class MainWindow(QMainWindow):
         # Track currently loaded entry for editing
         self._current_entry_timestamp: str | None = None
 
+        # Menu bar (constructed before title bar so it can be embedded)
+        self._menu_bar = QMenuBar(self)
+
+        # Custom title bar with menu + controls in one row
+        self.title_bar = TitleBar(self, self._menu_bar)
+
         self._init_ui()
         self._create_menu_bar()
         self._create_shortcuts()
@@ -89,6 +263,9 @@ class MainWindow(QMainWindow):
         """Initialize the main UI layout."""
         self.setWindowTitle("Vociferous")
         self.setMinimumSize(600, 400)
+
+        # Unified header: place the composed title bar (menu + title + controls) as menu widget
+        self.setMenuWidget(self.title_bar)
 
         central = QWidget(self)
         main_layout = QVBoxLayout(central)
@@ -132,7 +309,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(8)
 
         # Header - floating pill label
-        header = QLabel("History")
+        header = QLabel("Trasncription History")
         header.setObjectName("historyHeader")
         header.setAlignment(Qt.AlignCenter)
         header.setFixedHeight(66)
@@ -143,10 +320,8 @@ class MainWindow(QMainWindow):
         content_layout = QVBoxLayout()
         content_layout.setContentsMargins(8, 0, 8, 8)
 
-        # History widget
-        self.history_widget = HistoryWidget()
-        self.history_widget.load_history(self.history_manager)
-        
+        # History widget (create but don't load yet - buttons must exist first)
+        self.history_widget = HistoryWidget(self.history_manager)
         content_layout.addWidget(self.history_widget)
 
         # Button row: Export (left) and Clear All (right)
@@ -169,6 +344,11 @@ class MainWindow(QMainWindow):
         history_buttons.addWidget(self.history_clear_btn)
 
         content_layout.addLayout(history_buttons)
+
+        # Now connect and load history (buttons exist, so _update_history_actions is safe)
+        self.history_widget.historyCountChanged.connect(self._update_history_actions)
+        self.history_widget.load_history()
+        self._update_history_actions(self.history_widget.entry_count())
 
         content_widget.setLayout(content_layout)
         layout.addWidget(content_widget)
@@ -201,7 +381,7 @@ class MainWindow(QMainWindow):
         self.transcription_display = QTextEdit()
         self.transcription_display.setReadOnly(False)
         self.transcription_display.setPlaceholderText(
-            "Transcriptions will appear here..."
+            "Your transcription will appear here..."
         )
         self.transcription_display.setFont(QFont("Monospace", 11))
         self.transcription_display.setAccessibleName("Current Transcription")
@@ -241,6 +421,13 @@ class MainWindow(QMainWindow):
         self.clear_btn.setAccessibleName("Clear Current Display")
         button_layout.addWidget(self.clear_btn)
 
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setObjectName("transcriptionButton")
+        self.cancel_btn.setToolTip("Cancel recording without transcribing")
+        self.cancel_btn.clicked.connect(self.cancelRecordingRequested.emit)
+        self.cancel_btn.setAccessibleName("Cancel Recording")
+        button_layout.addWidget(self.cancel_btn)
+
         content_layout.addLayout(button_layout)
         content_widget.setLayout(content_layout)
         layout.addWidget(content_widget)
@@ -250,7 +437,7 @@ class MainWindow(QMainWindow):
 
     def _create_menu_bar(self) -> None:
         """Create menu bar with all menus."""
-        menu_bar: QMenuBar = self.menuBar()
+        menu_bar: QMenuBar = self._menu_bar
 
         # File menu
         file_menu = menu_bar.addMenu("&File")
@@ -262,9 +449,13 @@ class MainWindow(QMainWindow):
 
         # History menu
         history_menu = menu_bar.addMenu("&History")
-        export_action = QAction("Export...", self)
-        export_action.triggered.connect(self._export_history)
-        history_menu.addAction(export_action)
+        self.export_action = QAction("Export...", self)
+        self.export_action.triggered.connect(self._export_history)
+        history_menu.addAction(self.export_action)
+
+        open_history_action = QAction("Open History File", self)
+        open_history_action.triggered.connect(self._open_history_file)
+        history_menu.addAction(open_history_action)
 
         clear_history_action = QAction("Clear All...", self)
         clear_history_action.triggered.connect(self._clear_all_history)
@@ -289,8 +480,8 @@ class MainWindow(QMainWindow):
         copy_shortcut.activated.connect(self._copy_current)
 
         # Ctrl+E: Export history
-        export_shortcut = QShortcut(QKeySequence("Ctrl+E"), self)
-        export_shortcut.activated.connect(self._export_history)
+        self.export_shortcut = QShortcut(QKeySequence("Ctrl+E"), self)
+        self.export_shortcut.activated.connect(self._export_history)
 
         # Ctrl+H: Focus history
         focus_history_shortcut = QShortcut(QKeySequence("Ctrl+H"), self)
@@ -303,6 +494,23 @@ class MainWindow(QMainWindow):
         # Ctrl+S: Save current
         save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
         save_shortcut.activated.connect(self._save_current)
+
+        # Sync enabled state with history availability
+        self._update_history_actions()
+
+    def _update_history_actions(self, count: int | None = None) -> None:
+        """Enable or disable export controls based on history count."""
+        entries = count if count is not None else self.history_widget.entry_count()
+        enabled = entries > 0
+
+        if self.history_export_btn:
+            self.history_export_btn.setEnabled(enabled)
+
+        if hasattr(self, "export_action"):
+            self.export_action.setEnabled(enabled)
+
+        if hasattr(self, "export_shortcut"):
+            self.export_shortcut.setEnabled(enabled)
 
     def _setup_recording_indicator(self) -> None:
         """Create compact pulsing recording indicator label."""
@@ -357,6 +565,8 @@ class MainWindow(QMainWindow):
             /* Main window - dark background */
             QMainWindow {
                 background-color: #1e1e1e;
+                border: 1px solid #3c3c3c;
+                border-radius: 6px;
             }
             
             QWidget {
@@ -385,6 +595,43 @@ class MainWindow(QMainWindow):
                 border: 1px solid #5a9fd4;
                 border-radius: 18px;
                 qproperty-alignment: AlignCenter;
+            }
+
+            /* Title bar */
+            QWidget#titleBar {
+                background-color: #1e1e1e;
+                border: none;
+            }
+
+            QLabel#titleBarLabel {
+                color: #d4d4d4;
+                font-weight: bold;
+                font-size: 18px;
+                qproperty-alignment: AlignCenter;
+            }
+
+            QToolButton#titleBarControl, QToolButton#titleBarClose {
+                background-color: #252526;
+                color: #d4d4d4;
+                border: 1px solid #3c3c3c;
+                border-radius: 6px;
+                padding: 0px;
+                margin: 0px;
+                font-size: 14px;
+            }
+
+            QToolButton#titleBarControl:hover {
+                background-color: #2d3d4d;
+                border-color: #5a9fd4;
+            }
+
+            QToolButton#titleBarClose {
+                color: #ff6b6b;
+            }
+
+            QToolButton#titleBarClose:hover {
+                background-color: #5a2d2d;
+                border-color: #ff6b6b;
             }
 
             /* Hide separator lines */
@@ -512,15 +759,18 @@ class MainWindow(QMainWindow):
             
             /* Menu bar - compact */
             QMenuBar {
-                background-color: #252526;
+                background-color: #1e1e1e;
                 color: #d4d4d4;
                 border-bottom: 1px solid #3c3c3c;
                 font-size: 14px;
-                padding: 2px;
+                padding: 0px;
+                margin: 0px;
+                border: none;
             }
             
             QMenuBar::item {
-                padding: 3px 8px;
+                padding: 0px 8px;
+                margin: 0px;
             }
             
             QMenuBar::item:selected {
@@ -623,18 +873,13 @@ class MainWindow(QMainWindow):
             case "error" | _:
                 self._stop_recording_pulse()
 
-    def display_transcription(self, text: str) -> None:
-        """Display new transcription in current panel and add to history."""
-        self.transcription_display.setPlainText(text)
-        
-        # Add to history widget
-        entry = HistoryEntry(
-            timestamp=datetime.now().isoformat(),
-            text=text,
-            duration_ms=0,  # Duration tracked elsewhere
-        )
+    def display_transcription(self, entry: HistoryEntry) -> None:
+        """Display a transcription and mark it as the current editable entry."""
+        self.transcription_display.setPlainText(entry.text)
+
+        # Add to history widget using the persisted entry (keeps timestamps aligned)
         self.history_widget.add_entry(entry)
-        
+
         # Track new entry as current (for potential edits)
         self._current_entry_timestamp = entry.timestamp
         self.save_btn.setEnabled(False)  # Reset save button state
@@ -694,7 +939,7 @@ class MainWindow(QMainWindow):
         
         if success:
             # Reload history to show updated entry
-            self.history_widget.load_history(self.history_manager)
+            self.history_widget.load_history()
             self.save_btn.setEnabled(False)
             self.statusBar().showMessage("Saved changes", 2000)
         else:
@@ -706,18 +951,22 @@ class MainWindow(QMainWindow):
     
     def load_entry_for_edit(self, text: str, timestamp: str) -> None:
         """Load a history entry into the transcription display for editing."""
+        if not text or not timestamp:
+            self.transcription_display.clear()
+            self._current_entry_timestamp = None
+            self.save_btn.setEnabled(False)
+            return
+
         self.transcription_display.setPlainText(text)
         self._current_entry_timestamp = timestamp
         self.save_btn.setEnabled(False)  # Not edited yet
-        
-        # Set focus and cursor at end
-        self.transcription_display.setFocus()
-        cursor = self.transcription_display.textCursor()
-        cursor.movePosition(cursor.End)
-        self.transcription_display.setTextCursor(cursor)
 
     def _export_history(self) -> None:
         """Show file dialog and export history."""
+        if self.history_widget.entry_count() == 0:
+            self.statusBar().showMessage("No history to export", 2000)
+            return
+
         file_path, selected_filter = QFileDialog.getSaveFileName(
             self,
             "Export History",
@@ -790,6 +1039,29 @@ class MainWindow(QMainWindow):
             self.history_manager.clear()
             self.history_widget.clear()
             self.statusBar().showMessage("History cleared", 2000)
+            self._update_history_actions(0)
+
+    def _open_history_file(self) -> None:
+        """Open the history JSONL file in the default system handler."""
+        path = getattr(self.history_manager, "history_file", None)
+        if not path:
+            QMessageBox.warning(self, "History File", "History file path is unavailable.")
+            return
+
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch(exist_ok=True)
+        except Exception as exc:
+            QMessageBox.warning(self, "History File", f"Could not prepare history file:\n{exc}")
+            return
+
+        opened = QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        if not opened:
+            QMessageBox.warning(
+                self,
+                "History File",
+                f"Could not open history file at:\n{path}",
+            )
 
     def _restore_geometry(self) -> None:
         """Restore window geometry from settings."""
@@ -812,16 +1084,11 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event) -> None:
         """Handle window resize with responsive layout."""
-        width = event.size().width()
-
-            # No splitter orientation when using fixed layout
-
         super().resizeEvent(event)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Hide to tray and emit a one-time notification before exiting."""
         self.settings.setValue("geometry", self.saveGeometry())
-            # No splitter state to save with fixed panels
 
         event.ignore()
         self.hide()
@@ -835,3 +1102,9 @@ class MainWindow(QMainWindow):
             self._hide_notification_shown = True
 
         self.windowCloseRequested.emit()
+
+    def changeEvent(self, event) -> None:  # type: ignore[override]
+        """Sync title bar button state on window state changes."""
+        if event.type() == QEvent.WindowStateChange and hasattr(self, "title_bar"):
+            self.title_bar.sync_state()
+        super().changeEvent(event)
