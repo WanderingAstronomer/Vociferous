@@ -2,6 +2,11 @@
 
 A modern Python 3.12+ speech-to-text dictation application for Linux using OpenAI's Whisper model via faster-whisper.
 
+## Main Window
+
+![Main Window](docs/images/Main_Window.png)
+
+
 ## Features
 
 - **Fast transcription** using faster-whisper (CTranslate2 backend)
