@@ -47,6 +47,7 @@ sudo apt install python3-xlib  # Debian/Ubuntu
 ### 4. GPU Setup (Optional)
 
 For CUDA acceleration, ensure you have:
+
 - NVIDIA GPU with compute capability 5.0+
 - CUDA Toolkit 11.8+ or 12.x
 - cuDNN 8.x matching your CUDA version
@@ -70,6 +71,7 @@ This checks all required packages are importable and reports any missing depende
 ```
 
 This wrapper:
+
 - Sets `LD_LIBRARY_PATH` for CUDA libraries in the venv
 - Suppresses verbose Vulkan warnings with `RUST_LOG=error`
 - Activates the virtual environment

@@ -1,4 +1,4 @@
-# Hotkey System
+# Hotkey System (WIP)
 
 The hotkey system uses pluggable backends to detect key combinations across display servers.
 
@@ -6,11 +6,11 @@ The hotkey system uses pluggable backends to detect key combinations across disp
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                       KeyListener                            │
-│  - Manages backends                                          │
-│  - Parses key combinations                                   │
-│  - Tracks KeyChord state                                     │
-│  - Triggers callbacks on activation/deactivation             │
+│                       KeyListener                           │
+│  - Manages backends                                         │
+│  - Parses key combinations                                  │
+│  - Tracks KeyChord state                                    │
+│  - Triggers callbacks on activation/deactivation            │
 └─────────────────────────────────────────────────────────────┘
                               │
                     uses (Protocol pattern)
@@ -41,6 +41,7 @@ for device in devices:
 ```
 
 **Requirements:**
+
 - User must be in `input` group
 - Works on both Wayland and X11
 - No window focus required (global hotkeys)
@@ -60,6 +61,7 @@ listener.start()
 ```
 
 **Requirements:**
+
 - X11 display server (or XWayland)
 - python3-xlib on some systems
 
@@ -101,7 +103,7 @@ recording_options:
 Keys are specified in lowercase, joined by `+`:
 
 | Example | Keys |
-|---------|------|
+| --- | --- |
 | `alt_right` | Right Alt only |
 | `ctrl+space` | Ctrl (either) + Space |
 | `ctrl+shift+a` | Ctrl + Shift + A |
@@ -125,26 +127,26 @@ key_listener.disable_capture_mode()
 
 In capture mode, normal hotkey detection is bypassed.
 
-## Supported Keys
-
-See [Keycodes Reference](Keycodes-Reference) for the complete list of supported keys.
-
 ## Troubleshooting
 
 ### evdev: Permission denied
+
 ```bash
 sudo usermod -a -G input $USER
 # Log out and back in
 ```
 
 ### pynput: Cannot open display
+
 ```bash
 sudo apt install python3-xlib
 export DISPLAY=:0
 ```
 
 ### Hotkey conflicts
+
 Some desktop environments capture certain keys globally. Try:
+
 - Less common keys (F13-F24, Pause, Scroll Lock)
 - Keys without modifiers
 - Disabling conflicting DE shortcuts

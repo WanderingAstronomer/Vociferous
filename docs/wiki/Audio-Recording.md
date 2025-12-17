@@ -41,26 +41,40 @@ is_speech = vad.is_speech(frame.tobytes(), sample_rate)
 ## Recording Flow
 
 ```
-┌────────────────────────────────────────────────────────────┐
-│                    ResultThread.run()                       │
-├────────────────────────────────────────────────────────────┤
-│  1. statusSignal.emit('recording')                          │
-│  2. Start InputStream with callback                         │
-│  3. Skip first 150ms (avoid hotkey press sounds)            │
-│  4. For each frame:                                         │
-│     - Check VAD: is_speech(frame)?                          │
-│     - If speech detected: reset silence counter             │
-│     - If silence: increment counter                         │
-│     - If silence > threshold: break                         │
-│  5. Stop InputStream                                        │
-│  6. Return audio as numpy array                             │
-└────────────────────────────────────────────────────────────┘
++--------------------------------------------------------+
+|                   ResultThread.run()                   |
++--------------------------------------------------------+
+| 1) Emit statusSignal: 'recording'                      |
+|                                                        |
+| 2) Start audio InputStream                             |
+|    with callback handler                               |
+|                                                        |
+| 3) Drop first ~150 ms of data                          |
+|    (buffers out hotkey click / key noise)              |
+|                                                        |
+| 4) Loop: process incoming frames:                      |
+|                                                        |
+|      +---------------------------------------------+   |
+|      | If frame contains speech:                   |   |
+|      |     silence_counter = 0                     |   |
+|      | Else:                                       |   |
+|      |     silence_counter += 1                    |   |
+|      |                                             |   |
+|      | If silence_counter > threshold:             |   |
+|      |     break out of loop                       |   |
+|      +---------------------------------------------+   |
+|                                                        |
+| 5) Stop audio InputStream                              |
+|                                                        |
+| 6) Return captured audio (numpy array)                 |
++--------------------------------------------------------+
+
 ```
 
 ## Audio Format
 
 | Parameter | Value | Reason |
-|-----------|-------|--------|
+| --- | --- | --- |
 | Sample rate | 16000 Hz | Whisper's native rate |
 | Channels | 1 (mono) | Speech recognition is mono |
 | Bit depth | 16-bit int | Standard PCM format |
@@ -105,13 +119,16 @@ recording_options:
 ## Common Issues
 
 ### No audio captured
+
 - Check default input device: `pactl list sources short`
 - Verify microphone permissions
 
 ### VAD stops too early
+
 - Increase `silence_duration` in config
 - Lower VAD aggressiveness (hardcoded, requires code change)
 
 ### Hotkey sound in transcription
+
 - The 150ms initial skip should prevent this
 - If still occurring, check key release timing

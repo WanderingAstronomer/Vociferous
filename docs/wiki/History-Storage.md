@@ -22,7 +22,7 @@ Each line is a complete JSON object:
 ### Fields
 
 | Field | Type | Description |
-|-------|------|-------------|
+| --- | --- | --- |
 | `timestamp` | string | ISO-8601 format with microseconds |
 | `text` | string | Transcribed text |
 | `duration_ms` | int | Recording duration in milliseconds |
@@ -96,6 +96,7 @@ Rotation happens automatically after each write.
 ## Export Formats
 
 ### Plain Text (.txt)
+
 ```
 [2025-01-15T10:30:45]
 Hello world
@@ -105,6 +106,7 @@ Another transcription
 ```
 
 ### CSV
+
 ```csv
 Timestamp,Text,Duration (ms)
 2025-01-15T10:30:45,Hello world,2500
@@ -112,6 +114,7 @@ Timestamp,Text,Duration (ms)
 ```
 
 ### Markdown
+
 ```markdown
 # Vociferous Transcription History
 
@@ -141,9 +144,9 @@ class HistoryEntry:
     timestamp: str      # ISO-8601
     text: str
     duration_ms: int = 0
-    
+
     def to_json(self) -> str: ...
-    
+
     @classmethod
     def from_json(cls, json_str: str) -> 'HistoryEntry': ...
 ```

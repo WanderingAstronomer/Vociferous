@@ -221,45 +221,49 @@ Same pattern as email composition: dictate, then paste into the editor.
 This diagram shows the current main components at a high level, with output constrained to clipboard + history.
 
 ```mermaid
-graph TB
+graph LR
     subgraph Entry["Entry Point"]
-        run[run.py / scripts/run.py]
-        sh[vociferous.sh]
+        run["run.py / scripts/run.py"]
+        sh["vociferous.sh"]
     end
 
     subgraph Core["Core Application"]
-        main[main.py<br/>VociferousApp]
-        config[ConfigManager]
-        history[HistoryManager]
+        main["main.pyVociferousApp"]
+        config["ConfigManager"]
+        history["HistoryManager"]
     end
 
     subgraph Input["Input Handling"]
-        listener[KeyListener]
-        evdev[EvdevBackend]
-        pynput_in[PynputBackend]
+        listener["KeyListener"]
+        evdev["EvdevBackend"]
+        pynput_in["PynputBackend"]
     end
 
     subgraph Audio["Audio + Transcription"]
-        worker[ResultThread / Worker]
-        transcribe[Whisper via faster-whisper]
+        worker["ResultThread / Worker"]
+        transcribe["Whisper via faster-whisper"]
     end
 
     subgraph Output["Output"]
-        clipboard[Clipboard]
-        ui[MainWindow UI]
+        clipboard["Clipboard"]
+        ui["MainWindow UI"]
     end
 
-    sh --> run --> main
+    sh --> run
+    run --> main
+
     main --> config
     main --> history
+
     main --> listener
-    main --> worker
-    worker --> transcribe
-    main --> clipboard
-    main --> ui
     listener --> evdev
     listener --> pynput_in
-    history --> ui
+
+    main --> worker
+    worker --> transcribe
+
+    main --> clipboard
+    main --> ui
 ```
 
 ---
@@ -348,14 +352,14 @@ Clipboard-first output is the default.
 
 ```mermaid
 flowchart LR
-    KB[Keyboard] --> KL[KeyListener]
-    KL -->|toggle| RT[Recording/Transcription Worker]
-    MIC[Microphone] --> RT
-    RT --> WH[faster-whisper]
-    WH --> OUT[Text Result]
-    OUT --> CLIP[Clipboard]
-    OUT --> HIST[History (JSONL)]
-    OUT --> UI[UI display]
+    KB["Keyboard"] --> KL["KeyListener"]
+    KL -->|toggle| RT["Recording / Transcription Worker"]
+    MIC["Microphone"] --> RT
+    RT --> WH["faster-whisper"]
+    WH --> OUT["Text Result"]
+    OUT --> CLIP["Clipboard"]
+    OUT --> HIST["History (JSONL)"]
+    OUT --> UI["UI display"]
 ```
 
 ---
@@ -365,30 +369,33 @@ flowchart LR
 The main rule is: **UI stays on the Qt main thread**, audio/transcription runs off-thread.
 
 ```mermaid
-graph TB
+graph LR
     subgraph MainThread["Main Thread (Qt Event Loop)"]
-        App[VociferousApp]
-        UI[MainWindow]
-        Tray[System Tray]
-        Signals[Signal Handlers]
+        App["VociferousApp"]
+        UI["MainWindow"]
+        Tray["System Tray"]
+        Signals["Signal Handlers"]
     end
 
-    subgraph ListenerThread["Input Listener Thread (if applicable)"]
-        Listen[listen loop]
+    subgraph ListenerThread["Input Listener Thread (if used)"]
+        Listen["Input listen loop"]
     end
 
     subgraph AudioThread["OS Audio Callback"]
-        Callback[audio callback]
+        Callback["Audio callback"]
     end
 
     subgraph WorkerThread["Transcription Worker (QThread/Thread)"]
-        Record[record + buffer]
-        Transcribe[transcribe]
+        Record["Record + buffer"]
+        Transcribe["Transcription task"]
     end
 
-    ListenerThread -->|callbacks| MainThread
-    AudioThread -->|queue/buffer| WorkerThread
-    WorkerThread -->|Qt signals| MainThread
+    Listen -->|callback events| Signals
+    Callback -->|audio buffer/queue| Record
+    Record --> Transcribe
+    Transcribe -->|Qt signals| Signals
+    Signals --> UI
+    Signals --> Tray
 ```
 
 ---

@@ -13,7 +13,7 @@ After transcription completes, the text is copied to your clipboard. Paste with 
 ## Status Indicators
 
 | Status | UI Display |
-|--------|------------|
+| --- | --- |
 | Ready/Idle | Status text is blank |
 | Recording | "Recording" |
 | Transcribing | "Transcribing" |
@@ -21,6 +21,7 @@ After transcription completes, the text is copied to your clipboard. Paste with 
 ## Voice Activity Detection
 
 While recording, VAD (Voice Activity Detection) monitors your audio:
+
 - Detects speech vs. silence
 - Trims silence from the audio buffer
 - Improves transcription quality
@@ -30,6 +31,7 @@ VAD does **not** automatically stop recording in the current version. You must p
 ## Cancel Recording
 
 To abort a recording without transcribing:
+
 - Click the cancel button in the UI
 - The status returns to blank (ready)
 

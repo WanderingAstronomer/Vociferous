@@ -5,7 +5,7 @@ Vociferous uses PyQt5's threading model with signals and slots for thread-safe c
 ## Thread Overview
 
 ```mermaid
-graph TB
+graph LR
     subgraph MainThread["Main Thread (Qt Event Loop)"]
         App[VociferousApp]
         UI[MainWindow]
@@ -26,9 +26,11 @@ graph TB
         Transcribe[transcribe]
     end
 
-    ListenerThread -->|callbacks| MainThread
-    AudioThread -->|queue/buffer| WorkerThread
-    WorkerThread -->|Qt signals| MainThread
+    Listen -->|callback events| Signals
+    Callback -->|audio buffer/queue| Record
+    Record --> Transcribe
+    Transcribe -->|Qt signals| Signals
+    Signals --> UI
 ```
 
 **Key rule:** UI stays on the Qt main thread; audio/transcription runs off-thread.
@@ -42,7 +44,7 @@ PyQt signals are the **only** safe way to communicate between threads:
 class ResultThread(QThread):
     statusSignal = pyqtSignal(str)
     resultSignal = pyqtSignal(str)
-    
+
     def run(self):
         # Worker code runs in separate thread
         self.statusSignal.emit('recording')
@@ -128,24 +130,28 @@ The queue bridges the callback thread and the QThread worker.
 ## Common Pitfalls
 
 ### ❌ Direct UI update from thread
+
 ```python
 def run(self):
     self.main_window.label.setText("Done")  # CRASH!
 ```
 
 ### ✅ Emit signal instead
+
 ```python
 def run(self):
     self.statusSignal.emit("Done")
 ```
 
 ### ❌ Forget to disconnect
+
 ```python
 self.thread.finished.connect(self.cleanup)
 # Thread deleted but cleanup still referenced
 ```
 
 ### ✅ Track and disconnect
+
 ```python
 self._connections.append((self.thread.finished, self.cleanup))
 # Later: disconnect all before deletion

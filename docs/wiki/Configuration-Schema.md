@@ -28,7 +28,7 @@ section_name:
 ### model_options
 
 | Setting | Type | Default | Description |
-|---------|------|---------|-------------|
+| --- | --- | --- | --- |
 | `model` | str | `distil-large-v3` | Whisper model name |
 | `device` | str | `auto` | Inference device: auto, cuda, cpu |
 | `compute_type` | str | `float16` | Precision: float16, float32, int8 |
@@ -37,7 +37,7 @@ section_name:
 ### recording_options
 
 | Setting | Type | Default | Description |
-|---------|------|---------|-------------|
+| --- | --- | --- | --- |
 | `activation_key` | str | `alt_right` | Key to trigger recording |
 | `input_backend` | str | `auto` | Input backend: auto, evdev, pynput |
 | `recording_mode` | str | `press_to_toggle` | Mode: press_to_toggle, hold_to_record |
@@ -48,7 +48,7 @@ section_name:
 ### output_options
 
 | Setting | Type | Default | Description |
-|---------|------|---------|-------------|
+| --- | --- | --- | --- |
 | `max_history_entries` | int | `1000` | Maximum history entries to keep |
 | `print_to_terminal` | bool | `true` | Print status to terminal |
 | `add_trailing_space` | bool | `true` | Add space after transcription |
@@ -89,6 +89,7 @@ def on_config_changed(self, section: str, key: str, value):
 ## Internal Settings
 
 Settings with `_internal: true` are not shown in the Settings dialog:
+
 - `input_backend` - auto-detected based on display server
 - `sample_rate` - fixed at 16kHz for Whisper
 - `min_duration` - rarely needs adjustment

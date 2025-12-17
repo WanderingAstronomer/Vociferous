@@ -27,23 +27,26 @@ A modern Python 3.12+ speech-to-text dictation application for Linux using OpenA
 [Architecture — Deep-Dive Systems Guide](ARCHITECTURE) - The master document detailing Vociferous's architecture, design patterns, and components. This wiki should be sufficient to understand and contribute to the codebase without looking here. It's pretty much just a legacy doc.
 
 ### Getting Started
+
 - [Installation Guide](Installation-Guide) - Complete setup instructions
 - [Recording](Recording) - How recording works
 - [Troubleshooting](Troubleshooting) - Common issues and solutions
 
 ### Architecture
+
 - [Backend Architecture](Backend-Architecture) - Module structure and design patterns
 - [Threading Model](Threading-Model) - Qt signals/slots and worker threads
 - [Configuration Schema](Configuration-Schema) - YAML-based settings system
 
 ### Components
+
 - [Audio Recording](Audio-Recording) - Microphone capture and VAD filtering
 - [Hotkey System](Hotkey-System) - evdev/pynput backends and key detection
 - [Text Output](Text-Output) - Clipboard workflow
 - [History Storage](History-Storage) - JSONL persistence and rotation
 
 ### Reference
-- [Keycodes Reference](Keycodes-Reference) - Supported keys for hotkey binding
+
 - [Config Options](Config-Options) - All configuration values explained
 
 ## Requirements
@@ -56,20 +59,71 @@ A modern Python 3.12+ speech-to-text dictation application for Linux using OpenA
 ## Project Structure
 
 ```
-src/
-├── main.py           # Application orchestrator
-├── key_listener.py   # Input backend (evdev/pynput)
-├── transcription.py  # Whisper model wrapper
-├── result_thread.py  # Audio recording thread
-├── history_manager.py # JSONL storage
-├── input_simulation.py # Text injection
-├── utils.py          # ConfigManager singleton
-└── ui/               # PyQt5 widgets
-    ├── main_window.py
-    ├── settings_dialog.py
-    └── history_widget.py
+.
+├── CHANGELOG.md
+├── docs
+│   ├── images
+│   │   └── main_window.png
+│   └── wiki
+│       ├── ARCHITECTURE.md
+│       ├── Audio-Recording.md
+│       ├── Backend-Architecture.md
+│       ├── Config-Options.md
+│       ├── Configuration-Schema.md
+│       ├── History-Storage.md
+│       ├── Home.md
+│       ├── Hotkey-System.md
+│       ├── Installation-Guide.md
+│       ├── Keycodes-Reference.md
+│       ├── Recording.md
+│       ├── Text-Output.md
+│       ├── Threading-Model.md
+│       └── Troubleshooting.md
+├── .github
+│   └── copilot-instructions.md
+├── .gitignore
+├── icons
+│   ├── 192x192.png
+│   ├── 512x512.png
+│   └── favicon.ico
+├── LICENSE
+├── pyproject.toml
+├── pytest.ini
+├── README.md
+├── requirements.txt
+├── scripts
+│   ├── check_deps.py
+│   ├── install-desktop-entry.sh
+│   ├── install.sh
+│   ├── README.md
+│   ├── run.py
+│   └── uninstall-desktop-entry.sh
+├── src
+│   ├── config_schema.yaml
+│   ├── history_manager.py
+│   ├── input_simulation.py
+│   ├── key_listener.py
+│   ├── main.py
+│   ├── result_thread.py
+│   ├── transcription.py
+│   ├── ui
+│   │   ├── history_widget.py
+│   │   ├── hotkey_widget.py
+│   │   ├── keycode_mapping.py
+│   │   ├── main_window.py
+│   │   ├── output_options_widget.py
+│   │   └── settings_dialog.py
+│   └── utils.py
+├── tests
+│   ├── conftest.py
+│   ├── __init__.py
+│   ├── test_config.py
+│   ├── test_input_simulation.py
+│   ├── test_key_listener.py
+│   ├── test_settings.py
+│   ├── test_transcription.py
+│   └── test_wayland_compat.py
+└── vociferous.sh
+
+10 directories, 55 files
 ```
-
-## License
-
-MIT License - see [LICENSE](../LICENSE)

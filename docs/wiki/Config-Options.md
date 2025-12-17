@@ -13,6 +13,7 @@ Settings for the Whisper transcription model.
 **Internal:** Yes (not shown in Settings dialog)
 
 The Whisper model to use for transcription. Options:
+
 - `distil-large-v3` - Faster, slightly less accurate (recommended)
 - `large-v3` - Full model, highest accuracy
 - `medium` - Balanced speed/accuracy
@@ -27,6 +28,7 @@ The Whisper model to use for transcription. Options:
 **Options:** `auto`, `cuda`, `cpu`
 
 Where to run the model:
+
 - `auto` - Detect GPU, fall back to CPU
 - `cuda` - Force GPU (requires NVIDIA + CUDA)
 - `cpu` - Force CPU only
@@ -38,6 +40,7 @@ Where to run the model:
 **Options:** `float16`, `float32`, `int8`
 
 Numerical precision:
+
 - `float16` - GPU only, fastest, good accuracy
 - `float32` - Any device, slower, full precision
 - `int8` - CPU only, quantized, smallest memory
@@ -48,6 +51,7 @@ Numerical precision:
 **Default:** `en`
 
 ISO-639-1 language code. Common values:
+
 - `en` - English
 - `es` - Spanish
 - `de` - German
@@ -71,6 +75,7 @@ Settings for audio capture and hotkey behavior.
 Key combination to trigger recording. See [Keycodes Reference](Keycodes-Reference).
 
 Examples:
+
 - `alt_right` - Right Alt key
 - `ctrl+space` - Ctrl + Space
 - `f13` - F13 key
@@ -83,6 +88,7 @@ Examples:
 **Internal:** Yes
 
 Which input backend to use:
+
 - `auto` - Detect based on display server
 - `evdev` - Linux evdev (Wayland, requires input group)
 - `pynput` - Cross-platform (X11)
@@ -94,6 +100,7 @@ Which input backend to use:
 **Internal:** Yes (not configurable)
 
 Recording mode is fixed at `press_to_toggle`:
+
 - Press activation key to start recording
 - Press again to stop and transcribe
 

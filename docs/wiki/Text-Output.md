@@ -38,6 +38,7 @@ Direct Wayland clipboard access when pyperclip is unavailable.
 ### Wayland Security Model
 
 Wayland restricts applications from:
+
 - Simulating keystrokes to other applications
 - Injecting text into other windows
 - Accessing other applications' input focus
@@ -52,6 +53,7 @@ Wayland restricts applications from:
 ## Post-Processing
 
 Before copying to clipboard, the transcription receives light post-processing:
+
 - Leading/trailing whitespace is trimmed
 - A trailing space is appended (current default behavior)
 
@@ -77,7 +79,8 @@ Before copying to clipboard, the transcription receives light post-processing:
 - Ensure `wl-clipboard` is installed (Wayland): `sudo apt install wl-clipboard`
 - Check if pyperclip has a working backend
 
-### Wrong Content Pasted
+### Wrong Content Pasted / No Content Pasted
 
 - Another application may have overwritten the clipboard
 - Paste immediately after transcription completes
+- There is a known bug (a security feature of Wayland, really) where the auto-copy to clipboard feature does not work unless you've selected the Vociferous GUI as the active window. A touch annoying, but ultimately no terrible to work with.
