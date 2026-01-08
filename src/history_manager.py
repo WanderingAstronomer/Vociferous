@@ -1,13 +1,16 @@
 """
-Transcription history management with JSONL storage.
+Transcription history management with SQLite storage.
 
-Each transcription is stored as a JSON object per line in ~/.config/vociferous/history.jsonl.
-Supports append-only writes, rotation, and export.
+Replaces JSONL storage with structured database supporting:
+- Immutable raw_text (audit baseline)
+- Editable normalized_text (refinement target)
+- Focus group membership (Phase 2)
+- Efficient queries and updates
 """
 import csv
-import json
 import logging
-from dataclasses import asdict, dataclass
+import sqlite3
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -15,9 +18,12 @@ from utils import ConfigManager
 
 logger = logging.getLogger(__name__)
 
-# History file location
+# History database location
 HISTORY_DIR = Path.home() / '.config' / 'vociferous'
-HISTORY_FILE = HISTORY_DIR / 'history.jsonl'
+HISTORY_DB = HISTORY_DIR / 'vociferous.db'
+
+# Schema version for future migrations
+SCHEMA_VERSION = 1
 
 
 @dataclass(slots=True)
@@ -26,16 +32,6 @@ class HistoryEntry:
     timestamp: str
     text: str
     duration_ms: int
-
-    @classmethod
-    def from_json(cls, json_str: str) -> 'HistoryEntry':
-        """Parse from JSON line."""
-        data = json.loads(json_str)
-        return cls(**data)
-
-    def to_json(self) -> str:
-        """Serialize to JSON line."""
-        return json.dumps(asdict(self), ensure_ascii=False)
 
     def to_display_string(self, max_length: int = 80) -> str:
         """Format for display in list widget: [HH:MM:SS] text preview..."""
@@ -49,34 +45,100 @@ class HistoryEntry:
 
 class HistoryManager:
     """
-    Manages transcription history with JSONL storage.
+    Manages transcription history with SQLite storage.
 
-    Append operations are atomic on most filesystems.
-    Rotation keeps file size bounded when entries exceed max_history_entries.
+    Maintains API compatibility with JSONL-based implementation while
+    providing efficient updates, deletes, and queries.
+
+    Schema enforces:
+    - raw_text immutability (never updated after creation)
+    - normalized_text editability (target for refinement/edits)
     """
 
     def __init__(self, history_file: Path | None = None) -> None:
-        """Initialize history manager with optional custom file path."""
-        self.history_file = history_file or HISTORY_FILE
+        """Initialize history manager with optional custom database path."""
+        self.history_file = history_file or HISTORY_DB
         self.history_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Create file if doesn't exist
-        if not self.history_file.exists():
-            self.history_file.touch()
+        self._init_database()
+
+    def _init_database(self) -> None:
+        """Initialize database schema and versioning."""
+        with sqlite3.connect(self.history_file) as conn:
+            conn.execute('PRAGMA foreign_keys = ON')
+
+            # Schema versioning table
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    version INTEGER PRIMARY KEY,
+                    applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Focus groups (Phase 2, created now to avoid ALTER later)
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS focus_groups (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Transcripts table
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS transcripts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL UNIQUE,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    raw_text TEXT NOT NULL,
+                    normalized_text TEXT NOT NULL,
+                    duration_ms INTEGER DEFAULT 0,
+                    focus_group_id INTEGER,
+                    FOREIGN KEY (focus_group_id) REFERENCES focus_groups(id) ON DELETE SET NULL
+                )
+            ''')
+
+            # Indexes for efficient queries
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_transcripts_created
+                ON transcripts(created_at DESC)
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_transcripts_timestamp
+                ON transcripts(timestamp)
+            ''')
+            conn.execute('''
+                CREATE INDEX IF NOT EXISTS idx_transcripts_focus
+                ON transcripts(focus_group_id)
+            ''')
+
+            # Record schema version
+            conn.execute('''
+                INSERT OR IGNORE INTO schema_version (version) VALUES (?)
+            ''', (SCHEMA_VERSION,))
+
+            conn.commit()
 
     def add_entry(self, text: str, duration_ms: int = 0) -> HistoryEntry:
-        """Add new transcription to history. Returns the created entry."""
-        entry = HistoryEntry(
-            timestamp=datetime.now().isoformat(),
-            text=text,
-            duration_ms=duration_ms
-        )
+        """
+        Add new transcription to history. Returns the created entry.
+
+        Sets both raw_text and normalized_text to the same initial value.
+        raw_text will never be modified after this point.
+        """
+        timestamp = datetime.now().isoformat()
 
         try:
-            with open(self.history_file, 'a', encoding='utf-8') as f:
-                f.write(entry.to_json() + '\n')
-        except OSError as e:
-            logger.error(f"Failed to write history entry: {e}")
+            with sqlite3.connect(self.history_file) as conn:
+                conn.execute('''
+                    INSERT INTO transcripts (timestamp, raw_text, normalized_text, duration_ms)
+                    VALUES (?, ?, ?, ?)
+                ''', (timestamp, text, text, duration_ms))
+
+                conn.commit()
+
+        except sqlite3.Error as e:
+            logger.error(f"Failed to add history entry: {e}")
 
         # Check if rotation needed
         max_entries = ConfigManager.get_config_value(
@@ -85,119 +147,96 @@ class HistoryManager:
         if max_entries > 0:
             self._rotate_if_needed(max_entries)
 
-        return entry
+        return HistoryEntry(
+            timestamp=timestamp,
+            text=text,
+            duration_ms=duration_ms
+        )
 
     def get_recent(self, limit: int = 100) -> list[HistoryEntry]:
         """Get most recent entries (newest first)."""
-        entries = []
-
         try:
-            with open(self.history_file, encoding='utf-8') as f:
-                lines = f.readlines()
+            with sqlite3.connect(self.history_file) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute('''
+                    SELECT timestamp, normalized_text, duration_ms
+                    FROM transcripts
+                    ORDER BY id DESC
+                    LIMIT ?
+                ''', (limit,))
 
-            # Parse last N lines (newest at end of file)
-            for line in lines[-limit:]:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entry = HistoryEntry.from_json(line)
-                    entries.append(entry)
-                except json.JSONDecodeError:
-                    logger.warning(f"Skipping invalid history line: {line[:50]}")
+                entries = []
+                for row in cursor:
+                    entries.append(HistoryEntry(
+                        timestamp=row['timestamp'],
+                        text=row['normalized_text'],  # Return editable version
+                        duration_ms=row['duration_ms']
+                    ))
 
-            # Reverse to show newest first
-            entries.reverse()
+                return entries
 
-        except FileNotFoundError:
-            pass  # No history yet
-        except OSError as e:
+        except sqlite3.Error as e:
             logger.error(f"Failed to read history: {e}")
-
-        return entries
+            return []
 
     def update_entry(self, timestamp: str, new_text: str) -> bool:
-        """Update an existing entry's text by timestamp. Returns success."""
+        """
+        Update an existing entry's normalized_text by timestamp.
+
+        raw_text is NEVER modified to maintain audit baseline.
+        Returns success status.
+        """
         try:
-            entries = []
-            found = False
+            with sqlite3.connect(self.history_file) as conn:
+                cursor = conn.execute('''
+                    UPDATE transcripts
+                    SET normalized_text = ?
+                    WHERE timestamp = ?
+                ''', (new_text, timestamp))
 
-            # Read all entries
-            with open(self.history_file, encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entry = HistoryEntry.from_json(line)
-                        if entry.timestamp == timestamp:
-                            # Update this entry
-                            entry = HistoryEntry(
-                                timestamp=timestamp,
-                                text=new_text,
-                                duration_ms=entry.duration_ms
-                            )
-                            found = True
-                        entries.append(entry)
-                    except json.JSONDecodeError:
-                        logger.warning(f"Skipping invalid history line: {line[:50]}")
+                conn.commit()
 
-            if not found:
-                return False
+                if cursor.rowcount > 0:
+                    logger.info(f"Updated history entry: {timestamp}")
+                    return True
+                else:
+                    logger.warning(f"Entry not found for update: {timestamp}")
+                    return False
 
-            # Write all entries back
-            with open(self.history_file, 'w', encoding='utf-8') as f:
-                for entry in entries:
-                    f.write(entry.to_json() + '\n')
-
-            logger.info(f"Updated history entry: {timestamp}")
-            return True
-
-        except OSError as e:
+        except sqlite3.Error as e:
             logger.error(f"Failed to update history entry: {e}")
             return False
 
     def delete_entry(self, timestamp: str) -> bool:
         """Delete a history entry by timestamp."""
         try:
-            entries = []
-            removed = False
+            with sqlite3.connect(self.history_file) as conn:
+                cursor = conn.execute('''
+                    DELETE FROM transcripts
+                    WHERE timestamp = ?
+                ''', (timestamp,))
 
-            with open(self.history_file, encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entry = HistoryEntry.from_json(line)
-                        if entry.timestamp == timestamp:
-                            removed = True
-                            continue
-                        entries.append(entry)
-                    except json.JSONDecodeError:
-                        logger.warning(f"Skipping invalid history line: {line[:50]}")
+                conn.commit()
 
-            if not removed:
-                return False
+                if cursor.rowcount > 0:
+                    logger.info(f"Deleted history entry: {timestamp}")
+                    return True
+                else:
+                    logger.warning(f"Entry not found for deletion: {timestamp}")
+                    return False
 
-            with open(self.history_file, 'w', encoding='utf-8') as f:
-                for entry in entries:
-                    f.write(entry.to_json() + '\n')
-
-            logger.info(f"Deleted history entry: {timestamp}")
-            return True
-
-        except OSError as e:
+        except sqlite3.Error as e:
             logger.error(f"Failed to delete history entry: {e}")
             return False
 
     def clear(self) -> None:
-        """Clear all history (truncate file)."""
+        """Clear all history (delete all transcripts)."""
         try:
-            self.history_file.unlink(missing_ok=True)
-            self.history_file.touch()
-            logger.info("History cleared")
-        except OSError as e:
+            with sqlite3.connect(self.history_file) as conn:
+                conn.execute('DELETE FROM transcripts')
+                conn.commit()
+                logger.info("History cleared")
+        except sqlite3.Error as e:
             logger.error(f"Failed to clear history: {e}")
 
     def export_to_file(self, export_path: Path, format: str = 'txt') -> bool:
@@ -269,18 +308,27 @@ class HistoryManager:
     def _rotate_if_needed(self, max_entries: int) -> None:
         """Remove oldest entries if exceeding limit."""
         try:
-            with open(self.history_file, encoding='utf-8') as f:
-                lines = f.readlines()
+            with sqlite3.connect(self.history_file) as conn:
+                # Count current entries
+                cursor = conn.execute('SELECT COUNT(*) FROM transcripts')
+                count = cursor.fetchone()[0]
 
-            if len(lines) > max_entries:
-                # Keep only most recent entries
-                with open(self.history_file, 'w', encoding='utf-8') as f:
-                    f.writelines(lines[-max_entries:])
+                if count > max_entries:
+                    # Delete oldest entries (lowest IDs)
+                    conn.execute('''
+                        DELETE FROM transcripts
+                        WHERE id IN (
+                            SELECT id FROM transcripts
+                            ORDER BY id ASC
+                            LIMIT ?
+                        )
+                    ''', (count - max_entries,))
 
-                removed = len(lines) - max_entries
-                logger.info(f"Rotated history: removed {removed} old entries")
+                    conn.commit()
+                    removed = count - max_entries
+                    logger.info(f"Rotated history: removed {removed} old entries")
 
-        except OSError as e:
+        except sqlite3.Error as e:
             logger.warning(f"History rotation failed: {e}")
 
     def _ordinal_suffix(self, n: int) -> str:
