@@ -2,6 +2,70 @@
 
 ---
 
+# v1.2.0 Beta - SQLite Migration
+
+**Date:** January 2026  
+**Status:** Beta
+
+---
+
+## Summary
+
+Major persistence layer overhaul replacing JSONL storage with SQLite database. Introduces foundational schema for future features including focus groups (Phase 2) and content refinement (Phase 4+). All existing functionality preserved with improved performance for updates and queries.
+
+## Changes
+
+### Storage & Data Model
+
+- **Migrated**: Complete replacement of JSONL file storage with SQLite database (`~/.config/vociferous/vociferous.db`)
+- **Added**: `transcripts` table with dual-text architecture:
+  - `raw_text` - Immutable audit baseline (what Whisper produced)
+  - `normalized_text` - Editable content (target for user edits and future refinement)
+  - Both fields initialized to identical values on creation
+- **Added**: `focus_groups` table (currently unused, ready for Phase 2 navigation)
+- **Added**: `schema_version` table for future database migrations
+- **Added**: Auto-increment integer primary keys (`id`) for stable references
+- **Added**: Foreign key constraint from `transcripts.focus_group_id` to `focus_groups(id)` with `ON DELETE SET NULL`
+- **Added**: Database indexes on `id DESC`, `timestamp`, and `focus_group_id` for efficient queries
+- **Enforced**: `raw_text` immutability - no code path modifies raw transcription after creation
+- **Enforced**: Foreign key constraints via `PRAGMA foreign_keys = ON`
+
+### API & Compatibility
+
+- **Preserved**: Complete API compatibility - all `HistoryManager` methods maintain identical signatures
+- **Preserved**: `HistoryEntry` dataclass unchanged (timestamp, text, duration_ms)
+- **Preserved**: Export functionality for txt, csv, and markdown formats
+- **Preserved**: Automatic rotation when exceeding `max_history_entries` config value
+- **Changed**: Internal ordering now uses `id DESC` instead of `created_at DESC` for deterministic sort order
+- **Changed**: Rotation deletes by `id ASC` (oldest entries) instead of timestamp-based sorting
+
+### Testing
+
+- **Added**: Comprehensive test suite with 27 new unit tests covering:
+  - Database initialization and schema validation
+  - CRUD operations (create, read, update, delete)
+  - `raw_text` immutability enforcement
+  - `normalized_text` editability
+  - Export format validation
+  - Rotation behavior
+  - Fixture isolation for clean test state
+- **Added**: Database-backed test fixtures using temporary SQLite files
+- **Verified**: All 77 existing tests pass with zero regressions
+
+### Breaking Changes
+
+- **Removed**: Legacy JSONL storage support (no migration path from existing history files)
+- **Note**: Users will start with fresh history after upgrade - existing `~/.config/vociferous/history.jsonl` is no longer read
+
+## Technical Notes
+
+- SQLite ordered by auto-increment ID ensures insertion order preserved even with rapid successive entries
+- `created_at` timestamp retained for future time-based queries but not used for ordering
+- Schema designed to support Phase 2 (focus groups) and Phase 4+ (refinement) without structural changes
+- Database location consistent with existing config directory pattern
+
+---
+
 # v1.1.1 Beta - Documentation Refresh
 
 **Date:** December 2025  
