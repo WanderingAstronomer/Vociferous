@@ -386,3 +386,207 @@ class TestHistoryEntry:
         # max_length applies to text preview only, display includes timestamp
         assert 'AAAA' in display
         assert len(display) < 100  # Substantially shorter than original
+
+
+class TestFocusGroups:
+    """Test focus group CRUD operations (Phase 2)."""
+
+    def test_create_focus_group(self, history_manager, temp_db):
+        """Should create a new focus group and return its ID."""
+        focus_id = history_manager.create_focus_group('Work')
+
+        assert focus_id is not None
+        assert isinstance(focus_id, int)
+
+        # Verify in database
+        with sqlite3.connect(temp_db) as conn:
+            cursor = conn.execute('SELECT name FROM focus_groups WHERE id = ?', (focus_id,))
+            name = cursor.fetchone()[0]
+
+        assert name == 'Work'
+
+    def test_get_focus_groups_empty(self, history_manager):
+        """Should return empty list when no focus groups exist."""
+        groups = history_manager.get_focus_groups()
+        assert groups == []
+
+    def test_get_focus_groups_ordered_by_creation(self, history_manager):
+        """Should return focus groups ordered by creation date."""
+        id1 = history_manager.create_focus_group('First')
+        id2 = history_manager.create_focus_group('Second')
+        id3 = history_manager.create_focus_group('Third')
+
+        groups = history_manager.get_focus_groups()
+
+        assert len(groups) == 3
+        assert groups[0] == (id1, 'First')
+        assert groups[1] == (id2, 'Second')
+        assert groups[2] == (id3, 'Third')
+
+    def test_rename_focus_group(self, history_manager):
+        """Should rename an existing focus group."""
+        focus_id = history_manager.create_focus_group('Old Name')
+        success = history_manager.rename_focus_group(focus_id, 'New Name')
+
+        assert success is True
+
+        groups = history_manager.get_focus_groups()
+        assert groups[0] == (focus_id, 'New Name')
+
+    def test_rename_nonexistent_focus_group(self, history_manager):
+        """Should return False when renaming non-existent group."""
+        success = history_manager.rename_focus_group(999, 'New Name')
+        assert success is False
+
+    def test_delete_empty_focus_group(self, history_manager):
+        """Should delete a focus group with no transcripts."""
+        focus_id = history_manager.create_focus_group('Empty Group')
+        success = history_manager.delete_focus_group(focus_id)
+
+        assert success is True
+
+        groups = history_manager.get_focus_groups()
+        assert len(groups) == 0
+
+    def test_delete_focus_group_moves_transcripts_to_ungrouped(self, history_manager, temp_db):
+        """Deleting a group should move its transcripts to ungrouped (NULL)."""
+        # Create group and add transcript
+        focus_id = history_manager.create_focus_group('Test Group')
+        entry = history_manager.add_entry('Test text')
+        history_manager.assign_transcript_to_focus_group(entry.timestamp, focus_id)
+
+        # Verify assignment
+        with sqlite3.connect(temp_db) as conn:
+            conn.execute('PRAGMA foreign_keys = ON')  # Ensure FK enabled
+            cursor = conn.execute(
+                'SELECT focus_group_id FROM transcripts WHERE timestamp = ?',
+                (entry.timestamp,)
+            )
+            before_delete = cursor.fetchone()[0]
+        assert before_delete == focus_id
+
+        # Delete group (default: move to ungrouped via ON DELETE SET NULL)
+        success = history_manager.delete_focus_group(focus_id, move_to_ungrouped=True)
+        assert success is True
+
+        # Verify transcript now ungrouped
+        with sqlite3.connect(temp_db) as conn:
+            conn.execute('PRAGMA foreign_keys = ON')  # Ensure FK enabled
+            cursor = conn.execute(
+                'SELECT focus_group_id FROM transcripts WHERE timestamp = ?',
+                (entry.timestamp,)
+            )
+            group_id = cursor.fetchone()[0]
+
+        assert group_id is None  # Ungrouped
+
+    def test_delete_focus_group_blocked_when_has_transcripts(self, history_manager):
+        """Should block deletion if group has transcripts and move_to_ungrouped=False."""
+        focus_id = history_manager.create_focus_group('Test Group')
+        entry = history_manager.add_entry('Test text')
+        history_manager.assign_transcript_to_focus_group(entry.timestamp, focus_id)
+
+        # Try to delete without moving transcripts
+        success = history_manager.delete_focus_group(focus_id, move_to_ungrouped=False)
+
+        assert success is False
+
+        # Group should still exist
+        groups = history_manager.get_focus_groups()
+        assert len(groups) == 1
+
+    def test_assign_transcript_to_focus_group(self, history_manager, temp_db):
+        """Should assign a transcript to a focus group."""
+        focus_id = history_manager.create_focus_group('Work')
+        entry = history_manager.add_entry('Work notes')
+
+        success = history_manager.assign_transcript_to_focus_group(entry.timestamp, focus_id)
+        assert success is True
+
+        # Verify in database
+        with sqlite3.connect(temp_db) as conn:
+            cursor = conn.execute(
+                'SELECT focus_group_id FROM transcripts WHERE timestamp = ?',
+                (entry.timestamp,)
+            )
+            assigned_id = cursor.fetchone()[0]
+
+        assert assigned_id == focus_id
+
+    def test_assign_transcript_to_ungrouped(self, history_manager, temp_db):
+        """Should move a transcript to ungrouped (NULL) when passed None."""
+        focus_id = history_manager.create_focus_group('Work')
+        entry = history_manager.add_entry('Test')
+        history_manager.assign_transcript_to_focus_group(entry.timestamp, focus_id)
+
+        # Move back to ungrouped
+        success = history_manager.assign_transcript_to_focus_group(entry.timestamp, None)
+        assert success is True
+
+        # Verify ungrouped
+        with sqlite3.connect(temp_db) as conn:
+            cursor = conn.execute(
+                'SELECT focus_group_id FROM transcripts WHERE timestamp = ?',
+                (entry.timestamp,)
+            )
+            group_id = cursor.fetchone()[0]
+
+        assert group_id is None
+
+    def test_assign_nonexistent_transcript(self, history_manager):
+        """Should return False when assigning non-existent transcript."""
+        focus_id = history_manager.create_focus_group('Work')
+        success = history_manager.assign_transcript_to_focus_group(
+            '2026-01-01T00:00:00.000000', focus_id
+        )
+        assert success is False
+
+    def test_get_transcripts_by_focus_group(self, history_manager):
+        """Should return only transcripts belonging to specific group."""
+        work_id = history_manager.create_focus_group('Work')
+        personal_id = history_manager.create_focus_group('Personal')
+
+        # Add transcripts to different groups
+        work1 = history_manager.add_entry('Work task 1')
+        work2 = history_manager.add_entry('Work task 2')
+        personal1 = history_manager.add_entry('Personal note')
+
+        history_manager.assign_transcript_to_focus_group(work1.timestamp, work_id)
+        history_manager.assign_transcript_to_focus_group(work2.timestamp, work_id)
+        history_manager.assign_transcript_to_focus_group(personal1.timestamp, personal_id)
+
+        # Get work transcripts
+        work_entries = history_manager.get_transcripts_by_focus_group(work_id)
+
+        assert len(work_entries) == 2
+        assert work_entries[0].text == 'Work task 2'  # Newest first
+        assert work_entries[1].text == 'Work task 1'
+
+    def test_get_ungrouped_transcripts(self, history_manager):
+        """Should return only ungrouped transcripts when passed None."""
+        focus_id = history_manager.create_focus_group('Work')
+
+        # Add mixed transcripts
+        ungrouped1 = history_manager.add_entry('Ungrouped 1')
+        grouped = history_manager.add_entry('Grouped')
+        ungrouped2 = history_manager.add_entry('Ungrouped 2')
+
+        history_manager.assign_transcript_to_focus_group(grouped.timestamp, focus_id)
+
+        # Get ungrouped
+        entries = history_manager.get_transcripts_by_focus_group(None)
+
+        assert len(entries) == 2
+        assert entries[0].text == 'Ungrouped 2'
+        assert entries[1].text == 'Ungrouped 1'
+
+    def test_get_transcripts_by_focus_group_respects_limit(self, history_manager):
+        """Should respect the limit parameter."""
+        focus_id = history_manager.create_focus_group('Test')
+
+        for i in range(10):
+            entry = history_manager.add_entry(f'Entry {i}')
+            history_manager.assign_transcript_to_focus_group(entry.timestamp, focus_id)
+
+        entries = history_manager.get_transcripts_by_focus_group(focus_id, limit=3)
+        assert len(entries) == 3

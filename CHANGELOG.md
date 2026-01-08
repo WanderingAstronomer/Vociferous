@@ -2,6 +2,60 @@
 
 ---
 
+# v1.3.0 Beta - Focus Groups (Data Layer)
+
+**Date:** January 2026  
+**Status:** Beta
+
+---
+
+## Summary
+
+Backend implementation of Focus Groups (Foci) - user-defined organization for transcripts. Provides complete CRUD operations for grouping transcripts by subject or purpose. UI integration deferred to future release.
+
+## Changes
+
+### Focus Group Data Layer
+
+- **Added**: `create_focus_group(name)` - Create new focus groups with user-defined names
+- **Added**: `get_focus_groups()` - Retrieve all focus groups ordered by creation date
+- **Added**: `rename_focus_group(id, new_name)` - Rename existing focus groups
+- **Added**: `delete_focus_group(id, move_to_ungrouped)` - Delete groups with safety controls:
+  - Default behavior: move transcripts to ungrouped (via `ON DELETE SET NULL` foreign key)
+  - Optional blocking: prevent deletion if group contains transcripts
+- **Added**: `assign_transcript_to_focus_group(timestamp, group_id)` - Move transcripts between groups or to ungrouped (None)
+- **Added**: `get_transcripts_by_focus_group(group_id, limit)` - Filter transcripts by group membership
+
+### Database Enforcement
+
+- **Enforced**: Foreign key constraints via `PRAGMA foreign_keys = ON` in all relevant methods
+- **Enforced**: `ON DELETE SET NULL` cascade behavior - deleting a group automatically ungroupes its transcripts
+- **Added**: Transaction-level foreign key enforcement for data integrity
+
+### Testing
+
+- **Added**: 14 comprehensive unit tests covering:
+  - Focus group creation, listing, renaming, deletion
+  - Transcript assignment and filtering by group
+  - Foreign key cascade behavior (ungrouping on delete)
+  - Blocking deletion of non-empty groups
+  - Ungrouped transcript queries (NULL group_id)
+- **Verified**: All 41 tests passing (27 original + 14 focus group tests)
+- **Verified**: Zero regressions in existing functionality
+
+## Behavioral Notes
+
+- **Ungrouped is default**: Transcripts without a focus group assignment have `focus_group_id = NULL`
+- **Exactly one place**: Each transcript belongs to zero or one focus group (no multiple assignments)
+- **Safe deletion**: Foreign key constraint ensures transcripts never reference deleted groups
+
+## UI Status
+
+- **No user-facing changes**: Focus groups are fully implemented in the data layer but not yet exposed in the UI
+- **Future work**: Phase 2 UI integration will add sidebar navigation, group management dialogs, and filtered transcript views
+
+---
+
 # v1.2.0 Beta - SQLite Migration
 
 **Date:** January 2026  
