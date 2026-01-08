@@ -344,3 +344,211 @@ class HistoryManager:
                 return "rd"
             case _:
                 return "th"
+
+    # ========== Focus Group Methods (Phase 2) ==========
+
+    def create_focus_group(self, name: str) -> int | None:
+        """
+        Create a new focus group.
+
+        Args:
+            name: Display name for the focus group
+
+        Returns:
+            Focus group ID on success, None on failure
+        """
+        try:
+            with sqlite3.connect(self.history_file) as conn:
+                cursor = conn.execute('''
+                    INSERT INTO focus_groups (name)
+                    VALUES (?)
+                ''', (name,))
+                conn.commit()
+                return cursor.lastrowid
+
+        except sqlite3.Error as e:
+            logger.error(f"Failed to create focus group: {e}")
+            return None
+
+    def get_focus_groups(self) -> list[tuple[int, str]]:
+        """
+        Get all focus groups.
+
+        Returns:
+            List of (id, name) tuples ordered by creation date
+        """
+        try:
+            with sqlite3.connect(self.history_file) as conn:
+                cursor = conn.execute('''
+                    SELECT id, name
+                    FROM focus_groups
+                    ORDER BY created_at ASC
+                ''')
+                return cursor.fetchall()
+
+        except sqlite3.Error as e:
+            logger.error(f"Failed to get focus groups: {e}")
+            return []
+
+    def rename_focus_group(self, focus_group_id: int, new_name: str) -> bool:
+        """
+        Rename a focus group.
+
+        Args:
+            focus_group_id: ID of the focus group to rename
+            new_name: New display name
+
+        Returns:
+            True on success, False on failure
+        """
+        try:
+            with sqlite3.connect(self.history_file) as conn:
+                cursor = conn.execute('''
+                    UPDATE focus_groups
+                    SET name = ?
+                    WHERE id = ?
+                ''', (new_name, focus_group_id))
+                conn.commit()
+
+                if cursor.rowcount > 0:
+                    logger.info(f"Renamed focus group {focus_group_id} to '{new_name}'")
+                    return True
+                else:
+                    logger.warning(f"Focus group {focus_group_id} not found")
+                    return False
+
+        except sqlite3.Error as e:
+            logger.error(f"Failed to rename focus group: {e}")
+            return False
+
+    def delete_focus_group(self, focus_group_id: int, move_to_ungrouped: bool = True) -> bool:
+        """
+        Delete a focus group.
+
+        Args:
+            focus_group_id: ID of the focus group to delete
+            move_to_ungrouped: If True, move transcripts to ungrouped (NULL).
+                             If False, block deletion if group has transcripts.
+
+        Returns:
+            True on success, False on failure
+        """
+        try:
+            with sqlite3.connect(self.history_file) as conn:
+                conn.execute('PRAGMA foreign_keys = ON')  # Enable FK for this connection
+                
+                # Check if group has transcripts
+                cursor = conn.execute('''
+                    SELECT COUNT(*) FROM transcripts
+                    WHERE focus_group_id = ?
+                ''', (focus_group_id,))
+                count = cursor.fetchone()[0]
+
+                if count > 0 and not move_to_ungrouped:
+                    logger.warning(
+                        f"Cannot delete focus group {focus_group_id}: "
+                        f"contains {count} transcripts"
+                    )
+                    return False
+
+                # Delete the group (foreign key ON DELETE SET NULL handles transcripts)
+                cursor = conn.execute('''
+                    DELETE FROM focus_groups
+                    WHERE id = ?
+                ''', (focus_group_id,))
+                conn.commit()
+
+                if cursor.rowcount > 0:
+                    logger.info(f"Deleted focus group {focus_group_id}")
+                    return True
+                else:
+                    logger.warning(f"Focus group {focus_group_id} not found")
+                    return False
+
+        except sqlite3.Error as e:
+            logger.error(f"Failed to delete focus group: {e}")
+            return False
+
+    def assign_transcript_to_focus_group(
+        self, timestamp: str, focus_group_id: int | None
+    ) -> bool:
+        """
+        Assign a transcript to a focus group (or ungrouped if None).
+
+        Args:
+            timestamp: Timestamp of the transcript to update
+            focus_group_id: Focus group ID, or None for ungrouped
+
+        Returns:
+            True on success, False on failure
+        """
+        try:
+            with sqlite3.connect(self.history_file) as conn:
+                cursor = conn.execute('''
+                    UPDATE transcripts
+                    SET focus_group_id = ?
+                    WHERE timestamp = ?
+                ''', (focus_group_id, timestamp))
+                conn.commit()
+
+                if cursor.rowcount > 0:
+                    group_str = f"group {focus_group_id}" if focus_group_id else "ungrouped"
+                    logger.info(f"Assigned transcript {timestamp} to {group_str}")
+                    return True
+                else:
+                    logger.warning(f"Transcript {timestamp} not found")
+                    return False
+
+        except sqlite3.Error as e:
+            logger.error(f"Failed to assign transcript to focus group: {e}")
+            return False
+
+    def get_transcripts_by_focus_group(
+        self, focus_group_id: int | None, limit: int = 100
+    ) -> list[HistoryEntry]:
+        """
+        Get transcripts belonging to a specific focus group (or ungrouped).
+
+        Args:
+            focus_group_id: Focus group ID, or None for ungrouped transcripts
+            limit: Maximum number of entries to return
+
+        Returns:
+            List of HistoryEntry objects (newest first)
+        """
+        try:
+            with sqlite3.connect(self.history_file) as conn:
+                conn.row_factory = sqlite3.Row
+
+                if focus_group_id is None:
+                    # Get ungrouped transcripts
+                    cursor = conn.execute('''
+                        SELECT timestamp, normalized_text, duration_ms
+                        FROM transcripts
+                        WHERE focus_group_id IS NULL
+                        ORDER BY id DESC
+                        LIMIT ?
+                    ''', (limit,))
+                else:
+                    # Get transcripts for specific group
+                    cursor = conn.execute('''
+                        SELECT timestamp, normalized_text, duration_ms
+                        FROM transcripts
+                        WHERE focus_group_id = ?
+                        ORDER BY id DESC
+                        LIMIT ?
+                    ''', (focus_group_id, limit))
+
+                entries = []
+                for row in cursor:
+                    entries.append(HistoryEntry(
+                        timestamp=row['timestamp'],
+                        text=row['normalized_text'],
+                        duration_ms=row['duration_ms']
+                    ))
+
+                return entries
+
+        except sqlite3.Error as e:
+            logger.error(f"Failed to get transcripts by focus group: {e}")
+            return []
