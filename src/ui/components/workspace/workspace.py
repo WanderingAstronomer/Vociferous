@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.constants import Dimensions, Spacing, Typography, WorkspaceState
+from ui.constants import Spacing, Typography, WorkspaceState
 from ui.utils.clipboard_utils import copy_text
 from ui.widgets.content_panel import ContentPanel
 

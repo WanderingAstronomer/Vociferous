@@ -14,7 +14,7 @@ Visual specification:
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QModelIndex, QRect, Qt
+from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PyQt6.QtWidgets import QStyle, QStyleOptionViewItem
 

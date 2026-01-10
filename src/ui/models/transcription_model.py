@@ -223,7 +223,7 @@ class TranscriptionModel(QAbstractItemModel):
             
             # Root level items (days)
             if not parent.isValid():
-                if 0 <= row < len(self._days):
+                if row < len(self._days):
                     # Create index for day header
                     idx_data = self._make_index_data(True, row, 0)
                     return self.createIndex(row, column, idx_data)
@@ -237,7 +237,7 @@ class TranscriptionModel(QAbstractItemModel):
                 day_idx = parent_data[1]
                 if 0 <= day_idx < len(self._days):
                     entries = self._days[day_idx][2]
-                    if isinstance(entries, list) and 0 <= row < len(entries):
+                    if row < len(entries):
                         idx_data = self._make_index_data(False, day_idx, row)
                         return self.createIndex(row, column, idx_data)
             
@@ -306,7 +306,7 @@ class TranscriptionModel(QAbstractItemModel):
             # The safest check - wrapping isValid in a try/except
             try:
                 is_valid = index.isValid()
-            except:
+            except Exception:
                 return None
             
             if not is_valid:
@@ -321,7 +321,7 @@ class TranscriptionModel(QAbstractItemModel):
                 internal_id = index.internalId()
                 is_day_header, day_idx, entry_idx = self._get_index_data(internal_id)
                 column = index.column()
-            except:
+            except Exception:
                 return None
 
             if is_day_header:
