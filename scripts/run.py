@@ -80,6 +80,7 @@ Python 3.12+ Features:
 - f-strings for path concatenation
 - Unpacking in function calls (`*sys.argv`)
 """
+
 import logging
 import os
 import sys
@@ -97,8 +98,8 @@ def _configure_logging() -> None:
     """
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s | %(levelname)s | %(name)s | %(message)s',
-        datefmt='%H:%M:%S'
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        datefmt="%H:%M:%S",
     )
 
 
@@ -124,49 +125,89 @@ def _preflight_env() -> None:
     - ...forever
     """
     # Sentinel to prevent infinite re-exec loop
-    if os.environ.get('_VOCIFEROUS_ENV_READY') == '1':
+    if os.environ.get("_VOCIFEROUS_ENV_READY") == "1":
         return
 
     # venv lives at project root; this script is under scripts/
-    venv_path = Path(__file__).parent.parent / '.venv'
+    venv_path = Path(__file__).parent.parent / ".venv"
 
     # Find Python version dynamically
-    lib_path = venv_path / 'lib'
+    lib_path = venv_path / "lib"
     if not lib_path.exists():
         return
 
-    python_dirs = list(lib_path.glob('python3.*'))
+    python_dirs = list(lib_path.glob("python3.*"))
     if not python_dirs:
         return
 
-    site_packages = python_dirs[0] / 'site-packages' / 'nvidia'
-    cudnn_lib = site_packages / 'cudnn' / 'lib'
-    cublas_lib = site_packages / 'cublas' / 'lib'
+    site_packages = python_dirs[0] / "site-packages" / "nvidia"
+    cudnn_lib = site_packages / "cudnn" / "lib"
+    cublas_lib = site_packages / "cublas" / "lib"
 
     if cudnn_lib.exists() and cublas_lib.exists():
-        ld_path = os.environ.get('LD_LIBRARY_PATH', '')
+        ld_path = os.environ.get("LD_LIBRARY_PATH", "")
         cudnn_str, cublas_str = str(cudnn_lib), str(cublas_lib)
 
         if cudnn_str not in ld_path or cublas_str not in ld_path:
             # Re-exec with correct LD_LIBRARY_PATH (must be set before process starts)
-            os.environ['LD_LIBRARY_PATH'] = f"{cudnn_str}:{cublas_str}:{ld_path}"
-            os.environ['_VOCIFEROUS_ENV_READY'] = '1'
+            os.environ["LD_LIBRARY_PATH"] = f"{cudnn_str}:{cublas_str}:{ld_path}"
+            os.environ["_VOCIFEROUS_ENV_READY"] = "1"
             os.execv(sys.executable, [sys.executable, *sys.argv])
 
     # Hint CUDA visibility
-    os.environ.setdefault('CUDA_VISIBLE_DEVICES', '0')
+    os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
+
+
+def _configure_qt_logging_rules() -> None:
+    """Set Qt logging rules to quiet expected warnings."""
+    rules = os.environ.get("QT_LOGGING_RULES", "")
+    desired = [
+        "qt.qpa.wayland=false",  # already present to reduce Wayland noise
+        "qt.core.io.fs.watchers.warning=false",  # silence QFileSystemWatcher empties
+        "qt.qpa.tray=false",  # silence all D-Bus tray icon messages
+        "dbus.integration=false",  # silence D-Bus integration warnings
+    ]
+
+    for rule in desired:
+        if rule not in rules.split(";"):
+            rules = f"{rules};{rule}" if rules else rule
+
+    os.environ["QT_LOGGING_RULES"] = rules
+
+
+class _StderrFilter:
+    """Filter stderr to suppress known Qt D-Bus noise."""
+
+    def __init__(self, stream):
+        self._stream = stream
+        self._suppress_patterns = [
+            "QDBusTrayIcon",
+            "org.freedesktop.DBus.Error",
+        ]
+
+    def write(self, text):
+        if not any(pattern in text for pattern in self._suppress_patterns):
+            self._stream.write(text)
+
+    def flush(self):
+        self._stream.flush()
+
+    def fileno(self):
+        return self._stream.fileno()
 
 
 # Add src to path (src is at project root; this script is under scripts/)
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     _configure_logging()
     _preflight_env()
+    _configure_qt_logging_rules()
 
-    # Suppress Qt Wayland warnings that can't be fixed (Wayland design limitation)
-    os.environ['QT_LOGGING_RULES'] = 'qt.qpa.wayland=false'
+    # Filter stderr to suppress Qt D-Bus tray icon noise
+    sys.stderr = _StderrFilter(sys.stderr)
 
     from main import VociferousApp
+
     app = VociferousApp()
     sys.exit(app.run())

@@ -1,6 +1,7 @@
 """
 Tests for key listener and hotkey detection.
 """
+
 import pytest
 
 from key_listener import EvdevBackend, InputEvent, KeyChord, KeyCode, PynputBackend
@@ -11,22 +12,22 @@ class TestKeyCode:
 
     def test_backquote_exists(self):
         """BACKQUOTE key should exist."""
-        assert hasattr(KeyCode, 'BACKQUOTE')
+        assert hasattr(KeyCode, "BACKQUOTE")
         assert KeyCode.BACKQUOTE is not None
 
     def test_modifier_keys_exist(self):
         """Common modifier keys should exist."""
-        assert hasattr(KeyCode, 'CTRL_LEFT')
-        assert hasattr(KeyCode, 'CTRL_RIGHT')
-        assert hasattr(KeyCode, 'SHIFT_LEFT')
-        assert hasattr(KeyCode, 'ALT_LEFT')
-        assert hasattr(KeyCode, 'ALT_RIGHT')
+        assert hasattr(KeyCode, "CTRL_LEFT")
+        assert hasattr(KeyCode, "CTRL_RIGHT")
+        assert hasattr(KeyCode, "SHIFT_LEFT")
+        assert hasattr(KeyCode, "ALT_LEFT")
+        assert hasattr(KeyCode, "ALT_RIGHT")
 
     def test_special_keys_exist(self):
         """Special keys should exist."""
-        assert hasattr(KeyCode, 'SPACE')
-        assert hasattr(KeyCode, 'ENTER')
-        assert hasattr(KeyCode, 'TAB')
+        assert hasattr(KeyCode, "SPACE")
+        assert hasattr(KeyCode, "ENTER")
+        assert hasattr(KeyCode, "TAB")
 
 
 class TestKeyChord:
@@ -98,12 +99,10 @@ class TestKeyListener:
 
         # CTRL and SHIFT are frozensets (any left/right)
         has_ctrl = any(
-            isinstance(k, frozenset) and KeyCode.CTRL_LEFT in k
-            for k in keys
+            isinstance(k, frozenset) and KeyCode.CTRL_LEFT in k for k in keys
         )
         has_shift = any(
-            isinstance(k, frozenset) and KeyCode.SHIFT_LEFT in k
-            for k in keys
+            isinstance(k, frozenset) and KeyCode.SHIFT_LEFT in k for k in keys
         )
         has_space = KeyCode.SPACE in keys
 
@@ -136,6 +135,7 @@ class TestBackendAvailability:
         # This may fail on non-Linux, which is fine
         try:
             import evdev
+
             assert EvdevBackend.is_available() is True
         except ImportError:
             pytest.skip("evdev not installed")
@@ -144,4 +144,4 @@ class TestBackendAvailability:
         """KeyListener should select an available backend."""
         assert key_listener.active_backend is not None
         backend_name = type(key_listener.active_backend).__name__
-        assert backend_name in ['PynputBackend', 'EvdevBackend']
+        assert backend_name in ["PynputBackend", "EvdevBackend"]

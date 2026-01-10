@@ -1,112 +1,72 @@
 # Vociferous - AI Agent Instructions
 
 ## Project Overview
-Vociferous is a modern Python 3.12+ speech-to-text dictation application for Linux using OpenAI's Whisper via faster-whisper. It's a headless PyQt5 app with system tray integration that records audio on hotkey press and injects transcribed text into any application.
+Vociferous is a modern Python 3.12+ speech-to-text dictation application for Linux using OpenAI's Whisper via **faster-whisper**. It features a **PyQt6** GUI with system tray integration, global hotkey support (Wayland/X11), and pluggable input/output backends.
 
-## Architecture & Key Patterns
+## Architecture
 
-### Component Boundaries
-- **[src/main.py](../src/main.py)**: Central orchestrator - coordinates KeyListener → ResultThread → InputSimulator via PyQt5 signals
-- **[src/key_listener.py](../src/key_listener.py)**: Pluggable input backends (evdev for Wayland, pynput for X11) using Protocol pattern
-- **[src/transcription.py](../src/transcription.py)**: Whisper model wrapper with VAD filtering
-- **[src/input_simulation.py](../src/input_simulation.py)**: Text injection with multiple backends (pynput/ydotool/dotool/clipboard)
-- **[src/result_thread.py](../src/result_thread.py)**: QThread handling audio recording + transcription off UI thread
-- **[src/utils.py](../src/utils.py)**: Thread-safe singleton ConfigManager using double-checked locking
+### Core Components
+- **Orchestrator**: `src/main.py` initializes components (`KeyListener`, `ResultThread`, `MainWindow`) and coordinates via Qt signals.
+- **Threading**: `src/result_thread.py` runs audio recording and transcription in a background `QThread`.
+    - **Critical**: Never block the main thread. All heavy lifting (Whisper inference) must be off-thread.
+    - **Communication**: Use `pyqtSignal` for all cross-thread updates.
+- **UI Layer**: Located in `src/ui/`.
+    - Component-based architecture (`src/ui/components/`).
+    - `MainWindow` integrates `Sidebar`, `Workspace`, and `MetricsStrip`.
+    - Styles are often defined inline or in widgets.
+    - **Note**: The UI supports both mouse interaction and keyboard shortcuts.
+- **Configuration**: Singleton `ConfigManager` in `src/utils.py` driven by `src/config_schema.yaml`.
+    - **Pattern**: `ConfigManager.get_config_value("section", "key")`.
+    - **Hot-reload**: Components subscribe to `configChanged` signal.
 
-### Critical Threading Model
-- **Signal/Slot**: All cross-thread communication uses PyQt5 signals (thread-safe by design)
-- **Connection tracking**: Track signal connections in `_thread_connections` list for proper cleanup to prevent memory leaks and crashes
-- **QThread pattern**: Audio/transcription runs in ResultThread, emits signals back to main thread for UI/input simulation
-
-### Configuration System
-- **Schema-driven**: [src/config_schema.yaml](../src/config_schema.yaml) defines structure, types, defaults, and documentation
-- **Hot reloading**: ConfigManager supports runtime config updates
-- **Access pattern**: `ConfigManager.get_config_value('section', 'key')` - always initialize first with `ConfigManager.initialize()`
-
-## Python 3.12+ Features Used
-- `match/case` statements for event handling and pattern matching
-- Union type hints: `Path | str | None` instead of `Optional`
-- `@dataclass(slots=True)` for memory-efficient data classes
-- `@runtime_checkable Protocol` for structural subtyping
-- Modern generic type hints: `list[tuple]`, `dict[str, Any]` without `__future__` imports
-
-## Platform Compatibility
-
-### Wayland vs X11
-- **Input monitoring**: evdev (Wayland + X11, requires `input` group) OR pynput (X11 only)
-- **Text injection**: ydotool/dotool (Wayland, needs uinput access) OR pynput (X11) OR clipboard fallback
-
-### GPU Path Management
-- **Critical**: LD_LIBRARY_PATH must be set BEFORE CUDA imports - see [run.py](../scripts/run.py) re-exec pattern
-- Use `./vociferous.sh` wrapper for GPU, or set `LD_LIBRARY_PATH` to venv's nvidia libs manually
-- Config: `model_options.device: cuda` + `compute_type: float16` for GPU, `cpu` + `float32` for CPU
+### Input/Output Backends
+- **Input (`src/key_listener.py`)**:
+    - **Protocol**: `InputBackend` (start, stop, on_input_event).
+    - **Impls**: `EvdevBackend` (Wayland/Raw), `PynputBackend` (X11).
+- **Output (`src/input_simulation.py`)**:
+    - **Strategies**: `pynput` (X11), `dotool`/`ydotool` (Wayland), `clipboard` (Fallback).
+    - **Injection**: Copies text to clipboard -> triggers Ctrl+V -> restores clipboard (optional).
 
 ## Development Workflows
 
-### Running & Testing
+### Running the App
+**ALWAYS** use the wrapper script to ensure GPU libraries are loaded correctly:
 ```bash
-# Development run (auto-detects GPU)
-python run.py
-
-# GPU-optimized run (sets LD_LIBRARY_PATH)
-./vociferous.sh
-
-# Run tests
-pytest                          # All tests
-pytest tests/test_config.py    # Specific module
-pytest -v                      # Verbose
+python scripts/run.py
 ```
+*Note: `scripts/run.py` sets `LD_LIBRARY_PATH` and re-execs the process before loading CUDA. Do not run `src/main.py` directly if you need GPU acceleration.*
 
-### Dependency Management
-```bash
-# Check for missing dependencies
-python check_deps.py
+### Testing
+- Run all tests: `pytest`
+- Run specific file: `pytest tests/test_ui_integration.py`
+- **Fixtures**: `tests/conftest.py` provides `config_manager`, `key_listener`.
+- **UI Tests**: specific UI tests in `tests/test_ui_components.py`.
 
-# Install all dependencies
-pip install -r requirements.txt
-
-# Format & lint
-ruff check .
-ruff format .
-```
-
-### Testing Patterns
-- **Fixtures**: Use `config_manager` and `key_listener` fixtures from [tests/conftest.py](../tests/conftest.py)
-- **Import testing**: Allowed F401 (unused import) in test files for import-availability checks
-- **Cleanup**: Stop listeners/threads in teardown to prevent pytest hangs
+### Environment
+- **Python**: 3.12+ (Required for type hint features).
+- **Dependencies**: `requirements.txt`.
+    - **Numpy**: `>=2.0.0`
+    - **Whisper**: `faster-whisper` + `ctranslate2`
 
 ## Code Conventions
 
-### Import Organization
-- Standard library → third-party → local modules
-- Use `TYPE_CHECKING` for heavy imports (defer to runtime): `if TYPE_CHECKING: from faster_whisper import WhisperModel`
+### Modern Python (3.12+)
+- **Type Hints**: Use native unions `str | int`, generic collections `list[str]`, `dict[str, Any]`.
+- **Pattern Matching**: Use `match/case` for state machines and event handling (especially in `ResultThread` state and `KeyListener` events).
+- **Dataclasses**: Use `@dataclass(slots=True)` for value objects (e.g. `ThreadResult`).
 
-### Error Handling
-- Use `contextlib.suppress()` for expected exceptions instead of try/except/pass
-- Process cleanup: terminate() → wait(timeout) → kill() → wait() to prevent zombies
+### Qt / UI Patterns
+- **Signals**: Define signals at class level: `mySignal = pyqtSignal(str)`.
+- **Cleanup**: Implement `cleanup()` methods for threads/listeners. Connect `finished` signals to `deleteLater`.
+- **Imports**: Use `if TYPE_CHECKING:` for heavy imports (like `faster_whisper`) to keep startup fast.
+- **Environment**: `os.environ.setdefault("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1")` is set in `main.py` for Wayland/Hyprland compatibility.
 
-### Logging
-- Each module gets logger: `logger = logging.getLogger(__name__)`
-- Log levels: DEBUG for verbose info, INFO for user-visible events, WARNING for recoverable issues
+### GPU & Wayland Specifics
+- **GPU**: CUDA libraries are loaded dynamically. The `scripts/run.py` re-exec pattern is VITAL. Do not bypass it for production/GPU runs.
+- **Wayland**:
+    - Cannot bind global hotkeys via Qt/X11 methods. Must use `evdev` (requires `input` group permissions).
+    - Cannot inject text via standard Qt methods reliably. Must use `dotool`/`ydotool` or clipboard.
 
-### Resource Management
-- Use `deleteLater()` for Qt objects (schedules deletion on event loop)
-- Close subprocess stdin before termination for graceful shutdown
-- Disconnect signals explicitly to prevent memory leaks
-
-## Common Tasks
-
-### Adding New Hotkey Backend
-1. Implement `InputBackend` Protocol in [src/key_listener.py](../src/key_listener.py)
-2. Add to `_create_backend()` selection logic
-3. Update `config_schema.yaml` `input_backend.options`
-
-### Adding New Text Injection Method
-1. Extend `input_method` match/case in [src/input_simulation.py](../src/input_simulation.py)
-2. Implement backend-specific logic (see dotool pattern for subprocess handling)
-3. Add to `config_schema.yaml` `output_options.input_method.options`
-
-### Modifying Transcription Pipeline
-- VAD filtering happens in [src/transcription.py](../src/transcription.py) `transcribe()` function
-- Audio format must be float32 normalized for Whisper (convert from int16 numpy array)
-- Post-processing (spacing, capitalization) in `post_process()` function
+## Configuration
+- **Schema**: Add new options to `src/config_schema.yaml` first.
+- **Access**: `ConfigManager` is the source of truth. Do not hardcode values.

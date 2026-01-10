@@ -1,6 +1,7 @@
 """
 Tests for settings dialog, hotkey widget, and live config updates.
 """
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -12,7 +13,7 @@ class TestKeycodeMapping:
     """Tests for keycode mapping utilities."""
 
     def test_is_modifier(self):
-        from ui.keycode_mapping import is_modifier
+        from ui.utils.keycode_mapping import is_modifier
 
         assert is_modifier(KeyCode.CTRL_LEFT)
         assert is_modifier(KeyCode.SHIFT_RIGHT)
@@ -22,7 +23,7 @@ class TestKeycodeMapping:
         assert not is_modifier(KeyCode.A)
 
     def test_keycode_to_display_name(self):
-        from ui.keycode_mapping import keycode_to_display_name
+        from ui.utils.keycode_mapping import keycode_to_display_name
 
         assert keycode_to_display_name(KeyCode.CTRL_LEFT) == "Ctrl"
         assert keycode_to_display_name(KeyCode.CTRL_RIGHT) == "Ctrl"
@@ -33,7 +34,7 @@ class TestKeycodeMapping:
         assert keycode_to_display_name(KeyCode.SPACE) == "Space"
 
     def test_keycode_to_config_name(self):
-        from ui.keycode_mapping import keycode_to_config_name
+        from ui.utils.keycode_mapping import keycode_to_config_name
 
         assert keycode_to_config_name(KeyCode.CTRL_LEFT) == "ctrl"
         assert keycode_to_config_name(KeyCode.SHIFT_RIGHT) == "shift"
@@ -43,7 +44,7 @@ class TestKeycodeMapping:
         assert keycode_to_config_name(KeyCode.ALT_RIGHT) == "alt"
 
     def test_normalize_hotkey_string(self):
-        from ui.keycode_mapping import normalize_hotkey_string
+        from ui.utils.keycode_mapping import normalize_hotkey_string
 
         assert normalize_hotkey_string("shift+ctrl+a") == "ctrl+shift+a"
         assert normalize_hotkey_string("alt+ctrl+shift") == "ctrl+shift+alt"
@@ -52,7 +53,7 @@ class TestKeycodeMapping:
         assert normalize_hotkey_string("meta+alt+z") == "alt+meta+z"
 
     def test_keycodes_to_strings(self):
-        from ui.keycode_mapping import keycodes_to_strings
+        from ui.utils.keycode_mapping import keycodes_to_strings
 
         display, config = keycodes_to_strings({KeyCode.CTRL_LEFT, KeyCode.A})
         assert "Ctrl" in display

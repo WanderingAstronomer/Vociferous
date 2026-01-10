@@ -1,6 +1,7 @@
 """
 Tests for Wayland/X11 compatibility and input backend selection.
 """
+
 import os
 
 import pytest
@@ -11,22 +12,22 @@ class TestDisplayServer:
 
     def test_detect_session_type(self):
         """Should detect X11 or Wayland session."""
-        session_type = os.environ.get('XDG_SESSION_TYPE', 'unknown')
-        assert session_type in ['x11', 'wayland', 'unknown', 'tty']
+        session_type = os.environ.get("XDG_SESSION_TYPE", "unknown")
+        assert session_type in ["x11", "wayland", "unknown", "tty"]
         print(f"Session type: {session_type}")
 
     def test_wayland_display_set(self):
         """On Wayland, WAYLAND_DISPLAY should be set."""
-        session_type = os.environ.get('XDG_SESSION_TYPE', '')
-        if session_type == 'wayland':
-            wayland_display = os.environ.get('WAYLAND_DISPLAY')
+        session_type = os.environ.get("XDG_SESSION_TYPE", "")
+        if session_type == "wayland":
+            wayland_display = os.environ.get("WAYLAND_DISPLAY")
             assert wayland_display is not None, "WAYLAND_DISPLAY should be set"
 
     def test_x11_display_set(self):
         """On X11, DISPLAY should be set."""
-        session_type = os.environ.get('XDG_SESSION_TYPE', '')
-        if session_type == 'x11':
-            display = os.environ.get('DISPLAY')
+        session_type = os.environ.get("XDG_SESSION_TYPE", "")
+        if session_type == "x11":
+            display = os.environ.get("DISPLAY")
             assert display is not None, "DISPLAY should be set"
 
 
@@ -35,8 +36,8 @@ class TestBackendCompatibility:
 
     def test_pynput_x11_only_warning(self, capsys):
         """pynput should warn if used on Wayland."""
-        session_type = os.environ.get('XDG_SESSION_TYPE', '')
-        if session_type == 'wayland':
+        session_type = os.environ.get("XDG_SESSION_TYPE", "")
+        if session_type == "wayland":
             # pynput won't capture keys on Wayland
             pytest.skip("pynput doesn't work on Wayland - this is expected")
 
@@ -47,15 +48,15 @@ class TestBackendCompatibility:
 
         username = pwd.getpwuid(os.getuid()).pw_name
         try:
-            input_group = grp.getgrnam('input')
+            input_group = grp.getgrnam("input")
             in_members = username in input_group.gr_mem
             is_primary = os.getgid() == input_group.gr_gid
             user_in_input = in_members or is_primary
         except KeyError:
             user_in_input = False
 
-        session_type = os.environ.get('XDG_SESSION_TYPE', '')
-        if session_type == 'wayland' and not user_in_input:
+        session_type = os.environ.get("XDG_SESSION_TYPE", "")
+        if session_type == "wayland" and not user_in_input:
             pytest.fail(
                 f"User '{username}' is not in 'input' group. "
                 f"Run: sudo usermod -aG input {username} (then re-login)"
@@ -65,6 +66,7 @@ class TestBackendCompatibility:
         """evdev should be able to list input devices if permissions are correct."""
         try:
             import evdev
+
             devices = evdev.list_devices()
             assert len(devices) > 0, (
                 "No input devices found. User may not be in 'input' group. "
@@ -75,8 +77,7 @@ class TestBackendCompatibility:
             pytest.skip("evdev not installed")
         except PermissionError:
             pytest.fail(
-                "Permission denied accessing input devices. "
-                "Add user to 'input' group."
+                "Permission denied accessing input devices. Add user to 'input' group."
             )
 
 
@@ -91,7 +92,7 @@ class TestInputGroupMembership:
         username = pwd.getpwuid(os.getuid()).pw_name
 
         try:
-            input_group = grp.getgrnam('input')
+            input_group = grp.getgrnam("input")
 
             # Check primary group
             if os.getgid() == input_group.gr_gid:

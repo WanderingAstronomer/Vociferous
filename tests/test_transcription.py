@@ -1,6 +1,7 @@
 """
 Tests for transcription module.
 """
+
 import numpy as np
 import pytest
 
@@ -13,17 +14,17 @@ class TestTranscriptionFunctions:
         from transcription import post_process_transcription
 
         # Ensure trailing space is enabled
-        config_manager.set_config_value(True, 'output_options', 'add_trailing_space')
+        config_manager.set_config_value(True, "output_options", "add_trailing_space")
 
         result = post_process_transcription("hello world")
-        assert result.endswith(' ')
+        assert result.endswith(" ")
 
     def test_post_process_strips_whitespace(self):
         """Post-processing should strip leading/trailing whitespace."""
         from transcription import post_process_transcription
 
         result = post_process_transcription("  hello world  ")
-        assert result.startswith('hello')  # Leading space removed
+        assert result.startswith("hello")  # Leading space removed
 
     def test_post_process_empty_string(self):
         """Post-processing should handle empty strings."""
@@ -83,5 +84,5 @@ class TestModelLoading:
         from transcription import create_local_model
 
         model = create_local_model()
-        assert hasattr(model, 'transcribe')
+        assert hasattr(model, "transcribe")
         assert callable(model.transcribe)

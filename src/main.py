@@ -4,42 +4,89 @@ Vociferous - Main orchestration module.
 Coordinates KeyListener → ResultThread → clipboard output via Qt signals.
 Tracks signal connections in _thread_connections for proper cleanup.
 """
+
 import logging
 import os
-import subprocess
 import sys
-from contextlib import suppress
 from pathlib import Path
 
-from PyQt5.QtCore import QObject
-from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QAction, QApplication, QMenu, QStyle, QSystemTrayIcon
+from PyQt6.QtCore import QLockFile, QObject, pyqtSignal, pyqtSlot, qInstallMessageHandler
+from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtWidgets import QApplication, QMenu, QStyle, QSystemTrayIcon
 
 from history_manager import HistoryManager
 from key_listener import KeyListener
 from result_thread import ResultThread
 from transcription import create_local_model
-from ui.main_window import MainWindow
-from ui.settings_dialog import SettingsDialog
+from ui.components.main_window import MainWindow
+from ui.components.settings import SettingsDialog
+from ui.utils.clipboard_utils import copy_text
+from ui.widgets.dialogs.custom_dialog import MessageDialog
 from utils import ConfigManager
-
-# Optional clipboard support
-try:
-    import pyperclip
-    HAS_PYPERCLIP = True
-except ImportError:
-    HAS_PYPERCLIP = False
 
 logger = logging.getLogger(__name__)
 
 # Prefer client-side decorations on Wayland so we can draw our own frame
 os.environ.setdefault("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1")
 
+_QT_MESSAGE_HANDLER_INSTALLED = False
+_TRAY_DBUS_ERROR_SEEN = False
+
+
+def _qt_message_handler(_mode, _context, message: str) -> None:
+    global _TRAY_DBUS_ERROR_SEEN
+    if "QDBusTrayIcon encountered a D-Bus error" in message:
+        _TRAY_DBUS_ERROR_SEEN = True
+        return
+    sys.__stderr__.write(f"{message}\n")
+    sys.__stderr__.flush()
+
+
+def _install_qt_message_handler() -> None:
+    global _QT_MESSAGE_HANDLER_INSTALLED
+    if _QT_MESSAGE_HANDLER_INSTALLED:
+        return
+    qInstallMessageHandler(_qt_message_handler)
+    _QT_MESSAGE_HANDLER_INSTALLED = True
+
+
+class _HotkeyDispatcher(QObject):
+    """Dispatch hotkey callbacks onto the Qt main thread.
+
+    KeyListener callbacks run in a background thread. Emitting these signals from
+    that thread ensures the connected slots execute on the main Qt thread.
+    """
+
+    activated = pyqtSignal()
+    deactivated = pyqtSignal()
+
 
 class VociferousApp(QObject):
     """Main application orchestrator coordinating all components."""
 
     def __init__(self) -> None:
+        _install_qt_message_handler()
+        # Check for existing instance BEFORE creating QApplication
+        import tempfile
+
+        lock_file = os.path.join(tempfile.gettempdir(), "vociferous.lock")
+        self.lock = QLockFile(lock_file)
+        # Allow recovery from crashes: if a prior instance dies without releasing
+        # the lock, we still want users to be able to start the app.
+        self.lock.setStaleLockTime(10_000)  # ms
+
+        if not self.lock.tryLock():
+            # Try to recover from a stale lock file (e.g., app crash).
+            if self.lock.removeStaleLockFile() and self.lock.tryLock():
+                pass
+            else:
+                # Show error via stderr to avoid Qt initialization
+                print(
+                    "ERROR: Vociferous is already running. Only one instance allowed.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
         super().__init__()
         self.app = QApplication(sys.argv)
         self.app.setApplicationName("Vociferous")
@@ -50,11 +97,20 @@ class VociferousApp(QObject):
         font.setPointSize(18)
         self.app.setFont(font)
 
+        # DON'T apply stylesheet here - it causes Qt to crash when validating
+        # hierarchical models during widget tree creation.
+        # We'll apply it after all widgets are initialized.
+        # from ui.styles.unified_stylesheet import generate_unified_stylesheet
+        # self.app.setStyleSheet(generate_unified_stylesheet())
+
         # Initialize config
         ConfigManager.initialize()
 
-        # Track active signal connections for cleanup
-        self._thread_connections: list[tuple] = []
+        # Ensure hotkey callbacks are handled on the Qt main thread.
+        self._hotkey_dispatcher = _HotkeyDispatcher()
+        self._hotkey_dispatcher.activated.connect(self.on_activation)
+        self._hotkey_dispatcher.deactivated.connect(self.on_deactivation)
+
         self.settings_dialog: SettingsDialog | None = None
 
         # Initialize components
@@ -66,8 +122,12 @@ class VociferousApp(QObject):
 
         # Key listener for hotkey detection
         self.key_listener = KeyListener()
-        self.key_listener.add_callback("on_activate", self.on_activation)
-        self.key_listener.add_callback("on_deactivate", self.on_deactivation)
+        self.key_listener.add_callback(
+            "on_activate", lambda: self._hotkey_dispatcher.activated.emit()
+        )
+        self.key_listener.add_callback(
+            "on_deactivate", lambda: self._hotkey_dispatcher.deactivated.emit()
+        )
 
         # Load whisper model
         ConfigManager.console_print("Loading Whisper model (this may take a moment)...")
@@ -92,11 +152,13 @@ class VociferousApp(QObject):
         # Cancel recording without transcribing
         self.main_window.cancelRecordingRequested.connect(self._cancel_recording)
 
+        # Connect workspace start/stop signals
+        self.main_window.startRecordingRequested.connect(self.start_result_thread)
+        self.main_window.stopRecordingRequested.connect(self._stop_recording_from_ui)
 
         # System tray
         self.create_tray_icon()
-        self.main_window.set_tray_icon(self.tray_icon)
-        self.main_window.windowCloseRequested.connect(self._on_main_window_hidden)
+        self.main_window.windowCloseRequested.connect(self.exit_app)
 
         # React to configuration changes
         ConfigManager.instance().configChanged.connect(self._on_config_changed)
@@ -105,85 +167,131 @@ class VociferousApp(QObject):
         self.key_listener.start()
 
         activation_key = ConfigManager.get_config_value(
-            'recording_options', 'activation_key'
+            "recording_options", "activation_key"
         )
         ConfigManager.console_print(f"Ready! Press '{activation_key}' to start.")
+        
+        # NOW apply stylesheet after all widgets are initialized
+        # (applying stylesheet during widget tree creation causes Qt crashes)
+        from ui.styles.unified_stylesheet import generate_unified_stylesheet
+        self.app.setStyleSheet(generate_unified_stylesheet())
+
+    def _tray_available(self) -> bool:
+        """Return True if a functional system tray is available."""
+        if sys.platform.startswith("linux"):
+            if not os.environ.get("DBUS_SESSION_BUS_ADDRESS"):
+                logger.warning("D-Bus session bus missing; skipping tray icon.")
+                return False
+            try:
+                from PyQt6.QtDBus import QDBusConnection
+            except Exception as exc:
+                logger.warning(f"QtDBus unavailable; skipping tray icon: {exc}")
+                return False
+
+            bus = QDBusConnection.sessionBus()
+            if not bus.isConnected():
+                logger.warning("D-Bus session bus not connected; skipping tray icon.")
+                return False
+
+            interface = bus.interface()
+            if not (
+                interface
+                and interface.isServiceRegistered("org.kde.StatusNotifierWatcher")
+            ):
+                logger.warning("No StatusNotifierWatcher; skipping tray icon.")
+                return False
+
+            return True
+
+        return QSystemTrayIcon.isSystemTrayAvailable()
 
     def create_tray_icon(self) -> None:
         """Create system tray icon with context menu."""
-        icon = self._build_tray_icon()
-        self.tray_icon = QSystemTrayIcon(icon, self.app)
+        if not self._tray_available():
+            self.tray_icon = None
+            self.main_window.show_and_raise()
+            return
 
-        tray_menu = QMenu()
+        try:
+            icon = self._build_tray_icon()
+            self.tray_icon = QSystemTrayIcon(icon, self.app)
 
-        # Status indicator (non-clickable)
-        status_action = QAction('Vociferous - Ready', self.app)
-        status_action.setEnabled(False)
-        tray_menu.addAction(status_action)
-        self.status_action = status_action
+            tray_menu = QMenu()
 
-        tray_menu.addSeparator()
+            # Status indicator (non-clickable)
+            status_action = QAction("Vociferous - Ready", self.app)
+            status_action.setEnabled(False)
+            tray_menu.addAction(status_action)
+            self.status_action = status_action
 
-        show_hide_action = QAction('Show/Hide Window', self.app)
-        show_hide_action.triggered.connect(self.toggle_main_window)
-        tray_menu.addAction(show_hide_action)
-        self.show_hide_action = show_hide_action
+            tray_menu.addSeparator()
 
-        settings_action = QAction('Settings...', self.app)
-        settings_action.setEnabled(True)
-        settings_action.triggered.connect(self.show_settings)
-        tray_menu.addAction(settings_action)
-        self.settings_action = settings_action
+            show_hide_action = QAction("Show/Hide Window", self.app)
+            show_hide_action.triggered.connect(self.toggle_main_window)
+            tray_menu.addAction(show_hide_action)
+            self.show_hide_action = show_hide_action
 
-        tray_menu.addSeparator()
+            settings_action = QAction("Settings...", self.app)
+            settings_action.setEnabled(True)
+            settings_action.triggered.connect(self.show_settings)
+            tray_menu.addAction(settings_action)
+            self.settings_action = settings_action
 
-        # Exit action
-        exit_action = QAction('Exit', self.app)
-        exit_action.triggered.connect(self.exit_app)
-        tray_menu.addAction(exit_action)
+            tray_menu.addSeparator()
 
-        self.tray_icon.setContextMenu(tray_menu)
-        self.tray_icon.setToolTip("Vociferous - Speech to Text")
-        self.tray_icon.activated.connect(self.on_tray_activated)
-        self.tray_icon.show()
+            # Exit action
+            exit_action = QAction("Exit", self.app)
+            exit_action.triggered.connect(self.exit_app)
+            tray_menu.addAction(exit_action)
+
+            self.tray_icon.setContextMenu(tray_menu)
+            self.tray_icon.setToolTip("Vociferous - Speech to Text")
+            self.tray_icon.activated.connect(self.on_tray_activated)
+            self.tray_icon.show()
+            if _TRAY_DBUS_ERROR_SEEN:
+                logger.warning("Disabling tray icon after D-Bus error.")
+                self.tray_icon.hide()
+                self.tray_icon = None
+        except Exception as e:
+            # D-Bus errors are common on some desktop environments
+            # Tray icon is optional, so just log and continue
+            logger.warning(f"System tray initialization failed (non-fatal): {e}")
+            self.tray_icon = None
 
         # Start with window shown on first launch
         self.main_window.show_and_raise()
 
     def toggle_main_window(self) -> None:
-        """Toggle visibility of the main window."""
-        if self.main_window.isVisible():
-            self.main_window.hide()
-        else:
+        """Toggle window between minimized and visible."""
+        if self.main_window.isMinimized():
             self.main_window.show_and_raise()
+        else:
+            self.main_window.showMinimized()
 
     def on_tray_activated(self, reason):
         """Handle tray icon activation (double-click to toggle window)."""
-        if reason == QSystemTrayIcon.DoubleClick:
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
             self.toggle_main_window()
-
-    def _on_main_window_hidden(self) -> None:
-        """Handle window close event (currently no action needed)."""
-        pass
 
     def show_settings(self) -> None:
         """Open the settings dialog and apply changes immediately."""
         # Create fresh dialog each time to avoid state issues
         dialog = SettingsDialog(self.key_listener, self.main_window)
-        dialog.exec_()
+        dialog.exec()
 
+    @pyqtSlot(str, str, object)
     def _on_config_changed(self, section: str, key: str, value) -> None:
         """Handle live config updates for hotkey, backend, and model changes."""
-        if section == 'recording_options' and key == 'activation_key':
+        if section == "recording_options" and key == "activation_key":
             self.key_listener.update_activation_keys()
             return
 
-        if section == 'recording_options' and key == 'input_backend':
+        if section == "recording_options" and key == "input_backend":
             self.key_listener.update_backend()
             return
 
         # Reload model when model options change
-        if section == 'model_options' and key in {'compute_type', 'device', 'language'}:
+        if section == "model_options" and key in {"compute_type", "device", "language"}:
             self._reload_model()
 
     def _reload_model(self) -> None:
@@ -207,78 +315,74 @@ class VociferousApp(QObject):
                 icon.addFile(str(candidate))
 
         if icon.isNull():
-            icon = QIcon.fromTheme('microphone-sensitivity-high')
+            icon = QIcon.fromTheme("microphone-sensitivity-high")
 
         if icon.isNull():
             app_instance = QApplication.instance()
-            style = self.app.style() if hasattr(self, 'app') else app_instance.style()
-            icon = style.standardIcon(QStyle.SP_MediaPlay) if style else QIcon()
+            if app_instance and isinstance(app_instance, QApplication):
+                style = app_instance.style()
+                icon = (
+                    style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay)
+                    if style
+                    else QIcon()
+                )
+            else:
+                icon = QIcon()
         return icon
 
-    def on_activation(self):
+    @pyqtSlot()
+    def on_activation(self) -> None:
         """Called when activation key is pressed."""
         recording_mode = ConfigManager.get_config_value(
-            'recording_options', 'recording_mode'
+            "recording_options", "recording_mode"
         )
 
         if self.result_thread and self.result_thread.isRunning():
             # Already recording - stop it
-            if recording_mode == 'press_to_toggle':
+            if recording_mode == "press_to_toggle":
                 self.result_thread.stop_recording()
             return
 
         # Start new recording
         self.start_result_thread()
 
-    def on_deactivation(self):
+    @pyqtSlot()
+    def on_deactivation(self) -> None:
         """Called when activation key is released (for hold_to_record mode)."""
         recording_mode = ConfigManager.get_config_value(
-            'recording_options', 'recording_mode'
+            "recording_options", "recording_mode"
         )
 
         if (
-            recording_mode == 'hold_to_record'
+            recording_mode == "hold_to_record"
             and self.result_thread
             and self.result_thread.isRunning()
         ):
             self.result_thread.stop_recording()
 
-    def start_result_thread(self):
-        """Start recording/transcription thread with tracked signal connections."""
+    @pyqtSlot()
+    def start_result_thread(self) -> None:
+        """Start recording/transcription thread with unified signal."""
         if self.result_thread and self.result_thread.isRunning():
             return
 
-        # Clean up any previous thread connections
-        self._disconnect_thread_signals()
-
         self.result_thread = ResultThread(self.local_model)
 
-        # Store connections for later cleanup (allows proper disconnection)
-        status_slot = self.main_window.update_transcription_status
-        self._thread_connections = [
-            (self.result_thread.statusSignal, status_slot),
-            (self.result_thread.statusSignal, self.update_tray_status),
-            (self.result_thread.resultSignal, self.on_transcription_complete),
-        ]
+        # Single unified signal connection - no manual tracking needed
+        self.result_thread.resultReady.connect(self._handle_thread_result)
 
-        # Connect all signals
-        for signal, slot in self._thread_connections:
-            signal.connect(slot)
+        # Connect audio level updates to workspace waveform visualization
+        self.result_thread.audioLevelUpdated.connect(
+            self.main_window.workspace.add_audio_level
+        )
 
-        # Auto-cleanup: when thread finishes, disconnect signals and schedule deletion
+        # Auto-cleanup: when thread finishes, schedule deletion
         self.result_thread.finished.connect(self._on_thread_finished)
         self.result_thread.start()
 
-    def _disconnect_thread_signals(self) -> None:
-        """Safely disconnect all tracked thread signal connections."""
-        for signal, slot in self._thread_connections:
-            with suppress(TypeError, RuntimeError):
-                signal.disconnect(slot)
-        self._thread_connections.clear()
-
+    @pyqtSlot()
     def _on_thread_finished(self) -> None:
-        """Handle thread completion: cleanup signals and schedule deletion."""
-        self._disconnect_thread_signals()
+        """Handle thread completion: schedule deletion."""
         if self.result_thread:
             self.result_thread.deleteLater()
             self.result_thread = None
@@ -288,36 +392,79 @@ class VociferousApp(QObject):
         if self.result_thread and self.result_thread.isRunning():
             self.result_thread.stop()
 
+    @pyqtSlot()
     def _cancel_recording(self) -> None:
         """Cancel recording early without transcribing."""
         if self.result_thread and self.result_thread.isRunning():
             self.result_thread.stop()
 
+    @pyqtSlot()
+    def _stop_recording_from_ui(self) -> None:
+        """Stop recording when user clicks Stop button in workspace."""
+        if self.result_thread and self.result_thread.isRunning():
+            self.result_thread.stop_recording()
+
+    def _handle_thread_result(self, result) -> None:
+        """
+        Handle thread result signals based on state.
+
+        Args:
+            result: ThreadResult containing state, text, duration, and error info
+        """
+        from result_thread import ThreadState
+
+        match result.state:
+            case ThreadState.RECORDING:
+                self.main_window.update_transcription_status("recording")
+                self.update_tray_status("recording")
+            case ThreadState.TRANSCRIBING:
+                self.main_window.update_transcription_status("transcribing")
+                self.update_tray_status("transcribing")
+            case ThreadState.COMPLETE:
+                self.main_window.update_transcription_status("idle")
+                self.update_tray_status("idle")
+                self._on_transcription_complete(result.text, result.duration_ms, result.speech_duration_ms)
+            case ThreadState.ERROR:
+                self.main_window.update_transcription_status("idle")
+                self.update_tray_status("error")
+                if result.error_message:
+                    self._on_recording_error(result.error_message)
+            case ThreadState.IDLE:
+                self.main_window.update_transcription_status("idle")
+                self.update_tray_status("idle")
+
     def update_tray_status(self, status: str) -> None:
         """Update tray icon tooltip based on current status."""
+        if _TRAY_DBUS_ERROR_SEEN and self.tray_icon:
+            self.tray_icon.hide()
+            self.tray_icon = None
+            return
         match status:
-            case 'recording':
-                text = 'Vociferous - Recording...'
-            case 'transcribing':
-                text = 'Vociferous - Transcribing...'
-            case 'error':
-                text = 'Vociferous - Error'
+            case "recording":
+                text = "Vociferous - Recording..."
+            case "transcribing":
+                text = "Vociferous - Transcribing..."
+            case "error":
+                text = "Vociferous - Error"
             case _:
-                text = 'Vociferous - Ready'
-        self.status_action.setText(text)
-        self.tray_icon.setToolTip(text)
+                text = "Vociferous - Ready"
 
-    def on_transcription_complete(self, result: str) -> None:
+        # Update tray icon if it exists (may be None if D-Bus failed)
+        if self.tray_icon:
+            self.status_action.setText(text)
+            self.tray_icon.setToolTip(text)
+
+    def _on_transcription_complete(self, result: str, duration_ms: int, speech_duration_ms: int) -> None:
         """Handle completed transcription: add to history and copy to clipboard."""
         if not result:
             return
 
         # Add to history and display using the persisted entry to keep timestamps aligned
-        entry = self.history_manager.add_entry(result)
+        entry = self.history_manager.add_entry(result, duration_ms=duration_ms, speech_duration_ms=speech_duration_ms)
         self.main_window.display_transcription(entry)
 
         # Always copy to clipboard for manual paste
-        self._copy_to_clipboard(result)
+        copy_text(result)
 
     def on_reinject_requested(self, text: str) -> None:
         """
@@ -327,7 +474,7 @@ class VociferousApp(QObject):
         Does NOT add to history again.
         """
         logger.info(f"Re-copying from history: {text[:50]}...")
-        self._copy_to_clipboard(text)
+        copy_text(text)
 
     def on_edit_entry_requested(self, text: str, timestamp: str) -> None:
         """
@@ -342,18 +489,25 @@ class VociferousApp(QObject):
         logger.info(f"Loading entry for edit: {timestamp}")
         self.main_window.load_entry_for_edit(text, timestamp)
 
-    def _copy_to_clipboard(self, text: str) -> None:
-        """Copy text to clipboard using available method."""
-        if HAS_PYPERCLIP:
-            with suppress(Exception):
-                pyperclip.copy(text)
-                logger.debug("Copied to clipboard via pyperclip")
-                return
+    def _on_recording_error(self, error_message: str) -> None:
+        """Handle recording errors with user-friendly feedback.
 
-        # Fallback to wl-copy (Wayland)
-        with suppress(Exception):
-            subprocess.run(["wl-copy"], input=text, text=True, check=True)
-            logger.debug("Copied to clipboard via wl-copy")
+        Args:
+            error_message: Description of the error
+        """
+        logger.error(f"Recording error: {error_message}")
+
+        # Show error dialog to user
+        dialog = MessageDialog(
+            self.main_window,
+            "Recording Error",
+            f"Unable to record audio.\n\n{error_message}",
+        )
+        dialog.exec()
+
+        # Reset UI state
+        self.main_window.update_transcription_status("idle")
+        self.update_tray_status("idle")
 
     def cleanup(self) -> None:
         """Clean up resources."""
@@ -361,10 +515,13 @@ class VociferousApp(QObject):
         if self.result_thread and self.result_thread.isRunning():
             self.result_thread.stop()
             self.result_thread.wait(2000)  # Wait up to 2 seconds for graceful stop
-        self._disconnect_thread_signals()
 
         if self.key_listener:
             self.key_listener.stop()
+
+        # Release lock file
+        if hasattr(self, "lock"):
+            self.lock.unlock()
 
     def exit_app(self) -> None:
         """Exit the application."""
@@ -373,9 +530,9 @@ class VociferousApp(QObject):
 
     def run(self) -> int:
         """Run the application."""
-        return self.app.exec_()
+        return self.app.exec()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app = VociferousApp()
     sys.exit(app.run())
