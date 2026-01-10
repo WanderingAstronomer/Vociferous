@@ -30,7 +30,7 @@ h11>=0.16.0  # HTTP/1.1 parser
 idna>=3.0  # Internationalized domain names
 
 # User Interface & Display
-PyQt5>=5.15.0
+PyQt6>=6.4.0
 
 # Input & Output (Linux-specific keyboard/clipboard)
 pynput>=1.8.0

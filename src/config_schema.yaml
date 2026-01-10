@@ -67,20 +67,15 @@ recording_options:
 
 # Text output options
 output_options:
-  max_history_entries:
-    value: 1000
-    type: int
-    description: "Maximum history entries to keep."
+  add_trailing_space:
+    value: true
+    type: bool
+    description: "Automatically add a space after each transcription."
   # Internal options
   print_to_terminal:
     value: true
     type: bool
     description: "Print status messages to terminal."
-    _internal: true
-  add_trailing_space:
-    value: true
-    type: bool
-    description: "Add space after transcription."
     _internal: true
     description: "Delay between keystrokes."
     _internal: true

@@ -4,6 +4,7 @@ Configuration Management Module.
 Thread-safe singleton ConfigManager using double-checked locking.
 Schema-driven configuration with YAML validation and hot reloading.
 """
+
 import logging
 import threading
 from contextlib import suppress
@@ -11,10 +12,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal
 
-_DEFAULT_CONFIG_PATH = Path('src') / 'config.yaml'
-_SCHEMA_FILENAME = 'config_schema.yaml'
+_DEFAULT_CONFIG_PATH = Path("src") / "config.yaml"
+_SCHEMA_FILENAME = "config_schema.yaml"
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class ConfigManager(QObject):
 
     # Class-level attributes shared by all instances (though only one exists)
     # The type hint 'ConfigManager | None' uses Python 3.10+ union syntax
-    _instance: 'ConfigManager | None' = None
+    _instance: "ConfigManager | None" = None
     _lock = threading.Lock()
 
     configChanged = pyqtSignal(str, str, object)
@@ -58,7 +59,7 @@ class ConfigManager(QObject):
         return cls._instance.schema
 
     @classmethod
-    def instance(cls) -> 'ConfigManager':
+    def instance(cls) -> "ConfigManager":
         """Return the initialized ConfigManager instance."""
         if cls._instance is None:
             raise RuntimeError("ConfigManager not initialized")
@@ -131,9 +132,10 @@ class ConfigManager(QObject):
 
     def load_default_config(self) -> dict[str, Any]:
         """Extract default values from the schema using recursive pattern matching."""
+
         def extract_value(item: Any) -> Any:
             match item:
-                case {'value': val}:
+                case {"value": val}:
                     return val
                 case dict():
                     return {k: extract_value(v) for k, v in item.items()}
@@ -190,8 +192,8 @@ class ConfigManager(QObject):
         """Log a message if console output is enabled."""
         if not cls._instance:
             return
-        print_enabled = cls._instance.config.get('output_options', {}).get(
-            'print_to_terminal', True
+        print_enabled = cls._instance.config.get("output_options", {}).get(
+            "print_to_terminal", True
         )
         if print_enabled:
             logger.info(message)

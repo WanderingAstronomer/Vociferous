@@ -17,6 +17,8 @@ env/
 dist/
 build/
 *.egg-info/
+.mypy_cache/
+.github/
 
 # OS / editor
 .DS_Store

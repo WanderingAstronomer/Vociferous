@@ -1,0 +1,197 @@
+"""
+UI Constants Package.
+
+Re-exports all constants for convenient import:
+    from ui.constants import Colors, Typography, WorkspaceState, Spacing, Dimensions
+"""
+
+# Spacing
+from .spacing import (
+    APP_OUTER_PADDING,
+    BUTTON_GAP,
+    BUTTON_RADIUS_PILL,
+    BUTTON_RADIUS_RECT,
+    CONTROL_CLUSTER_PADDING,
+    CONTROL_GAP,
+    CONTROL_ROW_GAP,
+    CONTROLS_CONTENT_GAP,
+    GREETING_TOP_MARGIN,
+    HEADER_CONTROLS_GAP,
+    HEADER_RADIUS,
+    HEADER_TO_LIST_GAP,
+    MAJOR_GAP,
+    MINOR_GAP,
+    PANEL_PADDING,
+    ROW_PADDING_H,
+    ROW_PADDING_V,
+    S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    STANDARD_RADIUS,
+    Spacing,  # Class export
+)
+
+# Dimensions
+from .dimensions import (
+    BLURB_MAX_WIDTH,
+    BLURB_MAX_WIDTH_RATIO,
+    BUTTON_HEIGHT_DESTRUCTIVE,
+    BUTTON_HEIGHT_PRIMARY,
+    BUTTON_HEIGHT_SECONDARY,
+    BUTTON_MIN_WIDTH_PRIMARY,
+    CONTENT_COLUMN_MAX_WIDTH,
+    CONTENT_COLUMN_MIN_WIDTH,
+    CONTENT_COLUMN_OUTER_MARGIN,
+    CONTENT_PANEL_PADDING,
+    CONTENT_PANEL_RADIUS,
+    DAY_INDENT,
+    DAY_ROW_HEIGHT,
+    Dimensions,  # Class export
+    FOCUS_GROUP_ROW_HEIGHT,
+    HISTORY_EXPORT_LIMIT,
+    HISTORY_PREVIEW_LENGTH,
+    HISTORY_RECENT_LIMIT,
+    METRICS_BLOCK_PADDING,
+    METRICS_DIVIDER_INSET,
+    METRICS_DIVIDER_WIDTH,
+    METRICS_STRIP_HEIGHT_COLLAPSED,
+    METRICS_STRIP_HEIGHT_EXPANDED,
+    METRICS_STRIP_PADDING_H,
+    QT_WIDGET_MAX_HEIGHT,
+    SECTION_HEADER_HEIGHT,
+    SECTION_HEADER_PADDING_H,
+    SECTION_HEADER_PADDING_V,
+    SECTION_HEADER_RADIUS,
+    SIDEBAR_BOTTOM_PADDING,
+    SIDEBAR_DEFAULT_RATIO,
+    SIDEBAR_LEFT_INSET,
+    SIDEBAR_MAX_RATIO,
+    SIDEBAR_MIN_RATIO,
+    SIDEBAR_MIN_WIDTH,
+    SIDEBAR_PREVIEW_LENGTH,
+    SIDEBAR_SECTION_GAP,
+    SIDEBAR_SIDE_PADDING,
+    SIDEBAR_TOP_PADDING,
+    SPLITTER_HANDLE_WIDTH,
+    SPLITTER_HIT_AREA,
+    TRANSCRIPT_INDENT,
+    TRANSCRIPT_ROW_HEIGHT,
+    WindowSize,
+    WORKSPACE_PADDING,
+)
+
+# Typography
+from .typography import Typography
+
+# Colors
+from .colors import Colors, FocusGroupColors
+
+# Enums
+from .enums import WorkspaceState
+
+# Timing
+from .timing import (
+    AnimationDurations,
+    defer_call,
+    Opacity,
+    SPEAKING_SPEED_WPM,
+    Timing,
+    TimerType,
+    TYPING_SPEED_WPM,
+)
+
+# Audio
+from .audio import AudioConfig
+
+__all__ = [
+    # Spacing
+    "Spacing",
+    "S0",
+    "S1",
+    "S2",
+    "S3",
+    "S4",
+    "APP_OUTER_PADDING",
+    "PANEL_PADDING",
+    "CONTROL_CLUSTER_PADDING",
+    "MAJOR_GAP",
+    "MINOR_GAP",
+    "CONTROL_GAP",
+    "STANDARD_RADIUS",
+    "BUTTON_RADIUS_PILL",
+    "BUTTON_RADIUS_RECT",
+    "HEADER_RADIUS",
+    "HEADER_CONTROLS_GAP",
+    "CONTROLS_CONTENT_GAP",
+    "CONTROL_ROW_GAP",
+    "BUTTON_GAP",
+    "GREETING_TOP_MARGIN",
+    "ROW_PADDING_V",
+    "ROW_PADDING_H",
+    "HEADER_TO_LIST_GAP",
+    # Dimensions
+    "Dimensions",
+    "SIDEBAR_DEFAULT_RATIO",
+    "SIDEBAR_MIN_WIDTH",
+    "SIDEBAR_MIN_RATIO",
+    "SIDEBAR_MAX_RATIO",
+    "SPLITTER_HANDLE_WIDTH",
+    "SPLITTER_HIT_AREA",
+    "SIDEBAR_TOP_PADDING",
+    "SIDEBAR_SIDE_PADDING",
+    "SIDEBAR_BOTTOM_PADDING",
+    "SIDEBAR_SECTION_GAP",
+    "SECTION_HEADER_HEIGHT",
+    "SECTION_HEADER_PADDING_H",
+    "SECTION_HEADER_PADDING_V",
+    "SECTION_HEADER_RADIUS",
+    "FOCUS_GROUP_ROW_HEIGHT",
+    "DAY_ROW_HEIGHT",
+    "TRANSCRIPT_ROW_HEIGHT",
+    "DAY_INDENT",
+    "TRANSCRIPT_INDENT",
+    "SIDEBAR_LEFT_INSET",
+    "METRICS_STRIP_HEIGHT_EXPANDED",
+    "METRICS_STRIP_HEIGHT_COLLAPSED",
+    "METRICS_STRIP_PADDING_H",
+    "METRICS_BLOCK_PADDING",
+    "METRICS_DIVIDER_WIDTH",
+    "METRICS_DIVIDER_INSET",
+    "WORKSPACE_PADDING",
+    "CONTENT_COLUMN_MIN_WIDTH",
+    "CONTENT_COLUMN_MAX_WIDTH",
+    "CONTENT_COLUMN_OUTER_MARGIN",
+    "CONTENT_PANEL_PADDING",
+    "CONTENT_PANEL_RADIUS",
+    "BUTTON_HEIGHT_PRIMARY",
+    "BUTTON_HEIGHT_SECONDARY",
+    "BUTTON_HEIGHT_DESTRUCTIVE",
+    "BUTTON_MIN_WIDTH_PRIMARY",
+    "BLURB_MAX_WIDTH",
+    "BLURB_MAX_WIDTH_RATIO",
+    "WindowSize",
+    "QT_WIDGET_MAX_HEIGHT",
+    "HISTORY_EXPORT_LIMIT",
+    "HISTORY_RECENT_LIMIT",
+    "HISTORY_PREVIEW_LENGTH",
+    "SIDEBAR_PREVIEW_LENGTH",
+    # Typography
+    "Typography",
+    # Colors
+    "Colors",
+    "FocusGroupColors",
+    # Enums
+    "WorkspaceState",
+    # Timing
+    "AnimationDurations",
+    "Timing",
+    "TimerType",
+    "defer_call",
+    "Opacity",
+    "TYPING_SPEED_WPM",
+    "SPEAKING_SPEED_WPM",
+    # Audio
+    "AudioConfig",
+]

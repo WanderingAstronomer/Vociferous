@@ -2,6 +2,143 @@
 
 ---
 
+# v1.4.0 - UI Overhaul & Comprehensive Metrics Framework
+
+**Date:** January 10, 2026  
+**Status:** Ready for refinement engine phase
+
+---
+
+## Summary
+
+Complete visual redesign and metrics foundation. Implemented focus groups UI with dynamic sidebar, functional search system, real-time waveform visualization, and comprehensive transcription analytics framework. The UI now provides transparency about the cognitive and productivity dimensions of dictation.
+
+## Major Features
+
+### Focus Groups Management
+- **Implemented**: Complete focus groups UI with visual sidebar
+- **Added**: Dynamic focus group tree with custom delegation and font sizing
+- **Added**: Create/rename/delete focus groups through sidebar context menu
+- **Added**: Proper visual distinction and color coding for focus groups
+
+### Recent Transcripts View
+- **Implemented**: Recent transcripts tab showing last 7 days of activity
+- **Added**: Clean, organized transcript listing with timestamps
+- **Added**: Quick access to recently dictated content
+
+### Search System
+- **Implemented**: Full-text search across all transcripts
+- **Added**: Real-time search interface integrated into sidebar
+- **Added**: Highlight matching transcripts in search results
+- **Added**: Clear/cancel search functionality
+
+### Waveform Visualization
+- **Implemented**: Real-time audio waveform display during recording
+- **Added**: Visual feedback for recording state
+- **Added**: Waveform scaling and responsive design
+- **Added**: Integration with recording lifecycle
+
+### Metrics Framework
+
+#### Per-Transcription Metrics (Row 0: Human vs Machine Time)
+- **Recording Time**: Total human cognitive time (speaking + thinking)
+- **Speech Duration**: Machine-processed speech time (VAD-filtered segments from Whisper)
+- **Silence Time**: Absolute time spent thinking/pausing (calculated as difference)
+
+#### Per-Transcription Metrics (Row 1: Productivity & Efficiency)
+- **Words/Min**: Idea throughput (words per minute of cognitive time)
+- **Typing-Equivalent Time Saved**: Time saved vs manual composition at 40 WPM
+- **Speaking Rate**: Pure articulation speed during active speech (WPM excluding pauses)
+
+#### Lifetime Analytics (Bottom Bar)
+- **Total Spent Transcribing**: Cumulative recording time across all transcripts
+- **Total Saved by Transcribing**: Total time saved vs typing (all transcripts combined)
+- **Total Transcriptions**: Count of completed transcriptions
+- **Total Transcription Word Count**: Cumulative words across entire history
+
+#### Metrics Explanation Dialog
+- **Added**: Help → Metrics Calculations detailed documentation
+- **Explains**: Definition and formula for each metric
+- **Explains**: Philosophy: "Silence is not waste — it's cognition"
+- **Explains**: Explicit assumptions (40 WPM typing baseline)
+- **Explains**: How raw duration differs from machine-processed time
+
+### UI/UX Refinements
+- **Added**: Dynamic greeting message (Good Morning/Afternoon/Evening based on time of day)
+- **Improved**: Typography scale (greeting 42pt, body 19pt, focus group names 17pt)
+- **Improved**: Spacing and padding throughout (GREETING_TOP_MARGIN 16px, tab buttons 18px 24px)
+- **Added**: Sidebar tab bar with bold text (font-weight 700)
+- **Added**: Tab text wrapping (white-space: normal)
+- **Added**: Tooltip on "Typing-Equivalent Time Saved" metric (semantic anchoring)
+- **Added**: Search button styling (transparent background)
+- **Moved**: Metrics display above content box (cleaner layout, no overlay issues)
+- **Fixed**: Button height alignment (44px for text buttons, matching search button)
+
+### Database & Backend
+
+#### Speech Duration Tracking
+- **Added**: `speech_duration_ms` column to transcripts table (schema v1 → v2)
+- **Added**: Automatic schema migration for existing databases
+- **Implemented**: VAD segment extraction from Whisper transcribe output
+- **Implemented**: Speech duration calculation in transcription pipeline
+
+#### Data Flow
+- **Updated**: `result_thread.py` to extract and pass `speech_duration_ms`
+- **Updated**: `transcription.py` to return `tuple[str, int]` (text, speech_duration_ms)
+- **Updated**: `history_manager.py` to persist dual-duration metrics
+- **Updated**: All database queries to handle speech_duration_ms
+
+### Architecture Improvements
+- **Removed**: Orphan metrics widgets (fixed Wayland window tiling bug)
+- **Separated**: Metrics display from content panel (workspace-level ownership)
+- **Centralized**: All typography constants in typography.py
+- **Centralized**: All spacing constants in spacing.py
+
+## Changes by Category
+
+### Files Modified: 132
+### Commits: Ready for single comprehensive commit
+
+### Component Files Updated
+- `src/ui/components/sidebar/` - Focus groups, tab bar, styling
+- `src/ui/components/workspace/` - Metrics, content layout, header
+- `src/ui/components/main_window/` - Menu integration for metrics dialog
+- `src/ui/widgets/` - Custom dialogs, waveform, focus group tree
+- `src/ui/constants/` - Typography and spacing scales
+- `src/` - Core pipeline updates for metrics data
+
+### Database Files
+- `src/history_manager.py` - Schema v2 migration
+- `src/transcription.py` - VAD duration extraction
+- `src/result_thread.py` - Dual-duration threading
+
+## Testing
+- All existing tests passing
+- Manual testing of metrics with live recordings
+- Verified graceful degradation for pre-migration transcripts
+- Verified Wayland compatibility (no floating windows)
+
+## Philosophy & Design Decisions
+
+**Silence is measurement, not waste.** This release introduces a measurement framework that treats thinking time as a first-class concern. Rather than hiding pauses or assuming they don't exist, Vociferous now:
+
+1. Separates human time (recording) from machine time (speech)
+2. Makes cognitive time explicit and measurable (silence time)
+3. Derives productivity metrics that account for thinking
+4. Provides complete transparency via explanation dialog
+5. Never misleads about time saved
+
+The metrics are not about guilt or optimization; they're about understanding the dictation experience.
+
+## Next Phase
+
+Refinement engine implementation planned. This provides the technical foundation for:
+- Advanced text corrections powered by context
+- Grammar and style improvements
+- Transcript enhancement workflows
+
+---
+
 # v1.3.0 Beta - Focus Groups (Data Layer)
 
 **Date:** January 2026  
@@ -597,4 +734,4 @@ All files from the previous architecture deleted:
 
 ## Credits
 
-The v0.1-v0.8 architecture served as exploration of what a full-featured transcription tool could look like. This rewrite takes the lessons learned and applies them to a simpler, more focused tool.
+The v0.1-v0.8 architecture served as exploration of what a full-featured transcription tool could look like. This rewrite takes the lessons learned and applies them to a simpler, more focused tool.`  

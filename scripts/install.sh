@@ -48,7 +48,7 @@ echo "Verifying installation"
 echo "=========================================="
 python3 -c "import faster_whisper; print('✓ faster-whisper imported successfully')"
 python3 -c "import onnxruntime; print('✓ onnxruntime imported successfully')"
-python3 -c "import PyQt5; print('✓ PyQt5 imported successfully')"
+python3 -c "import PyQt6; print('✓ PyQt6 imported successfully')"
 python3 -c "import sounddevice; print('✓ sounddevice imported successfully')"
 python3 -c "import pynput; print('✓ pynput imported successfully')"
 
