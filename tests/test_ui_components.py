@@ -5,7 +5,6 @@ Tests Focus Groups, History Tree, Settings Dialog, and other UI components.
 """
 
 import pytest
-from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import QApplication
 
 from history_manager import HistoryManager

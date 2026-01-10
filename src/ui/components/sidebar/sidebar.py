@@ -186,7 +186,6 @@ class SidebarWidget(QWidget):
         if not self._content_layout or not self._bottom_spacer:
             return
 
-        fg_expanded = self.focus_groups_section.is_expanded()
         ungrouped_expanded = self.transcripts_section.is_expanded()
 
         # Reset stretch factors

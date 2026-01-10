@@ -6,7 +6,6 @@ Integrates sidebar, main workspace, and metrics strip in a responsive layout.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import (
