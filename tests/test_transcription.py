@@ -45,11 +45,11 @@ class TestTranscribeFunction:
     """Tests for the transcribe function."""
 
     def test_transcribe_none_returns_empty(self):
-        """Transcribing None should return empty string."""
+        """Transcribing None should return empty tuple."""
         from transcription import transcribe
 
         result = transcribe(None)
-        assert result == ""
+        assert result == ("", 0)
 
     @pytest.mark.slow
     def test_transcribe_silent_audio(self):
