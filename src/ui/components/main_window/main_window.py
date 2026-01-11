@@ -41,6 +41,7 @@ from ui.components.sidebar.sidebar_new import SidebarWidget
 from ui.components.title_bar import TitleBar
 from ui.components.workspace import MainWorkspace
 from ui.constants import Colors, Dimensions, Spacing, Typography, WindowSize, WorkspaceState
+from ui.interaction import IntentOutcome, IntentSource, ViewTranscriptIntent
 from ui.widgets.dialogs import ConfirmationDialog, MessageDialog, show_error_dialog
 from ui.widgets.metrics_strip import MetricsStrip
 
@@ -214,9 +215,13 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot()
     def _on_cancel_requested(self) -> None:
+        """Handle cancel signal from workspace.
+        
+        Note: Workspace's _apply_cancel_recording already set state to IDLE.
+        This handler only forwards to orchestrator.
+        """
         try:
             self.cancelRecordingRequested.emit()
-            self.workspace.set_state(WorkspaceState.IDLE)
         except Exception as e:
             logger.exception("Error in _on_cancel_requested")
 
@@ -270,10 +275,24 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot(str, str)
     def _on_entry_selected(self, text: str, timestamp: str) -> None:
+        """Handle sidebar entry selection via intent layer.
+        
+        Phase 5: Routes through ViewTranscriptIntent for authority consolidation.
+        """
         try:
-            self.workspace.load_transcript(text, timestamp)
+            intent = ViewTranscriptIntent(
+                timestamp=timestamp,
+                text=text,
+                source=IntentSource.SIDEBAR,
+            )
+            result = self.workspace.handle_intent(intent)
+            
+            if result.outcome == IntentOutcome.REJECTED:
+                logger.warning(f"ViewTranscriptIntent rejected: {result.reason}")
+                # Could show error dialog here, but rejection during editing
+                # is expected behavior (unsaved changes protection)
         except Exception as e:
-            logger.exception("Error loading transcript")
+            logger.exception("Error handling entry selection")
             show_error_dialog(
                 title="Load Error",
                 message=f"Failed to load transcript: {e}",
@@ -436,8 +455,20 @@ class MainWindow(QMainWindow):
         return self.sidebar.transcript_list
 
     def load_entry_for_edit(self, text: str, timestamp: str) -> None:
+        """Load an entry for editing via intent layer.
+        
+        Phase 5: Routes through ViewTranscriptIntent for authority consolidation.
+        """
         try:
-            self.workspace.load_transcript(text, timestamp)
+            intent = ViewTranscriptIntent(
+                timestamp=timestamp,
+                text=text,
+                source=IntentSource.CONTROLS,
+            )
+            result = self.workspace.handle_intent(intent)
+            
+            if result.outcome == IntentOutcome.REJECTED:
+                logger.warning(f"ViewTranscriptIntent rejected in load_entry_for_edit: {result.reason}")
         except Exception as e:
             logger.exception("Error loading entry for edit")
             show_error_dialog(

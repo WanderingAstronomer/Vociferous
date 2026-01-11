@@ -58,9 +58,10 @@ class TestIntentConstruction:
         assert isinstance(intent, InteractionIntent)
 
     def test_view_transcript_intent_construction(self):
-        """ViewTranscriptIntent requires timestamp."""
-        intent = ViewTranscriptIntent(timestamp="2026-01-11T12:00:00")
+        """ViewTranscriptIntent requires timestamp and text."""
+        intent = ViewTranscriptIntent(timestamp="2026-01-11T12:00:00", text="Test text")
         assert intent.timestamp == "2026-01-11T12:00:00"
+        assert intent.text == "Test text"
 
     def test_edit_transcript_intent_construction(self):
         """EditTranscriptIntent can be constructed."""
@@ -225,7 +226,7 @@ class TestHandleIntentPassthrough:
 
     def test_handle_view_returns_result(self, workspace):
         """handle_intent(ViewTranscriptIntent) returns IntentResult."""
-        intent = ViewTranscriptIntent(timestamp="2026-01-11T12:00:00")
+        intent = ViewTranscriptIntent(timestamp="2026-01-11T12:00:00", text="Test")
         result = workspace.handle_intent(intent)
         assert isinstance(result, IntentResult)
 
@@ -476,6 +477,95 @@ class TestDiscardIntentStateAssertions:
         assert len(saved_content) == 0  # Signal should NOT fire
 
 
+class TestViewIntentStateAssertions:
+    """Phase 5: Tests for ViewTranscriptIntent state assertions."""
+    
+    @pytest.fixture
+    def workspace(self, qapp_session):
+        """Create MainWorkspace instance for testing."""
+        from ui.components.workspace import MainWorkspace
+        w = MainWorkspace()
+        return w
+
+    def test_view_accepted_in_idle_transitions_to_viewing(self, workspace):
+        """ViewTranscriptIntent in IDLE with text transitions to VIEWING."""
+        from ui.constants import WorkspaceState
+        
+        assert workspace.get_state() == WorkspaceState.IDLE
+        
+        intent = ViewTranscriptIntent(timestamp="2026-01-11T12:00:00", text="Test text")
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.VIEWING
+        assert not workspace.has_unsaved_changes()
+
+    def test_view_accepted_in_viewing_switches_transcript(self, workspace):
+        """ViewTranscriptIntent in VIEWING switches to different transcript."""
+        from ui.constants import WorkspaceState
+        
+        # First view
+        workspace.handle_intent(ViewTranscriptIntent(
+            timestamp="2026-01-11T12:00:00", text="First"
+        ))
+        assert workspace.get_state() == WorkspaceState.VIEWING
+        
+        # Switch to different transcript
+        intent = ViewTranscriptIntent(timestamp="2026-01-11T13:00:00", text="Second")
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.VIEWING
+
+    def test_view_rejected_in_recording(self, workspace):
+        """ViewTranscriptIntent must be rejected in RECORDING state."""
+        from ui.constants import WorkspaceState
+        
+        # Enter recording
+        workspace.handle_intent(BeginRecordingIntent())
+        assert workspace.get_state() == WorkspaceState.RECORDING
+        
+        intent = ViewTranscriptIntent(timestamp="2026-01-11T12:00:00", text="Test")
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.REJECTED
+        assert workspace.get_state() == WorkspaceState.RECORDING
+
+    def test_view_rejected_in_editing_with_unsaved_changes(self, workspace):
+        """ViewTranscriptIntent rejected in EDITING with unsaved changes (Invariant 3)."""
+        from ui.constants import WorkspaceState
+        
+        # Load transcript and enter editing
+        workspace.load_transcript("Original", "2026-01-11T12:00:00")
+        workspace.handle_intent(EditTranscriptIntent())
+        assert workspace.get_state() == WorkspaceState.EDITING
+        # Qt textChanged fires, so has_unsaved_changes is True
+        
+        # Try to view different transcript
+        intent = ViewTranscriptIntent(timestamp="2026-01-11T13:00:00", text="Other")
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.REJECTED
+        assert workspace.get_state() == WorkspaceState.EDITING
+
+    def test_view_with_empty_text_stays_idle(self, workspace):
+        """ViewTranscriptIntent with empty text results in IDLE state."""
+        from ui.constants import WorkspaceState
+        
+        intent = ViewTranscriptIntent(timestamp="2026-01-11T12:00:00", text="")
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.IDLE
+
+    def test_view_rejected_without_timestamp(self, workspace):
+        """ViewTranscriptIntent rejected without timestamp."""
+        intent = ViewTranscriptIntent(timestamp="", text="Test")
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.REJECTED
+
+
 class TestPhase4StoppingCondition:
     """Tests verifying Phase 4 stopping condition is met.
     
@@ -505,7 +595,7 @@ class TestPhase4StoppingCondition:
         assert workspace.get_state() == WorkspaceState.EDITING
         
         # Try ViewTranscriptIntent - should be REJECTED (unsaved changes)
-        result = workspace.handle_intent(ViewTranscriptIntent(timestamp="other"))
+        result = workspace.handle_intent(ViewTranscriptIntent(timestamp="other", text="Other"))
         assert result.outcome == IntentOutcome.REJECTED
         assert workspace.get_state() == WorkspaceState.EDITING
         

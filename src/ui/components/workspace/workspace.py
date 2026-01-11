@@ -483,8 +483,8 @@ class MainWorkspace(QWidget):
             case DeleteTranscriptIntent():
                 result = self._bridge_delete_transcript(intent)
 
-            case ViewTranscriptIntent(timestamp=ts):
-                result = self._bridge_view_transcript(intent, ts)
+            case ViewTranscriptIntent(timestamp=ts, text=txt):
+                result = self._apply_view_transcript(intent, ts, txt)
 
             case _:
                 result = IntentResult(
@@ -705,25 +705,88 @@ class MainWorkspace(QWidget):
                 reason=f"Cannot delete in {self._state.value} state",
             )
 
-    def _bridge_view_transcript(self, intent: ViewTranscriptIntent, timestamp: str) -> IntentResult:
-        """Bridge: delegate to load_transcript for viewing."""
-        # Phase 2: This does NOT validate conflicts (recording, editing).
-        # Validation will be added in Phase 4. For now, just log and accept.
+    def _apply_view_transcript(
+        self, intent: ViewTranscriptIntent, timestamp: str, text: str
+    ) -> IntentResult:
+        """Apply ViewTranscriptIntent: display a transcript for viewing.
+        
+        Phase 5: Authoritative state mutator for ViewTranscriptIntent.
+        
+        Precondition: state != RECORDING
+        Precondition: if EDITING with unsaved changes, reject (Invariant 3)
+        Postcondition: state == VIEWING if text non-empty, else IDLE
+        Postcondition: _has_unsaved_changes == False
+        """
+        # Precondition: cannot view while recording
         if self._state == WorkspaceState.RECORDING:
             return IntentResult(
                 outcome=IntentOutcome.REJECTED,
                 intent=intent,
                 reason="Cannot view transcript while recording",
             )
+        
+        # Precondition: cannot switch view with unsaved edits (Invariant 3)
         if self._state == WorkspaceState.EDITING and self._has_unsaved_changes:
             return IntentResult(
                 outcome=IntentOutcome.REJECTED,
                 intent=intent,
                 reason="Unsaved changes exist",
             )
-        # Accept but do NOT call load_transcript here (that remains in MainWindow).
-        # Phase 2 bridge only validates; actual load happens via existing wiring.
-        return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+        
+        # Precondition: must have valid timestamp
+        if not timestamp:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason="No timestamp provided",
+            )
+        
+        # Authoritative mutation: load transcript
+        # Inline the load_transcript logic for authority over state
+        try:
+            # Fetch duration metadata from history manager if available
+            duration_ms = None
+            speech_duration_ms = None
+            if self._history_manager:
+                entry = self._history_manager.get_entry_by_timestamp(timestamp)
+                if entry:
+                    duration_ms = entry.duration_ms
+                    speech_duration_ms = entry.speech_duration_ms
+            
+            self.content.set_transcript(text, timestamp)
+            self.header.set_timestamp(timestamp)
+            self._has_unsaved_changes = False
+            
+            # Update metrics if we have duration data
+            if text and duration_ms is not None:
+                word_count = len(text.split())
+                self.metrics.set_metrics(duration_ms, speech_duration_ms, word_count)
+                self.metrics.show()
+            else:
+                self.metrics.hide()
+            
+            # Set state based on content
+            if text:
+                self.set_state(WorkspaceState.VIEWING)
+            else:
+                self.set_state(WorkspaceState.IDLE)
+            
+            # Postcondition assertions
+            expected_state = WorkspaceState.VIEWING if text else WorkspaceState.IDLE
+            assert self._state == expected_state, \
+                f"ViewTranscriptIntent: expected {expected_state.value}, got {self._state.value}"
+            assert not self._has_unsaved_changes, \
+                "ViewTranscriptIntent: _has_unsaved_changes should be False"
+            
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+            
+        except Exception as e:
+            logger.exception("Error in _apply_view_transcript")
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason=f"Load failed: {e}",
+            )
 
     # Resize handling
 
