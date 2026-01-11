@@ -36,6 +36,7 @@ class FocusGroupProxyModel(QSortFilterProxyModel):
         super().__init__(parent)
         self._group_id: int | None = None
         self.setRecursiveFilteringEnabled(True)
+        self.setDynamicSortFilter(True)  # Ensure updates to group_id trigger re-filtering
         
         # Defer filter invalidation to avoid segfaults during context menu callbacks
         self._invalidate_timer = QTimer()

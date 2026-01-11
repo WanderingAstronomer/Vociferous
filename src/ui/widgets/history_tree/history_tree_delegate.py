@@ -36,7 +36,7 @@ class TreeHoverDelegate(QStyledItemDelegate):
     
     # Layout constants
     ENTRY_INDENT = 16  # Left indent for entries under day headers
-    TIME_WIDTH = 70    # Fixed width for time display on right
+    TIME_WIDTH = 90    # Fixed width for time display on right (increased for padding)
     PADDING_H = 8      # Horizontal padding
 
     def paint(

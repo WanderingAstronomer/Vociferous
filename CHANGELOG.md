@@ -2,6 +2,23 @@
 
 ---
 
+# v2.1.2 - UI Refinements & Binding Fixes
+
+**Date:** January 2026
+**Status:** Hotfix
+
+---
+
+## Fixed
+
+### UI / Rendering
+- **Sidebar Padding**: Increased timestamp column width in sidebar delegate (70px → 90px) to prevent time cutout on systems with wider fonts or varying DPI.
+
+### Data Binding
+- **Recent Transcripts**: Fixed regression where moving a transcript out of a Focus Group would not immediately make it reappear in the Recent list. Enabled `dynamicSortFilter` on `FocusGroupProxyModel` to react instantly to `GroupIDRole` changes.
+
+---
+
 # v2.1.1 - Critical Crash Fix
 
 **Date:** January 2026
