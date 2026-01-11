@@ -28,6 +28,19 @@ from PyQt6.QtWidgets import (
 from ui.constants import Dimensions, Spacing, Typography, WorkspaceState
 from ui.utils.clipboard_utils import copy_text
 from ui.widgets.content_panel import ContentPanel
+from ui.interaction import (
+    InteractionIntent,
+    IntentOutcome,
+    IntentResult,
+    BeginRecordingIntent,
+    StopRecordingIntent,
+    CancelRecordingIntent,
+    ViewTranscriptIntent,
+    EditTranscriptIntent,
+    CommitEditsIntent,
+    DiscardEditsIntent,
+    DeleteTranscriptIntent,
+)
 
 from ui.components.workspace.content import WorkspaceContent
 from ui.components.workspace.controls import WorkspaceControls
@@ -62,6 +75,9 @@ class MainWorkspace(QWidget):
     deleteRequested = pyqtSignal()
     refineRequested = pyqtSignal()
     textEdited = pyqtSignal()
+
+    # Intent processing signal (Phase 2: observability only)
+    intentProcessed = pyqtSignal(object)  # IntentResult
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -405,6 +421,173 @@ class MainWorkspace(QWidget):
                 self.textEdited.emit()
         except Exception as e:
             logger.exception("Error tracking text change")
+
+    # Intent handling (Phase 2: bridge to existing handlers)
+
+    def handle_intent(self, intent: InteractionIntent) -> IntentResult:
+        """
+        Process an interaction intent and return the outcome.
+
+        Phase 2: This is a compatibility bridge. It logs the intent,
+        delegates to existing handlers, and produces an IntentResult.
+        No behavior changes; existing signal wiring remains authoritative.
+
+        Args:
+            intent: The semantic intent to process
+
+        Returns:
+            IntentResult describing what happened
+        """
+        logger.debug("Intent received: %s", type(intent).__name__)
+
+        result: IntentResult
+
+        match intent:
+            case BeginRecordingIntent():
+                result = self._bridge_begin_recording(intent)
+
+            case StopRecordingIntent():
+                result = self._bridge_stop_recording(intent)
+
+            case CancelRecordingIntent():
+                result = self._bridge_cancel_recording(intent)
+
+            case EditTranscriptIntent():
+                result = self._bridge_edit_transcript(intent)
+
+            case CommitEditsIntent(content=text):
+                result = self._bridge_commit_edits(intent, text)
+
+            case DiscardEditsIntent():
+                result = self._bridge_discard_edits(intent)
+
+            case DeleteTranscriptIntent():
+                result = self._bridge_delete_transcript(intent)
+
+            case ViewTranscriptIntent(timestamp=ts):
+                result = self._bridge_view_transcript(intent, ts)
+
+            case _:
+                result = IntentResult(
+                    outcome=IntentOutcome.REJECTED,
+                    intent=intent,
+                    reason=f"Unknown intent type: {type(intent).__name__}",
+                )
+
+        logger.debug("Intent result: %s (%s)", result.outcome.name, result.reason or "")
+        self.intentProcessed.emit(result)
+        return result
+
+    def _bridge_begin_recording(self, intent: BeginRecordingIntent) -> IntentResult:
+        """Bridge: delegate to existing primary click logic for start."""
+        if self._state in (WorkspaceState.IDLE, WorkspaceState.VIEWING):
+            # Delegate to existing handler (Phase 2: no behavior change)
+            self._on_primary_click()
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+        else:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason=f"Cannot start recording in {self._state.value} state",
+            )
+
+    def _bridge_stop_recording(self, intent: StopRecordingIntent) -> IntentResult:
+        """Bridge: delegate to existing primary click logic for stop."""
+        if self._state == WorkspaceState.RECORDING:
+            self._on_primary_click()
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+        else:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason="Not currently recording",
+            )
+
+    def _bridge_cancel_recording(self, intent: CancelRecordingIntent) -> IntentResult:
+        """Bridge: delegate to existing destructive click logic for cancel."""
+        if self._state == WorkspaceState.RECORDING:
+            self._on_destructive_click()
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+        else:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason="Not currently recording",
+            )
+
+    def _bridge_edit_transcript(self, intent: EditTranscriptIntent) -> IntentResult:
+        """Bridge: delegate to existing edit/save click logic for edit."""
+        if self._state == WorkspaceState.VIEWING:
+            self._on_edit_save_click()
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+        elif self._state == WorkspaceState.EDITING:
+            return IntentResult(
+                outcome=IntentOutcome.NO_OP,
+                intent=intent,
+                reason="Already in edit mode",
+            )
+        else:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason=f"Cannot edit in {self._state.value} state",
+            )
+
+    def _bridge_commit_edits(self, intent: CommitEditsIntent, content: str) -> IntentResult:
+        """Bridge: delegate to existing edit/save click logic for save."""
+        if self._state == WorkspaceState.EDITING:
+            self._on_edit_save_click()
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+        else:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason="Not in edit mode",
+            )
+
+    def _bridge_discard_edits(self, intent: DiscardEditsIntent) -> IntentResult:
+        """Bridge: delegate to existing destructive click logic for discard."""
+        if self._state == WorkspaceState.EDITING:
+            self._on_destructive_click()
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+        else:
+            return IntentResult(
+                outcome=IntentOutcome.NO_OP,
+                intent=intent,
+                reason="Not in edit mode",
+            )
+
+    def _bridge_delete_transcript(self, intent: DeleteTranscriptIntent) -> IntentResult:
+        """Bridge: delegate to existing destructive click logic for delete."""
+        if self._state == WorkspaceState.VIEWING:
+            self._on_destructive_click()
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+        else:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason=f"Cannot delete in {self._state.value} state",
+            )
+
+    def _bridge_view_transcript(self, intent: ViewTranscriptIntent, timestamp: str) -> IntentResult:
+        """Bridge: delegate to load_transcript for viewing."""
+        # Phase 2: This does NOT validate conflicts (recording, editing).
+        # Validation will be added in Phase 4. For now, just log and accept.
+        if self._state == WorkspaceState.RECORDING:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason="Cannot view transcript while recording",
+            )
+        if self._state == WorkspaceState.EDITING and self._has_unsaved_changes:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason="Unsaved changes exist",
+            )
+        # Accept but do NOT call load_transcript here (that remains in MainWindow).
+        # Phase 2 bridge only validates; actual load happens via existing wiring.
+        return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
 
     # Resize handling
 
