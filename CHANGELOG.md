@@ -2,6 +2,20 @@
 
 ---
 
+# v2.1.4 - Dialog Visual Polish
+
+**Date:** January 2026
+**Status:** Hotfix
+
+---
+
+## Changed
+
+### UI / Styling
+- **Dialog Frames**: Thickened the dialog blue border to 3px (was 1px) and removed border radius to match the rectangular window shape, ensuring a clean and consistent visual style for frameless dialogs.
+
+---
+
 # v2.1.3 - UI Refinements (Dialog Borders)
 
 **Date:** January 2026

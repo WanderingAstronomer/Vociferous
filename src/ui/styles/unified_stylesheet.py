@@ -678,8 +678,8 @@ QDialog {{
 
 QFrame#dialogFrame {{
     background-color: {c.BG_PRIMARY};
-    border: 1px solid {c.BORDER_ACCENT};
-    border-radius: {STANDARD_RADIUS}px;
+    border: 3px solid {c.BORDER_ACCENT};
+    border-radius: 0px;
 }}
 
 QWidget#dialogContent {{
