@@ -2,6 +2,21 @@
 
 ---
 
+# v2.1.6 - UI Polish (Focus Group Indicators)
+
+**Date:** January 2026
+**Status:** Enhancement
+
+---
+
+## Changed
+
+### UX / Styling
+- **Cleaned Up Tooltips**: Removed the full-text tooltip from sidebar items (transcripts and focus groups) to reduce UI clutter as requested.
+- **Improved Selection Indicator**: Changed the Focus Group item selection style from a solid block to a cohesive background with a circular dot indicator on the left. The dot inherits the group's color (or defaults to blue), providing a cleaner and more distinct visual cue.
+
+---
+
 # v2.1.5 - Critical Hotfix (Dialog Crash & Safety)
 
 **Date:** January 2026

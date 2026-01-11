@@ -8,6 +8,8 @@ Handles painting of:
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from PyQt6.QtCore import QModelIndex, QRectF, Qt
 from PyQt6.QtGui import QColor, QFont, QPainter
 from PyQt6.QtWidgets import (
@@ -17,6 +19,12 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.constants import Colors, Typography
+from ui.utils.history_utils import format_time_compact
+from ui.widgets.transcript_item import (
+    ROLE_FULL_TEXT,
+    ROLE_TIMESTAMP_ISO,
+    paint_transcript_entry,
+)
 
 
 class FocusGroupDelegate(QStyledItemDelegate):
@@ -48,12 +56,6 @@ class FocusGroupDelegate(QStyledItemDelegate):
         """Paint a focus group header row."""
         color = index.data(self.ROLE_COLOR)
 
-        # Column 0 is visually on the RIGHT (due to header reordering)
-        # We don't need to paint anything there for group headers - just make it transparent
-        if index.column() == 0:
-            # Transparent - don't paint anything
-            return
-
         if color:
             self._paint_colored_group_header(painter, option, index, color)
         else:
@@ -67,7 +69,7 @@ class FocusGroupDelegate(QStyledItemDelegate):
         color: str,
     ) -> None:
         """Paint a group header with color marker."""
-        text = index.data(0) or ""
+        text = index.data(0) or "" # Column 0 has name now
         font = QFont(option.font)
         font.setPointSize(Typography.FOCUS_GROUP_NAME_SIZE)
         font.setWeight(QFont.Weight.DemiBold)
@@ -110,7 +112,19 @@ class FocusGroupDelegate(QStyledItemDelegate):
             painter.fillRect(option.rect, QColor(Colors.HOVER_BG_SECTION))
         else:
             painter.fillRect(option.rect, QColor(Colors.BG_TERTIARY))
-        super().paint(painter, option, index)
+        
+        # Manually draw text since we might be bypassing super().paint
+        text = index.data(0) or ""
+        painter.save()
+        painter.setPen(QColor(Colors.TEXT_PRIMARY))
+        # Add basic padding
+        text_rect = QRectF(option.rect).adjusted(8, 0, -8, 0)
+        painter.drawText(
+            text_rect, 
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, 
+            text
+        )
+        painter.restore()
 
     def _paint_transcript_item(
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
@@ -120,36 +134,58 @@ class FocusGroupDelegate(QStyledItemDelegate):
         parent_index = index.parent()
         group_color = parent_index.data(self.ROLE_COLOR) if parent_index.isValid() else None
         
-        # Paint row-wide background states (hover/selection override group color tint)
-        # This ensures both columns highlight together when hovering over either one
+        # Use simple hover/selection background (subtle)
+        # We removed the "bright solid rectangular blue square" effect by using standard hover colors
         if option.state & QStyle.StateFlag.State_Selected:
-            # Selection state - paint across entire row
-            if group_color:
-                color = QColor(group_color)
-                color.setAlpha(80)
-                painter.fillRect(option.rect, color)
-            else:
-                painter.fillRect(option.rect, QColor(Colors.HOVER_BG_SECTION))
+            painter.fillRect(option.rect, QColor(Colors.HOVER_BG_SECTION))
         elif option.state & QStyle.StateFlag.State_MouseOver:
-            # Hover state - paint across entire row
-            if group_color:
-                color = QColor(group_color)
-                color.setAlpha(50)
-                painter.fillRect(option.rect, color)
-            else:
-                painter.fillRect(option.rect, QColor(Colors.HOVER_BG_ITEM))
-        elif index.column() == 1 and group_color:
-            # Only column 1 (preview) gets subtle group color tint when not hovered/selected
+            painter.fillRect(option.rect, QColor(Colors.HOVER_BG_ITEM))
+        elif group_color:
+            # Very subtle tint for static state if group has color
             color = QColor(group_color)
-            color.setAlpha(25)
+            color.setAlpha(15) 
             painter.fillRect(option.rect, color)
 
-        # Remove selection highlight for default painting
-        new_option = QStyleOptionViewItem(option)
-        new_option.state &= ~QStyle.StateFlag.State_Selected
+        # Draw "blue circular dot" selection indicator
+        if option.state & QStyle.StateFlag.State_Selected:
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.PenStyle.NoPen)
+            
+            # Use group color if available, else standard accent
+            dot_color = QColor(group_color) if group_color else QColor(Colors.ACCENT_PRIMARY)
+            painter.setBrush(dot_color)
+            
+            # Position dot on the left side
+            dot_size = 6
+            # 8px left padding match
+            dot_x = option.rect.left() + 4
+            dot_y = option.rect.center().y() - (dot_size / 2)
+            
+            painter.drawEllipse(QRectF(dot_x, dot_y, dot_size, dot_size))
+            painter.restore()
+
+        # Get data
+        preview_text = index.data(ROLE_FULL_TEXT) or index.data(0) or ""
+        timestamp = index.data(ROLE_TIMESTAMP_ISO)
+        time_text = ""
+        if timestamp:
+            try:
+                dt = datetime.fromisoformat(timestamp)
+                time_text = format_time_compact(dt)
+            except (ValueError, TypeError):
+                pass
         
-        # Add left indent for preview column (column 1, visually left)
-        if index.column() == 1:
-            new_option.rect = new_option.rect.adjusted(16, 0, 0, 0)
-        
-        super().paint(painter, new_option, index)
+        # Create modified option with more padding for the dot if selected
+        text_option = QStyleOptionViewItem(option)
+        if option.state & QStyle.StateFlag.State_Selected:
+            text_option.rect.setLeft(text_option.rect.left() + 12)
+
+        # Delegate to unified painter (draw_background=False since we handled tints)
+        paint_transcript_entry(
+            painter, 
+            text_option, 
+            preview_text, 
+            time_text, 
+            draw_background=False
+        )

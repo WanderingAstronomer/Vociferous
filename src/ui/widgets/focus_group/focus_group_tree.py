@@ -87,15 +87,12 @@ class FocusGroupTreeWidget(QTreeWidget):
 
     def _setup_ui(self) -> None:
         """Configure tree widget appearance."""
-        self.setColumnCount(2)
+        self.setColumnCount(1)
         self.setHeaderHidden(True)
 
         header = self.header()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        # Visual order: preview first (left), time second (right)
-        header.moveSection(1, 0)
+        header.setStretchLastSection(True)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
 
         # Disable branch decorations (removes blue square indicator)
         self.setRootIsDecorated(False)
@@ -166,7 +163,7 @@ class FocusGroupTreeWidget(QTreeWidget):
         self, group_id: int, name: str, color: str | None
     ) -> QTreeWidgetItem:
         """Create a focus group parent item."""
-        item = QTreeWidgetItem(["", name])
+        item = QTreeWidgetItem([name])
         # Groups: enabled, expandable, not selectable
         item.setFlags(Qt.ItemFlag.ItemIsEnabled)
 
@@ -181,16 +178,16 @@ class FocusGroupTreeWidget(QTreeWidget):
         font = QFont()
         font.setPointSize(Typography.FOCUS_GROUP_NAME_SIZE)
         font.setWeight(QFont.Weight.DemiBold)
-        item.setFont(1, font)
+        item.setFont(0, font)
         # Use group color for text if available, otherwise primary color
         text_color = QColor(color) if color else QColor(Colors.TEXT_PRIMARY)
-        item.setForeground(1, text_color)
+        item.setForeground(0, text_color)
 
         return item
 
     def _update_group_label(self, item: QTreeWidgetItem, name: str, count: int) -> None:
         """Update group label (count stored but not displayed)."""
-        item.setText(1, name)
+        item.setText(0, name)
         item.setData(0, self.ROLE_COUNT, count)
 
     def _on_item_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
