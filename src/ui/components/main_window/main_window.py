@@ -423,13 +423,22 @@ class MainWindow(QMainWindow):
             self._menu_builder.settings_action.triggered.connect(handler)
 
     def update_transcription_status(self, status: str) -> None:
+        """Sync workspace state with background transcription thread.
+        
+        This is ORCHESTRATION, not user interaction (Invariant 8).
+        Called by main.py when ResultThread status changes.
+        
+        Safety: Only transitions IDLE↔RECORDING, never touches EDITING/VIEWING.
+        """
         match status:
             case "recording":
-                if self.workspace.get_state() != WorkspaceState.RECORDING:
+                # Only set if idle - don't interrupt editing/viewing
+                if self.workspace.get_state() == WorkspaceState.IDLE:
                     self.workspace.set_state(WorkspaceState.RECORDING)
             case "transcribing":
                 self.workspace.show_transcribing_status()
             case "idle" | "error" | _:
+                # Only reset if we were recording
                 if self.workspace.get_state() == WorkspaceState.RECORDING:
                     self.workspace.set_state(WorkspaceState.IDLE)
 
@@ -519,6 +528,10 @@ class MainWindow(QMainWindow):
             )
 
     def _clear_all_history(self) -> None:
+        """Clear all transcription history.
+        
+        Phase 5: Uses clear_transcript() for terminal state mutation.
+        """
         try:
             dialog = ConfirmationDialog(
                 self,
@@ -536,7 +549,8 @@ class MainWindow(QMainWindow):
                 if self.history_manager:
                     self.history_manager.clear()
                 self.sidebar.load_history()
-                self.workspace.set_state(WorkspaceState.IDLE)
+                # Use clear_transcript for authority-compliant state transition
+                self.workspace.clear_transcript()
                 self.metrics_strip.refresh()
         except Exception as e:
             logger.exception("Error clearing history")

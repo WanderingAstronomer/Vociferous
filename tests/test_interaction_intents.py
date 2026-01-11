@@ -723,3 +723,83 @@ class TestPhase4StoppingCondition:
         # Discard should also clear it
         workspace.handle_intent(DiscardEditsIntent())
         assert not workspace.has_unsaved_changes()
+
+
+class TestPhase5AuthorityConsolidation:
+    """Tests verifying Phase 5 authority consolidation is complete.
+    
+    Stopping condition: No external component mutates workspace state
+    directly. All user-initiated state changes flow through handle_intent().
+    """
+    
+    @pytest.fixture
+    def workspace(self, qapp_session):
+        """Create MainWorkspace instance for testing."""
+        from ui.components.workspace import MainWorkspace
+        w = MainWorkspace()
+        return w
+
+    def test_view_intent_is_authoritative(self, workspace):
+        """ViewTranscriptIntent controls all view transitions."""
+        from ui.constants import WorkspaceState
+        
+        # IDLE → VIEWING via intent
+        result = workspace.handle_intent(ViewTranscriptIntent(
+            timestamp="2026-01-11T12:00:00", text="Test"
+        ))
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.VIEWING
+        
+        # VIEWING → VIEWING (different transcript) via intent
+        result = workspace.handle_intent(ViewTranscriptIntent(
+            timestamp="2026-01-11T13:00:00", text="Other"
+        ))
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.VIEWING
+
+    def test_delete_intent_validates_but_defers_state_change(self, workspace):
+        """DeleteTranscriptIntent validates but doesn't change state directly."""
+        from ui.constants import WorkspaceState
+        
+        workspace.load_transcript("Test", "2026-01-11T12:00:00")
+        assert workspace.get_state() == WorkspaceState.VIEWING
+        
+        # Delete intent accepted but state unchanged
+        result = workspace.handle_intent(DeleteTranscriptIntent(
+            timestamp="2026-01-11T12:00:00"
+        ))
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.VIEWING  # Still viewing
+        
+        # State changes only via clear_transcript
+        workspace.clear_transcript()
+        assert workspace.get_state() == WorkspaceState.IDLE
+
+    def test_all_destructive_click_routes_through_intents(self, workspace):
+        """_on_destructive_click routes all cases through intent layer."""
+        from ui.constants import WorkspaceState
+        
+        # RECORDING → cancel via intent
+        workspace.handle_intent(BeginRecordingIntent())
+        assert workspace.get_state() == WorkspaceState.RECORDING
+        
+        cancel_emitted = []
+        workspace.cancelRequested.connect(lambda: cancel_emitted.append(True))
+        workspace._on_destructive_click()
+        
+        assert len(cancel_emitted) == 1
+        assert workspace.get_state() == WorkspaceState.IDLE
+        
+        # VIEWING → delete via intent
+        workspace.handle_intent(ViewTranscriptIntent(
+            timestamp="2026-01-11T12:00:00", text="Test"
+        ))
+        assert workspace.get_state() == WorkspaceState.VIEWING
+        
+        delete_emitted = []
+        workspace.deleteRequested.connect(lambda: delete_emitted.append(True))
+        workspace._on_destructive_click()
+        
+        assert len(delete_emitted) == 1
+        # State still VIEWING (waiting for confirmation)
+        assert workspace.get_state() == WorkspaceState.VIEWING
