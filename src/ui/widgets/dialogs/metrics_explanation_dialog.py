@@ -241,7 +241,7 @@ class MetricsExplanationDialog(QDialog):
                 font-size: {Typography.FONT_SIZE_SM}px;
                 line-height: 1.5;
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #5a9fd433,
+                    stop:0 rgba(90, 159, 212, 0.2),
                     stop:1 {Colors.SURFACE});
                 padding: 12px;
                 border-radius: {Dimensions.BORDER_RADIUS_SM}px;
@@ -269,6 +269,6 @@ class MetricsExplanationDialog(QDialog):
             background: {Colors.BACKGROUND};
             padding: 10px 16px;
             border-radius: {Dimensions.BORDER_RADIUS_SM}px;
-            border: 1px solid {Colors.PRIMARY}55;
+            border: 1px solid rgba(90, 159, 212, 0.33);
         """)
         return label

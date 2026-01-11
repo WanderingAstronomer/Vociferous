@@ -928,4 +928,173 @@ QLabel#aboutCreator {{
 QWidget#waveformVisualizer {{
     background-color: transparent;
 }}
+
+/* =================================================================
+   FILE DIALOG (Qt-styled, non-native)
+   ================================================================= */
+
+QFileDialog {{
+    background-color: {c.BG_PRIMARY};
+    color: {c.TEXT_PRIMARY};
+}}
+
+QFileDialog QWidget {{
+    background-color: {c.BG_PRIMARY};
+    color: {c.TEXT_PRIMARY};
+}}
+
+QFileDialog QLabel {{
+    color: {c.TEXT_PRIMARY};
+    background: transparent;
+}}
+
+/* File/Directory list views */
+QFileDialog QListView,
+QFileDialog QTreeView {{
+    background-color: {c.BG_SECONDARY};
+    color: {c.TEXT_PRIMARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: {Dimensions.BORDER_RADIUS}px;
+    selection-background-color: {c.ACCENT_PRIMARY};
+    selection-color: {c.TEXT_ON_ACCENT};
+}}
+
+QFileDialog QListView::item,
+QFileDialog QTreeView::item {{
+    padding: 6px 8px;
+    color: {c.TEXT_PRIMARY};
+}}
+
+QFileDialog QListView::item:hover,
+QFileDialog QTreeView::item:hover {{
+    background-color: {c.HOVER_BG_ITEM};
+}}
+
+QFileDialog QListView::item:selected,
+QFileDialog QTreeView::item:selected {{
+    background-color: {c.ACCENT_PRIMARY};
+    color: {c.TEXT_ON_ACCENT};
+}}
+
+/* Header columns */
+QFileDialog QHeaderView::section {{
+    background-color: {c.BG_TERTIARY};
+    color: {c.TEXT_SECONDARY};
+    border: none;
+    border-bottom: 1px solid {c.BORDER_DEFAULT};
+    padding: 8px;
+    font-weight: {Typography.FONT_WEIGHT_MEDIUM};
+}}
+
+/* Input fields */
+QFileDialog QLineEdit {{
+    background-color: {c.BG_SECONDARY};
+    color: {c.TEXT_PRIMARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: {Dimensions.BORDER_RADIUS}px;
+    padding: 8px 12px;
+    selection-background-color: {c.ACCENT_PRIMARY};
+    selection-color: {c.TEXT_ON_ACCENT};
+}}
+
+QFileDialog QLineEdit:focus {{
+    border: 1px solid {c.ACCENT_PRIMARY};
+}}
+
+/* Dropdown/Combobox */
+QFileDialog QComboBox {{
+    background-color: {c.BG_SECONDARY};
+    color: {c.TEXT_PRIMARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: {Dimensions.BORDER_RADIUS}px;
+    padding: 8px 12px;
+}}
+
+QFileDialog QComboBox:focus {{
+    border: 1px solid {c.ACCENT_PRIMARY};
+}}
+
+QFileDialog QComboBox::drop-down {{
+    border: none;
+    width: 24px;
+}}
+
+QFileDialog QComboBox QAbstractItemView {{
+    background-color: {c.BG_SECONDARY};
+    color: {c.TEXT_PRIMARY};
+    border: 1px solid {c.ACCENT_PRIMARY};
+    selection-background-color: {c.ACCENT_PRIMARY};
+    selection-color: {c.TEXT_ON_ACCENT};
+}}
+
+/* Toolbar and view buttons */
+QFileDialog QToolBar {{
+    background-color: {c.BG_PRIMARY};
+    border: none;
+    spacing: 4px;
+}}
+
+QFileDialog QToolButton {{
+    background-color: {c.BG_SECONDARY};
+    color: {c.TEXT_PRIMARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: {Dimensions.BORDER_RADIUS}px;
+    padding: 6px;
+    margin: 2px;
+}}
+
+QFileDialog QToolButton:hover {{
+    background-color: {c.HOVER_BG_ITEM};
+    border-color: {c.ACCENT_PRIMARY};
+}}
+
+QFileDialog QToolButton:checked {{
+    background-color: {c.ACCENT_PRIMARY};
+    border-color: {c.ACCENT_PRIMARY};
+    color: {c.TEXT_ON_ACCENT};
+}}
+
+QFileDialog QToolButton:pressed {{
+    background-color: {c.ACCENT_PRESSED};
+}}
+
+/* Sidebar (places/shortcuts) */
+QFileDialog QSidebar {{
+    background-color: {c.BG_SECONDARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+}}
+
+QFileDialog QSidebar::item {{
+    color: {c.TEXT_PRIMARY};
+    padding: 6px;
+}}
+
+QFileDialog QSidebar::item:hover {{
+    background-color: {c.HOVER_BG_ITEM};
+}}
+
+QFileDialog QSidebar::item:selected {{
+    background-color: {c.ACCENT_PRIMARY};
+    color: {c.TEXT_ON_ACCENT};
+}}
+
+/* Buttons - will be overridden programmatically for Choose/Cancel */
+QFileDialog QPushButton {{
+    background-color: {c.BG_TERTIARY};
+    color: {c.TEXT_PRIMARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: {Dimensions.BORDER_RADIUS}px;
+    padding: 10px 20px;
+    min-width: 80px;
+    font-size: {Typography.BODY_SIZE}pt;
+}}
+
+QFileDialog QPushButton:hover {{
+    background-color: {c.HOVER_BG_ITEM};
+    border-color: {c.ACCENT_PRIMARY};
+}}
+
+QFileDialog QPushButton:pressed {{
+    background-color: {c.ACCENT_PRESSED};
+}}
 """

@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.components.title_bar import DialogTitleBar
-from ui.constants import MAJOR_GAP, MINOR_GAP
+from ui.constants import MAJOR_GAP, MINOR_GAP, Colors, Dimensions, Typography
 from ui.widgets.styled_button import ButtonStyle, StyledButton
 
 
@@ -200,19 +200,85 @@ class ExportDialog(QDialog):
         self._update_path_preview()
 
     def _browse_location(self) -> None:
-        """Browse for save location using native file dialog."""
-        from PyQt6.QtWidgets import QFileDialog
+        """Browse for save location using Qt-styled file dialog."""
+        from PyQt6.QtWidgets import QFileDialog, QTreeView, QPushButton, QDialogButtonBox
+        from PyQt6.QtCore import QTimer
         
-        directory = QFileDialog.getExistingDirectory(
-            self,
-            "Select Save Location",
-            str(self._save_directory),
-        )
+        # Create a custom file dialog instance
+        dialog = QFileDialog(self)
+        dialog.setWindowTitle("Select Save Location")
+        dialog.setDirectory(str(self._save_directory))
+        dialog.setFileMode(QFileDialog.FileMode.Directory)
+        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
+        dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
         
-        if directory:
-            self._save_directory = Path(directory)
-            self.location_input.setText(str(self._save_directory))
-            self._update_path_preview()
+        # Configure dialog widgets after it's fully constructed
+        def configure_dialog():
+            # Hide extra columns in tree view
+            tree_view = dialog.findChild(QTreeView)
+            if tree_view:
+                for i in range(4, tree_view.header().count()):
+                    tree_view.setColumnHidden(i, True)
+            
+            # Style the buttons to match app design
+            button_box = dialog.findChild(QDialogButtonBox)
+            if button_box:
+                # Find and style the buttons
+                for button in button_box.buttons():
+                    role = button_box.buttonRole(button)
+                    
+                    # Style Choose/Open button (AcceptRole)
+                    if role == QDialogButtonBox.ButtonRole.AcceptRole:
+                        button.setStyleSheet(f"""
+                            QPushButton {{
+                                background-color: {Colors.PRIMARY};
+                                color: {Colors.TEXT_ON_ACCENT};
+                                border: none;
+                                border-radius: {Dimensions.BORDER_RADIUS}px;
+                                padding: 12px 24px;
+                                font-size: {Typography.BODY_SIZE}pt;
+                                font-weight: {Typography.FONT_WEIGHT_MEDIUM};
+                                min-width: 100px;
+                            }}
+                            QPushButton:hover {{
+                                background-color: {Colors.PRIMARY_HOVER};
+                            }}
+                            QPushButton:pressed {{
+                                background-color: {Colors.PRIMARY_PRESSED};
+                            }}
+                        """)
+                    
+                    # Style Cancel button (RejectRole)
+                    elif role == QDialogButtonBox.ButtonRole.RejectRole:
+                        button.setStyleSheet(f"""
+                            QPushButton {{
+                                background-color: {Colors.BG_TERTIARY};
+                                color: {Colors.TEXT_PRIMARY};
+                                border: 1px solid {Colors.BORDER_DEFAULT};
+                                border-radius: {Dimensions.BORDER_RADIUS}px;
+                                padding: 12px 24px;
+                                font-size: {Typography.BODY_SIZE}pt;
+                                font-weight: {Typography.FONT_WEIGHT_MEDIUM};
+                                min-width: 100px;
+                            }}
+                            QPushButton:hover {{
+                                background-color: {Colors.HOVER_BG_ITEM};
+                                border-color: {Colors.ACCENT_PRIMARY};
+                            }}
+                            QPushButton:pressed {{
+                                background-color: {Colors.BG_SECONDARY};
+                            }}
+                        """)
+        
+        # Apply configuration after dialog is shown
+        QTimer.singleShot(0, configure_dialog)
+        
+        if dialog.exec():
+            selected = dialog.selectedFiles()
+            if selected:
+                self._save_directory = Path(selected[0])
+                self.location_input.setText(str(self._save_directory))
+                self._update_path_preview()
 
     def _update_path_preview(self) -> None:
         """Update the full path preview label."""

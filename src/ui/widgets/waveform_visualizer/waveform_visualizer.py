@@ -141,11 +141,6 @@ class WaveformVisualizer(QWidget):
         # Calculate center line using drawable area
         center_y = vertical_padding + (drawable_height / 2)
 
-        # Draw baseline reference line (always visible) - 1px thick
-        baseline_height = 1
-        y_rect = int(center_y - baseline_height / 2)
-        painter.fillRect(0, y_rect, self.width(), baseline_height, QColor(Colors.BORDER_ACCENT))
-
         # Draw bars from left to right (scrolling effect from deque, not positioning)
         x_pos: float = 0.0
         for i, level in enumerate(visible_levels):

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
@@ -237,7 +237,8 @@ class SidebarWidget(QWidget):
 
     def _on_entry_group_changed(self, *args) -> None:
         """Refresh focus group tree when entries move."""
-        self.focus_groups.load_groups()
+        # Defer the refresh to prevent blocking during active recording/operations
+        QTimer.singleShot(0, self.focus_groups.load_groups)
 
     # === Public API ===
     

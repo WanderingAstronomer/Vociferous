@@ -242,7 +242,7 @@ class HistoryTreeView(QTreeView):
         # Copy action
         copy_action = menu.addAction("Copy")
         copy_action.triggered.connect(
-            safe_callback(lambda: self._copy_entry(index, text), "copy_entry")
+            safe_callback(lambda checked: self._copy_entry(index, text), "copy_entry")
         )
 
         # Focus group assignment
@@ -271,7 +271,7 @@ class HistoryTreeView(QTreeView):
                 ungroup_action = assign_menu.addAction("Remove from Group")
                 ungroup_action.setEnabled(current_group_id is not None)
                 ungroup_action.triggered.connect(
-                    safe_callback(lambda: self._assign_to_group(timestamp, None), "ungroup")
+                    safe_callback(lambda checked: self._assign_to_group(timestamp, None), "ungroup")
                 )
 
                 menu.addSeparator()
@@ -279,7 +279,7 @@ class HistoryTreeView(QTreeView):
         # Delete action
         delete_action = menu.addAction("Delete Entry")
         delete_action.triggered.connect(
-            safe_callback(lambda: self._delete_entry(index), "delete_entry")
+            safe_callback(lambda checked: self._delete_entry(index), "delete_entry")
         )
 
         menu.exec(self.viewport().mapToGlobal(position))

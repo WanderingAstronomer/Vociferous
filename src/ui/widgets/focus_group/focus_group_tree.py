@@ -234,7 +234,7 @@ class FocusGroupTreeWidget(QTreeWidget):
 
         rename_action = menu.addAction("Rename…")
         rename_action.triggered.connect(
-            lambda: self._rename_group(group_id, group_name)
+            lambda checked: self._rename_group(group_id, group_name)
         )
 
         color_menu = menu.addMenu("Change color")
@@ -253,7 +253,7 @@ class FocusGroupTreeWidget(QTreeWidget):
 
         delete_action = menu.addAction("Delete group…")
         delete_action.triggered.connect(
-            lambda: self._delete_group(group_id, group_name)
+            lambda checked: self._delete_group(group_id, group_name)
         )
 
         menu.exec(self.viewport().mapToGlobal(position))
@@ -287,7 +287,7 @@ class FocusGroupTreeWidget(QTreeWidget):
         # Remove from group
         remove_action = menu.addAction("Remove from group")
         remove_action.triggered.connect(
-            lambda: self._remove_from_group(timestamp)
+            lambda checked: self._remove_from_group(timestamp)
         )
 
         menu.addSeparator()
@@ -295,7 +295,7 @@ class FocusGroupTreeWidget(QTreeWidget):
         # Delete transcript
         delete_action = menu.addAction("Delete transcript…")
         delete_action.triggered.connect(
-            lambda: self._delete_transcript(timestamp)
+            lambda checked: self._delete_transcript(timestamp)
         )
 
         menu.exec(self.viewport().mapToGlobal(position))
