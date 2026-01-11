@@ -323,3 +323,79 @@ class TestEditIntentStateAssertions:
         
         assert result.outcome == IntentOutcome.NO_OP
         assert workspace.get_state() == WorkspaceState.EDITING
+
+
+class TestCommitIntentStateAssertions:
+    """Phase 4: Tests for CommitEditsIntent state assertions."""
+    
+    @pytest.fixture
+    def workspace(self, qapp_session):
+        """Create MainWorkspace instance for testing."""
+        from ui.components.workspace import MainWorkspace
+        w = MainWorkspace()
+        return w
+
+    def test_commit_accepted_in_editing(self, workspace):
+        """CommitEditsIntent must be accepted in EDITING and transition to VIEWING."""
+        from ui.constants import WorkspaceState
+        
+        # Load transcript and enter editing
+        workspace.load_transcript("Original text", "2026-01-11T12:00:00")
+        edit_result = workspace.handle_intent(EditTranscriptIntent())
+        assert edit_result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.EDITING
+        
+        # Now commit
+        intent = CommitEditsIntent(content="Edited text")
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.VIEWING
+        assert not workspace.has_unsaved_changes()
+
+    def test_commit_rejected_when_not_editing(self, workspace):
+        """CommitEditsIntent must be rejected when not in EDITING state."""
+        from ui.constants import WorkspaceState
+        
+        # Start in IDLE
+        assert workspace.get_state() == WorkspaceState.IDLE
+        
+        intent = CommitEditsIntent(content="Some text")
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.REJECTED
+        assert workspace.get_state() == WorkspaceState.IDLE
+
+    def test_commit_rejected_in_viewing(self, workspace):
+        """CommitEditsIntent must be rejected in VIEWING state."""
+        from ui.constants import WorkspaceState
+        
+        # Load transcript (goes to VIEWING)
+        workspace.load_transcript("Test text", "2026-01-11T12:00:00")
+        assert workspace.get_state() == WorkspaceState.VIEWING
+        
+        intent = CommitEditsIntent(content="Edited text")
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.REJECTED
+        assert workspace.get_state() == WorkspaceState.VIEWING
+
+    def test_commit_emits_save_requested_signal(self, workspace):
+        """CommitEditsIntent should emit saveRequested signal with content."""
+        from ui.constants import WorkspaceState
+        
+        # Load transcript and enter editing
+        workspace.load_transcript("Original", "2026-01-11T12:00:00")
+        workspace.handle_intent(EditTranscriptIntent())
+        
+        # Track signal
+        saved_content = []
+        workspace.saveRequested.connect(lambda text: saved_content.append(text))
+        
+        # Commit with new text
+        intent = CommitEditsIntent(content="New content")
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert len(saved_content) == 1
+        assert saved_content[0] == "New content"

@@ -398,12 +398,13 @@ class MainWorkspace(QWidget):
                     intent = EditTranscriptIntent(source=IntentSource.CONTROLS)
                     self.handle_intent(intent)
                 case WorkspaceState.EDITING:
-                    # Legacy path (pending CommitEditsIntent migration)
+                    # Phase 4: Route through intent layer
                     edited_text = self.content.get_text()
-                    self.content.set_transcript(edited_text, self.content.get_timestamp())
-                    self._has_unsaved_changes = False
-                    self.saveRequested.emit(edited_text)
-                    self.set_state(WorkspaceState.VIEWING)
+                    intent = CommitEditsIntent(
+                        source=IntentSource.CONTROLS,
+                        content=edited_text,
+                    )
+                    self.handle_intent(intent)
         except Exception as e:
             logger.exception("Error in edit/save button click")
 
@@ -470,10 +471,10 @@ class MainWorkspace(QWidget):
             case EditTranscriptIntent():
                 result = self._apply_edit_transcript(intent)
 
-            # Bridge methods (pending Phase 4 migration)
-
             case CommitEditsIntent(content=text):
-                result = self._bridge_commit_edits(intent, text)
+                result = self._apply_commit_edits(intent, text)
+
+            # Bridge methods (pending Phase 4 migration)
 
             case DiscardEditsIntent():
                 result = self._bridge_discard_edits(intent)
@@ -627,10 +628,31 @@ class MainWorkspace(QWidget):
                 reason=f"Cannot edit in {self._state.value} state",
             )
 
-    def _bridge_commit_edits(self, intent: CommitEditsIntent, content: str) -> IntentResult:
-        """Bridge: delegate to existing edit/save click logic for save."""
+    def _apply_commit_edits(self, intent: CommitEditsIntent, content: str) -> IntentResult:
+        """Apply CommitEditsIntent: save edited content and exit editing mode.
+        
+        Phase 4: Authoritative state mutator for CommitEditsIntent.
+        This is a terminal intent for editing sessions.
+        Bridges route, applies mutate.
+        
+        Precondition: state == EDITING
+        Postcondition: state == VIEWING, _has_unsaved_changes == False
+        
+        Invariant 4: Editing can only exit through terminal intents.
+        """
         if self._state == WorkspaceState.EDITING:
-            self._on_edit_save_click()
+            # Authoritative mutation: persist edits and transition to VIEWING
+            self.content.set_transcript(content, self.content.get_timestamp())
+            self._has_unsaved_changes = False
+            self.saveRequested.emit(content)
+            self.set_state(WorkspaceState.VIEWING)
+            
+            # Postcondition assertions
+            assert self._state == WorkspaceState.VIEWING, \
+                f"CommitEditsIntent accepted but state is {self._state.value}"
+            assert not self._has_unsaved_changes, \
+                "CommitEditsIntent: unsaved changes should be False after commit"
+            
             return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
         else:
             return IntentResult(
