@@ -2,6 +2,66 @@
 
 ---
 
+# v2.0.1 - Repository Hygiene & Debt Assessment
+
+**Date:** January 2026  
+**Status:** Maintenance Release
+
+---
+
+## Summary
+
+Post-stabilization maintenance release focused on repository hygiene and technical debt assessment. Removed transient planning artifacts, updated documentation structure, and conducted comprehensive code health audit. No functional changes—this is a pure documentation and repository organization release.
+
+## Changed
+
+### Repository Cleanup
+- **Removed**: 7 transient planning artifacts from `docs/dev/planning/`:
+  - `documentation-alignment-plan.md` — Superseded planning proposal
+  - `file-relevance-audit-batch-01.md` — Exhausted audit log (scripts)
+  - `file-relevance-audit-batch-02.md` — Exhausted audit log (README/wiki)
+  - `file-relevance-audit-batch-03.md` — Exhausted audit log (launchers)
+  - `tech-debt-assessment-batch-01.md` — Exhausted assessment (Type C findings)
+  - `tech-debt-assessment-batch-02.md` — Exhausted assessment (complexity justified)
+  - `tech-debt-assessment-batch-03.md` — Exhausted assessment (Type B declined)
+- **Removed**: Empty `docs/dev/planning/` directory
+
+### Documentation
+- **Updated**: `docs/wiki/Home.md` Project Structure to include frozen architecture documentation in `docs/dev/`
+- **Preserved**: All binding architecture documents (interaction-core-frozen.md, authority-invariants.md, intent-catalog.md, edit-invariants.md)
+
+## Technical Debt Assessment
+
+Conducted systematic code health audit across three batches covering non-UI infrastructure:
+
+### Batch 01: Configuration & Utilities
+- **Files Reviewed**: `src/utils.py`, `src/config_schema.yaml`
+- **Findings**: One minor Type C finding (repeated guard pattern in ConfigManager)
+- **Outcome**: Complexity justified; no action taken
+
+### Batch 02: Core Infrastructure
+- **Files Reviewed**: `src/key_listener.py`, `src/result_thread.py`, `src/transcription.py`
+- **Findings**: One Type C finding (duplicate media key mappings in EvdevBackend)
+- **Outcome**: All complexity proportionate to platform requirements; no action taken
+
+### Batch 03: Utility Infrastructure
+- **Files Reviewed**: `src/history_manager.py`, `src/ui/utils/clipboard_utils.py`, `src/ui/utils/error_handler.py`
+- **Findings**: One Type B finding (repetitive try/except in HistoryManager), one Type C finding
+- **Outcome**: Type B refactor declined due to heterogeneous method semantics; error_handler.py identified as exemplary implementation
+
+### Assessment Conclusions
+- **No code modifications**: All identified complexity was either justified defensive programming or cosmetic
+- **Architecture validated**: Thread safety, error handling, and platform abstraction all proportionate to domain requirements
+- **Remediation declined**: Proposed HistoryManager refactor determined unsafe without behavioral changes
+
+## Notes
+
+This release represents a **conservative post-stabilization posture**. The technical debt assessment confirmed that the non-UI codebase is architecturally healthy, with complexity patterns reflecting genuine platform requirements rather than entropy.
+
+Repository surface area reduced by removing agent-specific planning logs that served their purpose during Phases 1-7 but are no longer needed for contribution or evolution.
+
+---
+
 # v2.0.0 - Architecture Stabilization
 
 **Date:** January 2026
