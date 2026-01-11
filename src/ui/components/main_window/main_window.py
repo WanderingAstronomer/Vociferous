@@ -36,6 +36,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ui.components.main_window.intent_feedback import IntentFeedbackHandler
 from ui.components.main_window.menu_builder import MenuBuilder
 from ui.components.sidebar.sidebar_new import SidebarWidget
 from ui.components.title_bar import TitleBar
@@ -178,8 +179,20 @@ class MainWindow(QMainWindow):
         central.setLayout(main_layout)
         self.setCentralWidget(central)
 
-        # Hide status bar
-        self.statusBar().hide()
+        # Status bar for intent feedback (Phase 6)
+        self._status_bar = self.statusBar()
+        self._status_bar.setStyleSheet(f"""
+            QStatusBar {{
+                background: {Colors.BACKGROUND};
+                color: {Colors.TEXT_SECONDARY};
+                border-top: 1px solid {Colors.BORDER};
+                padding: 4px 8px;
+            }}
+        """)
+        
+        # Intent feedback handler (Phase 6: Outcome Visibility)
+        self._intent_feedback = IntentFeedbackHandler(self._status_bar, self)
+        self.workspace.intentProcessed.connect(self._intent_feedback.on_intent_processed)
 
     def _create_menu_bar(self) -> None:
         """Create menu bar with all menus."""
