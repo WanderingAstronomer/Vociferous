@@ -51,15 +51,25 @@ class StyledDialog(QDialog):
         self._main_layout.setContentsMargins(0, 0, 0, 0)
         self._main_layout.setSpacing(0)
 
+        # Structural Frame Wrapper (The Dialog Frame)
+        self._dialog_frame = QFrame()
+        self._dialog_frame.setObjectName("dialogFrame")
+        self._main_layout.addWidget(self._dialog_frame)
+
+        # Frame layout (contains title bar + content)
+        self._frame_layout = QVBoxLayout(self._dialog_frame)
+        self._frame_layout.setContentsMargins(0, 0, 0, 0)
+        self._frame_layout.setSpacing(0)
+
         # Custom title bar (draggable)
         self.title_bar = DialogTitleBar(title, self)
         self.title_bar.closeRequested.connect(self.reject)
-        self._main_layout.addWidget(self.title_bar)
+        self._frame_layout.addWidget(self.title_bar)
 
         # Background container
         self._container = QWidget()
         self._container.setObjectName("dialogContainer")
-        self._main_layout.addWidget(self._container)
+        self._frame_layout.addWidget(self._container)
 
         # Container layout
         self._container_layout = QVBoxLayout(self._container)

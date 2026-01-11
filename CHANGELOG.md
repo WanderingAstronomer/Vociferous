@@ -2,6 +2,20 @@
 
 ---
 
+# v2.1.3 - UI Refinements (Dialog Borders)
+
+**Date:** January 2026
+**Status:** Hotfix
+
+---
+
+## Fixed
+
+### UI / Rendering
+- **Dialog Borders**: Refactored all custom dialogs (`StyledDialog`, `SettingsDialog`, `ExportDialog`, `CreateGroupDialog`, `MetricsExplanationDialog`) to use a structural `QFrame` wrapper (`dialogFrame`) for proper border rendering. Moved border styling from `QDialog` to `QFrame` to prevent content-level border artifacts and ensure a consistent frameless window outline.
+
+---
+
 # v2.1.2 - UI Refinements & Binding Fixes
 
 **Date:** January 2026

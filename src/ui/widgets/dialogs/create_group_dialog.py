@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QDialog,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -109,10 +110,20 @@ class CreateGroupDialog(QDialog):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
+        # Structural Frame Wrapper (The Dialog Frame)
+        self._dialog_frame = QFrame()
+        self._dialog_frame.setObjectName("dialogFrame")
+        main_layout.addWidget(self._dialog_frame)
+
+        # Frame layout
+        frame_layout = QVBoxLayout(self._dialog_frame)
+        frame_layout.setContentsMargins(0, 0, 0, 0)
+        frame_layout.setSpacing(0)
+
         # Custom title bar (draggable)
         self.title_bar = DialogTitleBar("New Focus Group", self)
         self.title_bar.closeRequested.connect(self.reject)
-        main_layout.addWidget(self.title_bar)
+        frame_layout.addWidget(self.title_bar)
 
         # Content area
         content = QWidget()
@@ -120,6 +131,8 @@ class CreateGroupDialog(QDialog):
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(MAJOR_GAP, MAJOR_GAP, MAJOR_GAP, MAJOR_GAP)
         content_layout.setSpacing(MAJOR_GAP)
+
+        frame_layout.addWidget(content)
 
         # Name field
         name_label = QLabel("Name:")
@@ -156,8 +169,6 @@ class CreateGroupDialog(QDialog):
         content_layout.addWidget(color_grid)
         content_layout.addStretch()
 
-        main_layout.addWidget(content, 1)
-
         # Button row
         button_container = QWidget()
         button_container.setObjectName("dialogButtonContainer")
@@ -183,7 +194,7 @@ class CreateGroupDialog(QDialog):
         self.create_btn.clicked.connect(self.accept)
         button_layout.addWidget(self.create_btn)
 
-        main_layout.addWidget(button_container)
+        frame_layout.addWidget(button_container)
 
         self.setObjectName("createGroupDialog")
 

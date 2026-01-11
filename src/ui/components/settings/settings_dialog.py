@@ -110,11 +110,21 @@ class SettingsDialog(QDialog):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
+        # Structural Frame Wrapper (The Dialog Frame)
+        self._dialog_frame = QFrame()
+        self._dialog_frame.setObjectName("dialogFrame")
+        main_layout.addWidget(self._dialog_frame)
+
+        # Frame layout
+        frame_layout = QVBoxLayout(self._dialog_frame)
+        frame_layout.setContentsMargins(0, 0, 0, 0)
+        frame_layout.setSpacing(0)
+
         # Custom title bar
         self.title_bar = DialogTitleBar("Settings", self)
         self.title_bar.closeRequested.connect(self.reject)
         self.title_bar.minimizeRequested.connect(self.showMinimized)
-        main_layout.addWidget(self.title_bar)
+        frame_layout.addWidget(self.title_bar)
 
         # Content area with scroll
         scroll_area = QScrollArea()
@@ -139,11 +149,11 @@ class SettingsDialog(QDialog):
 
         content_layout.addStretch()
         scroll_area.setWidget(content_widget)
-        main_layout.addWidget(scroll_area, 1)
+        frame_layout.addWidget(scroll_area, 1)
 
         # Button row
         button_row = self._create_button_row()
-        main_layout.addWidget(button_row)
+        frame_layout.addWidget(button_row)
 
         self.setObjectName("settingsDialog")
 

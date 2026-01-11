@@ -672,6 +672,11 @@ QLabel#hotkeyValidation {{
    ================================================================= */
 
 QDialog {{
+    background-color: transparent;
+    border: none;
+}}
+
+QFrame#dialogFrame {{
     background-color: {c.BG_PRIMARY};
     border: 1px solid {c.BORDER_ACCENT};
     border-radius: {STANDARD_RADIUS}px;
@@ -711,10 +716,6 @@ QLineEdit#dialogInput:focus {{
     border-color: {c.ACCENT_BLUE};
 }}
 
-QDialog#createGroupDialog {{
-    background-color: {c.BG_PRIMARY};
-}}
-
 QLabel#groupDialogLabel {{
     color: {c.TEXT_PRIMARY};
     font-size: 14px;
@@ -737,12 +738,6 @@ QLineEdit#groupNameInput:focus {{
 /* =================================================================
    SETTINGS DIALOG
    ================================================================= */
-
-QDialog#settingsDialog {{
-    background-color: {c.BG_PRIMARY};
-    border: 1px solid {c.BORDER_COLOR};
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-}}
 
 QScrollArea#settingsScrollArea {{
     background-color: transparent;

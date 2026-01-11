@@ -13,6 +13,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -61,10 +62,20 @@ class ExportDialog(QDialog):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
+        # Structural Frame Wrapper (The Dialog Frame)
+        self._dialog_frame = QFrame()
+        self._dialog_frame.setObjectName("dialogFrame")
+        main_layout.addWidget(self._dialog_frame)
+
+        # Frame layout
+        frame_layout = QVBoxLayout(self._dialog_frame)
+        frame_layout.setContentsMargins(0, 0, 0, 0)
+        frame_layout.setSpacing(0)
+
         # Custom title bar (draggable)
         self.title_bar = DialogTitleBar("Export History", self)
         self.title_bar.closeRequested.connect(self.reject)
-        main_layout.addWidget(self.title_bar)
+        frame_layout.addWidget(self.title_bar)
 
         # Content area
         content = QWidget()
@@ -72,6 +83,8 @@ class ExportDialog(QDialog):
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(MAJOR_GAP, MAJOR_GAP, MAJOR_GAP, MAJOR_GAP)
         content_layout.setSpacing(MAJOR_GAP)
+
+        frame_layout.addWidget(content)
 
         # File format selection
         format_label = QLabel("Export Format:")
@@ -162,7 +175,6 @@ class ExportDialog(QDialog):
         self._update_path_preview()
 
         content_layout.addStretch()
-        main_layout.addWidget(content, 1)
 
         # Button row
         button_container = QWidget()
@@ -185,7 +197,7 @@ class ExportDialog(QDialog):
         self.export_btn.clicked.connect(self.accept)
         button_layout.addWidget(self.export_btn)
 
-        main_layout.addWidget(button_container)
+        frame_layout.addWidget(button_container)
 
     def _on_format_changed(self, fmt: str) -> None:
         """Handle format selection change."""

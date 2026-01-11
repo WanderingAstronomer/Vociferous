@@ -14,6 +14,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog,
+    QFrame,
     QLabel,
     QScrollArea,
     QVBoxLayout,
@@ -44,10 +45,20 @@ class MetricsExplanationDialog(QDialog):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
+        # Structural Frame Wrapper (The Dialog Frame)
+        self._dialog_frame = QFrame()
+        self._dialog_frame.setObjectName("dialogFrame")
+        main_layout.addWidget(self._dialog_frame)
+
+        # Frame layout
+        frame_layout = QVBoxLayout(self._dialog_frame)
+        frame_layout.setContentsMargins(0, 0, 0, 0)
+        frame_layout.setSpacing(0)
+
         # Title bar
         title_bar = DialogTitleBar("Metrics Calculations", self)
         title_bar.closeRequested.connect(self.reject)
-        main_layout.addWidget(title_bar)
+        frame_layout.addWidget(title_bar)
 
         # Scrollable content area
         scroll = QScrollArea()
@@ -190,7 +201,7 @@ class MetricsExplanationDialog(QDialog):
         layout.addStretch()
 
         scroll.setWidget(content)
-        main_layout.addWidget(scroll)
+        frame_layout.addWidget(scroll)
 
     def _create_section_header(self, text: str) -> QLabel:
         """Create a section header label."""
