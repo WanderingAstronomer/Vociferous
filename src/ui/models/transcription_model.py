@@ -284,13 +284,26 @@ class TranscriptionModel(QAbstractItemModel):
             # Root level - return number of days
             return len(self._days) if self._days else 0
 
-        # Parent is a valid index - return entries for that day
-        day_idx = parent.row()
-        if 0 <= day_idx < len(self._days):
-            entries = self._days[day_idx][2]
-            return len(entries) if entries else 0
-        
-        return 0
+        # Parent is a valid index - check if it's a day header or entry
+        # WE MUST CHECK internalId TO DISCRIMINATE BETWEEN HEADERS AND ENTRIES.
+        # Failing to do so causes infinite recursion where entries claim to have children.
+        try:
+            internal_id = parent.internalId()
+            # _get_index_data returns (is_day_header, day_idx, entry_idx)
+            is_day_header, day_idx, _, = self._get_index_data(internal_id)
+            
+            if is_day_header:
+                # Parent is a day header -> return number of entries in this day
+                if 0 <= day_idx < len(self._days):
+                    entries = self._days[day_idx][2]
+                    return len(entries) if entries else 0
+            
+            # Entries do not have children
+            return 0
+            
+        except Exception as e:
+            print(f"Error in rowCount(): {e}", file=sys.stderr)
+            return 0
 
     def columnCount(self, parent: QModelIndex | None = None) -> int:
         """Single column layout for unified row interaction."""

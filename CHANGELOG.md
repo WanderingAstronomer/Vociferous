@@ -2,6 +2,24 @@
 
 ---
 
+# v2.1.1 - Critical Crash Fix
+
+**Date:** January 2026
+**Status:** Hotfix
+
+---
+
+## Summary
+
+Emergency hotfix addressing a critical segmentation fault on application startup caused by infinite recursion in the transcription data model.
+
+## Fixed
+
+### Critical Stability
+- **TranscriptionModel**: Fixed segmentation fault where leaf nodes (entries) were incorrectly processed as branch nodes in `rowCount()`. Implemented invalidation check using `internalId` to prevent proxy models from triggering infinite recursion stack overflows.
+
+---
+
 # v2.1.0 - Code Health & Type Safety
 
 **Date:** January 2026
