@@ -240,3 +240,86 @@ class TestHandleIntentPassthrough:
         
         assert len(received_results) == 1
         assert received_results[0].intent is intent
+
+class TestEditIntentStateAssertions:
+    """Phase 4: Tests with explicit state assertions for edit safety.
+    
+    These tests verify that illegal transitions are rejected and that
+    legal ones preserve invariants.
+    """
+    
+    @pytest.fixture
+    def workspace(self, qapp_session):
+        """Create MainWorkspace instance for testing."""
+        from ui.components.workspace import MainWorkspace
+        from ui.constants import WorkspaceState
+        w = MainWorkspace()
+        return w
+
+    def test_edit_rejected_in_idle_no_transcript(self, workspace):
+        """EditTranscriptIntent must be rejected in IDLE (no transcript)."""
+        from ui.constants import WorkspaceState
+        
+        assert workspace.get_state() == WorkspaceState.IDLE
+        
+        intent = EditTranscriptIntent()
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.REJECTED
+        assert workspace.get_state() == WorkspaceState.IDLE  # State unchanged
+
+    def test_edit_rejected_in_recording(self, workspace):
+        """EditTranscriptIntent must be rejected in RECORDING state."""
+        from ui.constants import WorkspaceState
+        
+        # Enter recording state
+        workspace.set_state(WorkspaceState.RECORDING)
+        
+        intent = EditTranscriptIntent()
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.REJECTED
+        assert workspace.get_state() == WorkspaceState.RECORDING  # State unchanged
+
+    def test_edit_accepted_in_viewing_with_transcript(self, workspace):
+        """EditTranscriptIntent must be accepted in VIEWING with transcript loaded."""
+        from ui.constants import WorkspaceState
+        
+        # Load a transcript (puts workspace in VIEWING state)
+        workspace.load_transcript("Test transcript", "2026-01-11T12:00:00")
+        assert workspace.get_state() == WorkspaceState.VIEWING
+        
+        intent = EditTranscriptIntent()
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.EDITING  # State changed
+
+    def test_begin_recording_rejected_in_editing(self, workspace):
+        """BeginRecordingIntent must be rejected in EDITING (Invariant 2)."""
+        from ui.constants import WorkspaceState
+        
+        # Load transcript and enter editing
+        workspace.load_transcript("Test transcript", "2026-01-11T12:00:00")
+        workspace.set_state(WorkspaceState.EDITING)
+        
+        intent = BeginRecordingIntent()
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.REJECTED
+        assert "editing" in result.reason.lower()
+        assert workspace.get_state() == WorkspaceState.EDITING  # State unchanged
+
+    def test_edit_no_op_when_already_editing(self, workspace):
+        """EditTranscriptIntent should be NO_OP when already in EDITING."""
+        from ui.constants import WorkspaceState
+        
+        # Load transcript and enter editing
+        workspace.load_transcript("Test transcript", "2026-01-11T12:00:00")
+        workspace.set_state(WorkspaceState.EDITING)
+        
+        intent = EditTranscriptIntent()
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.NO_OP
+        assert workspace.get_state() == WorkspaceState.EDITING

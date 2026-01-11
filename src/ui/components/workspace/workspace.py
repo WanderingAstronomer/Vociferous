@@ -386,12 +386,19 @@ class MainWorkspace(QWidget):
             logger.exception("Error in primary button click")
 
     def _on_edit_save_click(self) -> None:
-        """Handle Edit/Save button click."""
+        """Handle Edit/Save button click.
+        
+        Phase 4: VIEWING state now routes through intent layer for edit.
+        EDITING state still uses legacy path for save (pending migration).
+        """
         try:
             match self._state:
                 case WorkspaceState.VIEWING:
-                    self.set_state(WorkspaceState.EDITING)
+                    # Phase 4: Route through intent layer
+                    intent = EditTranscriptIntent(source=IntentSource.CONTROLS)
+                    self.handle_intent(intent)
                 case WorkspaceState.EDITING:
+                    # Legacy path (pending CommitEditsIntent migration)
                     edited_text = self.content.get_text()
                     self.content.set_transcript(edited_text, self.content.get_timestamp())
                     self._has_unsaved_changes = False
@@ -460,10 +467,10 @@ class MainWorkspace(QWidget):
             case CancelRecordingIntent():
                 result = self._apply_cancel_recording(intent)
 
-            # Bridge methods (pending Phase 3 migration)
-
             case EditTranscriptIntent():
-                result = self._bridge_edit_transcript(intent)
+                result = self._apply_edit_transcript(intent)
+
+            # Bridge methods (pending Phase 4 migration)
 
             case CommitEditsIntent(content=text):
                 result = self._bridge_commit_edits(intent, text)
@@ -571,10 +578,41 @@ class MainWorkspace(QWidget):
                 reason="Not currently recording",
             )
 
-    def _bridge_edit_transcript(self, intent: EditTranscriptIntent) -> IntentResult:
-        """Bridge: delegate to existing edit/save click logic for edit."""
+    def _apply_edit_transcript(self, intent: EditTranscriptIntent) -> IntentResult:
+        """Apply EditTranscriptIntent: enter editing mode for current transcript.
+        
+        Phase 4: Authoritative state mutator for EditTranscriptIntent.
+        Bridges route, applies mutate.
+        
+        Precondition: state == VIEWING, current transcript loaded
+        Postcondition: state == EDITING
+        
+        Invariant 1: Editing implies selected transcript (enforced here)
+        
+        Note: _has_unsaved_changes may become True after set_state(EDITING)
+        due to Qt's textChanged signal firing when the editor is populated.
+        This is expected behavior. The unsaved flag is cleared by terminal
+        intents (CommitEditsIntent, DiscardEditsIntent).
+        """
         if self._state == WorkspaceState.VIEWING:
-            self._on_edit_save_click()
+            # Invariant 1: Must have a transcript loaded to edit
+            current_ts = self.get_current_timestamp()
+            if not current_ts:
+                return IntentResult(
+                    outcome=IntentOutcome.REJECTED,
+                    intent=intent,
+                    reason="No transcript loaded to edit",
+                )
+            
+            # Authoritative mutation
+            self.set_state(WorkspaceState.EDITING)
+            
+            # Postcondition assertions
+            assert self._state == WorkspaceState.EDITING, \
+                f"EditTranscriptIntent accepted but state is {self._state.value}"
+            # Note: Do not assert _has_unsaved_changes here - Qt's textChanged
+            # fires when the editor is populated, setting the flag to True.
+            
             return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
         elif self._state == WorkspaceState.EDITING:
             return IntentResult(
