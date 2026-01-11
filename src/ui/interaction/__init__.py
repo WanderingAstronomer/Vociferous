@@ -11,6 +11,7 @@ they name them. Execution remains in existing handlers until Phase 3.
 
 from ui.interaction.intents import (
     InteractionIntent,
+    IntentSource,
     BeginRecordingIntent,
     StopRecordingIntent,
     ViewTranscriptIntent,
@@ -25,6 +26,7 @@ from ui.interaction.results import IntentOutcome, IntentResult
 __all__ = [
     # Intent types
     "InteractionIntent",
+    "IntentSource",
     "BeginRecordingIntent",
     "StopRecordingIntent",
     "ViewTranscriptIntent",

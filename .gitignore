@@ -21,7 +21,7 @@ build/
 .github/
 
 # Agent-specific resources
-docs/agent_resources/
+docs/dev/
 
 # OS / editor
 .DS_Store

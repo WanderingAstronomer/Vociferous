@@ -32,6 +32,7 @@ from ui.interaction import (
     InteractionIntent,
     IntentOutcome,
     IntentResult,
+    IntentSource,
     BeginRecordingIntent,
     StopRecordingIntent,
     CancelRecordingIntent,
@@ -371,15 +372,16 @@ class MainWorkspace(QWidget):
     # Button handlers
 
     def _on_primary_click(self) -> None:
-        """Handle primary button (Start/Stop) click."""
+        """Handle primary button (Start/Stop) click via intent system."""
         try:
+            # Phase 3: Route through intent system (handle_intent is authoritative)
             match self._state:
                 case WorkspaceState.IDLE | WorkspaceState.VIEWING:
-                    self.set_state(WorkspaceState.RECORDING)
-                    self.startRequested.emit()
+                    intent = BeginRecordingIntent(source=IntentSource.UI)
+                    self.handle_intent(intent)
                 case WorkspaceState.RECORDING:
-                    self.show_transcribing_status()
-                    self.stopRequested.emit()
+                    intent = StopRecordingIntent(source=IntentSource.UI)
+                    self.handle_intent(intent)
         except Exception as e:
             logger.exception("Error in primary button click")
 
@@ -479,10 +481,19 @@ class MainWorkspace(QWidget):
         return result
 
     def _bridge_begin_recording(self, intent: BeginRecordingIntent) -> IntentResult:
-        """Bridge: delegate to existing primary click logic for start."""
+        """Apply BeginRecordingIntent: transition to RECORDING state.
+        
+        Phase 3: This is now authoritative. State mutation happens here.
+        """
         if self._state in (WorkspaceState.IDLE, WorkspaceState.VIEWING):
-            # Delegate to existing handler (Phase 2: no behavior change)
-            self._on_primary_click()
+            # Authoritative mutation
+            self.set_state(WorkspaceState.RECORDING)
+            self.startRequested.emit()
+            
+            # Debug assertion: verify state transition succeeded
+            assert self._state == WorkspaceState.RECORDING, \
+                f"BeginRecordingIntent accepted but state is {self._state.value}"
+            
             return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
         else:
             return IntentResult(
@@ -492,9 +503,19 @@ class MainWorkspace(QWidget):
             )
 
     def _bridge_stop_recording(self, intent: StopRecordingIntent) -> IntentResult:
-        """Bridge: delegate to existing primary click logic for stop."""
+        """Apply StopRecordingIntent: request transcription and show status.
+        
+        Phase 3: This is now authoritative. State remains RECORDING until
+        transcription completes (external set_state call handles that).
+        """
         if self._state == WorkspaceState.RECORDING:
-            self._on_primary_click()
+            # Authoritative mutation: show transcribing UI and emit signal
+            self.show_transcribing_status()
+            self.stopRequested.emit()
+            
+            # Note: State remains RECORDING here. Transition to VIEWING happens
+            # when transcription completes via show_transcription().
+            
             return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
         else:
             return IntentResult(
