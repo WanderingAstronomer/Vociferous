@@ -50,6 +50,61 @@ A modern Python 3.12+ speech-to-text dictation application for Linux using OpenA
 
 - [Config Options](Config-Options) - All configuration values explained
 
+---
+
+## Interaction Architecture (Beta 2.0)
+
+Vociferous uses an **intent-driven interaction model**. UI components do not manipulate state directly—they petition the workspace by emitting structured intent objects. The workspace validates, applies, and reports the outcome through a unified flow:
+
+```
+User Action → Intent → handle_intent() → _apply_*() → IntentResult → Feedback
+```
+
+**Mental model:** The UI *petitions* interaction law; it does not execute it. All state mutations occur within the workspace's `_apply_*` methods, and all feedback is derived from `IntentResult` objects.
+
+### Frozen Core Documentation
+
+The interaction architecture is **frozen as of Beta 2.0**. The following developer documents define the interaction law and are sealed against casual modification:
+
+| Document | Purpose |
+|----------|---------|
+| [interaction-core-frozen.md](../dev/interaction-core-frozen.md) | Freeze declaration and modification rules |
+| [intent-catalog.md](../dev/intent-catalog.md) | Complete intent vocabulary |
+| [authority-invariants.md](../dev/authority-invariants.md) | State mutation authority rules |
+| [edit-invariants.md](../dev/edit-invariants.md) | Editing state protection rules |
+| [intent-outcome-visibility.md](../dev/intent-outcome-visibility.md) | Feedback handler binding rules |
+
+---
+
+## Contributing
+
+### Architectural Guardrails
+
+All contributions must pass the architectural guardrail tests in `tests/test_architecture_guardrails.py`. These tests enforce:
+
+1. **Intent-only state access** — UI components may not call `set_state()` directly
+2. **Feedback isolation** — Feedback handlers may not query workspace state
+3. **Orchestration bounds** — Only designated orchestration methods may bridge engine ↔ UI
+
+**Changes that violate the architectural guardrail tests are architecturally invalid and will not be accepted.**
+
+### Adding New Intents
+
+New intents require:
+
+1. Define the intent dataclass in `src/ui/interaction/intents.py`
+2. Add the `_apply_*` handler in `src/ui/components/workspace/workspace.py`
+3. Add feedback mapping in `src/ui/components/main_window/intent_feedback.py`
+4. Update `docs/dev/intent-catalog.md`
+5. Update `docs/dev/interaction-core-frozen.md` if the change affects frozen components
+
+### Code Style
+
+- **Python 3.12+**: Native unions (`str | int`), generic collections (`list[str]`)
+- **Type hints**: All public APIs must be fully typed
+- **Qt signals**: Define at class level, use `pyqtSignal`
+- **Testing**: All new functionality requires unit tests
+
 ## Requirements
 
 - **Python**: 3.12+

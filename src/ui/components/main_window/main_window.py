@@ -435,13 +435,17 @@ class MainWindow(QMainWindow):
         if self._menu_builder.settings_action:
             self._menu_builder.settings_action.triggered.connect(handler)
 
-    def update_transcription_status(self, status: str) -> None:
-        """Sync workspace state with background transcription thread.
+    def sync_recording_status_from_engine(self, status: str) -> None:
+        """Sync workspace state with background transcription engine status.
         
-        This is ORCHESTRATION, not user interaction (Invariant 8).
-        Called by main.py when ResultThread status changes.
+        ORCHESTRATION PRIVILEGE (Invariant 8):
+        This is the ONLY method in MainWindow allowed to call workspace.set_state().
+        It coordinates the engine's status updates with the UI, not user interactions.
         
-        Safety: Only transitions IDLE↔RECORDING, never touches EDITING/VIEWING.
+        Called by: main.py when ResultThread reports status changes.
+        
+        Edit Safety: Only transitions IDLE↔RECORDING, never touches EDITING/VIEWING.
+        This protects users from losing unsaved edits when the engine sends updates.
         """
         match status:
             case "recording":

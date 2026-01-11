@@ -1,242 +1,175 @@
 # Vociferous
 
-Vociferous is a modern **Python 3.12+** speech‑to‑text dictation application for Linux built on **OpenAI Whisper** via **faster‑whisper (CTranslate2)**.
+**Version 2.0.0-beta.2** — Architecture Stabilization Release
 
-It is designed for fast, local dictation with a clipboard‑first workflow and minimal friction.
-
----
-
-## Main Window
-
-The application features a **modern frameless window** with three main areas:
-
-- **Sidebar** (collapsible): Focus groups, recent transcripts, and search
-- **Workspace**: Current transcription with real-time waveform visualization during recording
-- **Metrics Strip**: Lifetime analytics (total time saved, word count, transcription count)
+Vociferous is a fast, local speech-to-text dictation application for Linux. It transcribes your voice using OpenAI's Whisper model (via faster-whisper) and copies the result directly to your clipboard. No cloud services, no account required—just press a hotkey, speak, and paste.
 
 [![Vociferous Main Window](docs/images/main_window.png)](docs/images/main_window.png)
 
-### Recording State
+---
 
-During recording, the workspace displays a **real-time waveform visualization** with recording controls:
+## What Changed in Beta 2.0
 
-[![Recording State](docs/images/recording_state.png)](docs/images/recording_state.png)
+**Beta 2.0 introduces no new user-facing features.** Its value lies entirely in correctness, safety, and long-term maintainability.
+
+This release stabilizes the interaction architecture:
+
+- **Predictable behavior**: All user actions follow a single, validated path through the system
+- **Edit safety**: You cannot accidentally lose unsaved edits—the application enforces this
+- **Clear feedback**: The system tells you *why* an action was rejected, not just that it failed
+- **Architectural guardrails**: Automated tests prevent future changes from breaking these guarantees
+
+Beta 2.0 is a foundation release. Feature development resumes in version 2.1.
 
 ---
 
 ## Features
 
 ### Core Transcription
-- Fast transcription using faster‑whisper (CTranslate2 backend)
-- **GPU acceleration (NVIDIA CUDA)** with **CPU‑only fallback**
-- Voice Activity Detection (VAD) filters silence
-- Clipboard‑first workflow (no input injection)
+- Fast local transcription using faster-whisper (CTranslate2 backend)
+- GPU acceleration (NVIDIA CUDA) with automatic CPU fallback
+- Voice Activity Detection filters silence automatically
+- Clipboard-first workflow—no input injection or typing simulation
 
 ### User Interface
-- **PyQt6** modern frameless window with custom title bar
-- **Collapsible sidebar** with smooth animations
-- **Focus Groups** for organizing transcripts by topic
-- **Full-text search** across all transcripts
-- **Real-time waveform** visualization during recording
-- **Metrics framework** with per-transcription and lifetime analytics
-- Dark‑themed Linux‑native UI with system tray integration
+- Modern PyQt6 frameless window with dark theme
+- Collapsible sidebar with focus groups, recent transcripts, and search
+- Real-time waveform visualization during recording
+- Metrics showing recording time, words/minute, and time saved
 
 ### History & Organization
 - SQLite-backed persistent history
-- Focus groups for transcript organization
-- Recent transcripts view (last 7 days)
-- Editable transcriptions with raw/normalized text separation
-- Export to TXT / CSV / Markdown
-- Day-grouped tree view
+- Focus groups for organizing transcripts by topic
+- Editable transcriptions (original preserved, edits saved separately)
+- Export to TXT, CSV, or Markdown
 
-### Analytics
-- **Per-transcription**: Recording time, speech duration, silence time, words/min, time saved
-- **Lifetime**: Total transcriptions, total words, cumulative time saved
-- Metrics explanation dialog (Help → Metrics Calculations)
+[![Recording State](docs/images/recording_state.png)](docs/images/recording_state.png)
 
 ---
 
-## Installation
+## How It Works
 
-### Quick Install (Recommended)
+Vociferous follows a simple, predictable interaction model:
+
+1. **You act** — Press a hotkey or click a button
+2. **The system validates** — Can this action happen right now?
+3. **State changes** — If valid, the workspace transitions (idle → recording → transcribing → viewing)
+4. **You see feedback** — Success is silent; problems are explained in the status bar
+
+This model is intentionally rigid. The application will not let you start recording while editing unsaved changes, switch transcripts without saving, or delete content you're actively modifying. These constraints exist to protect your work.
+
+---
+
+## Quick Start
+
+### Installation
 
 ```bash
 chmod +x scripts/install.sh
 ./scripts/install.sh
 ```
 
-### Manual Installation
+### Running
 
+**GPU (recommended):**
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-### System Dependencies
-
-**Wayland**
-
-```bash
-sudo apt install wl-clipboard
-sudo usermod -a -G input $USER
-```
-
-(Log out and back in after group change)
-
-**X11**
-
-```bash
-sudo apt install python3-xlib
-```
-
----
-
-## Dependencies Overview
-
-- `faster-whisper` / `ctranslate2`
-- `PyQt6`
-- `sounddevice` / `webrtcvad`
-- `pynput` / `evdev`
-- `PyYAML`
-- `numpy>=2.0.0`
-
-See `requirements.txt` for full details.
-
----
-
-## Running
-
-### GPU (Recommended)
-
-```bash
-chmod +x vociferous.sh
 ./vociferous.sh
 ```
 
-### CPU
-
+**CPU fallback:**
 ```bash
 python scripts/run.py
 ```
 
-CPU transcription is supported but significantly slower. NVIDIA GPUs are recommended for practical real‑time use.
+### Basic Usage
+
+1. Press **Right Alt** (default hotkey) or click **Record**
+2. Speak naturally—the waveform shows your audio
+3. Press **Right Alt** again or click **Stop**
+4. Your transcription appears and is copied to the clipboard
+5. Paste anywhere with **Ctrl+V**
 
 ---
 
-## Usage Workflow
+## System Requirements
 
-1. Press the activation hotkey (default: **Right Alt**) or click the **Record** button
-2. Speak — the waveform visualizer shows your audio in real-time
-3. Press the hotkey again or click **Stop** to transcribe
-4. Transcription is copied to the clipboard automatically
+- **Python**: 3.12+
+- **OS**: Linux (Wayland or X11)
+- **Audio**: Working microphone
+- **GPU** (optional): CUDA-compatible NVIDIA GPU for fast transcription
 
-### Recording Controls
+### Dependencies
 
-- **Hotkey toggle**: Press Right Alt (default) to start/stop
-- **UI buttons**: Record / Stop / Cancel buttons in workspace
-- **Cancel**: Abort recording without transcribing
+See `requirements.txt` for the full list. Key dependencies:
 
-### Status Indicators
-
-| State | Display |
-| --- | --- |
-| Idle | Greeting message |
-| Recording | Waveform visualization, "Recording..." status |
-| Transcribing | "Transcribing..." status |
-| Complete | Transcript displayed with metrics |
-
----
-
-## Clipboard Behavior
-
-Vociferous **always outputs to the clipboard**.
-
-- Email composition: paste into client
-- Document writing: paste into editor
-- Terminal usage: paste manually (Ctrl+Shift+V)
-
-Vociferous **does not inject input** and does not simulate typing.
+- `faster-whisper` / `ctranslate2` — Whisper inference
+- `PyQt6` — User interface
+- `sounddevice` / `webrtcvad` — Audio capture and VAD
+- `pynput` / `evdev` — Hotkey detection
 
 ---
 
 ## Configuration
 
-Defined in `src/config_schema.yaml`.
+Settings are managed through the Settings dialog (accessible via the menu).
 
 Key options include:
+- **Device**: `auto`, `cuda`, or `cpu`
+- **Compute type**: `float16`, `float32`, or `int8`
+- **Language**: Transcription language (default: English)
+- **Activation key**: Hotkey to start/stop recording
 
-- `model_options.device`: `auto`, `cuda`, `cpu`
-- `model_options.compute_type`: `float16`, `float32`, `int8`
-- `model_options.language`
-- `recording_options.activation_key`
-
-All settings apply immediately via the Settings dialog.
-
----
-
-## History & Focus Groups
-
-### Storage
-
-SQLite database at:
-
-```
-~/.config/vociferous/vociferous.db
-```
-
-### Focus Groups
-
-Organize transcripts by topic or project:
-
-- Create groups via sidebar context menu
-- Assign transcripts to groups
-- Filter view by group
-- Ungrouped transcripts shown separately
-
-### Features
-
-- Edit transcriptions (raw text preserved, normalized text editable)
-- Delete with persistence
-- Auto-reload on external changes
-- Export (TXT / CSV / Markdown)
+All settings take effect immediately.
 
 ---
 
-## Metrics Framework
+## Documentation
 
-### Per-Transcription Metrics
+### User Documentation
 
-**Row 0 — Human vs Machine Time:**
-- Recording Time: Total cognitive time (speaking + thinking)
-- Speech Duration: VAD-filtered speech segments
-- Silence Time: Thinking/pausing time
+- [Installation Guide](docs/wiki/Installation-Guide.md) — Complete setup instructions
+- [Recording](docs/wiki/Recording.md) — How recording and transcription work
+- [Hotkey System](docs/wiki/Hotkey-System.md) — evdev/pynput backends
+- [Troubleshooting](docs/wiki/Troubleshooting.md) — Common issues and solutions
 
-**Row 1 — Productivity:**
-- Words/Min: Idea throughput
-- Time Saved: vs typing at 40 WPM
-- Speaking Rate: Pure articulation speed
+### Developer Documentation
 
-### Lifetime Analytics (Bottom Bar)
-
-- Total time spent transcribing
-- Total time saved (vs typing)
-- Total transcription count
-- Cumulative word count
+- [Backend Architecture](docs/wiki/Backend-Architecture.md) — Module structure and design patterns
+- [Threading Model](docs/wiki/Threading-Model.md) — Qt signals/slots and worker threads
+- [Configuration Schema](docs/wiki/Configuration-Schema.md) — YAML-based settings
 
 ---
 
-## Further Reading
+## For Developers
 
-Additional documentation available in `docs/wiki/`:
+### Architecture Overview
 
-- [Installation Guide](docs/wiki/Installation-Guide.md)
-- [Recording](docs/wiki/Recording.md)
-- [Backend Architecture](docs/wiki/Backend-Architecture.md)
-- [Configuration Schema](docs/wiki/Configuration-Schema.md)
-- [Hotkey System](docs/wiki/Hotkey-System.md)
-- [Troubleshooting](docs/wiki/Troubleshooting.md)
+Vociferous uses an **intent-driven interaction model**. User actions are represented as explicit intent objects, validated against the current application state, and either accepted or rejected with a clear reason. This architecture is documented and frozen as of Beta 2.0.
+
+### Frozen Architecture Documents
+
+The interaction core is semantically sealed. These documents define how the system works:
+
+- [Interaction Core Freeze Declaration](docs/dev/interaction-core-frozen.md) — What is frozen and why
+- [Intent Catalog](docs/dev/intent-catalog.md) — Complete vocabulary of user intents
+- [Authority Invariants](docs/dev/authority-invariants.md) — Who owns state transitions
+- [Edit Invariants](docs/dev/edit-invariants.md) — Transactional editing guarantees
+
+### Contributing
+
+Changes that violate the architectural guardrail tests are invalid and will not be accepted. Before contributing:
+
+1. Read the [Interaction Core Freeze Declaration](docs/dev/interaction-core-frozen.md)
+2. Run `pytest tests/test_architecture_guardrails.py` to verify compliance
+3. Follow the extension pattern documented in the freeze declaration
+
+### Versioning Policy
+
+- **2.0.x** — Stabilization releases (no new features, bug fixes only)
+- **2.1.x** — Feature development resumes (local SLM integration planned)
 
 ---
 
-**Version:** 1.4.2
+## License
+
+See [LICENSE](LICENSE) for details.

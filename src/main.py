@@ -508,22 +508,22 @@ class VociferousApp(QObject):
 
             match result.state:
                 case ThreadState.RECORDING:
-                    self.main_window.update_transcription_status("recording")
+                    self.main_window.sync_recording_status_from_engine("recording")
                     self.update_tray_status("recording")
                 case ThreadState.TRANSCRIBING:
-                    self.main_window.update_transcription_status("transcribing")
+                    self.main_window.sync_recording_status_from_engine("transcribing")
                     self.update_tray_status("transcribing")
                 case ThreadState.COMPLETE:
-                    self.main_window.update_transcription_status("idle")
+                    self.main_window.sync_recording_status_from_engine("idle")
                     self.update_tray_status("idle")
                     self._on_transcription_complete(result.text, result.duration_ms, result.speech_duration_ms)
                 case ThreadState.ERROR:
-                    self.main_window.update_transcription_status("idle")
+                    self.main_window.sync_recording_status_from_engine("idle")
                     self.update_tray_status("error")
                     if result.error_message:
                         self._on_recording_error(result.error_message)
                 case ThreadState.IDLE:
-                    self.main_window.update_transcription_status("idle")
+                    self.main_window.sync_recording_status_from_engine("idle")
                     self.update_tray_status("idle")
         except Exception as e:
             logger.exception("Error handling thread result")
@@ -625,7 +625,7 @@ class VociferousApp(QObject):
             )
 
             # Reset UI state
-            self.main_window.update_transcription_status("idle")
+            self.main_window.sync_recording_status_from_engine("idle")
             self.update_tray_status("idle")
         except Exception as e:
             logger.exception("Error showing recording error dialog")

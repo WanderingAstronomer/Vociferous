@@ -2,6 +2,438 @@
 
 ---
 
+# v2.0.0 - Architecture Stabilization
+
+**Date:** January 2026
+**Status:** Release
+
+---
+
+## Summary
+
+Architecture stabilization release. Beta 2.0 introduces no new user-facing features. Its value lies entirely in correctness, safety, and long-term maintainability. This release establishes a frozen interaction architecture with automated guardrails that prevent regression.
+
+## Added
+
+### Intent-Driven Interaction Architecture
+- All user actions are now represented as explicit intent objects (`BeginRecordingIntent`, `StopRecordingIntent`, `ViewTranscriptIntent`, `EditTranscriptIntent`, `CommitEditsIntent`, `DiscardEditsIntent`, `DeleteTranscriptIntent`, `CancelRecordingIntent`)
+- Single authoritative `handle_intent()` method validates and processes all user interactions
+- `IntentResult` objects capture outcome, reason, and state for every action
+
+### Transactional Editing Model
+- Edit sessions are explicitly entered and exited via `EditTranscriptIntent`, `CommitEditsIntent`, and `DiscardEditsIntent`
+- Only terminal intents (commit or discard) can exit the editing state
+- Unsaved changes are protected—recording, navigation, and deletion are blocked during editing
+
+### Intent Outcome Visibility
+- `IntentFeedbackHandler` maps intent results to user-visible status bar messages
+- Feedback layer consumes `IntentResult` only—never queries workspace state
+- Rejected actions produce informative messages explaining why they failed
+
+### Architectural Guardrail Tests
+- 9 static analysis tests in `test_architecture_guardrails.py` enforce frozen architecture
+- Tests scan source code directly and fail CI on boundary violations
+- Covers: `set_state` usage, feedback layer isolation, intent catalog sync, orchestration privilege
+
+### Documentation
+- [Interaction Core Freeze Declaration](docs/dev/interaction-core-frozen.md) — What is frozen and why
+- [Intent Catalog](docs/dev/intent-catalog.md) — Complete vocabulary of user intents
+- [Authority Invariants](docs/dev/authority-invariants.md) — Who owns state transitions
+- [Edit Invariants](docs/dev/edit-invariants.md) — Transactional editing guarantees
+- [Intent Outcome Visibility](docs/dev/intent-outcome-visibility.md) — Feedback layer design
+
+## Changed
+
+### Interaction Authority Consolidation
+- All user-initiated state changes now flow through `handle_intent()` → `_apply_*()` methods
+- UI components no longer call `set_state()` directly for user actions
+- Clear separation between user interaction (intents) and engine orchestration
+
+### Orchestration Privilege Formalization
+- Renamed `update_transcription_status()` → `sync_recording_status_from_engine()`
+- Orchestration method explicitly documented as the only external `set_state()` caller
+- Edit-safety guards prevent orchestration from overriding editing state
+
+## Fixed
+
+### Eliminated Implicit State Transitions
+- No more silent state changes without validation
+- All transitions produce `IntentResult` with success/failure reason
+
+### Editing Safety Violations
+- Fixed: Recording could start while editing unsaved changes
+- Fixed: Navigation could abandon unsaved edits without warning
+- Fixed: Deletion could target content being actively edited
+
+## Deprecated
+
+### Direct State Mutation
+- UI components calling `workspace.set_state()` directly is no longer valid
+- All user actions must create and dispatch intents
+
+### Ad-Hoc Interaction Handling
+- Scattered `if/else` state checks in UI components are deprecated
+- Use `handle_intent()` for all user action processing
+
+## Notes
+
+**This release introduces no new user-facing features.** Its purpose is to guarantee correctness, safety, and maintainability for future development.
+
+The interaction architecture is now **frozen**. Changes to the frozen core require explicit design review and documentation updates.
+
+**Versioning Policy:**
+- `2.0.x` — Stabilization releases (no new features, bug fixes only)
+- `2.1.x` — Feature development resumes (local SLM integration planned)
+
+---
+
+# v1.9.0 - Intent Outcome Visibility
+
+**Date:** January 2026  
+**Status:** Release
+
+---
+
+## Summary
+
+User feedback layer for the intent-driven interaction architecture. Introduces `IntentFeedbackHandler` to provide clear, actionable status messages when user actions are rejected, completing the interaction architecture with proper outcome visibility.
+
+## Added
+
+### Intent Feedback System
+- **`IntentFeedbackHandler`**: Presentation layer that consumes `IntentResult` and displays user-friendly status messages
+- **Outcome Mapping**: Maps intent results to appropriate feedback:
+  - `ACCEPTED`/`NO_OP`: Silent (success is expected)
+  - `REJECTED` with user-actionable reasons: Display informative status message
+  - `REJECTED` when button shouldn't be visible: Silent logging only
+- **Status Bar Integration**: 4-second auto-dismiss messages styled consistently with application theme
+- **Structured Logging**: Configurable debug verbosity for intent processing outcomes
+
+### Documentation
+- [Intent Outcome Visibility](docs/dev/intent-outcome-visibility.md) — Outcome mapping specification and architecture diagram
+- Phase 6 exit criteria and constraints documented
+
+### Tests
+- **13 new tests** (67 total intent/feedback tests, 165 Tier 1 tests passing)
+  - `TestIntentFeedbackMapping` (8 tests): Verify correct status messages for each outcome type
+  - `TestIntentFeedbackLogging` (3 tests): Verify logging behavior and verbosity
+  - `TestPhase6Constraints` (2 tests): Verify handler never queries workspace state directly
+
+## Changed
+
+### Feedback Layer Design
+- Status messages driven entirely by `IntentResult`—no inspection of workspace state
+- Clear separation between interaction processing and user feedback
+
+## Technical Notes
+
+**Phase 6 Constraints Maintained:**
+- No new state transitions introduced
+- No UI branches on workspace state for feedback decisions
+- All feedback driven exclusively by `IntentResult` data
+
+**Architecture Completeness:** With this release, the intent-driven interaction architecture is feature-complete with proper outcome visibility.
+
+---
+
+# v1.8.0 - Authority Consolidation
+
+**Date:** January 2026  
+**Status:** Release
+
+---
+
+## Summary
+
+Final authority consolidation for user-initiated state changes. All user interactions now flow through the intent layer with authoritative `_apply_*()` methods. Establishes clear separation between user interaction (intents) and orchestration (engine sync).
+
+## Added
+
+### Authority Invariants
+- **All Invariants Enforced**: 7-11 in [Authority Invariants](docs/dev/authority-invariants.md) now have `ENFORCED` status
+- **Stopping Condition Verified**: No external component directly mutates workspace state for user actions
+- **Orchestration Privilege Formalized**: `sync_recording_status_from_engine()` (renamed from `update_transcription_status()`) documented as the only external `set_state()` caller
+
+### Intent Migration Completed
+- **`ViewTranscriptIntent`**: Migrated to authoritative `_apply_view_transcript()` method
+  - Carries both timestamp and text
+  - Validates state (cannot view while recording or with unsaved edits)
+  - Transitions to `VIEWING` or `IDLE` based on content
+- **`DeleteTranscriptIntent`**: Migrated to authoritative `_apply_delete_transcript()` method  
+  - Validates state (can only delete in `VIEWING`)
+  - Emits deletion signal after validation
+  - State transition deferred until after user confirmation via `clear_transcript()`
+
+### Edit Safety Guards
+- **Orchestration Safety**: Engine status sync prevented from overriding `EDITING` or `VIEWING` states
+- **Clear History**: Now uses `clear_transcript()` instead of direct `set_state()` calls
+
+### Documentation
+- [Authority Invariants](docs/dev/authority-invariants.md) — Complete authority model with all invariants enforced
+
+### Tests
+- **14 new tests** (54 total intent tests, 142 Tier 1 tests passing)
+  - `test_view_intent_is_authoritative`
+  - `test_delete_intent_validates_but_defers_state_change`
+  - `test_all_destructive_click_routes_through_intents`
+  - View intent validation tests (6 tests)
+  - Delete intent validation tests (5 tests)
+
+## Changed
+
+### State Mutation Authority
+- **All user-initiated state changes** now flow through `handle_intent()` → `_apply_*()` methods
+- **UI components** no longer call `set_state()` directly for user actions
+- **Orchestration** limited to recording state sync only, with edit-safety constraints
+
+## Fixed
+
+### State Consistency
+- No more silent state changes without validation
+- All transitions produce `IntentResult` with success/failure reason
+- Clear audit trail for all state mutations
+
+## Technical Notes
+
+**Phase 5 Stopping Condition Met:**
+- All user interactions flow through authoritative intent handlers
+- Only 2 orchestration `set_state()` calls remain (in `sync_recording_status_from_engine()`)
+- All destructive actions (delete, discard, cancel) route through intent layer
+
+---
+
+# v1.7.0 - Transactional Editing
+
+**Date:** January 2026  
+**Status:** Release
+
+---
+
+## Summary
+
+Implements transactional editing model with explicit enter/exit semantics. Edit sessions can only be exited through terminal intents (`CommitEditsIntent` or `DiscardEditsIntent`), ensuring unsaved changes are never silently lost.
+
+## Added
+
+### Terminal Intent System
+- **`CommitEditsIntent`**: Authoritative method to save edits and exit editing state
+  - Precondition: `state == EDITING`
+  - Postcondition: `state == VIEWING`, `_has_unsaved_changes == False`
+  - Emits `saveRequested` signal to persist content
+- **`DiscardEditsIntent`**: Authoritative method to abandon edits and exit editing state
+  - Precondition: `state == EDITING`
+  - Postcondition: `state == VIEWING`, `_has_unsaved_changes == False`
+  - Does NOT emit save signal (content discarded)
+- **`EditTranscriptIntent`**: Authoritative method to enter editing state
+  - Precondition: `state == VIEWING`, transcript loaded
+  - Postcondition: `state == EDITING`
+  - Rejects in `IDLE` (no transcript) or `RECORDING`
+
+### Edit Invariants
+- **Invariant 1**: Can only enter editing from `VIEWING` with loaded transcript
+- **Invariant 2**: Cannot begin recording while editing
+- **Invariant 3**: Cannot view different transcript with unsaved edits
+- **Invariant 4**: Edit state can only exit through terminal intents
+- **Invariant 5**: Terminal intents clear `_has_unsaved_changes` flag
+- **Invariant 6**: `RECORDING` implies `_has_unsaved_changes == False`
+
+### Documentation
+- [Edit Invariants](docs/dev/edit-invariants.md) — Transactional editing guarantees
+
+### Tests
+- **19 new tests** (40 total intent tests, 128 Tier 1 tests passing)
+  - `TestEditIntentStateAssertions` (5 tests): Edit entry validation
+  - `TestCommitIntentStateAssertions` (4 tests): Commit terminal behavior
+  - `TestDiscardIntentStateAssertions` (4 tests): Discard terminal behavior
+  - `TestPhase4StoppingCondition` (2 tests): Verify only terminal intents exit editing
+  - Edit safety tests (4 tests): Recording/view blocked during editing
+
+## Changed
+
+### Edit Flow Authority
+- Save button now routes through `CommitEditsIntent`
+- Cancel/discard actions route through `DiscardEditsIntent`
+- Edit button routes through `EditTranscriptIntent`
+- All edit-related state changes use authoritative `_apply_*()` methods
+
+## Fixed
+
+### Data Safety
+- **Unsaved changes protected**: Recording, navigation, and deletion blocked during editing
+- **No silent exits**: Edit state can only be left through explicit commit or discard
+- **State consistency**: All edit transitions enforce pre/postconditions with assertions
+
+## Technical Notes
+
+**Phase 4 Stopping Condition Met:**
+- Editing impossible to exit without explicit terminal intent
+- No edit-related state mutated outside `_apply_*()` methods
+- All 6 invariants enforced by runtime assertions
+
+---
+
+# v1.6.0 - Recording Intent Authority
+
+**Date:** January 2026  
+**Status:** Release
+
+---
+
+## Summary
+
+Establishes authoritative intent handling for recording operations. All recording state transitions (begin, stop, cancel) now flow through the intent layer with proper validation and state assertions.
+
+## Added
+
+### Authoritative Recording Intents
+- **`BeginRecordingIntent`**: Sole legal pathway for `IDLE`/`VIEWING` → `RECORDING` transitions
+  - Precondition: `state == IDLE` or `state == VIEWING`
+  - Postcondition: `state == RECORDING`, `_has_unsaved_changes == False`
+  - Emits `recordingStartRequested` signal after state mutation
+- **`StopRecordingIntent`**: Authoritative transcription trigger
+  - Precondition: `state == RECORDING`
+  - Postcondition: transcribing status set, `processingRequested` emitted
+- **`CancelRecordingIntent`**: Authoritative recording cancellation
+  - Precondition: `state == RECORDING`
+  - Postcondition: `state == IDLE`, `_has_unsaved_changes == False`
+
+### Test Infrastructure
+- **Test Tier Classification**: Separated UI-independent (Tier 1) and UI-dependent (Tier 2) tests
+  - Tier 1: 107 tests (fast, no Qt widget instantiation)
+  - Tier 2: UI integration tests requiring full widget setup
+- **pytest marker**: `ui_dependent` for selective test execution
+- **Run Tier 1 only**: `pytest -m 'not ui_dependent'`
+
+### Invariant Enforcement
+- **Assertion guards** on all recording state transitions
+- **Precondition/postcondition docstrings** on all `_apply_*()` methods
+
+### Tests
+- **25 intent tests passing** (107 total Tier 1 tests)
+- Recording intent authority verified for all three operations
+
+## Changed
+
+### Button Click Flow
+- Primary click button (`_on_primary_click`) now creates intents and routes through `handle_intent()`
+- Destructive click (`_on_destructive_click`) routes `RECORDING` case through `CancelRecordingIntent`
+- No dual authority: `button click → intent → handle_intent → _apply_* → state mutation`
+
+### Method Naming
+- `_bridge_begin_recording` → `_apply_begin_recording` (authoritative mutator)
+- `_bridge_stop_recording` → `_apply_stop_recording` (authoritative mutator)
+- Added `_apply_cancel_recording` (authoritative mutator)
+
+## Fixed
+
+### State Consistency
+- Recording state changes now validated and logged
+- All transitions produce `IntentResult` with outcome tracking
+- Debug assertions catch invalid state mutations
+
+## Technical Notes
+
+**Phase 3 Complete:**
+- All recording intents route through authoritative `_apply_*()` methods
+- Legacy direct state mutation from buttons eliminated
+- Clear separation between UI event handling and state mutation
+
+---
+
+# v1.5.0 - Intent-Driven Interaction Foundation
+
+**Date:** January 2026  
+**Status:** Release
+
+---
+
+## Summary
+
+Foundational release establishing the intent-driven interaction architecture. Introduces semantic vocabulary for all user actions without changing existing behavior, setting the stage for authoritative state management and transactional editing.
+
+## Added
+
+### Interaction Vocabulary
+- **`InteractionIntent`**: Base class for all user actions with 8 concrete intent types:
+  - `BeginRecordingIntent`: Start recording
+  - `StopRecordingIntent`: Stop recording and transcribe
+  - `CancelRecordingIntent`: Abort recording without transcribing
+  - `ViewTranscriptIntent`: Load transcript for viewing
+  - `EditTranscriptIntent`: Enter editing mode
+  - `CommitEditsIntent`: Save edits and exit editing
+  - `DiscardEditsIntent`: Abandon edits and exit editing
+  - `DeleteTranscriptIntent`: Remove transcript
+
+### Intent Processing Framework
+- **`IntentOutcome`** enum: `ACCEPTED`, `REJECTED`, `DEFERRED`, `NO_OP`
+- **`IntentResult`**: Records outcome, reason, and state for every action
+- **`MainWorkspace.handle_intent()`**: Central dispatch method for all intents
+- **`intentProcessed`** signal: Observability hook for intent outcomes
+
+### Documentation
+- [Interaction Architecture Audit](docs/dev/interaction-audit.md) — Phase 1 baseline documenting all 14 state mutation points
+- [Intent Catalog](docs/dev/intent-catalog.md) — Complete vocabulary of user intents
+
+### Tests
+- **25 new tests** for intent construction and passthrough behavior
+- No state assertions yet (additive scaffolding only)
+
+## Changed
+
+### Architecture Patterns
+- Introduced explicit intent objects for all user actions
+- Added single authoritative dispatch point (`handle_intent()`)
+- Maintained existing signal wiring (no behavioral changes)
+
+## Technical Notes
+
+**Phase 1-2 Complete:**
+- Semantic scaffolding in place for intent-driven refactor
+- Existing authority violations intentionally preserved for visibility
+- `set_state()` calls documented in audit remain unchanged
+- This is an additive-only release—existing behavior unchanged
+
+**Future Phases:**
+- Phase 3: Make recording intents authoritative
+- Phase 4: Implement transactional editing with terminal intents
+- Phase 5: Consolidate all user-initiated state changes through intents
+- Phase 6: Add intent outcome visibility layer
+
+---
+
+# v1.4.3 - Intent Architecture Planning
+
+**Date:** January 2026  
+**Status:** Planning
+
+---
+
+## Summary
+
+Planning release establishing the roadmap for intent-driven interaction architecture refactor. Documents all existing state mutation points and signal wiring to serve as baseline for authority consolidation.
+
+## Added
+
+### Documentation
+- [Interaction Architecture Audit](docs/dev/interaction-audit.md) — Comprehensive audit of current interaction patterns:
+  - 14 state mutation points across `MainWorkspace` and `MainWindow`
+  - Complete signal-slot wiring for controls, content, and sidebar
+  - State transition flows for all user interactions
+  - Identified 5 external `set_state()` calls (authority violations)
+  - Refactor targets for Phases 2-4
+
+## Technical Notes
+
+**Purpose:** This audit serves as the authoritative reference for measuring refactor progress through Phases 2-6. No code changes in this release—purely architectural documentation.
+
+**Identified Issues:**
+- Multiple components directly mutate workspace state
+- No unified validation point for user actions
+- Edit state can be exited through multiple pathways
+- State transitions lack explicit success/failure semantics
+
+---
+
 # v1.4.2 - Comprehensive Error Isolation
 
 **Date:** January 2026  
