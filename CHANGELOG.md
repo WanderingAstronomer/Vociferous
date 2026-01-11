@@ -2,6 +2,23 @@
 
 ---
 
+# v2.1.5 - Critical Hotfix (Dialog Crash & Safety)
+
+**Date:** January 2026
+**Status:** Hotfix
+
+---
+
+## Fixed
+
+### Stability
+- **Dialog Crash**: Fixed `NameError: name 'QFrame' is not defined` in `custom_dialog.py` caused by missing import in the v2.1.3 refactor. This prevented all custom dialogs (Confirmation, Input, Error) from opening.
+
+### UX / Safety
+- **Delete Confirmation**: Enforced confirmation dialog for ALL transcript deletion events, including those triggered by the "Delete" key in the sidebar history list (previously bypassed confirmation).
+
+---
+
 # v2.1.4 - Dialog Visual Polish
 
 **Date:** January 2026

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import QAbstractItemModel, QFileSystemWatcher, QModelIndex, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QDialog,
     QHeaderView,
     QMenu,
     QTreeView,
@@ -22,6 +23,7 @@ from PyQt6.QtWidgets import (
 from ui.models import FocusGroupProxyModel, TranscriptionModel
 from ui.utils.clipboard_utils import copy_text
 from ui.utils.error_handler import safe_callback
+from ui.widgets.dialogs.custom_dialog import ConfirmationDialog
 from ui.widgets.dialogs.error_dialog import show_error_dialog
 from ui.widgets.history_tree.history_tree_delegate import TreeHoverDelegate
 
@@ -286,6 +288,10 @@ class HistoryTreeView(QTreeView):
 
                 self.entryGroupChanged.emit(timestamp, group_id)
                 self._emit_count()
+
+                # Force viewport update to ensure proper geometry (fixes ghost hits)
+                self.updateGeometry()
+                self.viewport().update()
         except Exception as e:
             logger.exception("Error assigning to group")
             show_error_dialog(
@@ -321,6 +327,19 @@ class HistoryTreeView(QTreeView):
 
             timestamp = index.data(TranscriptionModel.TimestampRole)
             if not timestamp:
+                return
+
+            # Confirm deletion
+            dialog = ConfirmationDialog(
+                self,
+                title="Delete Transcript",
+                message="Are you sure you want to delete this transcript?",
+                confirm_text="Delete",
+                cancel_text="Cancel",
+                is_destructive=True,
+            )
+
+            if dialog.exec() != QDialog.DialogCode.Accepted:
                 return
 
             candidate_index = self._find_adjacent_entry(index)
