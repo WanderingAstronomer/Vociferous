@@ -399,3 +399,78 @@ class TestCommitIntentStateAssertions:
         assert result.outcome == IntentOutcome.ACCEPTED
         assert len(saved_content) == 1
         assert saved_content[0] == "New content"
+
+
+class TestDiscardIntentStateAssertions:
+    """Phase 4: Tests for DiscardEditsIntent state assertions."""
+    
+    @pytest.fixture
+    def workspace(self, qapp_session):
+        """Create MainWorkspace instance for testing."""
+        from ui.components.workspace import MainWorkspace
+        w = MainWorkspace()
+        return w
+
+    def test_discard_accepted_in_editing(self, workspace):
+        """DiscardEditsIntent must be accepted in EDITING and transition to VIEWING."""
+        from ui.constants import WorkspaceState
+        
+        # Load transcript and enter editing
+        workspace.load_transcript("Original text", "2026-01-11T12:00:00")
+        edit_result = workspace.handle_intent(EditTranscriptIntent())
+        assert edit_result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.EDITING
+        
+        # Now discard
+        intent = DiscardEditsIntent()
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.VIEWING
+        assert not workspace.has_unsaved_changes()
+
+    def test_discard_no_op_when_not_editing(self, workspace):
+        """DiscardEditsIntent should be NO_OP when not in EDITING state."""
+        from ui.constants import WorkspaceState
+        
+        # Start in IDLE
+        assert workspace.get_state() == WorkspaceState.IDLE
+        
+        intent = DiscardEditsIntent()
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.NO_OP
+        assert workspace.get_state() == WorkspaceState.IDLE
+
+    def test_discard_no_op_in_viewing(self, workspace):
+        """DiscardEditsIntent should be NO_OP in VIEWING state."""
+        from ui.constants import WorkspaceState
+        
+        # Load transcript (goes to VIEWING)
+        workspace.load_transcript("Test text", "2026-01-11T12:00:00")
+        assert workspace.get_state() == WorkspaceState.VIEWING
+        
+        intent = DiscardEditsIntent()
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.NO_OP
+        assert workspace.get_state() == WorkspaceState.VIEWING
+
+    def test_discard_does_not_emit_save_signal(self, workspace):
+        """DiscardEditsIntent should NOT emit saveRequested signal."""
+        from ui.constants import WorkspaceState
+        
+        # Load transcript and enter editing
+        workspace.load_transcript("Original", "2026-01-11T12:00:00")
+        workspace.handle_intent(EditTranscriptIntent())
+        
+        # Track signal - should not be called
+        saved_content = []
+        workspace.saveRequested.connect(lambda text: saved_content.append(text))
+        
+        # Discard
+        intent = DiscardEditsIntent()
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert len(saved_content) == 0  # Signal should NOT fire

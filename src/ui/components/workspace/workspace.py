@@ -411,8 +411,8 @@ class MainWorkspace(QWidget):
     def _on_destructive_click(self) -> None:
         """Handle Cancel/Delete button click.
         
-        Phase 3: RECORDING state now routes through intent layer.
-        EDITING and VIEWING still use legacy path (pending migration).
+        Phase 4: RECORDING and EDITING now route through intent layer.
+        VIEWING (delete) still uses legacy path.
         """
         try:
             match self._state:
@@ -421,8 +421,9 @@ class MainWorkspace(QWidget):
                     intent = CancelRecordingIntent(source=IntentSource.HOTKEY)
                     self.handle_intent(intent)
                 case WorkspaceState.EDITING:
-                    self._has_unsaved_changes = False
-                    self.set_state(WorkspaceState.VIEWING)
+                    # Phase 4: Route through intent layer
+                    intent = DiscardEditsIntent(source=IntentSource.CONTROLS)
+                    self.handle_intent(intent)
                 case WorkspaceState.VIEWING:
                     self.deleteRequested.emit()
         except Exception as e:
@@ -474,10 +475,10 @@ class MainWorkspace(QWidget):
             case CommitEditsIntent(content=text):
                 result = self._apply_commit_edits(intent, text)
 
-            # Bridge methods (pending Phase 4 migration)
-
             case DiscardEditsIntent():
-                result = self._bridge_discard_edits(intent)
+                result = self._apply_discard_edits(intent)
+
+            # Bridge methods (pending future migration)
 
             case DeleteTranscriptIntent():
                 result = self._bridge_delete_transcript(intent)
@@ -661,10 +662,29 @@ class MainWorkspace(QWidget):
                 reason="Not in edit mode",
             )
 
-    def _bridge_discard_edits(self, intent: DiscardEditsIntent) -> IntentResult:
-        """Bridge: delegate to existing destructive click logic for discard."""
+    def _apply_discard_edits(self, intent: DiscardEditsIntent) -> IntentResult:
+        """Apply DiscardEditsIntent: abandon edits and exit editing mode.
+        
+        Phase 4: Authoritative state mutator for DiscardEditsIntent.
+        This is a terminal intent for editing sessions.
+        Bridges route, applies mutate.
+        
+        Precondition: state == EDITING
+        Postcondition: state == VIEWING, _has_unsaved_changes == False
+        
+        Invariant 4: Editing can only exit through terminal intents.
+        """
         if self._state == WorkspaceState.EDITING:
-            self._on_destructive_click()
+            # Authoritative mutation: discard edits and transition to VIEWING
+            self._has_unsaved_changes = False
+            self.set_state(WorkspaceState.VIEWING)
+            
+            # Postcondition assertions
+            assert self._state == WorkspaceState.VIEWING, \
+                f"DiscardEditsIntent accepted but state is {self._state.value}"
+            assert not self._has_unsaved_changes, \
+                "DiscardEditsIntent: unsaved changes should be False after discard"
+            
             return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
         else:
             return IntentResult(
