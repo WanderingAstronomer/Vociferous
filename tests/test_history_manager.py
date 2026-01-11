@@ -101,6 +101,36 @@ class TestDatabaseInitialization:
         assert len(fks) == 1
         assert fks[0][2] == "focus_groups"  # Referenced table
 
+    def test_removes_legacy_schema_version_table(self, temp_db):
+        """Should remove schema_version table when detected to prevent nuke loops."""
+        # 1. Create a DB with legacy schema_version and conflicting table
+        with sqlite3.connect(temp_db) as conn:
+            conn.execute("CREATE TABLE schema_version (version INTEGER)")
+            conn.execute("INSERT INTO schema_version VALUES (1)")
+            # Create old transcripts table with different schema to verify it gets reset
+            conn.execute("CREATE TABLE transcripts (id INTEGER PRIMARY KEY, old_col TEXT)")
+
+        # 2. Init HistoryManager (should trigger nuke and rebuild)
+        HistoryManager(history_file=temp_db)
+
+        # 3. Check tables
+        with sqlite3.connect(temp_db) as conn:
+            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = {row[0] for row in cursor.fetchall()}
+
+        # schema_version should be GONE
+        assert "schema_version" not in tables
+        assert "transcripts" in tables
+        assert "focus_groups" in tables
+
+        # Verify transcripts schema is the NEW one (renovated)
+        with sqlite3.connect(temp_db) as conn:
+            cursor = conn.execute("PRAGMA table_info(transcripts)")
+            cols = {row[1] for row in cursor.fetchall()}
+
+        assert "old_col" not in cols
+        assert "normalized_text" in cols
+
 
 class TestAddEntry:
     """Test adding transcription entries."""

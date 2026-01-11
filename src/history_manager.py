@@ -14,8 +14,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import create_engine, select, delete, update, func, desc, or_, text
-from sqlalchemy.orm import Session, sessionmaker, joinedload
+from sqlalchemy import create_engine, select, delete, update, func, desc, text
+from sqlalchemy.orm import Session, sessionmaker
 
 from models import Base, Transcript, FocusGroup
 from ui.constants import HISTORY_EXPORT_LIMIT, HISTORY_RECENT_LIMIT
@@ -85,6 +85,10 @@ class HistoryManager:
             if "schema_version" in inspector.get_table_names():
                 logger.info("Legacy database detected. Performing complete reset (nuke) as requested.")
                 Base.metadata.drop_all(self.engine)
+                # Manually drop the legacy version table which isn't in ORM metadata
+                with self.engine.connect() as conn:
+                    conn.execute(text("DROP TABLE IF EXISTS schema_version"))
+                    conn.commit()
         except Exception as e:
             logger.warning(f"Error checking for legacy schema: {e}. Proceeding with creation.")
             
