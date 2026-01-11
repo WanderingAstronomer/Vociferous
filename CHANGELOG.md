@@ -2,6 +2,37 @@
 
 ---
 
+# v2.1.0 - Code Health & Type Safety
+
+**Date:** January 2026
+**Status:** Maintenance Release
+
+---
+
+## Summary
+
+Comprehensive codebase cleanliness and type safety overhaul. Achieved zero metadata and type errors across the entire project by enforcing strict MyPy and Ruff compliance. Fixed latent logic bugs in proxy models and intent feedback handlers identified during static analysis.
+
+## Fixed
+
+### Critical Logic
+- **Focus Group Proxy**: Removed unreachable dead code referencing undefined `source_model` variable in `focus_group_proxy.py`
+- **Intent Feedback**: Fixed valid return type violation in status message timer callback (lambda returned tuple instead of `None`)
+- **System Safety**: Replaced unsafe bare `except:` blocks with `except Exception:` in `transcription_model.py` to prevent masking system signals like `KeyboardInterrupt`
+
+### Type Safety
+- **Workspace**: Resolved variable type reuse ambiguity in `_on_primary_click` and related handlers in `workspace.py`
+- **Architecture Tests**: Fixed type checking logic in `test_architecture_guardrails.py` for ensuring export string verification
+
+## Changed
+
+### Repository Hygiene
+- **Linter Compliance**: Resolved ~54 Ruff issues covering unused imports, dead variables, and redundant logic
+- **Type Compliance**: Achieved clean MyPy run across 108 source files
+- **Code Cleanup**: Removed multiple instances of unused error logger assignments and redundant imports
+
+---
+
 # v2.0.1 - Repository Hygiene & Debt Assessment
 
 **Date:** January 2026  

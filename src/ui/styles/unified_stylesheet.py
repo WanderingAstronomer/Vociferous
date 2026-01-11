@@ -673,6 +673,8 @@ QLabel#hotkeyValidation {{
 
 QDialog {{
     background-color: {c.BG_PRIMARY};
+    border: 1px solid {c.BORDER_ACCENT};
+    border-radius: {STANDARD_RADIUS}px;
 }}
 
 QWidget#dialogContent {{
@@ -681,8 +683,6 @@ QWidget#dialogContent {{
 
 QWidget#dialogContainer {{
     background-color: {c.BG_PRIMARY};
-    border: 1px solid {c.BORDER_ACCENT};
-    border-radius: {STANDARD_RADIUS}px;
 }}
 
 QWidget#dialogButtonContainer {{
@@ -695,6 +695,7 @@ QWidget#dialogButtonContainer {{
 QLabel#dialogLabel {{
     color: {c.TEXT_PRIMARY};
     font-size: {Typography.BODY_SIZE}pt;
+    border: none;
 }}
 
 QLineEdit#dialogInput {{

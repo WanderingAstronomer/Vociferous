@@ -13,15 +13,10 @@ Features:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QModelIndex, QObject, QSortFilterProxyModel, QTimer
 
 from ui.models.transcription_model import TranscriptionModel
-from ui.utils.error_handler import safe_callback
-
-if TYPE_CHECKING:
-    from PyQt6.QtCore import QAbstractItemModel
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +57,9 @@ class FocusGroupProxyModel(QSortFilterProxyModel):
         """
         Determine if a row should be shown.
 
-        Day headers (no parent) are shown if they have matching children.
-        Entries are shown if their group_id matches our filter.
+        Use recursive filtering:
+        - Day headers: Return False (let Qt include them if children match)
+        - Entries: Return True if group_id matches
         """
         try:
             source_model = self.sourceModel()
@@ -77,7 +73,8 @@ class FocusGroupProxyModel(QSortFilterProxyModel):
             is_header = source_index.data(TranscriptionModel.IsHeaderRole)
 
             if is_header:
-                return self._has_matching_children(source_index)
+                # Rely on setRecursiveFilteringEnabled(True) to show header if children match
+                return False
 
             entry_group_id = source_index.data(TranscriptionModel.GroupIDRole)
             return entry_group_id == self._group_id
@@ -86,37 +83,5 @@ class FocusGroupProxyModel(QSortFilterProxyModel):
             return True  # Default to showing row on error
 
     def _has_matching_children(self, parent_index: QModelIndex) -> bool:
-        """Check if a day header has any entries matching our filter."""
-        try:
-            source_model = self.sourceModel()
-            if source_model is None:
-                return False
-
-            child_count = source_model.rowCount(parent_index)
-
-            for i in range(child_count):
-                child_index = source_model.index(i, 0, parent_index)
-                entry_group_id = child_index.data(TranscriptionModel.GroupIDRole)
-                if entry_group_id == self._group_id:
-                    return True
-
-            return False
-        except Exception:
-            logger.exception("Error in _has_matching_children")
-            return False
-
-    def setSourceModel(self, source_model: QAbstractItemModel | None) -> None:
-        """Set the source model (should be TranscriptionModel)."""
-        super().setSourceModel(source_model)
-        if isinstance(source_model, TranscriptionModel):
-            # Use deferred invalidation to prevent segfaults when changes
-            # happen during context menu callbacks or other Qt operations
-            source_model.entryAdded.connect(
-                safe_callback(lambda _: self._invalidate_timer.start(), "proxy_entry_added")
-            )
-            source_model.entryDeleted.connect(
-                safe_callback(lambda _: self._invalidate_timer.start(), "proxy_entry_deleted")
-            )
-            source_model.entryUpdated.connect(
-                safe_callback(lambda _: self._invalidate_timer.start(), "proxy_entry_updated")
-            )
+        """Deprecated: Recursive filtering handles this."""
+        return False

@@ -14,13 +14,11 @@ import os
 import subprocess
 import sys
 import traceback
-from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
 from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QApplication
 
 if TYPE_CHECKING:
     from types import TracebackType

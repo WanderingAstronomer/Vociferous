@@ -195,4 +195,19 @@ class IntentFeedbackHandler(QObject):
     
     def _show_status_message(self, message: str) -> None:
         """Display a message in the status bar."""
-        self._status_bar.showMessage(message, self.MESSAGE_DURATION_MS)
+        # Use custom centered label if available, otherwise fallback to showMessage
+        parent = self._status_bar.parent()
+        if hasattr(parent, '_status_label'):
+            parent._status_label.setText(message)
+            self._status_bar.show()
+            # Auto-hide after message expires
+            def clear_status():
+                parent._status_label.setText("")
+                self._status_bar.hide()
+            
+            QTimer.singleShot(self.MESSAGE_DURATION_MS, clear_status)
+        else:
+            # Fallback to default behavior
+            self._status_bar.show()
+            self._status_bar.showMessage(message, self.MESSAGE_DURATION_MS)
+            QTimer.singleShot(self.MESSAGE_DURATION_MS, self._status_bar.hide)

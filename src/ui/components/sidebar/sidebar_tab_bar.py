@@ -62,11 +62,11 @@ class SidebarTabBar(QWidget):
         
         # Focus Groups tab
         groups_btn = self._create_tab_button("Focus Groups", self.TAB_GROUPS)
-        groups_btn.setChecked(True)  # Default active
         layout.addWidget(groups_btn, 1)
         
         # Transcripts tab
         transcripts_btn = self._create_tab_button("Recent", self.TAB_TRANSCRIPTS)
+        transcripts_btn.setChecked(True)  # Default active
         layout.addWidget(transcripts_btn, 1)
         
         # Search tab (icon only)

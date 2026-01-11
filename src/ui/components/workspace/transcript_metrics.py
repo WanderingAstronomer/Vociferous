@@ -11,7 +11,6 @@ Shows multiple time-based metrics following the measurement framework:
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QGridLayout, QLabel, QWidget
 
 from ui.constants import Colors, Typography

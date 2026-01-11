@@ -22,7 +22,6 @@ from ui.components.main_window import MainWindow
 from ui.components.settings import SettingsDialog
 from ui.utils.clipboard_utils import copy_text
 from ui.utils.error_handler import get_error_logger, install_exception_hook
-from ui.widgets.dialogs.custom_dialog import MessageDialog
 from ui.widgets.dialogs.error_dialog import show_error_dialog
 from utils import ConfigManager
 
@@ -68,7 +67,7 @@ class VociferousApp(QObject):
 
     def __init__(self) -> None:
         # Initialize error logging FIRST (before anything else)
-        error_logger = get_error_logger()
+        get_error_logger()
         
         # Install global exception hook with error dialog callback
         install_exception_hook(self._show_global_error)
@@ -428,7 +427,7 @@ class VociferousApp(QObject):
                 and self.result_thread.isRunning()
             ):
                 self.result_thread.stop_recording()
-        except Exception as e:
+        except Exception:
             logger.exception("Error in on_deactivation")
             # Don't show dialog for deactivation errors - just log
 
@@ -467,7 +466,7 @@ class VociferousApp(QObject):
             if self.result_thread:
                 self.result_thread.deleteLater()
                 self.result_thread = None
-        except Exception as e:
+        except Exception:
             logger.exception("Error in _on_thread_finished")
 
     def stop_result_thread(self) -> None:
@@ -475,7 +474,7 @@ class VociferousApp(QObject):
         try:
             if self.result_thread and self.result_thread.isRunning():
                 self.result_thread.stop()
-        except Exception as e:
+        except Exception:
             logger.exception("Error stopping result thread")
 
     @pyqtSlot()
@@ -484,7 +483,7 @@ class VociferousApp(QObject):
         try:
             if self.result_thread and self.result_thread.isRunning():
                 self.result_thread.stop()
-        except Exception as e:
+        except Exception:
             logger.exception("Error cancelling recording")
 
     @pyqtSlot()
@@ -493,7 +492,7 @@ class VociferousApp(QObject):
         try:
             if self.result_thread and self.result_thread.isRunning():
                 self.result_thread.stop_recording()
-        except Exception as e:
+        except Exception:
             logger.exception("Error stopping recording from UI")
 
     def _handle_thread_result(self, result) -> None:
@@ -584,7 +583,7 @@ class VociferousApp(QObject):
         try:
             logger.info(f"Re-copying from history: {text[:50]}...")
             copy_text(text)
-        except Exception as e:
+        except Exception:
             logger.exception("Error re-copying text")
 
     def on_edit_entry_requested(self, text: str, timestamp: str) -> None:
@@ -627,7 +626,7 @@ class VociferousApp(QObject):
             # Reset UI state
             self.main_window.sync_recording_status_from_engine("idle")
             self.update_tray_status("idle")
-        except Exception as e:
+        except Exception:
             logger.exception("Error showing recording error dialog")
 
     def cleanup(self) -> None:
@@ -646,7 +645,7 @@ class VociferousApp(QObject):
                 self.lock.unlock()
                 
             logger.info("Vociferous cleanup completed")
-        except Exception as e:
+        except Exception:
             logger.exception("Error during cleanup")
 
     def exit_app(self) -> None:
@@ -654,7 +653,7 @@ class VociferousApp(QObject):
         try:
             self.cleanup()
             QApplication.quit()
-        except Exception as e:
+        except Exception:
             logger.exception("Error exiting application")
             QApplication.quit()
 
@@ -662,7 +661,7 @@ class VociferousApp(QObject):
         """Run the application."""
         try:
             return self.app.exec()
-        except Exception as e:
+        except Exception:
             logger.exception("Error in application main loop")
             return 1
 

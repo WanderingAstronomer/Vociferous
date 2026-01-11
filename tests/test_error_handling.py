@@ -184,7 +184,7 @@ class TestErrorDialog:
         )
 
         # Find the message label (it has objectName "errorDialogMessage")
-        message_label = dialog.findChild(type(dialog), "")
+        dialog.findChild(type(dialog), "")
         # Just verify dialog was created successfully
         assert dialog._message == "Custom error message"
 
@@ -418,7 +418,6 @@ class TestErrorPathIntegration:
         from ui.models.transcription_model import TranscriptionModel
 
         # Create a mock history manager
-        from unittest.mock import MagicMock
         mock_manager = MagicMock()
         mock_manager.get_recent.return_value = []
         mock_manager.get_focus_group_colors.return_value = {}

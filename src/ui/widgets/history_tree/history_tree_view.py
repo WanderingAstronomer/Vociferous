@@ -145,7 +145,7 @@ class HistoryTreeView(QTreeView):
         self._emit_count()
 
     def _configure_header(self) -> None:
-        """Configure header column sizing and visual order.
+        """Configure header for single-column layout.
         
         Called after model is set via QTimer.singleShot to ensure
         the header has processed the model's columnCount.
@@ -153,21 +153,10 @@ class HistoryTreeView(QTreeView):
         header = self.header()
         col_count = header.count()
         
-        if col_count >= 2:
-            # IMPORTANT: Must disable stretchLastSection BEFORE setting resize modes
-            # otherwise Qt will override our stretch setting
-            header.setStretchLastSection(False)
-            
-            # Swap visual order FIRST: column 1 (preview) appears at visual position 0 (left)
-            # column 0 (time) appears at visual position 1 (right)
-            header.moveSection(1, 0)
-            
-            # Now set resize modes (these apply to LOGICAL columns)
-            # Column 1 (preview, now visually LEFT) = Stretch to fill remaining space
-            # Column 0 (time, now visually RIGHT) = Fixed width for timestamp
-            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-            header.resizeSection(0, 120)  # Increased width for day headers and times
+        if col_count >= 1:
+            # Single column stretches to fill all available width
+            header.setStretchLastSection(True)
+            header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
 
     def entry_count(self) -> int:
         """Return number of visible entries (excluding headers)."""
@@ -446,22 +435,45 @@ class HistoryTreeView(QTreeView):
             return
         
         model = self.model()
+        row_count = model.rowCount()
         
-        for day_row in range(model.rowCount()):
+        # Handle empty model - nothing to expand
+        if row_count == 0:
+            self._expanded_day_keys.clear()
+            return
+        
+        # On first load (empty _expanded_day_keys), initialize with today if it exists
+        if not self._expanded_day_keys:
+            from datetime import date
+            today_key = date.today().isoformat()
+            
+            # Check if today exists in the model
+            has_today = False
+            for day_row in range(row_count):
+                day_index = model.index(day_row, 0)
+                day_key = day_index.data(TranscriptionModel.DayKeyRole)
+                if day_key == today_key:
+                    has_today = True
+                    break
+            
+            # Only add today to expanded set if it actually exists
+            if has_today:
+                self._expanded_day_keys = {today_key}
+            else:
+                # No today, start with everything collapsed
+                self._expanded_day_keys = set()
+        
+        for day_row in range(row_count):
             day_index = model.index(day_row, 0)
             day_key = day_index.data(TranscriptionModel.DayKeyRole)
             
-            # If this day was previously expanded, restore it
-            # Otherwise default to expanded for new days (user-friendly)
-            should_expand = day_key in self._expanded_day_keys if self._expanded_day_keys else True
+            # Expand only if in the expanded set
+            should_expand = day_key in self._expanded_day_keys
             self.setExpanded(day_index, should_expand)
         
         # Force viewport update to ensure proper geometry after model reset
         self.updateGeometry()
         self.viewport().update()
-        source_model = self._get_source_model()
-        if source_model:
-            source_model.refresh_from_manager()
 
     def keyPressEvent(self, event) -> None:
         """Handle keyboard navigation and actions."""

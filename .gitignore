@@ -1,34 +1,93 @@
-# Python bytecode / caches
+# =========================
+# Python Runtime Artifacts
+# =========================
+
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Test/coverage
+# Pytest cache
 .pytest_cache/
 .coverage
 htmlcov/
-coverage.xml
 
-# Environments / builds
+# Mypy
+.mypy_cache/
+
+# =========================
+# Virtual Environments
+# =========================
+
 .venv/
 venv/
+ENV/
 env/
-.tox/
-dist/
-build/
-*.egg-info/
-.mypy_cache/
-.github/
 
-# Agent-specific resources
-docs/dev/
+# =========================
+# Editor / IDE Noise
+# =========================
 
-# OS / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =========================
+# OS / Filesystem Artifacts
+# =========================
+
 .DS_Store
 Thumbs.db
-.idea/
-.vscode/
-.ruff_cache/
+desktop.ini
 
-# Local config (prefer example/default in repo)
+# =========================
+# Application Runtime State
+# =========================
+
+# Local user configuration (runtime-modified)
 src/config.yaml
+
+# SQLite databases / runtime data (if introduced later)
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+
+# =========================
+# Build / Distribution
+# =========================
+
+build/
+dist/
+*.spec
+
+# PyInstaller / frozen app artifacts
+__pypackages__/
+
+# =========================
+# Docs: Generated or Non-Source Material
+# =========================
+
+# Agent-generated reports (keep design docs, ignore analysis artifacts)
+docs/agent_resources/agent_reports/
+
+# Scraped or mirrored documentation
+docs/agent_resources/books/
+docs/agent_resources/**/static/
+
+# =========================
+# Tests: Generated Artifacts
+# =========================
+
+tests/__pycache__/
+
+# =========================
+# Optional: Debug Dumps / Profiles
+# =========================
+
+*.prof
+*.trace
+*.stackdump

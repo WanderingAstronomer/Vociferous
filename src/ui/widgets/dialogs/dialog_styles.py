@@ -11,11 +11,16 @@ from ui.constants import (
 )
 
 DIALOG_STYLESHEET = f"""
-    /* Dialog container */
-    QWidget#dialogContainer {{
+    /* Dialog wrapper - border on entire dialog */
+    QDialog {{
         background-color: {Colors.BG_PRIMARY};
         border: 1px solid {Colors.BORDER_ACCENT};
         border-radius: {STANDARD_RADIUS}px;
+    }}
+
+    /* Dialog container - no border (border is on QDialog) */
+    QWidget#dialogContainer {{
+        background-color: {Colors.BG_PRIMARY};
     }}
 
     /* Dialog button container - bottom row with background */
@@ -30,6 +35,7 @@ DIALOG_STYLESHEET = f"""
     QLabel#dialogLabel {{
         color: {Colors.TEXT_PRIMARY};
         font-size: {Typography.BODY_SIZE}pt;
+        border: none;
     }}
 
     /* Muted dialog label (for hints/previews) */

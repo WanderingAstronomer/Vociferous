@@ -69,6 +69,7 @@ class Dimensions:
     # List row heights
     FOCUS_GROUP_ROW_HEIGHT = 36
     DAY_ROW_HEIGHT = 32
+    DAY_HEADER_ROW_HEIGHT = 32
     TRANSCRIPT_ROW_HEIGHT = 32
 
     # Indentation

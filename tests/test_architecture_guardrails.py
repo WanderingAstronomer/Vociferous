@@ -223,7 +223,7 @@ class TestIntentCatalogGuardrails:
                     if isinstance(target, ast.Name) and target.id == "__all__":
                         if isinstance(node.value, ast.List):
                             for elt in node.value.elts:
-                                if isinstance(elt, ast.Constant):
+                                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
                                     exports.add(elt.value)
         
         # Filter to just intent types (ending in Intent, excluding base class)
@@ -269,7 +269,7 @@ class TestIntentCatalogGuardrails:
                     if isinstance(target, ast.Name) and target.id == "__all__":
                         if isinstance(node.value, ast.List):
                             for elt in node.value.elts:
-                                if isinstance(elt, ast.Constant):
+                                if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
                                     exports.add(elt.value)
         
         expected = self.CATALOGED_INTENTS | self.SUPPORTING_TYPES

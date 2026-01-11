@@ -32,6 +32,10 @@ import pytest
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+# Set Qt to use offscreen platform for headless testing
+# This prevents SIGABRT when no display server is available
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 
 @pytest.fixture(scope="session")
 def qapp_session():

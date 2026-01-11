@@ -201,7 +201,7 @@ class ExportDialog(QDialog):
 
     def _browse_location(self) -> None:
         """Browse for save location using Qt-styled file dialog."""
-        from PyQt6.QtWidgets import QFileDialog, QTreeView, QPushButton, QDialogButtonBox
+        from PyQt6.QtWidgets import QFileDialog, QTreeView, QDialogButtonBox
         from PyQt6.QtCore import QTimer
         
         # Create a custom file dialog instance

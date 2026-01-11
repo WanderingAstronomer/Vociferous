@@ -7,7 +7,6 @@ Integrates sidebar, main workspace, and metrics strip in a responsive layout.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import (
@@ -97,7 +96,12 @@ class MainWindow(QMainWindow):
         self._sidebar_expanded_width = Dimensions.SIDEBAR_MIN_WIDTH
         self._content_layout: QHBoxLayout | None = None
         self._initial_state_restored = False
-
+        
+        # Debounce timer for metrics refresh (avoid blocking on rapid transcripts)
+        self._metrics_refresh_timer = QTimer()
+        self._metrics_refresh_timer.setSingleShot(True)
+        self._metrics_refresh_timer.setInterval(1000)  # 1s debounce
+        
         self._init_ui()
         self._create_menu_bar()
         self._restore_state()
@@ -119,6 +123,10 @@ class MainWindow(QMainWindow):
             Spacing.APP_OUTER, Spacing.APP_OUTER, Spacing.APP_OUTER, Spacing.APP_OUTER
         )
         main_layout.setSpacing(Spacing.MAJOR_GAP)
+
+        # Metrics strip at top
+        self.metrics_strip = MetricsStrip(self.history_manager)
+        main_layout.addWidget(self.metrics_strip)
 
         # Horizontal layout for sidebar and workspace
         self._content_layout = QHBoxLayout()
@@ -171,24 +179,34 @@ class MainWindow(QMainWindow):
         self._content_layout.addWidget(self.workspace, 1)
 
         main_layout.addLayout(self._content_layout, 1)
-
-        # Metrics strip at bottom
-        self.metrics_strip = MetricsStrip(self.history_manager)
-        main_layout.addWidget(self.metrics_strip)
+        
+        # Connect debounce timer now that metrics_strip exists
+        self._metrics_refresh_timer.timeout.connect(self.metrics_strip.refresh)
 
         central.setLayout(main_layout)
         self.setCentralWidget(central)
 
         # Status bar for intent feedback (Phase 6)
+        # Hidden by default, only shows when messages are displayed
         self._status_bar = self.statusBar()
+        self._status_bar.setSizeGripEnabled(True)  # Enable resize grip in bottom-right corner
+        self._status_bar.hide()  # Hide by default to prevent empty space
         self._status_bar.setStyleSheet(f"""
             QStatusBar {{
                 background: {Colors.BACKGROUND};
                 color: {Colors.TEXT_SECONDARY};
-                border-top: 1px solid {Colors.BORDER};
+                border-top: 1px solid {Colors.BORDER_DEFAULT};
                 padding: 4px 8px;
             }}
+            QStatusBar::item {{
+                border: none;
+            }}
         """)
+        # Center align status bar messages
+        from PyQt6.QtWidgets import QLabel
+        self._status_label = QLabel()
+        self._status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._status_bar.addWidget(self._status_label, 1)
         
         # Intent feedback handler (Phase 6: Outcome Visibility)
         self._intent_feedback = IntentFeedbackHandler(self._status_bar, self)
@@ -199,6 +217,7 @@ class MainWindow(QMainWindow):
         self._menu_builder = MenuBuilder(self._menu_bar, self)
         self._menu_builder.build(
             on_exit=lambda: (self.close(), None)[1],
+            on_restart=self._restart_application,
             on_export=self._export_history,
             on_clear=self._clear_all_history,
             on_toggle_metrics=self._toggle_metrics,
@@ -216,14 +235,14 @@ class MainWindow(QMainWindow):
     def _on_start_requested(self) -> None:
         try:
             self.startRecordingRequested.emit()
-        except Exception as e:
+        except Exception:
             logger.exception("Error in _on_start_requested")
 
     @pyqtSlot()
     def _on_stop_requested(self) -> None:
         try:
             self.stopRecordingRequested.emit()
-        except Exception as e:
+        except Exception:
             logger.exception("Error in _on_stop_requested")
 
     @pyqtSlot()
@@ -235,7 +254,7 @@ class MainWindow(QMainWindow):
         """
         try:
             self.cancelRecordingRequested.emit()
-        except Exception as e:
+        except Exception:
             logger.exception("Error in _on_cancel_requested")
 
     @pyqtSlot(str)
@@ -276,12 +295,15 @@ class MainWindow(QMainWindow):
             )
 
             if dialog.exec() == QDialog.DialogCode.Accepted:
+                # Clear workspace FIRST to prevent Qt from accessing deleted item
+                self.workspace.clear_transcript()
+                
+                # Then delete from database and refresh UI
                 if self.history_manager:
                     self.history_manager.delete_entry(timestamp)
-                    self.sidebar.load_history()
+                    self.sidebar.clear_selection()  # Prevent viewing stale selection
+                    self.sidebar.load_history()  # Refresh model after selection cleared
                     self.metrics_strip.refresh()
-                # Terminal state mutation: clear workspace after confirmed delete
-                self.workspace.clear_transcript()
         except Exception as e:
             logger.exception("Error deleting transcript")
             show_error_dialog(
@@ -320,7 +342,7 @@ class MainWindow(QMainWindow):
         try:
             if self.metrics_strip.is_collapsed() == checked:
                 self.metrics_strip.toggle_collapse()
-        except Exception as e:
+        except Exception:
             logger.exception("Error toggling metrics")
 
     @pyqtSlot(bool)
@@ -330,6 +352,41 @@ class MainWindow(QMainWindow):
                 self._menu_builder.metrics_action.setChecked(not collapsed)
         except Exception:
             logger.exception("Error in _on_metrics_collapsed_changed")
+
+    def _restart_application(self) -> None:
+        """Restart the application by launching a new process and exiting."""
+        import os
+        import subprocess
+        import sys
+        
+        try:
+            # Use the run.py script for proper GPU library loading
+            scripts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "scripts")
+            run_script = os.path.join(scripts_dir, "run.py")
+            
+            if os.path.exists(run_script):
+                # Launch via run.py for proper LD_LIBRARY_PATH setup
+                subprocess.Popen(
+                    [sys.executable, run_script],
+                    start_new_session=True,
+                )
+            else:
+                # Fallback: launch main.py directly
+                main_script = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "main.py")
+                subprocess.Popen(
+                    [sys.executable, main_script],
+                    start_new_session=True,
+                )
+            
+            # Close the current application
+            self.close()
+        except Exception as e:
+            logger.exception("Failed to restart application")
+            show_error_dialog(
+                title="Restart Error",
+                message=f"Failed to restart: {e}",
+                parent=self,
+            )
 
     def _show_about_dialog(self) -> None:
         """Show the About Vociferous dialog."""
@@ -462,7 +519,8 @@ class MainWindow(QMainWindow):
     def display_transcription(self, entry: HistoryEntry) -> None:
         self.sidebar.add_entry(entry)
         self.workspace.display_new_transcript(entry)
-        self.metrics_strip.refresh()
+        # Debounce metrics refresh to avoid blocking on every transcript
+        self._metrics_refresh_timer.start()
 
     def show_and_raise(self) -> None:
         self.show()
@@ -479,6 +537,11 @@ class MainWindow(QMainWindow):
 
         self.raise_()
         self.activateWindow()
+    
+    def _debounced_metrics_refresh(self) -> None:
+        """Refresh metrics with debouncing to prevent blocking on rapid transcripts."""
+        if hasattr(self, '_metrics_refresh_timer'):
+            self._metrics_refresh_timer.start()
 
     @property
     def history_widget(self):
@@ -592,7 +655,7 @@ class MainWindow(QMainWindow):
             self.sidebar.updateGeometry()
             self._sidebar_expanded_width = clamped_width
             self.settings.setValue("sidebar_width", clamped_width)
-        except Exception as e:
+        except Exception:
             logger.exception("Error resizing sidebar")
 
     @pyqtSlot()
@@ -617,7 +680,7 @@ class MainWindow(QMainWindow):
             self._sidebar_collapsed = True
             self.settings.setValue("sidebar_visible", False)
             self.settings.setValue("sidebar_width", self._sidebar_expanded_width)
-        except Exception as e:
+        except Exception:
             logger.exception("Error collapsing sidebar")
 
     @pyqtSlot(int)
@@ -648,7 +711,7 @@ class MainWindow(QMainWindow):
             self._sidebar_collapsed = False
             self.settings.setValue("sidebar_visible", True)
             self.settings.setValue("sidebar_width", target_width)
-        except Exception as e:
+        except Exception:
             logger.exception("Error expanding sidebar")
 
     def _position_expand_button(self) -> None:
@@ -660,7 +723,7 @@ class MainWindow(QMainWindow):
             title_bar_height = self.title_bar.height() if hasattr(self, "title_bar") else 44
             y = title_bar_height + (self.height() - title_bar_height - self._expand_button.height()) // 2
             self._expand_button.move(0, y)
-        except Exception as e:
+        except Exception:
             logger.exception("Error positioning expand button")
 
     def _calculate_sidebar_width(self) -> int:

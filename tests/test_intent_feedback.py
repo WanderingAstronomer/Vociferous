@@ -32,7 +32,14 @@ class TestIntentFeedbackMapping:
     @pytest.fixture
     def mock_status_bar(self):
         """Create a mock status bar."""
-        return MagicMock()
+        mock = MagicMock()
+        # Mock the show/hide methods added in status bar visibility changes
+        mock.show = MagicMock()
+        mock.hide = MagicMock()
+        # Configure parent to NOT have _status_label, so fallback to showMessage
+        mock_parent = MagicMock(spec=[])  # Empty spec means no attributes
+        mock.parent = MagicMock(return_value=mock_parent)
+        return mock
     
     @pytest.fixture
     def handler(self, mock_status_bar):
@@ -206,7 +213,15 @@ class TestPhase6Constraints:
     
     @pytest.fixture
     def mock_status_bar(self):
-        return MagicMock()
+        """Create a mock status bar."""
+        mock = MagicMock()
+        # Mock the show/hide methods added in status bar visibility changes
+        mock.show = MagicMock()
+        mock.hide = MagicMock()
+        # Configure parent to NOT have _status_label, so fallback to showMessage
+        mock_parent = MagicMock(spec=[])  # Empty spec means no attributes
+        mock.parent = MagicMock(return_value=mock_parent)
+        return mock
     
     @pytest.fixture
     def handler(self, mock_status_bar):

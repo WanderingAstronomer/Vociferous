@@ -27,7 +27,6 @@ from PyQt6.QtCore import QAbstractItemModel, QModelIndex, QObject, Qt, pyqtSigna
 from ui.utils.history_utils import (
     format_day_header,
     format_preview,
-    format_time_compact,
     group_entries_by_day,
 )
 
@@ -290,12 +289,12 @@ class TranscriptionModel(QAbstractItemModel):
         if 0 <= day_idx < len(self._days):
             entries = self._days[day_idx][2]
             return len(entries) if entries else 0
-
+        
         return 0
 
     def columnCount(self, parent: QModelIndex | None = None) -> int:
-        """Always 2 columns: [time/day, preview/text]."""
-        return 2
+        """Single column layout for unified row interaction."""
+        return 1
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
         """Return data for a given index and role."""
@@ -307,7 +306,7 @@ class TranscriptionModel(QAbstractItemModel):
             # The safest check - wrapping isValid in a try/except
             try:
                 is_valid = index.isValid()
-            except:
+            except Exception:
                 return None
             
             if not is_valid:
@@ -322,7 +321,7 @@ class TranscriptionModel(QAbstractItemModel):
                 internal_id = index.internalId()
                 is_day_header, day_idx, entry_idx = self._get_index_data(internal_id)
                 column = index.column()
-            except:
+            except Exception:
                 return None
 
             if is_day_header:
@@ -367,12 +366,8 @@ class TranscriptionModel(QAbstractItemModel):
 
         match role:
             case Qt.ItemDataRole.DisplayRole:
-                if column == 0:
-                    dt = datetime.fromisoformat(entry.timestamp)
-                    return format_time_compact(dt)
-                elif column == 1:
-                    return format_preview(entry.text, max_length=60)
-                return ""
+                # Single column: return preview text (time rendered by delegate)
+                return format_preview(entry.text, max_length=60)
             case self.TimestampRole:
                 return entry.timestamp
             case self.FullTextRole:

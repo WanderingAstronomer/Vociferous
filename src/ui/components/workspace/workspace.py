@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.constants import Dimensions, Spacing, Typography, WorkspaceState
+from ui.constants import Spacing, Typography, WorkspaceState
 from ui.utils.clipboard_utils import copy_text
 from ui.widgets.content_panel import ContentPanel
 from ui.interaction import (
@@ -48,7 +48,7 @@ from ui.components.workspace.controls import WorkspaceControls
 from ui.components.workspace.header import WorkspaceHeader
 
 if TYPE_CHECKING:
-    from history_manager import HistoryEntry, HistoryManager
+    from history_manager import HistoryEntry
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +250,7 @@ class MainWorkspace(QWidget):
                 self.controls.update_for_editing()
                 self.content.update_for_editing()
                 self.hotkey_hint.setText("Press Alt to start recording")
-                self.metrics.hide()
+                # Metrics visibility preserved from VIEWING state
                 self.content_scroll.setVerticalScrollBarPolicy(
                     Qt.ScrollBarPolicy.ScrollBarAsNeeded
                 )
@@ -266,7 +266,7 @@ class MainWorkspace(QWidget):
         try:
             self._state = state
             self._update_for_state()
-        except Exception as e:
+        except Exception:
             logger.exception("Error setting workspace state")
 
     def get_state(self) -> WorkspaceState:
@@ -301,7 +301,7 @@ class MainWorkspace(QWidget):
                 self.set_state(WorkspaceState.VIEWING)
             else:
                 self.set_state(WorkspaceState.IDLE)
-        except Exception as e:
+        except Exception:
             logger.exception("Error loading transcript")
             raise
 
@@ -321,7 +321,7 @@ class MainWorkspace(QWidget):
                 self.metrics.hide()
             
             self.set_state(WorkspaceState.VIEWING)
-        except Exception as e:
+        except Exception:
             logger.exception("Error displaying new transcript")
             raise
 
@@ -329,14 +329,14 @@ class MainWorkspace(QWidget):
         """Show transcribing indicator (after recording stops)."""
         try:
             self.header.update_for_transcribing()
-        except Exception as e:
+        except Exception:
             logger.exception("Error showing transcribing status")
 
     def get_current_text(self) -> str:
         """Return current transcript text."""
         try:
             return self.content.get_text()
-        except Exception as e:
+        except Exception:
             logger.exception("Error getting current text")
             return ""
 
@@ -344,7 +344,7 @@ class MainWorkspace(QWidget):
         """Return current transcript timestamp."""
         try:
             return self.content.get_timestamp()
-        except Exception as e:
+        except Exception:
             logger.exception("Error getting current timestamp")
             return ""
 
@@ -358,14 +358,14 @@ class MainWorkspace(QWidget):
             text = self.content.get_text()
             if text:
                 copy_text(text)
-        except Exception as e:
+        except Exception:
             logger.exception("Error copying text to clipboard")
 
     def add_audio_level(self, level: float) -> None:
         """Forward audio level to waveform visualization."""
         try:
             self.content.add_audio_level(level)
-        except Exception as e:
+        except Exception:
             # Don't log every audio level error to avoid spam
             pass
 
@@ -377,12 +377,10 @@ class MainWorkspace(QWidget):
             # Phase 3: Route through intent system (handle_intent is authoritative)
             match self._state:
                 case WorkspaceState.IDLE | WorkspaceState.VIEWING:
-                    intent = BeginRecordingIntent(source=IntentSource.CONTROLS)
-                    self.handle_intent(intent)
+                    self.handle_intent(BeginRecordingIntent(source=IntentSource.CONTROLS))
                 case WorkspaceState.RECORDING:
-                    intent = StopRecordingIntent(source=IntentSource.CONTROLS)
-                    self.handle_intent(intent)
-        except Exception as e:
+                    self.handle_intent(StopRecordingIntent(source=IntentSource.CONTROLS))
+        except Exception:
             logger.exception("Error in primary button click")
 
     def _on_edit_save_click(self) -> None:
@@ -395,17 +393,15 @@ class MainWorkspace(QWidget):
             match self._state:
                 case WorkspaceState.VIEWING:
                     # Phase 4: Route through intent layer
-                    intent = EditTranscriptIntent(source=IntentSource.CONTROLS)
-                    self.handle_intent(intent)
+                    self.handle_intent(EditTranscriptIntent(source=IntentSource.CONTROLS))
                 case WorkspaceState.EDITING:
                     # Phase 4: Route through intent layer
                     edited_text = self.content.get_text()
-                    intent = CommitEditsIntent(
+                    self.handle_intent(CommitEditsIntent(
                         source=IntentSource.CONTROLS,
                         content=edited_text,
-                    )
-                    self.handle_intent(intent)
-        except Exception as e:
+                    ))
+        except Exception:
             logger.exception("Error in edit/save button click")
 
     def _on_destructive_click(self) -> None:
@@ -417,17 +413,14 @@ class MainWorkspace(QWidget):
             match self._state:
                 case WorkspaceState.RECORDING:
                     # Phase 3: Route through intent layer
-                    intent = CancelRecordingIntent(source=IntentSource.HOTKEY)
-                    self.handle_intent(intent)
+                    self.handle_intent(CancelRecordingIntent(source=IntentSource.HOTKEY))
                 case WorkspaceState.EDITING:
                     # Phase 4: Route through intent layer
-                    intent = DiscardEditsIntent(source=IntentSource.CONTROLS)
-                    self.handle_intent(intent)
+                    self.handle_intent(DiscardEditsIntent(source=IntentSource.CONTROLS))
                 case WorkspaceState.VIEWING:
                     # Phase 5: Route through intent layer
-                    intent = DeleteTranscriptIntent(source=IntentSource.CONTROLS)
-                    self.handle_intent(intent)
-        except Exception as e:
+                    self.handle_intent(DeleteTranscriptIntent(source=IntentSource.CONTROLS))
+        except Exception:
             logger.exception("Error in destructive button click")
 
     def _on_text_changed(self) -> None:
@@ -436,7 +429,7 @@ class MainWorkspace(QWidget):
             if self._state == WorkspaceState.EDITING:
                 self._has_unsaved_changes = True
                 self.textEdited.emit()
-        except Exception as e:
+        except Exception:
             logger.exception("Error tracking text change")
 
     # Intent handling (Phase 2: bridge to existing handlers)
@@ -753,6 +746,17 @@ class MainWorkspace(QWidget):
         Postcondition: state == VIEWING if text non-empty, else IDLE
         Postcondition: _has_unsaved_changes == False
         """
+        # Idempotent check: already viewing this transcript
+        if (
+            self._state == WorkspaceState.VIEWING
+            and timestamp == self.get_current_timestamp()
+        ):
+            return IntentResult(
+                outcome=IntentOutcome.NO_OP,
+                intent=intent,
+                reason="Already viewing this transcript",
+            )
+        
         # Precondition: cannot view while recording
         if self._state == WorkspaceState.RECORDING:
             return IntentResult(
@@ -832,5 +836,5 @@ class MainWorkspace(QWidget):
             super().resizeEvent(event)
             width = event.size().width()
             self.header.scale_font(width)
-        except Exception as e:
+        except Exception:
             logger.exception("Error in resize event")

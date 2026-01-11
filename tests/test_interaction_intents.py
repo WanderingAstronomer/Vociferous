@@ -87,7 +87,7 @@ class TestIntentConstruction:
         """Intents are frozen and cannot be mutated."""
         intent = BeginRecordingIntent()
         with pytest.raises(FrozenInstanceError):
-            intent.source = IntentSource.SIDEBAR  # type: ignore
+            intent.source = IntentSource.SIDEBAR
 
 
 class TestIntentResultConstruction:

@@ -71,6 +71,12 @@ class SidebarWidget(QWidget):
         self._model: TranscriptionModel | None = None
         if history_manager:
             self._model = TranscriptionModel(history_manager)
+        
+        # Debounce timer for focus group reloads
+        self._reload_groups_timer = QTimer()
+        self._reload_groups_timer.setSingleShot(True)
+        self._reload_groups_timer.setInterval(500)  # 500ms debounce
+        self._reload_groups_timer.timeout.connect(lambda: self.focus_groups.load_groups())
 
         self._setup_ui()
         self._setup_connections()
@@ -114,6 +120,9 @@ class SidebarWidget(QWidget):
         self._search_page = SearchPanel(self._history_manager)
         self._search_page.entrySelected.connect(self.entrySelected)
         self._stack.addWidget(self._search_page)
+        
+        # Set default tab to Recent (index 1)
+        self._stack.setCurrentIndex(SidebarTabBar.TAB_TRANSCRIPTS)
         
         content_layout.addWidget(self._stack, 1)
         
@@ -162,14 +171,17 @@ class SidebarWidget(QWidget):
         self.focus_groups.entrySelected.connect(self.entrySelected)
         
         if self._model:
+            # Only reload focus groups when entries are actually deleted or updated
+            # Adding ungrouped entries doesn't affect focus groups, so skip expensive reload
             self._model.entryDeleted.connect(
                 safe_callback(lambda _: self.focus_groups.load_groups(), "focus_groups_reload_deleted")
             )
-            self._model.entryAdded.connect(
-                safe_callback(lambda _: self.focus_groups.load_groups(), "focus_groups_reload_added")
-            )
+            # Don't reload on every add - most adds are ungrouped
+            # self._model.entryAdded.connect(...) - REMOVED for performance
+            
+            # Only reload on updates if they might affect group membership
             self._model.entryUpdated.connect(
-                safe_callback(lambda _: self.focus_groups.load_groups(), "focus_groups_reload_updated")
+                safe_callback(lambda _: self._debounced_reload_groups(), "focus_groups_reload_updated")
             )
         
         self.focus_groups.groupDeleted.connect(self._on_group_deleted)
@@ -237,8 +249,8 @@ class SidebarWidget(QWidget):
 
     def _on_entry_group_changed(self, *args) -> None:
         """Refresh focus group tree when entries move."""
-        # Defer the refresh to prevent blocking during active recording/operations
-        QTimer.singleShot(0, self.focus_groups.load_groups)
+        # Use debounced reload to prevent blocking on rapid group assignments
+        self._debounced_reload_groups()
 
     # === Public API ===
     
@@ -294,6 +306,32 @@ class SidebarWidget(QWidget):
         if self._model:
             self._model.refresh_from_manager()
         self.focus_groups.load_groups()
+    
+    def clear_selection(self) -> None:
+        """Clear selection in all tabs (transcript list, focus groups, search)."""
+        try:
+            # Clear tree view selections safely
+            if hasattr(self, 'transcript_list') and self.transcript_list:
+                if hasattr(self.transcript_list, 'clearSelection'):
+                    self.transcript_list.clearSelection()
+            
+            if hasattr(self, 'focus_groups') and self.focus_groups:
+                if hasattr(self.focus_groups, 'clearSelection'):
+                    self.focus_groups.clearSelection()
+            
+            if hasattr(self, '_search_page') and self._search_page:
+                if hasattr(self._search_page, 'clearSelection'):
+                    self._search_page.clearSelection()
+        except Exception as e:
+            # Log but don't crash on selection clearing
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Error clearing sidebar selection: {e}")
+    
+    def _debounced_reload_groups(self) -> None:
+        """Reload focus groups with debouncing to prevent rapid-fire refreshes."""
+        if hasattr(self, '_reload_groups_timer'):
+            self._reload_groups_timer.start()
         
     def current_tab(self) -> int:
         """Return current active tab index."""

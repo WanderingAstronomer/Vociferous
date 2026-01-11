@@ -1,16 +1,16 @@
 """
 TreeHoverDelegate - Custom paint delegate for history tree items.
 
-Handles:
-- Day headers with secondary text styling
-- Transcript entries with UNIFIED styling:
-  - Preview: LEFT, primary text color
-  - Timestamp: RIGHT, BLUE accent color (matching Focus Groups)
+Single-column layout with unified row interaction:
+- Day headers: Full-width, bold, accent color
+- Transcript entries: Indented preview text, time shown right-aligned on same row
 """
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QModelIndex, Qt
+from datetime import datetime
+
+from PyQt6.QtCore import QModelIndex, QRect, QSize, Qt
 from PyQt6.QtGui import QColor, QFont, QPainter
 from PyQt6.QtWidgets import (
     QStyle,
@@ -18,18 +18,26 @@ from PyQt6.QtWidgets import (
     QStyleOptionViewItem,
 )
 
-from ui.constants import Colors, Typography
+from ui.constants import Colors, Dimensions, Typography
 from ui.models import TranscriptionModel
+from ui.utils.history_utils import format_time_compact
 
 
 class TreeHoverDelegate(QStyledItemDelegate):
     """
-    Delegate for history tree view.
+    Delegate for history tree view with single-column layout.
 
-    Uses UNIFIED styling for transcript entries to match Focus Groups:
-    - Preview text: Left aligned, primary color
-    - Timestamp: Right aligned, BLUE accent color
+    Unified styling for each row:
+    - Day headers: Full width, accent blue, bold
+    - Entries: Left indent, preview text left, time right (same row)
+    
+    Each row is a single interactive surface with unified hover/selection.
     """
+    
+    # Layout constants
+    ENTRY_INDENT = 16  # Left indent for entries under day headers
+    TIME_WIDTH = 70    # Fixed width for time display on right
+    PADDING_H = 8      # Horizontal padding
 
     def paint(
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
@@ -37,103 +45,143 @@ class TreeHoverDelegate(QStyledItemDelegate):
         """Paint the item with custom styling."""
         is_header = bool(index.data(TranscriptionModel.IsHeaderRole))
 
-        # Subtle selection background
+        painter.save()
+        
+        # Unified row background for selection/hover
         if option.state & QStyle.StateFlag.State_Selected:
             painter.fillRect(option.rect, QColor(Colors.HOVER_BG_SECTION))
-
-        # Hover background (different for headers vs entries)
-        if option.state & QStyle.StateFlag.State_MouseOver:
+        elif option.state & QStyle.StateFlag.State_MouseOver:
             hover_color = QColor(
                 Colors.HOVER_BG_DAY if is_header else Colors.HOVER_BG_ITEM
             )
             painter.fillRect(option.rect, hover_color)
 
-        # Customize option before standard paint
-        new_option = QStyleOptionViewItem(option)
-        new_option.state &= ~QStyle.StateFlag.State_Selected
-
         if is_header:
-            self._paint_header(painter, new_option, index)
+            self._paint_header(painter, option, index)
         else:
-            self._paint_entry(painter, new_option, index)
+            self._paint_entry(painter, option, index)
+            
+        painter.restore()
 
     def _paint_header(
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
     ) -> None:
         """Paint a day header row spanning full width."""
-        # Only paint once per row (in column 0)
-        if index.column() != 0:
-            return
-        
-        # Get text from column 0 (where model stores it)
         text = index.data(Qt.ItemDataRole.DisplayRole)
         if not text:
             return
         
-        # Get the tree view to calculate full row width
+        # Get full row width from viewport
         tree_view = option.widget
-        if not tree_view or not hasattr(tree_view, 'viewport'):
-            return
+        if tree_view and hasattr(tree_view, 'viewport'):
+            viewport_width = tree_view.viewport().width()
+            rect = QRect(0, option.rect.top(), viewport_width, option.rect.height())
+        else:
+            rect = option.rect
         
-        # Calculate full row rect spanning both columns
-        viewport_width = tree_view.viewport().width()
-        full_row_rect = option.rect
-        full_row_rect.setLeft(0)
-        full_row_rect.setWidth(viewport_width)
-        
-        # Paint the header text across the full width
-        painter.save()
+        # Header font and color
         header_font = QFont(option.font)
         header_font.setPointSize(Typography.DAY_HEADER_SIZE)
         header_font.setWeight(QFont.Weight.Bold)
         painter.setFont(header_font)
         painter.setPen(QColor(Colors.ACCENT_BLUE))
         
-        # Draw left-aligned with padding across full width
-        text_rect = full_row_rect.adjusted(8, 0, -8, 0)
+        # Draw left-aligned with padding
+        text_rect = rect.adjusted(self.PADDING_H, 0, -self.PADDING_H, 0)
         painter.drawText(
             text_rect,
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
             text
         )
-        painter.restore()
 
     def _paint_entry(
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
     ) -> None:
         """
-        Paint a transcript entry row.
+        Paint a transcript entry row in single-column layout.
         
-        UNIFIED STYLING (matches Focus Groups):
-        - Column 0 (time): Blue accent color, right-aligned
-        - Column 1 (preview): Primary text color, left-aligned
+        Layout: [indent][preview text...                    ][time]
+        - Preview: Left-aligned, primary text color, elided if too long
+        - Time: Right-aligned, accent blue color, fixed width
         """
-        if index.column() == 0:
-            # TIME column - BLUE color, right-aligned
-            time_font = QFont(option.font)
-            time_font.setPointSize(Typography.DAY_HEADER_SIZE)
-            time_font.setWeight(QFont.Weight.Normal)
-            option.font = time_font
-            # USE ACCENT_BLUE - same as Focus Groups factory!
-            option.palette.setColor(
-                option.palette.ColorRole.Text, QColor(Colors.ACCENT_BLUE)
-            )
-            option.displayAlignment = (
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
-        elif index.column() == 1:
-            # PREVIEW column - primary text color, left-aligned with indent
-            preview_font = QFont(option.font)
-            preview_font.setPointSize(Typography.TRANSCRIPT_ITEM_SIZE)
-            preview_font.setWeight(QFont.Weight.Normal)
-            option.font = preview_font
-            option.palette.setColor(
-                option.palette.ColorRole.Text, QColor(Colors.TEXT_PRIMARY)
-            )
-            option.displayAlignment = (
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-            )
-            # Add left indent for transcript entries
-            option.rect = option.rect.adjusted(16, 0, 0, 0)
+        # Get full row width from viewport
+        tree_view = option.widget
+        if tree_view and hasattr(tree_view, 'viewport'):
+            viewport_width = tree_view.viewport().width()
+            row_rect = QRect(0, option.rect.top(), viewport_width, option.rect.height())
+        else:
+            row_rect = option.rect
+        
+        # Get data
+        preview_text = index.data(Qt.ItemDataRole.DisplayRole) or ""
+        timestamp = index.data(TranscriptionModel.TimestampRole) or ""
+        
+        # Format time from timestamp
+        time_text = ""
+        if timestamp:
+            try:
+                dt = datetime.fromisoformat(timestamp)
+                time_text = format_time_compact(dt)
+            except (ValueError, TypeError):
+                pass
+        
+        # Calculate rects
+        # Preview area: from indent to (row width - time width - padding)
+        preview_left = self.ENTRY_INDENT
+        preview_right = row_rect.width() - self.TIME_WIDTH - self.PADDING_H
+        preview_rect = QRect(
+            preview_left, 
+            row_rect.top(), 
+            preview_right - preview_left, 
+            row_rect.height()
+        )
+        
+        # Time area: right side with fixed width
+        time_rect = QRect(
+            row_rect.width() - self.TIME_WIDTH - self.PADDING_H,
+            row_rect.top(),
+            self.TIME_WIDTH,
+            row_rect.height()
+        )
+        
+        # Draw preview text (left aligned, primary color)
+        preview_font = QFont(option.font)
+        preview_font.setPointSize(Typography.TRANSCRIPT_ITEM_SIZE)
+        painter.setFont(preview_font)
+        painter.setPen(QColor(Colors.TEXT_PRIMARY))
+        
+        # Elide text if too long
+        fm = painter.fontMetrics()
+        elided_preview = fm.elidedText(
+            preview_text, 
+            Qt.TextElideMode.ElideRight, 
+            preview_rect.width()
+        )
+        painter.drawText(
+            preview_rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            elided_preview
+        )
+        
+        # Draw time (right aligned, accent blue)
+        time_font = QFont(option.font)
+        time_font.setPointSize(Typography.SMALL_SIZE)
+        painter.setFont(time_font)
+        painter.setPen(QColor(Colors.ACCENT_BLUE))
+        painter.drawText(
+            time_rect,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            time_text
+        )
 
-        super().paint(painter, option, index)
+    def sizeHint(
+        self, option: QStyleOptionViewItem, index: QModelIndex
+    ) -> QSize:
+        """Return size hint for items."""
+        is_header = bool(index.data(TranscriptionModel.IsHeaderRole))
+        
+        # Use appropriate row height
+        if is_header:
+            return QSize(-1, Dimensions.DAY_HEADER_ROW_HEIGHT)
+        else:
+            return QSize(-1, Dimensions.TRANSCRIPT_ROW_HEIGHT)
