@@ -1,6 +1,6 @@
 # Vociferous
 
-**Version 2.0.0-beta.2** — Architecture Stabilization Release
+**Version 2.0.0 Beta** — Architecture Stabilization Release
 
 Vociferous is a fast, local speech-to-text dictation application for Linux. It transcribes your voice using OpenAI's Whisper model (via faster-whisper) and copies the result directly to your clipboard. No cloud services, no account required—just press a hotkey, speak, and paste.
 
@@ -91,6 +91,158 @@ python scripts/run.py
 
 ---
 
+## Scripts and Launchers
+
+### scripts/run.py
+
+**Application entry point with GPU library configuration.**
+
+```bash
+python scripts/run.py
+```
+
+**What it does**
+
+1. **Configures GPU libraries** - Sets `LD_LIBRARY_PATH` for CUDA/cuDNN in the venv
+2. **Re-executes if needed** - Uses `os.execv()` to restart with correct environment
+3. **Sets up Python path** - Adds `src/` to module search path
+4. **Configures logging** - Initializes logging before any imports
+5. **Launches application** - Imports and runs `main.py`
+
+**Why a separate entry point?**
+
+`LD_LIBRARY_PATH` must be set **before** any CUDA libraries are loaded. Python's import system loads shared libraries immediately, so environment changes after import don't work. The re-exec pattern solves this:
+
+```
+First run: Check GPU paths → Set LD_LIBRARY_PATH → os.execv() (restart)
+Second run: LD_LIBRARY_PATH already set → Import CUDA → Run app
+```
+
+**Environment Variables**
+
+- `_VOCIFEROUS_ENV_READY` - Sentinel to prevent infinite re-exec loops
+- `CUDA_VISIBLE_DEVICES` - Defaults to `0` if not set
+- `LD_LIBRARY_PATH` - Prepended with NVIDIA library paths from venv
+
+---
+
+### scripts/check_deps.py
+
+**Dependency verification script.**
+
+```bash
+python scripts/check_deps.py
+```
+
+**Output**
+
+```
+==============================================================
+Vociferous Dependency Check
+==============================================================
+
+Required Packages:
+--------------------------------------------------------------
+  ✓ faster-whisper
+  ✓ ctranslate2
+  ✓ numpy
+  ...
+
+Optional Packages:
+--------------------------------------------------------------
+  ⚠ some-optional-pkg - not installed (optional)
+
+Development Packages:
+--------------------------------------------------------------
+  ✓ pytest
+  ✓ ruff
+
+==============================================================
+```
+
+**Package Categories**
+
+| Category | Purpose |
+| --- | --- |
+| **Required** | Must be installed for app to run |
+| **Optional** | Enhance functionality but not required |
+| **Development** | Testing and code quality tools |
+
+**Exit Code**
+
+- `0` - All required packages present
+- `1` - One or more required packages missing
+
+---
+
+### scripts/install.sh
+
+**Automated installation script.**
+
+```bash
+chmod +x scripts/install.sh
+./scripts/install.sh
+```
+
+**What it does**
+
+1. **Checks Python version** - Warns if not 3.12/3.13
+2. **Creates virtual environment** - `.venv/` in project root
+3. **Upgrades pip** - Ensures latest pip, setuptools, wheel
+4. **Installs dependencies** - `pip install -r requirements.txt`
+5. **Verifies installation** - Imports key packages to confirm success
+
+**Output**
+
+```
+==========================================
+Vociferous Installation Script
+==========================================
+
+Detected Python version: 3.12
+Creating virtual environment...
+Activating virtual environment...
+Upgrading pip...
+
+==========================================
+Installing dependencies
+==========================================
+...
+
+==========================================
+Verifying installation
+==========================================
+✓ faster-whisper imported successfully
+✓ onnxruntime imported successfully
+✓ PyQt6 imported successfully
+...
+
+==========================================
+Installation complete!
+==========================================
+
+To run the application:
+  source .venv/bin/activate
+  python scripts/run.py
+```
+
+---
+
+### vociferous.sh (project root)
+
+**GPU-optimized launcher wrapper.**
+
+```bash
+./vociferous.sh
+```
+
+Sets environment variables and activates venv before running:
+- `LD_LIBRARY_PATH` for CUDA libraries
+- `RUST_LOG=error` to suppress Vulkan warnings
+- Activates `.venv` automatically
+
+---
+
 ## System Requirements
 
 - **Python**: 3.12+
@@ -162,6 +314,155 @@ Changes that violate the architectural guardrail tests are invalid and will not 
 1. Read the [Interaction Core Freeze Declaration](docs/dev/interaction-core-frozen.md)
 2. Run `pytest tests/test_architecture_guardrails.py` to verify compliance
 3. Follow the extension pattern documented in the freeze declaration
+
+### Quality Checks
+
+Run all checks before committing:
+
+```bash
+./scripts/check.sh
+```
+
+#### Tools Configured
+
+##### 1. **Ruff** (Linting & Formatting)
+Fast Python linter and formatter, replaces flake8, black, isort, and more.
+
+**Usage:**
+```bash
+# Check for issues
+python -m ruff check .
+
+# Auto-fix issues
+python -m ruff check --fix .
+
+# Format code
+python -m ruff format .
+```
+
+**Config:** [pyproject.toml](pyproject.toml)
+
+##### 2. **MyPy** (Static Type Checking)
+Validates Python 3.12+ type hints to catch type-related bugs.
+
+**Usage:**
+```bash
+python -m mypy src/
+```
+
+**Config:** [mypy.ini](mypy.ini)
+
+**Note:** ~331 errors are Qt6-related false positives (union-attr, override issues) and are acceptable.
+
+##### 3. **Bandit** (Security Scanner)
+Finds common security issues in Python code.
+
+**Usage:**
+```bash
+# Basic scan
+python -m bandit -r src/
+
+# JSON output
+python -m bandit -r src/ -f json
+```
+
+**Findings:** 10 LOW severity issues (subprocess usage in `input_simulation.py` and `clipboard_utils.py` - all intentional for Linux keyboard/clipboard control).
+
+##### 4. **Pytest** (Unit Testing)
+Comprehensive test suite with 125+ tests covering core functionality.
+
+**Usage:**
+```bash
+# Run all tests
+pytest
+
+# Run specific test file
+pytest tests/test_ui_components.py
+
+# Run with coverage
+pytest --cov=src --cov-report=html
+```
+
+**Config:** [pytest.ini](pytest.ini)
+
+#### CI/CD Integration
+
+The `scripts/check.sh` script is designed for CI/CD pipelines:
+
+```yaml
+# Example GitHub Actions
+- name: Run quality checks
+  run: ./scripts/check.sh
+```
+
+Exit codes:
+- `0` - All checks passed
+- `1` - One or more checks failed
+
+#### Manual Fixes
+
+**Fix all auto-fixable issues:**
+```bash
+python -m ruff check --fix .
+python -m ruff format .
+```
+
+**View detailed errors:**
+```bash
+# Ruff errors
+python -m ruff check .
+
+# Type errors
+python -m mypy src/
+
+# Security issues
+python -m bandit -r src/ -f screen
+```
+
+#### Installing Tools
+
+All tools are in [requirements.txt](requirements.txt):
+
+```bash
+pip install -r requirements.txt
+```
+
+Or install individually:
+```bash
+pip install ruff mypy bandit pytest types-PyYAML
+```
+
+#### Baseline Quality Metrics
+
+As of January 9, 2026:
+
+| Tool | Status | Details |
+|------|--------|---------|
+| **Ruff Linting** | ✅ Pass | 0 errors |
+| **Ruff Formatting** | ✅ Pass | All files formatted |
+| **MyPy** | ✅ Pass | 331 Qt false positives (acceptable) |
+| **Bandit** | ✅ Pass | 10 LOW severity (expected) |
+| **Pytest** | ✅ Pass | 125 passed, 1 skipped |
+
+#### Pre-commit Hooks (Optional)
+
+Install pre-commit hooks to run checks automatically:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+Create `.pre-commit-config.yaml`:
+```yaml
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+```
 
 ### Versioning Policy
 
