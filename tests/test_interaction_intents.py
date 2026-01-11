@@ -474,3 +474,75 @@ class TestDiscardIntentStateAssertions:
         
         assert result.outcome == IntentOutcome.ACCEPTED
         assert len(saved_content) == 0  # Signal should NOT fire
+
+
+class TestPhase4StoppingCondition:
+    """Tests verifying Phase 4 stopping condition is met.
+    
+    Stopping condition: Editing is impossible to exit without
+    explicit terminal intent (CommitEditsIntent or DiscardEditsIntent).
+    """
+    
+    @pytest.fixture
+    def workspace(self, qapp_session):
+        """Create MainWorkspace instance for testing."""
+        from ui.components.workspace import MainWorkspace
+        w = MainWorkspace()
+        return w
+
+    def test_only_terminal_intents_exit_editing(self, workspace):
+        """Only CommitEditsIntent and DiscardEditsIntent can exit EDITING."""
+        from ui.constants import WorkspaceState
+        
+        # Setup: enter editing
+        workspace.load_transcript("Test text", "2026-01-11T12:00:00")
+        workspace.handle_intent(EditTranscriptIntent())
+        assert workspace.get_state() == WorkspaceState.EDITING
+        
+        # Try BeginRecordingIntent - should be REJECTED
+        result = workspace.handle_intent(BeginRecordingIntent())
+        assert result.outcome == IntentOutcome.REJECTED
+        assert workspace.get_state() == WorkspaceState.EDITING
+        
+        # Try ViewTranscriptIntent - should be REJECTED (unsaved changes)
+        result = workspace.handle_intent(ViewTranscriptIntent(timestamp="other"))
+        assert result.outcome == IntentOutcome.REJECTED
+        assert workspace.get_state() == WorkspaceState.EDITING
+        
+        # Try EditTranscriptIntent - should be NO_OP
+        result = workspace.handle_intent(EditTranscriptIntent())
+        assert result.outcome == IntentOutcome.NO_OP
+        assert workspace.get_state() == WorkspaceState.EDITING
+        
+        # CommitEditsIntent exits to VIEWING
+        result = workspace.handle_intent(CommitEditsIntent(content="text"))
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.VIEWING
+        
+        # Re-enter editing and test discard
+        workspace.handle_intent(EditTranscriptIntent())
+        assert workspace.get_state() == WorkspaceState.EDITING
+        
+        # DiscardEditsIntent exits to VIEWING
+        result = workspace.handle_intent(DiscardEditsIntent())
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.VIEWING
+
+    def test_invariant_5_unsaved_changes_cleared_by_terminal(self, workspace):
+        """Terminal intents must clear _has_unsaved_changes."""
+        from ui.constants import WorkspaceState
+        
+        # Setup: enter editing and simulate text change
+        workspace.load_transcript("Original", "2026-01-11T12:00:00")
+        workspace.handle_intent(EditTranscriptIntent())
+        # Qt textChanged fires on edit mode entry, so unsaved is True
+        
+        # Commit should clear it
+        workspace.handle_intent(CommitEditsIntent(content="changed"))
+        assert not workspace.has_unsaved_changes()
+        
+        # Re-enter and test discard
+        workspace.handle_intent(EditTranscriptIntent())
+        # Discard should also clear it
+        workspace.handle_intent(DiscardEditsIntent())
+        assert not workspace.has_unsaved_changes()
