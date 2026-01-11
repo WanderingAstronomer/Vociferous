@@ -8,6 +8,11 @@ Validates:
 - normalized_text editability
 - Export functionality
 - Rotation behavior
+
+Test Tier: UI-Independent (Tier 1)
+- Pure database logic, no display required
+- Uses session-scoped QApplication from conftest.py for ConfigManager
+- Run with: pytest -m "not ui_dependent"
 """
 
 import sqlite3
@@ -17,7 +22,6 @@ from pathlib import Path
 import pytest
 
 from history_manager import HistoryEntry, HistoryManager
-
 
 @pytest.fixture
 def temp_db():

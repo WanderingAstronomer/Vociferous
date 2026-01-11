@@ -1,5 +1,9 @@
 """
 Tests for settings dialog, hotkey widget, and live config updates.
+
+Test Tier: Mixed
+- TestKeycodeMapping: UI-Independent (Tier 1)
+- TestHotkeyWidget: UI-Dependent (Tier 2) - requires QWidget
 """
 
 from unittest.mock import MagicMock, patch

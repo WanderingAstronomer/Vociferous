@@ -2,6 +2,11 @@
 Comprehensive UI component tests for dialogs, widgets, and interactions.
 
 Tests Focus Groups, History Tree, Settings Dialog, and other UI components.
+
+Test Tier: UI-Dependent (Tier 2)
+- Requires QApplication and Qt widget instantiation
+- May fail with SIGABRT in headless environments
+- Run with: pytest -m "ui_dependent"
 """
 
 import pytest
@@ -16,6 +21,9 @@ from ui.widgets.dialogs import CreateGroupDialog
 from ui.widgets.focus_group import FocusGroupContainer, FocusGroupTreeWidget
 from ui.widgets.history_tree import HistoryTreeView
 from ui.widgets.hotkey_widget import HotkeyWidget
+
+# Mark entire module as UI-dependent
+pytestmark = pytest.mark.ui_dependent
 
 
 @pytest.fixture(scope="module")

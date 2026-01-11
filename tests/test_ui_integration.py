@@ -2,6 +2,11 @@
 Integration tests for UI interactions.
 
 These tests verify the actual UI flow including button clicks and signal emissions.
+
+Test Tier: UI-Dependent (Tier 2)
+- Requires QApplication and Qt widget instantiation
+- May fail with SIGABRT in headless environments
+- Run with: pytest -m "ui_dependent"
 """
 
 import pytest
@@ -10,6 +15,9 @@ from PyQt6.QtWidgets import QApplication
 
 from ui.components.workspace import MainWorkspace
 from ui.constants import WorkspaceState
+
+# Mark entire module as UI-dependent
+pytestmark = pytest.mark.ui_dependent
 
 
 @pytest.fixture(scope="module")

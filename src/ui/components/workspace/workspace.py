@@ -377,10 +377,10 @@ class MainWorkspace(QWidget):
             # Phase 3: Route through intent system (handle_intent is authoritative)
             match self._state:
                 case WorkspaceState.IDLE | WorkspaceState.VIEWING:
-                    intent = BeginRecordingIntent(source=IntentSource.UI)
+                    intent = BeginRecordingIntent(source=IntentSource.CONTROLS)
                     self.handle_intent(intent)
                 case WorkspaceState.RECORDING:
-                    intent = StopRecordingIntent(source=IntentSource.UI)
+                    intent = StopRecordingIntent(source=IntentSource.CONTROLS)
                     self.handle_intent(intent)
         except Exception as e:
             logger.exception("Error in primary button click")
@@ -401,12 +401,17 @@ class MainWorkspace(QWidget):
             logger.exception("Error in edit/save button click")
 
     def _on_destructive_click(self) -> None:
-        """Handle Cancel/Delete button click."""
+        """Handle Cancel/Delete button click.
+        
+        Phase 3: RECORDING state now routes through intent layer.
+        EDITING and VIEWING still use legacy path (pending migration).
+        """
         try:
             match self._state:
                 case WorkspaceState.RECORDING:
-                    self.cancelRequested.emit()
-                    self.set_state(WorkspaceState.IDLE)
+                    # Phase 3: Route through intent layer
+                    intent = CancelRecordingIntent(source=IntentSource.HOTKEY)
+                    self.handle_intent(intent)
                 case WorkspaceState.EDITING:
                     self._has_unsaved_changes = False
                     self.set_state(WorkspaceState.VIEWING)
@@ -445,14 +450,17 @@ class MainWorkspace(QWidget):
         result: IntentResult
 
         match intent:
+            # Authoritative apply methods (Phase 3)
             case BeginRecordingIntent():
-                result = self._bridge_begin_recording(intent)
+                result = self._apply_begin_recording(intent)
 
             case StopRecordingIntent():
-                result = self._bridge_stop_recording(intent)
+                result = self._apply_stop_recording(intent)
 
             case CancelRecordingIntent():
-                result = self._bridge_cancel_recording(intent)
+                result = self._apply_cancel_recording(intent)
+
+            # Bridge methods (pending Phase 3 migration)
 
             case EditTranscriptIntent():
                 result = self._bridge_edit_transcript(intent)
@@ -480,19 +488,26 @@ class MainWorkspace(QWidget):
         self.intentProcessed.emit(result)
         return result
 
-    def _bridge_begin_recording(self, intent: BeginRecordingIntent) -> IntentResult:
+    def _apply_begin_recording(self, intent: BeginRecordingIntent) -> IntentResult:
         """Apply BeginRecordingIntent: transition to RECORDING state.
         
-        Phase 3: This is now authoritative. State mutation happens here.
+        Phase 3: Authoritative state mutator for BeginRecordingIntent.
+        All state mutation for this intent happens here. Bridges route,
+        applies mutate.
+        
+        Precondition: state in (IDLE, VIEWING)
+        Postcondition: state == RECORDING, no unsaved changes
         """
         if self._state in (WorkspaceState.IDLE, WorkspaceState.VIEWING):
             # Authoritative mutation
             self.set_state(WorkspaceState.RECORDING)
             self.startRequested.emit()
             
-            # Debug assertion: verify state transition succeeded
+            # Invariant assertions: RECORDING implies clean slate
             assert self._state == WorkspaceState.RECORDING, \
                 f"BeginRecordingIntent accepted but state is {self._state.value}"
+            assert not self._has_unsaved_changes, \
+                "BeginRecordingIntent accepted but has_unsaved_changes is True"
             
             return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
         else:
@@ -502,11 +517,15 @@ class MainWorkspace(QWidget):
                 reason=f"Cannot start recording in {self._state.value} state",
             )
 
-    def _bridge_stop_recording(self, intent: StopRecordingIntent) -> IntentResult:
+    def _apply_stop_recording(self, intent: StopRecordingIntent) -> IntentResult:
         """Apply StopRecordingIntent: request transcription and show status.
         
-        Phase 3: This is now authoritative. State remains RECORDING until
-        transcription completes (external set_state call handles that).
+        Phase 3: Authoritative state mutator for StopRecordingIntent.
+        State remains RECORDING until transcription completes externally.
+        Bridges route, applies mutate.
+        
+        Precondition: state == RECORDING
+        Postcondition: transcribing UI visible, stopRequested emitted
         """
         if self._state == WorkspaceState.RECORDING:
             # Authoritative mutation: show transcribing UI and emit signal
@@ -524,10 +543,26 @@ class MainWorkspace(QWidget):
                 reason="Not currently recording",
             )
 
-    def _bridge_cancel_recording(self, intent: CancelRecordingIntent) -> IntentResult:
-        """Bridge: delegate to existing destructive click logic for cancel."""
+    def _apply_cancel_recording(self, intent: CancelRecordingIntent) -> IntentResult:
+        """Apply CancelRecordingIntent: abort recording and return to IDLE.
+        
+        Phase 3: Authoritative state mutator for CancelRecordingIntent.
+        Bridges route, applies mutate.
+        
+        Precondition: state == RECORDING
+        Postcondition: state == IDLE, cancelRequested emitted
+        """
         if self._state == WorkspaceState.RECORDING:
-            self._on_destructive_click()
+            # Authoritative mutation
+            self.cancelRequested.emit()
+            self.set_state(WorkspaceState.IDLE)
+            
+            # Invariant assertions: IDLE implies clean slate
+            assert self._state == WorkspaceState.IDLE, \
+                f"CancelRecordingIntent accepted but state is {self._state.value}"
+            assert not self._has_unsaved_changes, \
+                "CancelRecordingIntent accepted but has_unsaved_changes is True"
+            
             return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
         else:
             return IntentResult(

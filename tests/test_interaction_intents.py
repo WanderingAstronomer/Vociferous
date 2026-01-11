@@ -8,6 +8,11 @@ These tests verify:
 
 Per Phase 2 guidance: tests assert construction and passthrough only.
 State transition assertions belong to Phase 3+.
+
+Test Tier: UI-Independent (Tier 1)
+- Pure intent/result logic, minimal Qt widget usage
+- Uses lightweight QApplication from conftest.py
+- Run with: pytest -m "not ui_dependent"
 """
 
 import pytest

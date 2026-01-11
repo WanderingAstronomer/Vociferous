@@ -6,6 +6,11 @@ Validates:
 - safe_slot decorator for error catching
 - ErrorDialog creation and functionality
 - Settings validation logic
+
+Test Tier: UI-Dependent (Tier 2)
+- Requires QApplication for ErrorDialog widget tests
+- May fail with SIGABRT in headless environments
+- Run with: pytest -m "ui_dependent"
 """
 
 import tempfile
@@ -14,6 +19,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PyQt6.QtWidgets import QApplication
+
+# Mark entire module as UI-dependent
+pytestmark = pytest.mark.ui_dependent
 
 
 @pytest.fixture(scope="module")

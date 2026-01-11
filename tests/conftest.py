@@ -1,5 +1,26 @@
 """
 Pytest configuration and fixtures for Vociferous tests.
+
+Test Tiers:
+-----------
+Tests are classified into tiers for selective execution:
+
+1. UI-Independent (Tier 1):
+   - Pure logic, no display required
+   - Can run in CI without virtual display
+   - Files: test_config.py, test_key_listener.py, test_transcription.py,
+            test_interaction_intents.py, test_history_utils.py, test_single_instance.py,
+            test_wayland_compat.py
+
+2. UI-Dependent (Tier 2):
+   - Require Qt widget instantiation
+   - Need QApplication or virtual display (xvfb)
+   - May fail with SIGABRT in headless environments
+   - Files: test_ui_components.py, test_ui_integration.py, test_settings.py,
+            test_error_handling.py, test_history_manager.py
+
+Run Tier 1 only: pytest -m "not ui_dependent"
+Run Tier 2 only: pytest -m "ui_dependent"
 """
 
 import os
