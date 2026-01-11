@@ -243,6 +243,11 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot()
     def _on_delete_requested(self) -> None:
+        """Handle delete signal from workspace.
+        
+        Phase 5: Workspace validated preconditions in _apply_delete_transcript.
+        This handler shows confirmation, performs I/O, then clears workspace.
+        """
         try:
             timestamp = self.workspace.get_current_timestamp()
             if not timestamp:
@@ -262,9 +267,8 @@ class MainWindow(QMainWindow):
                     self.history_manager.delete_entry(timestamp)
                     self.sidebar.load_history()
                     self.metrics_strip.refresh()
-                # Only set to IDLE if not currently recording
-                if self.workspace.get_state() not in (WorkspaceState.RECORDING, WorkspaceState.TRANSCRIBING):
-                    self.workspace.set_state(WorkspaceState.IDLE)
+                # Terminal state mutation: clear workspace after confirmed delete
+                self.workspace.clear_transcript()
         except Exception as e:
             logger.exception("Error deleting transcript")
             show_error_dialog(

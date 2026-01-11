@@ -566,6 +566,93 @@ class TestViewIntentStateAssertions:
         assert result.outcome == IntentOutcome.REJECTED
 
 
+class TestDeleteIntentStateAssertions:
+    """Phase 5: Tests for DeleteTranscriptIntent state assertions."""
+    
+    @pytest.fixture
+    def workspace(self, qapp_session):
+        """Create MainWorkspace instance for testing."""
+        from ui.components.workspace import MainWorkspace
+        w = MainWorkspace()
+        return w
+
+    def test_delete_accepted_in_viewing_emits_signal(self, workspace):
+        """DeleteTranscriptIntent in VIEWING emits deleteRequested signal."""
+        from ui.constants import WorkspaceState
+        
+        # Load transcript to enter VIEWING
+        workspace.load_transcript("Test text", "2026-01-11T12:00:00")
+        assert workspace.get_state() == WorkspaceState.VIEWING
+        
+        # Track signal
+        delete_requested = []
+        workspace.deleteRequested.connect(lambda: delete_requested.append(True))
+        
+        intent = DeleteTranscriptIntent(timestamp="2026-01-11T12:00:00")
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert len(delete_requested) == 1
+        # State should NOT change yet (until clear_transcript is called)
+        assert workspace.get_state() == WorkspaceState.VIEWING
+
+    def test_delete_rejected_in_idle(self, workspace):
+        """DeleteTranscriptIntent rejected in IDLE state."""
+        from ui.constants import WorkspaceState
+        
+        assert workspace.get_state() == WorkspaceState.IDLE
+        
+        intent = DeleteTranscriptIntent(timestamp="2026-01-11T12:00:00")
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.REJECTED
+        assert "idle" in result.reason.lower()
+
+    def test_delete_rejected_in_recording(self, workspace):
+        """DeleteTranscriptIntent rejected in RECORDING state."""
+        from ui.constants import WorkspaceState
+        
+        workspace.handle_intent(BeginRecordingIntent())
+        assert workspace.get_state() == WorkspaceState.RECORDING
+        
+        intent = DeleteTranscriptIntent(timestamp="2026-01-11T12:00:00")
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.REJECTED
+        assert workspace.get_state() == WorkspaceState.RECORDING
+
+    def test_delete_rejected_in_editing(self, workspace):
+        """DeleteTranscriptIntent rejected in EDITING state."""
+        from ui.constants import WorkspaceState
+        
+        workspace.load_transcript("Test", "2026-01-11T12:00:00")
+        workspace.handle_intent(EditTranscriptIntent())
+        assert workspace.get_state() == WorkspaceState.EDITING
+        
+        intent = DeleteTranscriptIntent(timestamp="2026-01-11T12:00:00")
+        result = workspace.handle_intent(intent)
+        
+        assert result.outcome == IntentOutcome.REJECTED
+        assert workspace.get_state() == WorkspaceState.EDITING
+
+    def test_clear_transcript_transitions_to_idle(self, workspace):
+        """clear_transcript() transitions to IDLE after confirmed delete."""
+        from ui.constants import WorkspaceState
+        
+        workspace.load_transcript("Test", "2026-01-11T12:00:00")
+        assert workspace.get_state() == WorkspaceState.VIEWING
+        
+        # Delete intent accepted (emits signal, no state change)
+        workspace.handle_intent(DeleteTranscriptIntent(timestamp="2026-01-11T12:00:00"))
+        assert workspace.get_state() == WorkspaceState.VIEWING
+        
+        # Now simulate MainWindow calling clear_transcript after confirmation
+        workspace.clear_transcript()
+        
+        assert workspace.get_state() == WorkspaceState.IDLE
+        assert not workspace.has_unsaved_changes()
+
+
 class TestPhase4StoppingCondition:
     """Tests verifying Phase 4 stopping condition is met.
     

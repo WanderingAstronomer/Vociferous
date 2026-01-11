@@ -411,8 +411,7 @@ class MainWorkspace(QWidget):
     def _on_destructive_click(self) -> None:
         """Handle Cancel/Delete button click.
         
-        Phase 4: RECORDING and EDITING now route through intent layer.
-        VIEWING (delete) still uses legacy path.
+        Phase 5: All cases now route through intent layer.
         """
         try:
             match self._state:
@@ -425,7 +424,9 @@ class MainWorkspace(QWidget):
                     intent = DiscardEditsIntent(source=IntentSource.CONTROLS)
                     self.handle_intent(intent)
                 case WorkspaceState.VIEWING:
-                    self.deleteRequested.emit()
+                    # Phase 5: Route through intent layer
+                    intent = DeleteTranscriptIntent(source=IntentSource.CONTROLS)
+                    self.handle_intent(intent)
         except Exception as e:
             logger.exception("Error in destructive button click")
 
@@ -478,10 +479,10 @@ class MainWorkspace(QWidget):
             case DiscardEditsIntent():
                 result = self._apply_discard_edits(intent)
 
-            # Bridge methods (pending future migration)
+            # Authoritative apply methods
 
             case DeleteTranscriptIntent():
-                result = self._bridge_delete_transcript(intent)
+                result = self._apply_delete_transcript(intent)
 
             case ViewTranscriptIntent(timestamp=ts, text=txt):
                 result = self._apply_view_transcript(intent, ts, txt)
@@ -693,17 +694,52 @@ class MainWorkspace(QWidget):
                 reason="Not in edit mode",
             )
 
-    def _bridge_delete_transcript(self, intent: DeleteTranscriptIntent) -> IntentResult:
-        """Bridge: delegate to existing destructive click logic for delete."""
-        if self._state == WorkspaceState.VIEWING:
-            self._on_destructive_click()
-            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
-        else:
+    def _apply_delete_transcript(self, intent: DeleteTranscriptIntent) -> IntentResult:
+        """Apply DeleteTranscriptIntent: request deletion of current transcript.
+        
+        Phase 5: Authoritative validator for DeleteTranscriptIntent.
+        
+        Precondition: state == VIEWING (must have a transcript to delete)
+        Postcondition: deleteRequested emitted
+        
+        Note: This does NOT change state. Actual deletion and state transition
+        happen when MainWindow confirms and calls clear_transcript().
+        The confirmation dialog is a UX concern owned by MainWindow.
+        """
+        # Precondition: can only delete while viewing
+        if self._state != WorkspaceState.VIEWING:
             return IntentResult(
                 outcome=IntentOutcome.REJECTED,
                 intent=intent,
                 reason=f"Cannot delete in {self._state.value} state",
             )
+        
+        # Precondition: must have a transcript selected
+        timestamp = self.get_current_timestamp()
+        if not timestamp:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason="No transcript selected",
+            )
+        
+        # Emit signal for MainWindow to handle (shows confirmation, performs I/O)
+        self.deleteRequested.emit()
+        
+        # State change happens in clear_transcript() after confirmation
+        return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+    
+    def clear_transcript(self) -> None:
+        """Clear the current transcript and transition to IDLE.
+        
+        Called by MainWindow after delete confirmation and I/O completion.
+        This is the terminal state mutation for delete operations.
+        """
+        self.set_state(WorkspaceState.IDLE)
+        self._has_unsaved_changes = False
+        self.content.set_transcript("", "")
+        self.header.set_timestamp("")
+        self.metrics.hide()
 
     def _apply_view_transcript(
         self, intent: ViewTranscriptIntent, timestamp: str, text: str
