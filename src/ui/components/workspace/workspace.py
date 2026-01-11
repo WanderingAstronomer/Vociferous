@@ -33,7 +33,7 @@ from ui.components.workspace.controls import WorkspaceControls
 from ui.components.workspace.header import WorkspaceHeader
 
 if TYPE_CHECKING:
-    from history_manager import HistoryEntry, HistoryManager
+    from history_manager import HistoryEntry
 
 
 class MainWorkspace(QWidget):
