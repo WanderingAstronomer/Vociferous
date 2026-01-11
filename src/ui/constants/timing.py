@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from PyQt6.QtCore import Qt
 
 
-class TimerType:
+class _TimerType:
     """Qt timer precision types for different use cases."""
 
     @property
@@ -43,8 +43,8 @@ class TimerType:
         return Qt.TimerType.VeryCoarseTimer
 
 
-# Singleton instance
-TimerType = TimerType()
+# Singleton instance for timer type access
+TimerType: _TimerType = _TimerType()
 
 
 class AnimationDurations:

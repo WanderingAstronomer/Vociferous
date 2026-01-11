@@ -8,30 +8,51 @@ It is designed for fast, local dictation with a clipboard‑first workflow and m
 
 ## Main Window
 
-The application is split into **two static interaction panes**:
+The application features a **modern frameless window** with three main areas:
 
-- **Left pane**: Transcription history
-- **Right pane**: Current transcription
-
-There is **no dedicated Start/Stop button** in the current version. Recording is controlled entirely via a hotkey. This will be added in a future update, along with additional UI refinements. A roadmap will be published soon outlining planned features and improvements!
+- **Sidebar** (collapsible): Focus groups, recent transcripts, and search
+- **Workspace**: Current transcription with real-time waveform visualization during recording
+- **Metrics Strip**: Lifetime analytics (total time saved, word count, transcription count)
 
 [![Vociferous Main Window](docs/images/main_window.png)](docs/images/main_window.png)
+
+### Recording State
+
+During recording, the workspace displays a **real-time waveform visualization** with recording controls:
+
+[![Recording State](docs/images/recording_state.png)](docs/images/recording_state.png)
 
 ---
 
 ## Features
 
+### Core Transcription
 - Fast transcription using faster‑whisper (CTranslate2 backend)
-- **GPU acceleration (NVIDIA CUDA)** with **CPU‑only fallback supported**
-- PyQt5 GUI (**planned upgrade to PyQt6**)
-- Hotkey‑based, press‑to‑toggle recording
-- Voice Activity Detection (VAD)
+- **GPU acceleration (NVIDIA CUDA)** with **CPU‑only fallback**
+- Voice Activity Detection (VAD) filters silence
 - Clipboard‑first workflow (no input injection)
-- Persistent transcription history (JSONL)
-- Editable history entries
-- Export history to TXT / CSV / Markdown
+
+### User Interface
+- **PyQt6** modern frameless window with custom title bar
+- **Collapsible sidebar** with smooth animations
+- **Focus Groups** for organizing transcripts by topic
+- **Full-text search** across all transcripts
+- **Real-time waveform** visualization during recording
+- **Metrics framework** with per-transcription and lifetime analytics
 - Dark‑themed Linux‑native UI with system tray integration
-- Live‑reloadable settings (no restart required)
+
+### History & Organization
+- SQLite-backed persistent history
+- Focus groups for transcript organization
+- Recent transcripts view (last 7 days)
+- Editable transcriptions with raw/normalized text separation
+- Export to TXT / CSV / Markdown
+- Day-grouped tree view
+
+### Analytics
+- **Per-transcription**: Recording time, speech duration, silence time, words/min, time saved
+- **Lifetime**: Total transcriptions, total words, cumulative time saved
+- Metrics explanation dialog (Help → Metrics Calculations)
 
 ---
 
@@ -73,13 +94,12 @@ sudo apt install python3-xlib
 
 ## Dependencies Overview
 
-- `faster-whisper`
-- `ctranslate2`
-- `PyQt5` *(PyQt6 planned)*
-- `sounddevice`
-- `webrtcvad`
+- `faster-whisper` / `ctranslate2`
+- `PyQt6`
+- `sounddevice` / `webrtcvad`
 - `pynput` / `evdev`
 - `PyYAML`
+- `numpy>=2.0.0`
 
 See `requirements.txt` for full details.
 
@@ -106,18 +126,25 @@ CPU transcription is supported but significantly slower. NVIDIA GPUs are recomme
 
 ## Usage Workflow
 
-1. Press the activation hotkey (default: **Alt**)
-2. Speak
-3. Press the hotkey again or allow VAD to stop recording
-4. Transcription is copied to the clipboard
+1. Press the activation hotkey (default: **Right Alt**) or click the **Record** button
+2. Speak — the waveform visualizer shows your audio in real-time
+3. Press the hotkey again or click **Stop** to transcribe
+4. Transcription is copied to the clipboard automatically
 
-### Notes
+### Recording Controls
 
-- Only **press‑to‑toggle hotkey mode** is supported
-- Default Alt binding currently registers **both Alt keys**
-- Status text displays **Recording** or **Transcribing** only
-- No visual dot indicators are used
-- A **trailing space is always appended** to transcriptions (non‑configurable)
+- **Hotkey toggle**: Press Right Alt (default) to start/stop
+- **UI buttons**: Record / Stop / Cancel buttons in workspace
+- **Cancel**: Abort recording without transcribing
+
+### Status Indicators
+
+| State | Display |
+| --- | --- |
+| Idle | Greeting message |
+| Recording | Waveform visualization, "Recording..." status |
+| Transcribing | "Transcribing..." status |
+| Complete | Transcript displayed with metrics |
 
 ---
 
@@ -144,48 +171,72 @@ Key options include:
 - `model_options.language`
 - `recording_options.activation_key`
 
-All settings apply immediately.
+All settings apply immediately via the Settings dialog.
 
 ---
 
-## History
+## History & Focus Groups
 
-Stored at:
+### Storage
+
+SQLite database at:
 
 ```
-~/.config/vociferous/history.jsonl
+~/.config/vociferous/vociferous.db
 ```
 
-Supports:
+### Focus Groups
 
-- Editing
-- Deletion with persistence
-- Auto‑reload
+Organize transcripts by topic or project:
+
+- Create groups via sidebar context menu
+- Assign transcripts to groups
+- Filter view by group
+- Ungrouped transcripts shown separately
+
+### Features
+
+- Edit transcriptions (raw text preserved, normalized text editable)
+- Delete with persistence
+- Auto-reload on external changes
 - Export (TXT / CSV / Markdown)
 
 ---
 
-## Performance Characteristics
+## Metrics Framework
 
-- GPU VRAM usage is consistent with model size and verified
-- CPU fallback is supported but slower
-- Background resource usage aligns with expectations for Whisper inference
+### Per-Transcription Metrics
 
----
+**Row 0 — Human vs Machine Time:**
+- Recording Time: Total cognitive time (speaking + thinking)
+- Speech Duration: VAD-filtered speech segments
+- Silence Time: Thinking/pausing time
 
-## Known Issues / Planned Updates (v1.1.1)
+**Row 1 — Productivity:**
+- Words/Min: Idea throughput
+- Time Saved: vs typing at 40 WPM
+- Speaking Rate: Pure articulation speed
 
-- Alt key binding temporarily blocks normal Alt usage
-- Start/Stop UI button planned
-- PyQt6 migration planned
-- Status text may be expanded in future versions
+### Lifetime Analytics (Bottom Bar)
+
+- Total time spent transcribing
+- Total time saved (vs typing)
+- Total transcription count
+- Cumulative word count
 
 ---
 
 ## Further Reading
 
-Additional documentation and technical deep dives are available in the `docs/` directory.
+Additional documentation available in `docs/wiki/`:
+
+- [Installation Guide](docs/wiki/Installation-Guide.md)
+- [Recording](docs/wiki/Recording.md)
+- [Backend Architecture](docs/wiki/Backend-Architecture.md)
+- [Configuration Schema](docs/wiki/Configuration-Schema.md)
+- [Hotkey System](docs/wiki/Hotkey-System.md)
+- [Troubleshooting](docs/wiki/Troubleshooting.md)
 
 ---
 
-**Version:** 1.1.1 (documentation patch)
+**Version:** 1.4.2

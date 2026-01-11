@@ -23,9 +23,9 @@ Vociferous is a modern Python 3.12+ speech-to-text dictation application for Lin
 - **Input (`src/key_listener.py`)**:
     - **Protocol**: `InputBackend` (start, stop, on_input_event).
     - **Impls**: `EvdevBackend` (Wayland/Raw), `PynputBackend` (X11).
-- **Output (`src/input_simulation.py`)**:
-    - **Strategies**: `pynput` (X11), `dotool`/`ydotool` (Wayland), `clipboard` (Fallback).
-    - **Injection**: Copies text to clipboard -> triggers Ctrl+V -> restores clipboard (optional).
+- **Output (`src/ui/utils/clipboard_utils.py`)**:
+    - **Clipboard-first**: All transcriptions are copied to clipboard.
+    - **No injection**: Vociferous does not simulate typing.
 
 ## Development Workflows
 
@@ -60,12 +60,13 @@ python scripts/run.py
 - **Cleanup**: Implement `cleanup()` methods for threads/listeners. Connect `finished` signals to `deleteLater`.
 - **Imports**: Use `if TYPE_CHECKING:` for heavy imports (like `faster_whisper`) to keep startup fast.
 - **Environment**: `os.environ.setdefault("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1")` is set in `main.py` for Wayland/Hyprland compatibility.
+- **Styling**: All styles are consolidated in `src/ui/styles/unified_stylesheet.py`. No per-widget `setStyleSheet()` calls.
 
 ### GPU & Wayland Specifics
 - **GPU**: CUDA libraries are loaded dynamically. The `scripts/run.py` re-exec pattern is VITAL. Do not bypass it for production/GPU runs.
 - **Wayland**:
     - Cannot bind global hotkeys via Qt/X11 methods. Must use `evdev` (requires `input` group permissions).
-    - Cannot inject text via standard Qt methods reliably. Must use `dotool`/`ydotool` or clipboard.
+    - Clipboard-first workflow for text output.
 
 ## Configuration
 - **Schema**: Add new options to `src/config_schema.yaml` first.

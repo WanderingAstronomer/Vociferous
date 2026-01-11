@@ -21,7 +21,9 @@ from transcription import create_local_model
 from ui.components.main_window import MainWindow
 from ui.components.settings import SettingsDialog
 from ui.utils.clipboard_utils import copy_text
+from ui.utils.error_handler import get_error_logger, install_exception_hook
 from ui.widgets.dialogs.custom_dialog import MessageDialog
+from ui.widgets.dialogs.error_dialog import show_error_dialog
 from utils import ConfigManager
 
 logger = logging.getLogger(__name__)
@@ -65,6 +67,12 @@ class VociferousApp(QObject):
     """Main application orchestrator coordinating all components."""
 
     def __init__(self) -> None:
+        # Initialize error logging FIRST (before anything else)
+        error_logger = get_error_logger()
+        
+        # Install global exception hook with error dialog callback
+        install_exception_hook(self._show_global_error)
+        
         _install_qt_message_handler()
         # Check for existing instance BEFORE creating QApplication
         import tempfile
@@ -115,66 +123,94 @@ class VociferousApp(QObject):
 
         # Initialize components
         self.initialize_components()
+        
+        logger.info("Vociferous initialized successfully")
+    
+    def _show_global_error(self, title: str, message: str, details: str) -> None:
+        """Show an error dialog for uncaught exceptions."""
+        try:
+            # Try to get the main window as parent
+            parent = getattr(self, 'main_window', None)
+            show_error_dialog(
+                title=title,
+                message=message,
+                details=details,
+                parent=parent,
+            )
+        except Exception as e:
+            # Last resort: print to stderr
+            logger.error(f"Failed to show error dialog: {e}")
+            print(f"CRITICAL ERROR: {title}\n{message}\n{details}", file=sys.stderr)
 
     def initialize_components(self) -> None:
         """Initialize components in dependency order: listener, model, UI, tray."""
-        ConfigManager.console_print("Initializing Vociferous...")
+        try:
+            ConfigManager.console_print("Initializing Vociferous...")
 
-        # Key listener for hotkey detection
-        self.key_listener = KeyListener()
-        self.key_listener.add_callback(
-            "on_activate", lambda: self._hotkey_dispatcher.activated.emit()
-        )
-        self.key_listener.add_callback(
-            "on_deactivate", lambda: self._hotkey_dispatcher.deactivated.emit()
-        )
+            # Key listener for hotkey detection
+            self.key_listener = KeyListener()
+            self.key_listener.add_callback(
+                "on_activate", lambda: self._hotkey_dispatcher.activated.emit()
+            )
+            self.key_listener.add_callback(
+                "on_deactivate", lambda: self._hotkey_dispatcher.deactivated.emit()
+            )
 
-        # Load whisper model
-        ConfigManager.console_print("Loading Whisper model (this may take a moment)...")
-        self.local_model = create_local_model()
+            # Load whisper model
+            ConfigManager.console_print("Loading Whisper model (this may take a moment)...")
+            self.local_model = create_local_model()
 
-        # Result thread (for recording/transcription)
-        self.result_thread = None
+            # Result thread (for recording/transcription)
+            self.result_thread: ResultThread | None = None
 
-        # History manager for transcription storage
-        self.history_manager = HistoryManager()
+            # History manager for transcription storage
+            self.history_manager = HistoryManager()
 
-        # Main window (shows recording/transcribing state)
-        self.main_window = MainWindow(self.history_manager)
-        self.main_window.setWindowIcon(self._build_tray_icon())
-        self.main_window.on_settings_requested(self.show_settings)
+            # Main window (shows recording/transcribing state)
+            self.main_window = MainWindow(self.history_manager)
+            self.main_window.setWindowIcon(self._build_tray_icon())
+            self.main_window.on_settings_requested(self.show_settings)
 
-        # Connect history widget selection to load into editor
-        self.main_window.history_widget.entrySelected.connect(
-            self.on_edit_entry_requested
-        )
+            # Connect history widget selection to load into editor
+            self.main_window.history_widget.entrySelected.connect(
+                self.on_edit_entry_requested
+            )
 
-        # Cancel recording without transcribing
-        self.main_window.cancelRecordingRequested.connect(self._cancel_recording)
+            # Cancel recording without transcribing
+            self.main_window.cancelRecordingRequested.connect(self._cancel_recording)
 
-        # Connect workspace start/stop signals
-        self.main_window.startRecordingRequested.connect(self.start_result_thread)
-        self.main_window.stopRecordingRequested.connect(self._stop_recording_from_ui)
+            # Connect workspace start/stop signals
+            self.main_window.startRecordingRequested.connect(self.start_result_thread)
+            self.main_window.stopRecordingRequested.connect(self._stop_recording_from_ui)
 
-        # System tray
-        self.create_tray_icon()
-        self.main_window.windowCloseRequested.connect(self.exit_app)
+            # System tray
+            self.create_tray_icon()
+            self.main_window.windowCloseRequested.connect(self.exit_app)
 
-        # React to configuration changes
-        ConfigManager.instance().configChanged.connect(self._on_config_changed)
+            # React to configuration changes
+            ConfigManager.instance().configChanged.connect(self._on_config_changed)
 
-        # Start listening for hotkey
-        self.key_listener.start()
+            # Start listening for hotkey
+            self.key_listener.start()
 
-        activation_key = ConfigManager.get_config_value(
-            "recording_options", "activation_key"
-        )
-        ConfigManager.console_print(f"Ready! Press '{activation_key}' to start.")
-        
-        # NOW apply stylesheet after all widgets are initialized
-        # (applying stylesheet during widget tree creation causes Qt crashes)
-        from ui.styles.unified_stylesheet import generate_unified_stylesheet
-        self.app.setStyleSheet(generate_unified_stylesheet())
+            activation_key = ConfigManager.get_config_value(
+                "recording_options", "activation_key"
+            )
+            ConfigManager.console_print(f"Ready! Press '{activation_key}' to start.")
+            
+            # NOW apply stylesheet after all widgets are initialized
+            # (applying stylesheet during widget tree creation causes Qt crashes)
+            from ui.styles.unified_stylesheet import generate_unified_stylesheet
+            self.app.setStyleSheet(generate_unified_stylesheet())
+            
+        except Exception as e:
+            logger.exception("Failed to initialize components")
+            self._show_global_error(
+                title="Initialization Error",
+                message=f"Failed to initialize Vociferous: {e}",
+                details=f"Please check your configuration and try again.\n\nError: {e}",
+            )
+            raise
 
     def _tray_available(self) -> bool:
         """Return True if a functional system tray is available."""
@@ -275,30 +311,54 @@ class VociferousApp(QObject):
 
     def show_settings(self) -> None:
         """Open the settings dialog and apply changes immediately."""
-        # Create fresh dialog each time to avoid state issues
-        dialog = SettingsDialog(self.key_listener, self.main_window)
-        dialog.exec()
+        try:
+            # Create fresh dialog each time to avoid state issues
+            dialog = SettingsDialog(self.key_listener, self.main_window)
+            dialog.exec()
+        except Exception as e:
+            logger.exception("Error showing settings dialog")
+            self._show_global_error(
+                title="Settings Error",
+                message=f"Failed to open settings: {e}",
+                details="",
+            )
 
     @pyqtSlot(str, str, object)
     def _on_config_changed(self, section: str, key: str, value) -> None:
         """Handle live config updates for hotkey, backend, and model changes."""
-        if section == "recording_options" and key == "activation_key":
-            self.key_listener.update_activation_keys()
-            return
+        try:
+            if section == "recording_options" and key == "activation_key":
+                self.key_listener.update_activation_keys()
+                return
 
-        if section == "recording_options" and key == "input_backend":
-            self.key_listener.update_backend()
-            return
+            if section == "recording_options" and key == "input_backend":
+                self.key_listener.update_backend()
+                return
 
-        # Reload model when model options change
-        if section == "model_options" and key in {"compute_type", "device", "language"}:
-            self._reload_model()
+            # Reload model when model options change
+            if section == "model_options" and key in {"compute_type", "device", "language"}:
+                self._reload_model()
+        except Exception as e:
+            logger.exception("Error applying config change")
+            self._show_global_error(
+                title="Configuration Error",
+                message=f"Failed to apply configuration change: {e}",
+                details=f"Section: {section}, Key: {key}, Value: {value}",
+            )
 
     def _reload_model(self) -> None:
         """Reload the Whisper model with updated configuration."""
-        ConfigManager.console_print("Reloading Whisper model...")
-        self.local_model = create_local_model()
-        ConfigManager.console_print("Model reloaded successfully.")
+        try:
+            ConfigManager.console_print("Reloading Whisper model...")
+            self.local_model = create_local_model()
+            ConfigManager.console_print("Model reloaded successfully.")
+        except Exception as e:
+            logger.exception("Error reloading Whisper model")
+            self._show_global_error(
+                title="Model Error",
+                message=f"Failed to reload Whisper model: {e}",
+                details="The previous model will continue to be used.",
+            )
 
     def _build_tray_icon(self) -> QIcon:
         """Return a non-empty icon for the tray using bundled assets with fallbacks."""
@@ -333,76 +393,108 @@ class VociferousApp(QObject):
     @pyqtSlot()
     def on_activation(self) -> None:
         """Called when activation key is pressed."""
-        recording_mode = ConfigManager.get_config_value(
-            "recording_options", "recording_mode"
-        )
+        try:
+            recording_mode = ConfigManager.get_config_value(
+                "recording_options", "recording_mode"
+            )
 
-        if self.result_thread and self.result_thread.isRunning():
-            # Already recording - stop it
-            if recording_mode == "press_to_toggle":
-                self.result_thread.stop_recording()
-            return
+            if self.result_thread and self.result_thread.isRunning():
+                # Already recording - stop it
+                if recording_mode == "press_to_toggle":
+                    self.result_thread.stop_recording()
+                return
 
-        # Start new recording
-        self.start_result_thread()
+            # Start new recording
+            self.start_result_thread()
+        except Exception as e:
+            logger.exception("Error in on_activation")
+            self._show_global_error(
+                title="Recording Error",
+                message=f"Failed to start recording: {e}",
+                details="",
+            )
 
     @pyqtSlot()
     def on_deactivation(self) -> None:
         """Called when activation key is released (for hold_to_record mode)."""
-        recording_mode = ConfigManager.get_config_value(
-            "recording_options", "recording_mode"
-        )
+        try:
+            recording_mode = ConfigManager.get_config_value(
+                "recording_options", "recording_mode"
+            )
 
-        if (
-            recording_mode == "hold_to_record"
-            and self.result_thread
-            and self.result_thread.isRunning()
-        ):
-            self.result_thread.stop_recording()
+            if (
+                recording_mode == "hold_to_record"
+                and self.result_thread
+                and self.result_thread.isRunning()
+            ):
+                self.result_thread.stop_recording()
+        except Exception as e:
+            logger.exception("Error in on_deactivation")
+            # Don't show dialog for deactivation errors - just log
 
     @pyqtSlot()
     def start_result_thread(self) -> None:
         """Start recording/transcription thread with unified signal."""
-        if self.result_thread and self.result_thread.isRunning():
-            return
+        try:
+            if self.result_thread and self.result_thread.isRunning():
+                return
 
-        self.result_thread = ResultThread(self.local_model)
+            self.result_thread = ResultThread(self.local_model)
 
-        # Single unified signal connection - no manual tracking needed
-        self.result_thread.resultReady.connect(self._handle_thread_result)
+            # Single unified signal connection - no manual tracking needed
+            self.result_thread.resultReady.connect(self._handle_thread_result)
 
-        # Connect audio level updates to workspace waveform visualization
-        self.result_thread.audioLevelUpdated.connect(
-            self.main_window.workspace.add_audio_level
-        )
+            # Connect audio level updates to workspace waveform visualization
+            self.result_thread.audioLevelUpdated.connect(
+                self.main_window.workspace.add_audio_level
+            )
 
-        # Auto-cleanup: when thread finishes, schedule deletion
-        self.result_thread.finished.connect(self._on_thread_finished)
-        self.result_thread.start()
+            # Auto-cleanup: when thread finishes, schedule deletion
+            self.result_thread.finished.connect(self._on_thread_finished)
+            self.result_thread.start()
+        except Exception as e:
+            logger.exception("Error starting result thread")
+            self._show_global_error(
+                title="Recording Error",
+                message=f"Failed to start recording: {e}",
+                details="",
+            )
 
     @pyqtSlot()
     def _on_thread_finished(self) -> None:
         """Handle thread completion: schedule deletion."""
-        if self.result_thread:
-            self.result_thread.deleteLater()
-            self.result_thread = None
+        try:
+            if self.result_thread:
+                self.result_thread.deleteLater()
+                self.result_thread = None
+        except Exception as e:
+            logger.exception("Error in _on_thread_finished")
 
     def stop_result_thread(self) -> None:
         """Stop the recording/transcription thread."""
-        if self.result_thread and self.result_thread.isRunning():
-            self.result_thread.stop()
+        try:
+            if self.result_thread and self.result_thread.isRunning():
+                self.result_thread.stop()
+        except Exception as e:
+            logger.exception("Error stopping result thread")
 
     @pyqtSlot()
     def _cancel_recording(self) -> None:
         """Cancel recording early without transcribing."""
-        if self.result_thread and self.result_thread.isRunning():
-            self.result_thread.stop()
+        try:
+            if self.result_thread and self.result_thread.isRunning():
+                self.result_thread.stop()
+        except Exception as e:
+            logger.exception("Error cancelling recording")
 
     @pyqtSlot()
     def _stop_recording_from_ui(self) -> None:
         """Stop recording when user clicks Stop button in workspace."""
-        if self.result_thread and self.result_thread.isRunning():
-            self.result_thread.stop_recording()
+        try:
+            if self.result_thread and self.result_thread.isRunning():
+                self.result_thread.stop_recording()
+        except Exception as e:
+            logger.exception("Error stopping recording from UI")
 
     def _handle_thread_result(self, result) -> None:
         """
@@ -411,27 +503,35 @@ class VociferousApp(QObject):
         Args:
             result: ThreadResult containing state, text, duration, and error info
         """
-        from result_thread import ThreadState
+        try:
+            from result_thread import ThreadState
 
-        match result.state:
-            case ThreadState.RECORDING:
-                self.main_window.update_transcription_status("recording")
-                self.update_tray_status("recording")
-            case ThreadState.TRANSCRIBING:
-                self.main_window.update_transcription_status("transcribing")
-                self.update_tray_status("transcribing")
-            case ThreadState.COMPLETE:
-                self.main_window.update_transcription_status("idle")
-                self.update_tray_status("idle")
-                self._on_transcription_complete(result.text, result.duration_ms, result.speech_duration_ms)
-            case ThreadState.ERROR:
-                self.main_window.update_transcription_status("idle")
-                self.update_tray_status("error")
-                if result.error_message:
-                    self._on_recording_error(result.error_message)
-            case ThreadState.IDLE:
-                self.main_window.update_transcription_status("idle")
-                self.update_tray_status("idle")
+            match result.state:
+                case ThreadState.RECORDING:
+                    self.main_window.update_transcription_status("recording")
+                    self.update_tray_status("recording")
+                case ThreadState.TRANSCRIBING:
+                    self.main_window.update_transcription_status("transcribing")
+                    self.update_tray_status("transcribing")
+                case ThreadState.COMPLETE:
+                    self.main_window.update_transcription_status("idle")
+                    self.update_tray_status("idle")
+                    self._on_transcription_complete(result.text, result.duration_ms, result.speech_duration_ms)
+                case ThreadState.ERROR:
+                    self.main_window.update_transcription_status("idle")
+                    self.update_tray_status("error")
+                    if result.error_message:
+                        self._on_recording_error(result.error_message)
+                case ThreadState.IDLE:
+                    self.main_window.update_transcription_status("idle")
+                    self.update_tray_status("idle")
+        except Exception as e:
+            logger.exception("Error handling thread result")
+            self._show_global_error(
+                title="Processing Error",
+                message=f"Failed to process transcription result: {e}",
+                details="",
+            )
 
     def update_tray_status(self, status: str) -> None:
         """Update tray icon tooltip based on current status."""
@@ -456,15 +556,23 @@ class VociferousApp(QObject):
 
     def _on_transcription_complete(self, result: str, duration_ms: int, speech_duration_ms: int) -> None:
         """Handle completed transcription: add to history and copy to clipboard."""
-        if not result:
-            return
+        try:
+            if not result:
+                return
 
-        # Add to history and display using the persisted entry to keep timestamps aligned
-        entry = self.history_manager.add_entry(result, duration_ms=duration_ms, speech_duration_ms=speech_duration_ms)
-        self.main_window.display_transcription(entry)
+            # Add to history and display using the persisted entry to keep timestamps aligned
+            entry = self.history_manager.add_entry(result, duration_ms=duration_ms, speech_duration_ms=speech_duration_ms)
+            self.main_window.display_transcription(entry)
 
-        # Always copy to clipboard for manual paste
-        copy_text(result)
+            # Always copy to clipboard for manual paste
+            copy_text(result)
+        except Exception as e:
+            logger.exception("Error handling transcription complete")
+            self._show_global_error(
+                title="Save Error",
+                message=f"Failed to save transcription: {e}",
+                details="The transcription was completed but could not be saved.",
+            )
 
     def on_reinject_requested(self, text: str) -> None:
         """
@@ -473,8 +581,11 @@ class VociferousApp(QObject):
         Copies text to clipboard for manual paste.
         Does NOT add to history again.
         """
-        logger.info(f"Re-copying from history: {text[:50]}...")
-        copy_text(text)
+        try:
+            logger.info(f"Re-copying from history: {text[:50]}...")
+            copy_text(text)
+        except Exception as e:
+            logger.exception("Error re-copying text")
 
     def on_edit_entry_requested(self, text: str, timestamp: str) -> None:
         """
@@ -486,8 +597,16 @@ class VociferousApp(QObject):
             text: The transcription text
             timestamp: ISO timestamp of the entry
         """
-        logger.info(f"Loading entry for edit: {timestamp}")
-        self.main_window.load_entry_for_edit(text, timestamp)
+        try:
+            logger.info(f"Loading entry for edit: {timestamp}")
+            self.main_window.load_entry_for_edit(text, timestamp)
+        except Exception as e:
+            logger.exception("Error loading entry for edit")
+            self._show_global_error(
+                title="Load Error",
+                message=f"Failed to load entry for editing: {e}",
+                details="",
+            )
 
     def _on_recording_error(self, error_message: str) -> None:
         """Handle recording errors with user-friendly feedback.
@@ -495,42 +614,57 @@ class VociferousApp(QObject):
         Args:
             error_message: Description of the error
         """
-        logger.error(f"Recording error: {error_message}")
+        try:
+            logger.error(f"Recording error: {error_message}")
 
-        # Show error dialog to user
-        dialog = MessageDialog(
-            self.main_window,
-            "Recording Error",
-            f"Unable to record audio.\n\n{error_message}",
-        )
-        dialog.exec()
+            # Show error dialog to user
+            show_error_dialog(
+                title="Recording Error",
+                message=f"Unable to record audio.\n\n{error_message}",
+                parent=self.main_window,
+            )
 
-        # Reset UI state
-        self.main_window.update_transcription_status("idle")
-        self.update_tray_status("idle")
+            # Reset UI state
+            self.main_window.update_transcription_status("idle")
+            self.update_tray_status("idle")
+        except Exception as e:
+            logger.exception("Error showing recording error dialog")
 
     def cleanup(self) -> None:
         """Clean up resources."""
-        # Stop and clean up result thread
-        if self.result_thread and self.result_thread.isRunning():
-            self.result_thread.stop()
-            self.result_thread.wait(2000)  # Wait up to 2 seconds for graceful stop
+        try:
+            # Stop and clean up result thread
+            if self.result_thread and self.result_thread.isRunning():
+                self.result_thread.stop()
+                self.result_thread.wait(2000)  # Wait up to 2 seconds for graceful stop
 
-        if self.key_listener:
-            self.key_listener.stop()
+            if self.key_listener:
+                self.key_listener.stop()
 
-        # Release lock file
-        if hasattr(self, "lock"):
-            self.lock.unlock()
+            # Release lock file
+            if hasattr(self, "lock"):
+                self.lock.unlock()
+                
+            logger.info("Vociferous cleanup completed")
+        except Exception as e:
+            logger.exception("Error during cleanup")
 
     def exit_app(self) -> None:
         """Exit the application."""
-        self.cleanup()
-        QApplication.quit()
+        try:
+            self.cleanup()
+            QApplication.quit()
+        except Exception as e:
+            logger.exception("Error exiting application")
+            QApplication.quit()
 
     def run(self) -> int:
         """Run the application."""
-        return self.app.exec()
+        try:
+            return self.app.exec()
+        except Exception as e:
+            logger.exception("Error in application main loop")
+            return 1
 
 
 if __name__ == "__main__":

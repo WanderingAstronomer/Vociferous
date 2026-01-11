@@ -1,7 +1,10 @@
 """
 Color palette constants.
 
-Dark theme colors for backgrounds, text, accents, borders, and status indicators.
+Dark theme colors following Refactoring UI principles:
+- 3-tier text hierarchy: primary, secondary, tertiary
+- Consolidated accent colors (no duplicates)
+- Semantic naming for states and actions
 
 Usage:
     from ui.constants import Colors
@@ -12,88 +15,132 @@ Usage:
 class Colors:
     """Application color palette."""
 
-    # === Primary Backgrounds ===
-    BACKGROUND = "#1e1e1e"  # Main window background
-    SURFACE = "#252526"  # Panels, cards, dialogs
-    SURFACE_ALT = "#2a2a2a"  # Alternate surface (list items)
-    HEADER = "#1a1a1a"  # Section headers
+    # =================================================================
+    # BACKGROUNDS (4-level surface hierarchy)
+    # =================================================================
+    BACKGROUND = "#1e1e1e"   # L0: Main window/app background
+    SURFACE = "#252526"      # L1: Panels, cards, dialogs
+    SURFACE_ALT = "#2a2a2a"  # L2: List items, hover states
+    HEADER = "#1a1a1a"       # L-1: Section headers (darker)
 
-    # Legacy aliases (for backward compatibility)
+    # Legacy aliases (deprecated - use semantic names above)
     BG_PRIMARY = BACKGROUND
     BG_SECONDARY = SURFACE
     BG_TERTIARY = SURFACE_ALT
     BG_HEADER = HEADER
     BG_SIDEBAR = SURFACE
 
-    # === Text Colors ===
-    TEXT_PRIMARY = "#d4d4d4"  # Main text
-    TEXT_SECONDARY = "#888888"  # Muted text
-    TEXT_TERTIARY = "#555555"  # Disabled/very muted text
-    TEXT_MUTED = TEXT_TERTIARY  # Alias
-    TEXT_ACCENT = "#5a9fd4"  # Blue accent text
-    TEXT_GREETING = "#ffffff"  # Greeting text
-    TEXT_ON_PRIMARY = "#ffffff"  # Text on primary color buttons
-    TEXT_ON_ACCENT = "#ffffff"  # Text on accent color backgrounds
+    # =================================================================
+    # TEXT HIERARCHY (per Refactoring UI: 3 tiers)
+    # =================================================================
+    TEXT_PRIMARY = "#d4d4d4"    # Headlines, important content
+    TEXT_SECONDARY = "#888888"  # Supporting text, metadata
+    TEXT_TERTIARY = "#555555"   # Disabled, very subtle hints
 
-    # === Primary Accent ===
-    PRIMARY = "#5a9fd4"  # Primary accent color
-    PRIMARY_HOVER = "#6db3e8"  # Primary hover
-    PRIMARY_PRESSED = "#2d5a7b"  # Primary pressed
+    # Special text colors
+    TEXT_ACCENT = "#5a9fd4"     # Links, interactive text
+    TEXT_ON_ACCENT = "#ffffff"  # Text on accent backgrounds
+    TEXT_GREETING = "#ffffff"   # Hero/greeting text
 
-    # Legacy accent aliases
+    # Legacy alias
+    TEXT_MUTED = TEXT_TERTIARY
+    TEXT_ON_PRIMARY = TEXT_ON_ACCENT
+
+    # =================================================================
+    # PRIMARY ACCENT (consolidated - single source of truth)
+    # =================================================================
+    PRIMARY = "#5a9fd4"
+    PRIMARY_HOVER = "#6db3e8"
+    PRIMARY_PRESSED = "#2d5a7b"
+
+    # Legacy aliases (all point to PRIMARY family)
     ACCENT_BLUE = PRIMARY
-    ACCENT_BLUE_DARK = "#2d5a7b"
     ACCENT_BLUE_HOVER = PRIMARY_HOVER
-    ACCENT_BLUE_BRIGHT = "#4a9fd4"
-    ACCENT_BLUE_BRIGHT_HOVER = "#78c0ff"
+    ACCENT_BLUE_DARK = PRIMARY_PRESSED
     ACCENT_BLUE_PRESSED = PRIMARY_PRESSED
-
-    # === Semantic Accents ===
+    ACCENT_BLUE_BRIGHT = PRIMARY           # Consolidated
+    ACCENT_BLUE_BRIGHT_HOVER = PRIMARY_HOVER  # Consolidated
     ACCENT_PRIMARY = PRIMARY
     ACCENT_HOVER = PRIMARY_HOVER
     ACCENT_PRESSED = PRIMARY_PRESSED
-    ACCENT_RECORDING = "#ff6b6b"  # Recording state
-    ACCENT_DESTRUCTIVE = "#ff6b6b"  # Delete/cancel actions
-    ACCENT_SUCCESS = "#4caf50"  # Success state
+    BORDER_ACCENT = PRIMARY
 
-    # === Green for Start button ===
+    # =================================================================
+    # SEMANTIC COLORS
+    # =================================================================
+    # Success (green)
+    SUCCESS = "#4caf50"
+    SUCCESS_HOVER = "#5bc95f"
+    SUCCESS_PRESSED = "#3d8b40"
+
+    # Destructive/Error (red)
+    DESTRUCTIVE = "#ff6b6b"
+    DESTRUCTIVE_HOVER = "#ff8585"
+    DESTRUCTIVE_PRESSED = "#cc5656"
+    DESTRUCTIVE_BG = "#5a2d2d"      # Subtle background tint
+
+    # Warning (orange)
+    WARNING = "#ffa500"
+    WARNING_HOVER = "#ffb733"
+    WARNING_PRESSED = "#cc8400"
+
+    # Legacy destructive aliases
+    ACCENT_DESTRUCTIVE = DESTRUCTIVE
+    DESTRUCTIVE_IDLE = "#7a3535"
+    DESTRUCTIVE_HOVER_BG = DESTRUCTIVE_BG
+
+    # =================================================================
+    # ACTION BUTTON COLORS
+    # =================================================================
+    # Start/Go (green)
     ACCENT_GREEN = "#2d6a4f"
     ACCENT_GREEN_HOVER = "#40916c"
     ACCENT_GREEN_PRESSED = "#1b4332"
+
+    # Stop/Cancel (red)
     ACCENT_RED = "#e06c75"
+    ACCENT_RECORDING = DESTRUCTIVE
 
-    # === Destructive Actions ===
-    DESTRUCTIVE = "#ff6b6b"
-    DESTRUCTIVE_HOVER = "#5a2d2d"
-    DESTRUCTIVE_IDLE = "#7a3535"
-    DESTRUCTIVE_HOVER_BG = "#b54545"
+    # Legacy
+    ACCENT_SUCCESS = SUCCESS
 
-    # === Status Colors ===
-    STATUS_RECORDING = "#ff6b6b"
-    STATUS_TRANSCRIBING = "#ffa500"
-    STATUS_SUCCESS = "#4caf50"
+    # =================================================================
+    # STATUS INDICATORS
+    # =================================================================
+    STATUS_RECORDING = DESTRUCTIVE
+    STATUS_TRANSCRIBING = WARNING
+    STATUS_SUCCESS = SUCCESS
 
-    # === Borders ===
+    # =================================================================
+    # BORDERS
+    # =================================================================
     BORDER_DEFAULT = "#3c3c3c"
-    BORDER_COLOR = BORDER_DEFAULT  # Alias
     BORDER_LIGHT = "#4c4c4c"
-    BORDER_MEDIUM = "#3c3c3c"
-    BORDER_ACCENT = PRIMARY
+    BORDER_MEDIUM = BORDER_DEFAULT
 
-    # === Hover/Selection ===
-    HOVER_BG = "#2d3d4d"
+    # Legacy alias
+    BORDER_COLOR = BORDER_DEFAULT
+
+    # =================================================================
+    # INTERACTIVE STATES
+    # =================================================================
+    HOVER_BG = "#2d3d4d"          # Primary hover bg
     HOVER_OVERLAY = "rgba(255, 255, 255, 0.08)"
     PRESSED_OVERLAY = "rgba(255, 255, 255, 0.12)"
+    SELECTED_BG = PRIMARY_PRESSED
+
+    # Component-specific hover states
     HOVER_BG_SECTION = "#3a3a3a"
     HOVER_BG_DAY = "#333333"
     HOVER_BG_ITEM = "#2e2e2e"
-    SELECTED_BG = "#2d5a7b"
 
-    # === Section Headers ===
+    # Section headers
     SECTION_HEADER_BG = "#323e4e"
     SECTION_HEADER_HOVER = "#3d4f5f"
 
-    # === Special ===
+    # =================================================================
+    # SPECIAL
+    # =================================================================
     TRANSPARENT = "transparent"
     BUTTON_SECONDARY = "#3c3c3c"
 

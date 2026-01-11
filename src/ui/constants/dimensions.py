@@ -96,11 +96,11 @@ class Dimensions:
 
     # Content panel
     CONTENT_PANEL_PADDING = S2
-    CONTENT_PANEL_RADIUS = 8
+    CONTENT_PANEL_RADIUS = 8  # Use BORDER_RADIUS_MD
 
-    # Button sizes
-    BUTTON_HEIGHT_PRIMARY = 52
-    BUTTON_HEIGHT_SECONDARY = 44
+    # Button sizes (consistent heights using spacing scale)
+    BUTTON_HEIGHT_PRIMARY = 48   # Snapped to scale (was 52)
+    BUTTON_HEIGHT_SECONDARY = 40 # Snapped to scale (was 44)
     BUTTON_HEIGHT_DESTRUCTIVE = 40
     BUTTON_MIN_WIDTH_PRIMARY = 240
 
@@ -108,16 +108,22 @@ class Dimensions:
     BLURB_MAX_WIDTH = 560
     BLURB_MAX_WIDTH_RATIO = 0.75
 
-    # Border radii
-    BORDER_RADIUS_SM = 4
-    BORDER_RADIUS_SMALL = 4  # Alias
-    BORDER_RADIUS_MD = 8
-    BORDER_RADIUS = 8  # Default/alias
-    BORDER_RADIUS_LG = 12
-    BORDER_RADIUS_XL = 16
+    # =================================================================
+    # BORDER RADII (consolidated scale: 4, 8, 12, 16)
+    # =================================================================
+    BORDER_RADIUS_SM = 4   # Small: inputs, chips
+    BORDER_RADIUS_MD = 8   # Medium: cards, buttons
+    BORDER_RADIUS_LG = 12  # Large: dialogs, panels
+    BORDER_RADIUS_XL = 16  # Extra large: modals
+
+    # Legacy aliases (deprecated)
+    BORDER_RADIUS = BORDER_RADIUS_MD
+    BORDER_RADIUS_SMALL = BORDER_RADIUS_SM
 
     # Tree/list item heights
     TREE_ITEM_HEIGHT = 32
+
+
 class WindowSize:
     """Window size bands for responsive design."""
 

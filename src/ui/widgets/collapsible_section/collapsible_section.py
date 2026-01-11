@@ -237,3 +237,12 @@ class CollapsibleSection(QWidget):
         # Refresh style
         self.title_label.style().unpolish(self.title_label)
         self.title_label.style().polish(self.title_label)
+
+    def cleanup(self) -> None:
+        """Clean up resources before destruction."""
+        try:
+            # Remove event filter
+            if hasattr(self, '_header_click_filter') and self._header_click_filter:
+                self.header.removeEventFilter(self._header_click_filter)
+        except Exception:
+            pass

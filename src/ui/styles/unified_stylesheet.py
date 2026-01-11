@@ -9,7 +9,6 @@ and applied together here instead of per-widget setStyleSheet() calls.
 """
 
 from ui.constants import (
-    BUTTON_RADIUS_RECT,
     CONTENT_PANEL_RADIUS,
     SECTION_HEADER_RADIUS,
     SPLITTER_HANDLE_WIDTH,
@@ -192,15 +191,15 @@ QToolButton#titleBarControl:pressed {{
 QToolButton#titleBarClose {{
     background-color: transparent;
     border: none;
-    border-radius: {Dimensions.BORDER_RADIUS_SMALL}px;
+    border-radius: {Dimensions.BORDER_RADIUS_SM}px;
 }}
 
 QToolButton#titleBarClose:hover {{
-    background-color: {c.ACCENT_DESTRUCTIVE};
+    background-color: {c.DESTRUCTIVE};
 }}
 
 QToolButton#titleBarClose:pressed {{
-    background-color: #c0392b;
+    background-color: {c.DESTRUCTIVE_PRESSED};
 }}
 
 QWidget#dialogTitleBar {{
@@ -315,9 +314,7 @@ QTreeWidget#focusGroupTree::item {{
     border: none;
 }}
 
-QTreeWidget#focusGroupTree::item:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-}}
+/* Hover and selection handled by FocusGroupDelegate */
 
 QTreeWidget#focusGroupTree::item:selected {{
     background-color: {c.HOVER_BG_SECTION};
@@ -492,101 +489,127 @@ QFrame#contentPanel[recording="true"] {{
 }}
 
 /* =================================================================
-   BUTTONS - Primary/Secondary/Destructive
+   BUTTONS - Following Refactoring UI Hierarchy Principles
+   
+   Primary: Solid high-contrast bg - THE main action on the page
+   Secondary: Outline/low-contrast - clear but not prominent
+   Destructive: Styled like secondary, only bold-red in confirmation dialogs
+   
+   All buttons use consistent padding (12px 24px) and border radius (12px)
    ================================================================= */
 
+/* --- Primary Buttons (solid, high-contrast) --- */
 QPushButton#primaryButton {{
-    background-color: {c.ACCENT_PRIMARY};
+    background-color: {c.PRIMARY};
     color: {c.TEXT_ON_ACCENT};
     border: none;
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-    font-size: {Typography.BODY_SIZE}pt;
-    font-weight: 600;
-    padding: 0 {Spacing.BUTTON_PADDING}px;
+    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
+    font-size: {Typography.FONT_SIZE_BASE}px;
+    font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
+    padding: {Spacing.S2}px {Spacing.S4}px;
 }}
 
 QPushButton#primaryButton:hover {{
-    background-color: {c.ACCENT_HOVER};
+    background-color: {c.PRIMARY_HOVER};
 }}
 
 QPushButton#primaryButton:pressed {{
-    background-color: {c.ACCENT_PRESSED};
+    background-color: {c.PRIMARY_PRESSED};
 }}
 
 QPushButton#primaryButton:disabled {{
-    background-color: {c.BG_TERTIARY};
+    background-color: {c.SURFACE_ALT};
     color: {c.TEXT_TERTIARY};
 }}
 
+/* --- Secondary Buttons (outline, subdued) --- */
 QPushButton#secondaryButton {{
-    background-color: {c.BG_TERTIARY};
+    background-color: transparent;
     color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_COLOR};
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-    font-size: {Typography.BODY_SIZE}pt;
-    padding: 0 {Spacing.BUTTON_PADDING}px;
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
+    font-size: {Typography.FONT_SIZE_BASE}px;
+    font-weight: {Typography.FONT_WEIGHT_NORMAL};
+    padding: {Spacing.S2}px {Spacing.S4}px;
 }}
 
 QPushButton#secondaryButton:hover {{
     background-color: {c.HOVER_BG_ITEM};
+    border-color: {c.PRIMARY};
+    color: {c.TEXT_ACCENT};
 }}
 
+QPushButton#secondaryButton:disabled {{
+    color: {c.TEXT_TERTIARY};
+    border-color: {c.TEXT_TERTIARY};
+}}
+
+/* --- Destructive Buttons (outline, red accent on hover) --- */
+/* Per Refactoring UI: destructive actions look secondary until confirmation */
 QPushButton#destructiveButton {{
     background-color: transparent;
-    color: {c.ACCENT_DESTRUCTIVE};
-    border: 1px solid {c.ACCENT_DESTRUCTIVE};
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-    font-size: {Typography.BODY_SIZE}pt;
-    padding: 0 {Spacing.BUTTON_PADDING}px;
+    color: {c.TEXT_SECONDARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
+    font-size: {Typography.FONT_SIZE_BASE}px;
+    font-weight: {Typography.FONT_WEIGHT_NORMAL};
+    padding: {Spacing.S2}px {Spacing.S4}px;
 }}
 
 QPushButton#destructiveButton:hover {{
-    background-color: rgba(231, 76, 60, 0.1);
+    background-color: {c.DESTRUCTIVE_BG};
+    color: {c.DESTRUCTIVE};
+    border-color: {c.DESTRUCTIVE};
 }}
 
-/* Styled Buttons (dialogs) */
+/* --- Styled Buttons (dialogs - same principles) --- */
 QPushButton#styledPrimary {{
-    background-color: {c.ACCENT_BLUE};
-    color: {c.BG_PRIMARY};
+    background-color: {c.PRIMARY};
+    color: {c.TEXT_ON_ACCENT};
     border: none;
-    border-radius: {BUTTON_RADIUS_RECT}px;
-    padding: 10px 24px;
-    font-weight: bold;
+    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
+    font-size: {Typography.FONT_SIZE_BASE}px;
+    font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
+    padding: {Spacing.S2}px {Spacing.S4}px;
 }}
 
 QPushButton#styledPrimary:hover {{
-    background-color: {c.ACCENT_BLUE_HOVER};
+    background-color: {c.PRIMARY_HOVER};
 }}
 
 QPushButton#styledPrimary:disabled {{
-    background-color: {c.BG_HEADER};
-    color: {c.TEXT_SECONDARY};
+    background-color: {c.SURFACE_ALT};
+    color: {c.TEXT_TERTIARY};
 }}
 
 QPushButton#styledSecondary {{
-    background-color: {c.BG_TERTIARY};
+    background-color: transparent;
     color: {c.TEXT_PRIMARY};
     border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: {BUTTON_RADIUS_RECT}px;
-    padding: 10px 24px;
+    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
+    font-size: {Typography.FONT_SIZE_BASE}px;
+    font-weight: {Typography.FONT_WEIGHT_NORMAL};
+    padding: {Spacing.S2}px {Spacing.S4}px;
 }}
 
 QPushButton#styledSecondary:hover {{
-    background-color: {c.HOVER_BG};
-    border-color: {c.ACCENT_BLUE};
+    background-color: {c.HOVER_BG_ITEM};
+    border-color: {c.PRIMARY};
     color: {c.TEXT_ACCENT};
 }}
 
 QPushButton#styledDestructive {{
-    background-color: {c.BG_TERTIARY};
-    color: {c.TEXT_PRIMARY};
+    background-color: transparent;
+    color: {c.TEXT_SECONDARY};
     border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: {BUTTON_RADIUS_RECT}px;
-    padding: 10px 24px;
+    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
+    font-size: {Typography.FONT_SIZE_BASE}px;
+    font-weight: {Typography.FONT_WEIGHT_NORMAL};
+    padding: {Spacing.S2}px {Spacing.S4}px;
 }}
 
 QPushButton#styledDestructive:hover {{
-    background-color: {c.DESTRUCTIVE_HOVER};
+    background-color: {c.DESTRUCTIVE_BG};
     color: {c.DESTRUCTIVE};
     border-color: {c.DESTRUCTIVE};
 }}
@@ -596,8 +619,8 @@ QPushButton#styledDestructive:hover {{
    ================================================================= */
 
 QWidget#metricsStrip {{
-    background-color: {c.BG_SECONDARY};
-    border-radius: 6px;
+    background-color: {c.SURFACE};
+    border-radius: {Dimensions.BORDER_RADIUS_MD}px;
 }}
 
 QLabel#metricLabel {{

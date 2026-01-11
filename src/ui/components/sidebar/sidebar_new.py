@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 
 from ui.constants import Colors, Spacing, Typography
 from ui.models import TranscriptionModel
+from ui.utils.error_handler import safe_callback
 from ui.widgets.focus_group import FocusGroupContainer
 
 from ui.components.sidebar.resize_grip import SidebarResizeGrip
@@ -161,9 +162,15 @@ class SidebarWidget(QWidget):
         self.focus_groups.entrySelected.connect(self.entrySelected)
         
         if self._model:
-            self._model.entryDeleted.connect(lambda _: self.focus_groups.load_groups())
-            self._model.entryAdded.connect(lambda _: self.focus_groups.load_groups())
-            self._model.entryUpdated.connect(lambda _: self.focus_groups.load_groups())
+            self._model.entryDeleted.connect(
+                safe_callback(lambda _: self.focus_groups.load_groups(), "focus_groups_reload_deleted")
+            )
+            self._model.entryAdded.connect(
+                safe_callback(lambda _: self.focus_groups.load_groups(), "focus_groups_reload_added")
+            )
+            self._model.entryUpdated.connect(
+                safe_callback(lambda _: self.focus_groups.load_groups(), "focus_groups_reload_updated")
+            )
         
         self.focus_groups.groupDeleted.connect(self._on_group_deleted)
         self.focus_groups.groupRenamed.connect(self._on_group_metadata_changed)
@@ -238,7 +245,7 @@ class SidebarWidget(QWidget):
         """Get the shared transcription model."""
         return self._model
 
-    def get_collapse_state(self) -> dict[str, bool]:
+    def get_collapse_state(self) -> dict[str, int]:
         """Return collapsed state for persistence."""
         return {
             "current_tab": self._tab_bar.current_tab(),
@@ -299,3 +306,21 @@ class SidebarWidget(QWidget):
     def toggle(self) -> None:
         """Request sidebar collapse/expand."""
         self.collapseRequested.emit()
+
+    def cleanup(self) -> None:
+        """Clean up resources before destruction."""
+        try:
+            # Cleanup child widgets
+            if hasattr(self, 'focus_groups') and self.focus_groups:
+                if hasattr(self.focus_groups, 'cleanup'):
+                    self.focus_groups.cleanup()
+            
+            if hasattr(self, 'transcript_list') and self.transcript_list:
+                if hasattr(self.transcript_list, 'cleanup'):
+                    self.transcript_list.cleanup()
+            
+            if hasattr(self, '_search_page') and self._search_page:
+                if hasattr(self._search_page, 'cleanup'):
+                    self._search_page.cleanup()
+        except Exception:
+            pass

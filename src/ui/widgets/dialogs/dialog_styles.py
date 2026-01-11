@@ -55,25 +55,88 @@ DIALOG_STYLESHEET = f"""
 
     /* Create group dialog */
     QDialog#createGroupDialog {{
-        background-color: {Colors.BG_PRIMARY};
+        background-color: {Colors.BACKGROUND};
     }}
 
     QLabel#groupDialogLabel {{
         color: {Colors.TEXT_PRIMARY};
-        font-size: 14px;
-        font-weight: 500;
+        font-size: {Typography.FONT_SIZE_SM}px;
+        font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
     }}
 
     QLineEdit#groupNameInput {{
-        background-color: {Colors.BG_SECONDARY};
+        background-color: {Colors.SURFACE};
         color: {Colors.TEXT_PRIMARY};
         border: 1px solid {Colors.BORDER_DEFAULT};
         border-radius: 6px;
         padding: 10px 12px;
-        font-size: 14px;
+        font-size: {Typography.FONT_SIZE_SM}px;
     }}
 
     QLineEdit#groupNameInput:focus {{
-        border-color: {Colors.ACCENT_BLUE};
+        border-color: {Colors.PRIMARY};
+    }}
+
+    /* Error dialog styles */
+    QDialog#errorDialog {{
+        background-color: {Colors.BG_PRIMARY};
+    }}
+
+    QLabel#errorDialogMessage {{
+        color: {Colors.TEXT_PRIMARY};
+        font-size: {Typography.BODY_SIZE}pt;
+        padding: 0px 4px;
+    }}
+
+    QLabel#errorDialogIcon {{
+        color: {Colors.DESTRUCTIVE};
+    }}
+
+    QPushButton#errorDialogToggle {{
+        background: transparent;
+        color: {Colors.ACCENT_BLUE};
+        border: none;
+        font-size: {Typography.SMALL_SIZE}pt;
+        padding: 4px 0px;
+        text-align: left;
+    }}
+
+    QPushButton#errorDialogToggle:hover {{
+        text-decoration: underline;
+    }}
+
+    QPlainTextEdit#errorDialogDetails {{
+        background-color: {Colors.BG_TERTIARY};
+        color: {Colors.TEXT_SECONDARY};
+        border: 1px solid {Colors.BORDER_DEFAULT};
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: {Typography.SMALL_SIZE}pt;
+        padding: 8px;
+    }}
+
+    QPushButton#errorDialogCopy {{
+        background-color: {Colors.BG_TERTIARY};
+        color: {Colors.TEXT_PRIMARY};
+        border: 1px solid {Colors.BORDER_DEFAULT};
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: {Typography.SMALL_SIZE}pt;
+    }}
+
+    QPushButton#errorDialogCopy:hover {{
+        background-color: {Colors.HOVER_BG_ITEM};
+    }}
+
+    QPushButton#errorDialogViewLogs {{
+        background-color: transparent;
+        color: {Colors.ACCENT_BLUE};
+        border: none;
+        font-size: {Typography.SMALL_SIZE}pt;
+        padding: 4px 0px;
+    }}
+
+    QPushButton#errorDialogViewLogs:hover {{
+        text-decoration: underline;
     }}
 """

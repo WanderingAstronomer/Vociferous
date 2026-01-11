@@ -5,10 +5,12 @@ Features:
 - Custom title bar (draggable)
 - Consolidated single-page layout
 - Schema-driven form generation
+- Inline validation with error feedback
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from PyQt6.QtCore import Qt
@@ -32,9 +34,11 @@ from PyQt6.QtWidgets import (
 
 from key_listener import KeyListener
 from ui.components.title_bar import DialogTitleBar
-from ui.constants import Spacing
+from ui.constants import Colors, Spacing, Typography
 from ui.widgets.hotkey_widget import HotkeyWidget
 from utils import ConfigManager
+
+logger = logging.getLogger(__name__)
 
 
 def _has_gpu() -> bool:
@@ -55,10 +59,25 @@ class SettingsDialog(QDialog):
     - Custom title bar (draggable)
     - Consolidated single-page layout (no tabs)
     - Schema-driven form generation
+    - Inline validation with error feedback
     - Focused on essential user-facing options
     """
 
     HIDDEN_SECTIONS: set[str] = {"_internal", "ui_state"}
+
+    # Valid ISO-639-1 language codes for Whisper
+    VALID_LANGUAGES: set[str] = {
+        "en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr",
+        "pl", "ca", "nl", "ar", "sv", "it", "id", "hi", "fi", "vi",
+        "he", "uk", "el", "ms", "cs", "ro", "da", "hu", "ta", "no",
+        "th", "ur", "hr", "bg", "lt", "la", "mi", "ml", "cy", "sk",
+        "te", "fa", "lv", "bn", "sr", "az", "sl", "kn", "et", "mk",
+        "br", "eu", "is", "hy", "ne", "mn", "bs", "kk", "sq", "sw",
+        "gl", "mr", "pa", "si", "km", "sn", "yo", "so", "af", "oc",
+        "ka", "be", "tg", "sd", "gu", "am", "yi", "lo", "uz", "fo",
+        "ht", "ps", "tk", "nn", "mt", "sa", "lb", "my", "bo", "tl",
+        "mg", "as", "tt", "haw", "ln", "ha", "ba", "jw", "su",
+    }
 
     def __init__(
         self, key_listener: KeyListener, parent: QWidget | None = None
@@ -74,10 +93,13 @@ class SettingsDialog(QDialog):
         self.key_listener = key_listener
         self.schema = ConfigManager.get_schema()
         self.widgets: dict[tuple[str, str], QWidget] = {}
+        self._validation_labels: dict[tuple[str, str], QLabel] = {}
+        self._validation_errors: dict[tuple[str, str], str] = {}
         self.has_gpu = _has_gpu()
 
         self._setup_ui()
         self._populate_settings()
+        self._validate_all()
 
         self.setMinimumWidth(600)
         self.adjustSize()
@@ -219,18 +241,39 @@ class SettingsDialog(QDialog):
             label.setToolTip(desc)
             widget.setToolTip(desc)
 
-        # For checkboxes, wrap in container with center alignment to match label
+        # Create container with widget and validation message
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(2)
+
+        # Widget row
+        widget_row = QWidget()
+        widget_row_layout = QHBoxLayout(widget_row)
+        widget_row_layout.setContentsMargins(0, 0, 0, 0)
+        widget_row_layout.setSpacing(0)
+
         if isinstance(widget, QCheckBox):
-            container = QWidget()
-            layout = QHBoxLayout(container)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(0)
-            layout.addWidget(widget)
-            layout.addStretch()
-            layout.setAlignment(widget, Qt.AlignmentFlag.AlignVCenter)
-            self.form_layout.addRow(label, container)
+            widget_row_layout.addWidget(widget)
+            widget_row_layout.addStretch()
+            widget_row_layout.setAlignment(widget, Qt.AlignmentFlag.AlignVCenter)
         else:
-            self.form_layout.addRow(label, widget)
+            widget_row_layout.addWidget(widget, 1)
+
+        container_layout.addWidget(widget_row)
+
+        # Validation message label (hidden by default)
+        validation_label = QLabel()
+        validation_label.setObjectName("settingsValidationLabel")
+        validation_label.setWordWrap(True)
+        validation_label.hide()
+        container_layout.addWidget(validation_label)
+        self._validation_labels[(section, key)] = validation_label
+
+        self.form_layout.addRow(label, container)
+
+        # Connect value change signals to validation
+        self._connect_validation_signals(section, key, widget)
 
     def _create_widget(self, section: str, key: str, spec: dict[str, Any]) -> QWidget:
         """Create appropriate widget for setting type."""
@@ -280,6 +323,141 @@ class SettingsDialog(QDialog):
         widget.setText(str(value))
         return widget
 
+    def _connect_validation_signals(
+        self, section: str, key: str, widget: QWidget
+    ) -> None:
+        """Connect widget value change signals to validation."""
+        if isinstance(widget, QComboBox):
+            widget.currentTextChanged.connect(lambda _: self._validate_all())
+        elif isinstance(widget, QLineEdit):
+            widget.textChanged.connect(lambda _: self._validate_all())
+        elif isinstance(widget, QSpinBox):
+            widget.valueChanged.connect(lambda _: self._validate_all())
+        elif isinstance(widget, QDoubleSpinBox):
+            widget.valueChanged.connect(lambda _: self._validate_all())
+        elif isinstance(widget, QCheckBox):
+            widget.stateChanged.connect(lambda _: self._validate_all())
+        elif isinstance(widget, HotkeyWidget):
+            widget.hotkeyChanged.connect(lambda _: self._validate_all())
+
+    def _validate_all(self) -> bool:
+        """Validate all settings and update UI accordingly.
+        
+        Returns True if all validations pass.
+        """
+        self._validation_errors.clear()
+
+        # Validate device/compute_type compatibility
+        self._validate_device_compute_type()
+
+        # Validate language code
+        self._validate_language()
+
+        # Validate hotkey
+        self._validate_hotkey()
+
+        # Update all validation labels
+        self._update_validation_labels()
+
+        # Update button states
+        has_errors = bool(self._validation_errors)
+        self.ok_btn.setEnabled(not has_errors)
+        self.apply_btn.setEnabled(not has_errors)
+
+        return not has_errors
+
+    def _validate_device_compute_type(self) -> None:
+        """Validate device and compute_type are compatible."""
+        device_widget = self.widgets.get(("model_options", "device"))
+        compute_widget = self.widgets.get(("model_options", "compute_type"))
+
+        if not device_widget or not compute_widget:
+            return
+
+        device = (
+            device_widget.currentText()
+            if isinstance(device_widget, QComboBox)
+            else "auto"
+        )
+        compute_type = (
+            compute_widget.currentText()
+            if isinstance(compute_widget, QComboBox)
+            else "float32"
+        )
+
+        # Resolve 'auto' to actual device
+        actual_device = device
+        if device == "auto":
+            actual_device = "cuda" if self.has_gpu else "cpu"
+
+        # float16 is not compatible with CPU
+        if actual_device == "cpu" and compute_type == "float16":
+            self._validation_errors[("model_options", "compute_type")] = (
+                "float16 is not supported on CPU. Use float32 or int8."
+            )
+
+        # int8 is not compatible with CUDA
+        if actual_device == "cuda" and compute_type == "int8":
+            self._validation_errors[("model_options", "compute_type")] = (
+                "int8 is not supported on CUDA. Use float16 or float32."
+            )
+
+    def _validate_language(self) -> None:
+        """Validate language code is valid."""
+        lang_widget = self.widgets.get(("model_options", "language"))
+
+        if not lang_widget:
+            return
+
+        language = ""
+        if isinstance(lang_widget, QComboBox):
+            language = lang_widget.currentText().strip().lower()
+        elif isinstance(lang_widget, QLineEdit):
+            language = lang_widget.text().strip().lower()
+
+        if language and language not in self.VALID_LANGUAGES:
+            self._validation_errors[("model_options", "language")] = (
+                f"'{language}' is not a valid ISO-639-1 language code."
+            )
+
+    def _validate_hotkey(self) -> None:
+        """Validate hotkey is set."""
+        hotkey_widget = self.widgets.get(("recording_options", "activation_key"))
+
+        if not hotkey_widget:
+            return
+
+        if isinstance(hotkey_widget, HotkeyWidget):
+            hotkey = hotkey_widget.get_hotkey()
+            if not hotkey or hotkey.strip() == "":
+                self._validation_errors[("recording_options", "activation_key")] = (
+                    "Activation key is required."
+                )
+
+    def _update_validation_labels(self) -> None:
+        """Update validation label visibility and text."""
+        for (section, key), label in self._validation_labels.items():
+            error = self._validation_errors.get((section, key))
+            widget = self.widgets.get((section, key))
+
+            if error:
+                label.setText(f"⚠ {error}")
+                label.setStyleSheet(f"color: {Colors.DESTRUCTIVE}; font-size: {Typography.FONT_SIZE_XS}px;")
+                label.show()
+                # Add error styling to widget
+                if widget:
+                    widget.setProperty("validation", "error")
+                    widget.style().unpolish(widget)
+                    widget.style().polish(widget)
+            else:
+                label.hide()
+                label.setText("")
+                # Remove error styling from widget
+                if widget:
+                    widget.setProperty("validation", "")
+                    widget.style().unpolish(widget)
+                    widget.style().polish(widget)
+
     def _filter_compute_type_options(
         self, options: list[str], device: str
     ) -> list[str]:
@@ -323,15 +501,34 @@ class SettingsDialog(QDialog):
         super().closeEvent(event)
 
     def _apply_changes(self) -> bool:
-        """Write widget values back to ConfigManager."""
-        for (section, key), widget in self.widgets.items():
-            new_value = self._read_widget_value(widget)
-            current_value = ConfigManager.get_config_value(section, key)
-            if new_value != current_value:
-                ConfigManager.set_config_value(new_value, section, key)
+        """Write widget values back to ConfigManager.
+        
+        Returns True if changes were applied successfully.
+        """
+        # Run validation first
+        if not self._validate_all():
+            logger.warning("Settings validation failed, changes not applied")
+            return False
 
-        ConfigManager.save_config()
-        return True
+        try:
+            for (section, key), widget in self.widgets.items():
+                new_value = self._read_widget_value(widget)
+                current_value = ConfigManager.get_config_value(section, key)
+                if new_value != current_value:
+                    ConfigManager.set_config_value(new_value, section, key)
+
+            ConfigManager.save_config()
+            return True
+        except Exception as e:
+            logger.exception("Failed to apply settings changes")
+            from ui.widgets.dialogs import show_error_dialog
+            show_error_dialog(
+                title="Settings Error",
+                message="Failed to save settings.",
+                details=str(e),
+                parent=self,
+            )
+            return False
 
     def _read_widget_value(self, widget: QWidget) -> Any:
         """Extract value from widget."""

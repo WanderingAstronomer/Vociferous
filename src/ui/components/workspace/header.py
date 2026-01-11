@@ -58,7 +58,7 @@ class WorkspaceHeader(QWidget):
         self.greeting_label.setObjectName("greetingLabel")
         self.greeting_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         font = QFont()
-        font.setPointSize(Typography.GREETING_SIZE)
+        font.setPointSize(Typography.FONT_SIZE_MD)
         font.setWeight(QFont.Weight.DemiBold)
         self.greeting_label.setFont(font)
 

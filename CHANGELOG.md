@@ -2,6 +2,179 @@
 
 ---
 
+# v1.4.2 - Comprehensive Error Isolation
+
+**Date:** January 2026  
+**Status:** Release
+
+---
+
+## Summary
+
+Stability-focused release implementing comprehensive error isolation across all signal handlers, callbacks, and critical operations. Introduces new error handling utilities (`safe_callback`, `safe_slot_silent`) and adds deferred model invalidation to prevent segfaults during focus group operations.
+
+## Major Changes
+
+### Error Isolation Framework
+
+**New Utilities:**
+- `safe_callback(fn, context)` - Wraps lambda signal handlers to catch & log exceptions silently
+- `safe_slot_silent(context)` - Decorator for background operations (log-only, no dialog)
+
+**Philosophy:**
+- **User actions** → Error dialog (explicit feedback via `@safe_slot`)
+- **Background ops** → Log-only (silent failure via `@safe_slot_silent`)
+- **Lambda handlers** → `safe_callback()` wrapper (isolated errors)
+
+### Deferred Model Invalidation
+
+**Problem:** Segfault when assigning transcripts to focus groups from the Recent tab. Root cause: proxy model called `invalidateFilter()` during context menu callback, corrupting the `QModelIndex` mid-operation.
+
+**Solution:** Introduced `QTimer` with 0ms interval to defer filter invalidation until after the callback completes:
+
+```python
+self._invalidate_timer = QTimer()
+self._invalidate_timer.setSingleShot(True)
+self._invalidate_timer.setInterval(0)
+self._invalidate_timer.timeout.connect(self.invalidateFilter)
+
+# Signal connections now use deferred invalidation
+self._connections = [
+    (history_manager.entryUpdated, safe_callback(
+        lambda _: self._invalidate_timer.start(), "entryUpdated")),
+]
+```
+
+### Protected Components
+
+| Component | Protection Added |
+|-----------|------------------|
+| `FocusGroupTree` | try/except + logging on all CRUD methods |
+| `HistoryTreeView` | `safe_callback` on context menu lambdas, error handling on CRUD |
+| `FocusGroupProxyModel` | `safe_callback` on signal lambdas, protected `filterAcceptsRow()` |
+| `KeyListener` | Error isolation in `_trigger_callbacks()` |
+| `ResultThread` | try/except around audio callback |
+| `Sidebar` | `safe_callback` on lambda signal connections |
+
+### UI Bug Fixes
+
+- **Fixed**: Ghost context menus appearing on deleted transcript locations
+- **Fixed**: Sidebar collapsing when deleting transcripts from Recent/Focus Groups
+- **Fixed**: Recording stopping when deleting a transcript during recording
+- **Fixed**: Header text overflow (month/day/timestamp truncation)
+- **Fixed**: Welcome text font size too large
+
+## Files Modified (10)
+
+- `src/ui/utils/error_handler.py` - Added `safe_callback()`, `safe_slot_silent()`
+- `src/ui/utils/__init__.py` - Exported new utilities
+- `src/ui/widgets/focus_group/focus_group_tree.py` - Protected all CRUD methods
+- `src/ui/widgets/history_tree/history_tree_view.py` - Protected CRUD, wrapped lambdas
+- `src/ui/models/focus_group_proxy.py` - Deferred invalidation, protected filters
+- `src/ui/components/sidebar/sidebar_new.py` - Wrapped lambda connections
+- `src/key_listener.py` - Isolated callback errors
+- `src/result_thread.py` - Protected audio callback
+- `src/ui/components/main_window/main_window.py` - Error handling on slots
+- `src/ui/constants/typography.py` - Reduced `GREETING_SIZE` (48px → 24px)
+
+## Testing
+
+- **29 error handling tests** including new integration tests
+- **All tests passing** with no regressions
+- Tests cover: `safe_callback`, `safe_slot_silent`, error isolation in KeyListener, model edge cases
+
+## Technical Notes
+
+- Deferred invalidation pattern prevents Qt model/view corruption during callbacks
+- All exceptions now logged to `~/.local/share/vociferous/logs/vociferous.log`
+- Error isolation ensures one failing callback doesn't break subsequent callbacks
+- No segfaults possible from focus group operations
+
+---
+
+# v1.4.1 - Design System Consolidation & Error Handling
+
+**Date:** January 2026  
+**Status:** Release
+
+---
+
+## Summary
+
+Architecture refinement release focused on design system consolidation and code hygiene. Introduces Refactoring UI-compliant typography and spacing scales, consolidates all per-widget styles into a single unified stylesheet, adds structured error handling with user-facing dialogs, and removes 12 unused files from the codebase.
+
+## Major Changes
+
+### Design System Consolidation
+
+**Typography Scale (Refactoring UI compliant):**
+- Hand-crafted scale: 11, 13, 16, 20, 24, 32, 48px
+- Two weights only: 400 (normal), 600 (emphasis)
+- No orphan sizes or arbitrary values
+
+**Spacing Scale (non-linear):**
+- 8-step scale: 4, 8, 12, 16, 24, 32, 48, 64px
+- Semantic aliases: `APP_OUTER=16`, `MAJOR_GAP=16`, `MINOR_GAP=8`
+- All magic numbers replaced with named constants
+
+**Color System (3-tier text hierarchy):**
+- `TEXT_PRIMARY=#d4d4d4` - Main content
+- `TEXT_SECONDARY=#888888` - Supporting text
+- `TEXT_TERTIARY=#555555` - Disabled/hints
+- Consolidated accent color: `PRIMARY=#5a9fd4`
+
+### Unified Stylesheet Architecture
+- **Consolidated**: All per-widget `*_styles.py` files merged into `unified_stylesheet.py`
+- **Removed**: Redundant StylesheetRegistry and Theme classes
+- **Pattern**: Single `generate_unified_stylesheet()` applied at app startup
+- **Benefit**: No per-widget `setStyleSheet()` calls, consistent styling, faster startup
+
+### Error Handling Framework
+- **Added**: `error_handler.py` - Centralized error management
+- **Added**: `error_dialog.py` - User-facing error notification dialogs
+- **Added**: `test_error_handling.py` - Comprehensive error handling tests
+- **Pattern**: Structured try/except → log → optionally show dialog
+
+### Documentation Update
+- **Added**: `docs/images/recording_state.png` - Recording state screenshot
+
+## Files Removed (12)
+
+### Orphan Modules
+- `src/input_simulation.py` - Unused input injection code
+
+### Redundant Style Files (now in unified_stylesheet.py)
+- `src/ui/components/settings/settings_styles.py`
+- `src/ui/components/sidebar/sidebar_styles.py`
+- `src/ui/components/title_bar/title_bar_styles.py`
+- `src/ui/components/workspace/workspace_styles.py`
+- `src/ui/widgets/focus_group/focus_group_styles.py`
+- `src/ui/widgets/history_tree/history_tree_styles.py`
+
+### Orphan Sidebar Components
+- `src/ui/components/sidebar/sidebar.py` - Replaced by sidebar_new.py
+- `src/ui/components/sidebar/sidebar_edge.py` - Unused
+
+### Dead Infrastructure
+- `src/ui/styles/stylesheet_registry.py` - Replaced by unified stylesheet
+- `src/ui/styles/theme.py` - Unused theme abstraction
+- `src/ui/widgets/history_tree/history_tree_delegate_new.py` - Orphan delegate
+
+## Testing
+
+- **All 142 tests passing** (1 skipped intentionally)
+- **mypy clean**: 86 source files, 0 errors
+- **No regressions** in existing functionality
+
+## Technical Notes
+
+- Design system follows Refactoring UI best practices for visual hierarchy
+- Unified stylesheet eliminates style duplication and ordering issues
+- Centralized constants enable systematic design changes
+- Error handling improves debugging without disrupting user experience
+
+---
+
 # v1.4.0 - UI Overhaul & Comprehensive Metrics Framework
 
 **Date:** January 10, 2026  

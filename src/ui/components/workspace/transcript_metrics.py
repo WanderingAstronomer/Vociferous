@@ -14,7 +14,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QGridLayout, QLabel, QWidget
 
-from ui.constants import Colors
+from ui.constants import Colors, Typography
 
 # Constants for time estimation (explicit assumptions)
 SPEAKING_SPEED_WPM = 150  # Average conversational speaking speed
@@ -95,13 +95,13 @@ class TranscriptMetrics(QWidget):
     def _create_metric_label(self, text: str) -> QLabel:
         """Create a label for the metric name (gray)."""
         label = QLabel(text)
-        label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; font-size: 12px;")
+        label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; font-size: {Typography.FONT_SIZE_SM}px;")
         return label
 
     def _create_value_label(self, text: str) -> QLabel:
         """Create a label for the metric value (white)."""
         label = QLabel(text)
-        label.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; font-size: 12px; font-weight: 500;")
+        label.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; font-size: {Typography.FONT_SIZE_SM}px; font-weight: {Typography.FONT_WEIGHT_EMPHASIS};")
         return label
 
     def set_metrics(

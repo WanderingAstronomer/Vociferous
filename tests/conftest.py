@@ -12,8 +12,18 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 
+@pytest.fixture(scope="session")
+def qapp_session():
+    """Session-scoped QApplication for ConfigManager and other Qt objects."""
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    yield app
+
+
 @pytest.fixture(scope="session", autouse=True)
-def init_config():
+def init_config(qapp_session):
     """Initialize ConfigManager once for all tests."""
     from utils import ConfigManager
 

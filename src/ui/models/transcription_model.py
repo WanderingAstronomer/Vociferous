@@ -189,6 +189,7 @@ class TranscriptionModel(QAbstractItemModel):
                         entry_model_index,
                         [self.GroupIDRole, self.ColorRole],
                     )
+                    self.entryUpdated.emit(timestamp)
                     return
 
     def _find_day_index(self, day_key: str) -> int | None:

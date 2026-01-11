@@ -20,11 +20,15 @@ build/
 .mypy_cache/
 .github/
 
+# Agent-specific resources
+docs/agent_resources/
+
 # OS / editor
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
 .ruff_cache/
+
 # Local config (prefer example/default in repo)
 src/config.yaml

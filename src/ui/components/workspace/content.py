@@ -25,7 +25,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.components.workspace.transcript_metrics import TranscriptMetrics
 from ui.utils.clipboard_utils import copy_text
 from ui.widgets.waveform_visualizer import WaveformVisualizer
 
@@ -177,8 +176,6 @@ class WorkspaceContent(QWidget):
         self._current_timestamp = ""
         self.transcript_view.clear()
         self.transcript_editor.clear()
-        self.metrics.clear()
-        self.metrics.hide()
 
     @pyqtSlot(QPoint)
     def _show_context_menu(self, position: QPoint) -> None:

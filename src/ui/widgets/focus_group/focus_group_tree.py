@@ -7,6 +7,7 @@ Handles selection, context menus, and CRUD operations.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
@@ -22,6 +23,7 @@ from PyQt6.QtWidgets import (
 
 from ui.constants import Colors, Dimensions, FocusGroupColors, Typography
 from ui.widgets.dialogs import ConfirmationDialog, InputDialog
+from ui.widgets.dialogs.error_dialog import show_error_dialog
 from ui.widgets.focus_group.focus_group_delegate import FocusGroupDelegate
 from ui.widgets.transcript_item import (
     ROLE_FULL_TEXT,
@@ -31,6 +33,8 @@ from ui.widgets.transcript_item import (
 
 if TYPE_CHECKING:
     from history_manager import HistoryManager
+
+logger = logging.getLogger(__name__)
 
 
 class FocusGroupTreeWidget(QTreeWidget):
@@ -191,28 +195,34 @@ class FocusGroupTreeWidget(QTreeWidget):
 
     def _on_item_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
         """Handle item clicks: toggle expansion or select transcript."""
-        is_group = item.data(0, self.ROLE_IS_GROUP)
+        try:
+            is_group = item.data(0, self.ROLE_IS_GROUP)
 
-        if is_group:
-            item.setExpanded(not item.isExpanded())
-        else:
-            # It's a transcript
-            text = item.data(0, ROLE_FULL_TEXT)
-            timestamp = item.data(0, ROLE_TIMESTAMP_ISO)
-            if text and timestamp:
-                self.entrySelected.emit(text, timestamp)
+            if is_group:
+                item.setExpanded(not item.isExpanded())
+            else:
+                # It's a transcript
+                text = item.data(0, ROLE_FULL_TEXT)
+                timestamp = item.data(0, ROLE_TIMESTAMP_ISO)
+                if text and timestamp:
+                    self.entrySelected.emit(text, timestamp)
+        except Exception:
+            logger.exception("Error handling item click")
 
     def _show_context_menu(self, position) -> None:
         """Show context menu for group management."""
-        item = self.itemAt(position)
-        if not item:
-            return
+        try:
+            item = self.itemAt(position)
+            if not item:
+                return
 
-        is_group = item.data(0, self.ROLE_IS_GROUP)
-        if is_group:
-            self._show_group_context_menu(item, position)
-        else:
-            self._show_transcript_context_menu(item, position)
+            is_group = item.data(0, self.ROLE_IS_GROUP)
+            if is_group:
+                self._show_group_context_menu(item, position)
+            else:
+                self._show_transcript_context_menu(item, position)
+        except Exception:
+            logger.exception("Error showing context menu")
 
     def _show_group_context_menu(self, item: QTreeWidgetItem, position) -> None:
         """Show context menu for group items."""
@@ -292,8 +302,9 @@ class FocusGroupTreeWidget(QTreeWidget):
 
     def _handle_move_to_group(self) -> None:
         """Handle move to group action triggered from context menu."""
+        from PyQt6.QtGui import QAction
         action = self.sender()
-        if not action:
+        if not action or not isinstance(action, QAction):
             return
         
         data = action.data()
@@ -305,30 +316,54 @@ class FocusGroupTreeWidget(QTreeWidget):
 
     def _move_to_group(self, timestamp: str, group_id: int) -> None:
         """Move a transcript to another focus group."""
-        if self._history_manager:
-            self._history_manager.assign_transcript_to_focus_group(timestamp, group_id)
-            QTimer.singleShot(0, self.load_groups)
+        try:
+            if self._history_manager:
+                self._history_manager.assign_transcript_to_focus_group(timestamp, group_id)
+                QTimer.singleShot(0, self.load_groups)
+        except Exception as e:
+            logger.exception("Error moving transcript to group")
+            show_error_dialog(
+                title="Move Error",
+                message=f"Failed to move transcript: {e}",
+                parent=self,
+            )
 
     def _remove_from_group(self, timestamp: str) -> None:
         """Remove a transcript from its focus group (set to None)."""
-        if self._history_manager:
-            self._history_manager.assign_transcript_to_focus_group(timestamp, None)
-            QTimer.singleShot(0, self.load_groups)
+        try:
+            if self._history_manager:
+                self._history_manager.assign_transcript_to_focus_group(timestamp, None)
+                QTimer.singleShot(0, self.load_groups)
+        except Exception as e:
+            logger.exception("Error removing transcript from group")
+            show_error_dialog(
+                title="Remove Error",
+                message=f"Failed to remove transcript from group: {e}",
+                parent=self,
+            )
 
     def _delete_transcript(self, timestamp: str) -> None:
         """Delete a transcript after confirmation."""
-        dialog = ConfirmationDialog(
-            self,
-            "Delete Transcript",
-            "Are you sure you want to delete this transcript?\n\n"
-            "This action cannot be undone.",
-            confirm_text="Delete",
-            is_destructive=True,
-        )
-        if dialog.exec():
-            if self._history_manager:
-                self._history_manager.delete_entry(timestamp)
-                QTimer.singleShot(0, self.load_groups)
+        try:
+            dialog = ConfirmationDialog(
+                self,
+                "Delete Transcript",
+                "Are you sure you want to delete this transcript?\n\n"
+                "This action cannot be undone.",
+                confirm_text="Delete",
+                is_destructive=True,
+            )
+            if dialog.exec():
+                if self._history_manager:
+                    self._history_manager.delete_entry(timestamp)
+                    QTimer.singleShot(0, self.load_groups)
+        except Exception as e:
+            logger.exception("Error deleting transcript")
+            show_error_dialog(
+                title="Delete Error",
+                message=f"Failed to delete transcript: {e}",
+                parent=self,
+            )
 
     def _create_color_icon(self, color: str) -> QIcon:
         """Create a colored square icon for the menu."""
@@ -338,59 +373,87 @@ class FocusGroupTreeWidget(QTreeWidget):
 
     def _rename_group(self, group_id: int, current_name: str) -> None:
         """Show dialog to rename group."""
-        dialog = InputDialog(
-            self, "Rename Focus Group", "Enter new name:", current_name
-        )
-        if dialog.exec():
-            new_name = dialog.get_text()
-            if new_name and new_name != current_name:
-                if self._history_manager and self._history_manager.rename_focus_group(
-                    group_id, new_name
-                ):
-                    self.load_groups()
-                    self.groupRenamed.emit(group_id, new_name)
+        try:
+            dialog = InputDialog(
+                self, "Rename Focus Group", "Enter new name:", current_name
+            )
+            if dialog.exec():
+                new_name = dialog.get_text()
+                if new_name and new_name != current_name:
+                    if self._history_manager and self._history_manager.rename_focus_group(
+                        group_id, new_name
+                    ):
+                        self.load_groups()
+                        self.groupRenamed.emit(group_id, new_name)
+        except Exception as e:
+            logger.exception("Error renaming group")
+            show_error_dialog(
+                title="Rename Error",
+                message=f"Failed to rename group: {e}",
+                parent=self,
+            )
 
     def _change_color(self, group_id: int, color: str) -> None:
         """Update group color in history manager."""
-        if self._history_manager and self._history_manager.update_focus_group_color(
-            group_id, color
-        ):
-            self.load_groups()
-            self.groupColorChanged.emit(group_id, color)
+        try:
+            if self._history_manager and self._history_manager.update_focus_group_color(
+                group_id, color
+            ):
+                self.load_groups()
+                self.groupColorChanged.emit(group_id, color)
+        except Exception:
+            logger.exception("Error changing group color")
 
     def _delete_group(self, group_id: int, group_name: str) -> None:
         """Show confirmation dialog and delete group."""
-        dialog = ConfirmationDialog(
-            self,
-            "Delete Focus Group",
-            f"Are you sure you want to delete '{group_name}'?\n\n"
-            "Transcripts within this group will be moved to Ungrouped.",
-            confirm_text="Delete",
-            is_destructive=True,
-        )
-        if dialog.exec():
-            if self._history_manager and self._history_manager.delete_focus_group(
-                group_id
-            ):
-                self.load_groups()
-                self.groupDeleted.emit(group_id)
+        try:
+            dialog = ConfirmationDialog(
+                self,
+                "Delete Focus Group",
+                f"Are you sure you want to delete '{group_name}'?\n\n"
+                "Transcripts within this group will be moved to Ungrouped.",
+                confirm_text="Delete",
+                is_destructive=True,
+            )
+            if dialog.exec():
+                if self._history_manager and self._history_manager.delete_focus_group(
+                    group_id
+                ):
+                    self.load_groups()
+                    self.groupDeleted.emit(group_id)
+        except Exception as e:
+            logger.exception("Error deleting group")
+            show_error_dialog(
+                title="Delete Error",
+                message=f"Failed to delete group: {e}",
+                parent=self,
+            )
 
     def create_group(self, name: str, color: str | None = None) -> int | None:
         """Create a new focus group via manager."""
-        if not self._history_manager:
+        try:
+            if not self._history_manager:
+                return None
+
+            if color is None:
+                groups = self._history_manager.get_focus_groups()
+                existing_colors = [g[2] for g in groups]
+                color = FocusGroupColors.get_next_color(existing_colors)
+
+            group_id = self._history_manager.create_focus_group(name, color)
+            if group_id:
+                self.load_groups()
+                self.groupCreated.emit(group_id, name)
+
+            return group_id
+        except Exception as e:
+            logger.exception("Error creating group")
+            show_error_dialog(
+                title="Create Error",
+                message=f"Failed to create group: {e}",
+                parent=self,
+            )
             return None
-
-        if color is None:
-            groups = self._history_manager.get_focus_groups()
-            existing_colors = [g[2] for g in groups]
-            color = FocusGroupColors.get_next_color(existing_colors)
-
-        group_id = self._history_manager.create_focus_group(name, color)
-        if group_id:
-            self.load_groups()
-            self.groupCreated.emit(group_id, name)
-
-        return group_id
 
     def refresh_counts(self) -> None:
         """Refresh content."""

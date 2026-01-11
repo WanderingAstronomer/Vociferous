@@ -72,7 +72,7 @@ class TreeHoverDelegate(QStyledItemDelegate):
         
         # Get the tree view to calculate full row width
         tree_view = option.widget
-        if not tree_view:
+        if not tree_view or not hasattr(tree_view, 'viewport'):
             return
         
         # Calculate full row rect spanning both columns

@@ -183,3 +183,19 @@ class WaveformVisualizer(QWidget):
         b = int(color1.blue() + (color2.blue() - color1.blue()) * t)
         a = int(color1.alpha() + (color2.alpha() - color1.alpha()) * t)
         return QColor(r, g, b, a)
+
+    def cleanup(self) -> None:
+        """Clean up resources before destruction."""
+        try:
+            if self.timer.isActive():
+                self.timer.stop()
+            self.levels.clear()
+        except Exception:
+            pass
+
+    def __del__(self) -> None:
+        """Destructor to ensure timer is stopped."""
+        try:
+            self.cleanup()
+        except Exception:
+            pass

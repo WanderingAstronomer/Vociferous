@@ -5,23 +5,27 @@ Re-exports all constants for convenient import:
     from ui.constants import Colors, Typography, WorkspaceState, Spacing, Dimensions
 """
 
-# Spacing
+# Spacing (non-linear scale: 4, 8, 12, 16, 24, 32, 48, 64)
 from .spacing import (
     APP_OUTER_PADDING,
     BUTTON_GAP,
-    BUTTON_RADIUS_PILL,
-    BUTTON_RADIUS_RECT,
+    BUTTON_RADIUS_PILL,  # Legacy - use RADIUS_XL
+    BUTTON_RADIUS_RECT,  # Legacy - use RADIUS_LG
     CONTROL_CLUSTER_PADDING,
     CONTROL_GAP,
     CONTROL_ROW_GAP,
     CONTROLS_CONTENT_GAP,
     GREETING_TOP_MARGIN,
     HEADER_CONTROLS_GAP,
-    HEADER_RADIUS,
+    HEADER_RADIUS,  # Legacy - use RADIUS_MD
     HEADER_TO_LIST_GAP,
     MAJOR_GAP,
     MINOR_GAP,
     PANEL_PADDING,
+    RADIUS_LG,
+    RADIUS_MD,
+    RADIUS_SM,
+    RADIUS_XL,
     ROW_PADDING_H,
     ROW_PADDING_V,
     S0,
@@ -29,7 +33,10 @@ from .spacing import (
     S2,
     S3,
     S4,
-    STANDARD_RADIUS,
+    S5,
+    S6,
+    S7,
+    STANDARD_RADIUS,  # Legacy - use RADIUS_LG
     Spacing,  # Class export
 )
 
@@ -106,23 +113,32 @@ from .timing import (
 from .audio import AudioConfig
 
 __all__ = [
-    # Spacing
+    # Spacing (non-linear scale)
     "Spacing",
-    "S0",
-    "S1",
-    "S2",
-    "S3",
-    "S4",
+    "S0",  # 4px
+    "S1",  # 8px
+    "S2",  # 12px
+    "S3",  # 16px
+    "S4",  # 24px
+    "S5",  # 32px
+    "S6",  # 48px
+    "S7",  # 64px
     "APP_OUTER_PADDING",
     "PANEL_PADDING",
     "CONTROL_CLUSTER_PADDING",
     "MAJOR_GAP",
     "MINOR_GAP",
     "CONTROL_GAP",
-    "STANDARD_RADIUS",
-    "BUTTON_RADIUS_PILL",
-    "BUTTON_RADIUS_RECT",
-    "HEADER_RADIUS",
+    # Border radii (scale: 4, 8, 12, 16)
+    "RADIUS_SM",
+    "RADIUS_MD",
+    "RADIUS_LG",
+    "RADIUS_XL",
+    "STANDARD_RADIUS",  # Legacy
+    "BUTTON_RADIUS_PILL",  # Legacy
+    "BUTTON_RADIUS_RECT",  # Legacy
+    "HEADER_RADIUS",  # Legacy
+    # Gaps
     "HEADER_CONTROLS_GAP",
     "CONTROLS_CONTENT_GAP",
     "CONTROL_ROW_GAP",

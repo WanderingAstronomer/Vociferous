@@ -44,12 +44,12 @@ class TestTranscriptionFunctions:
 class TestTranscribeFunction:
     """Tests for the transcribe function."""
 
-    def test_transcribe_none_returns_empty(self):
-        """Transcribing None should return empty string."""
+    def test_transcribe_none_returns_empty_tuple(self):
+        """Transcribing None should return empty string and zero duration."""
         from transcription import transcribe
 
         result = transcribe(None)
-        assert result == ""
+        assert result == ("", 0)
 
     @pytest.mark.slow
     def test_transcribe_silent_audio(self):
@@ -61,10 +61,10 @@ class TestTranscribeFunction:
         silence = np.zeros(sample_rate, dtype=np.int16)
 
         model = create_local_model()
-        result = transcribe(silence, model)
+        text, duration_ms = transcribe(silence, model)
 
         # Silent audio should produce empty or very short result
-        assert len(result.strip()) < 10
+        assert len(text.strip()) < 10
 
 
 class TestModelLoading:

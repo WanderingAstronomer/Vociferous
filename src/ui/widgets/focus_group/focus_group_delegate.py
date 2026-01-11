@@ -120,29 +120,29 @@ class FocusGroupDelegate(QStyledItemDelegate):
         parent_index = index.parent()
         group_color = parent_index.data(self.ROLE_COLOR) if parent_index.isValid() else None
         
-        # Only paint background on column 1 (preview), not column 0 (timestamp)
-        if index.column() == 1 and group_color:
-            # Paint background with group color tint (or hover/selection states)
-            if option.state & QStyle.StateFlag.State_Selected:
-                # Mix group color with selection
+        # Paint row-wide background states (hover/selection override group color tint)
+        # This ensures both columns highlight together when hovering over either one
+        if option.state & QStyle.StateFlag.State_Selected:
+            # Selection state - paint across entire row
+            if group_color:
                 color = QColor(group_color)
                 color.setAlpha(80)
                 painter.fillRect(option.rect, color)
-            elif option.state & QStyle.StateFlag.State_MouseOver:
+            else:
+                painter.fillRect(option.rect, QColor(Colors.HOVER_BG_SECTION))
+        elif option.state & QStyle.StateFlag.State_MouseOver:
+            # Hover state - paint across entire row
+            if group_color:
                 color = QColor(group_color)
                 color.setAlpha(50)
                 painter.fillRect(option.rect, color)
             else:
-                # Subtle tint with group color when not hovered/selected
-                color = QColor(group_color)
-                color.setAlpha(25)
-                painter.fillRect(option.rect, color)
-        elif index.column() == 0:
-            # Timestamp column - subtle hover/selection only, no group color
-            if option.state & QStyle.StateFlag.State_Selected:
-                painter.fillRect(option.rect, QColor(Colors.HOVER_BG_SECTION))
-            elif option.state & QStyle.StateFlag.State_MouseOver:
                 painter.fillRect(option.rect, QColor(Colors.HOVER_BG_ITEM))
+        elif index.column() == 1 and group_color:
+            # Only column 1 (preview) gets subtle group color tint when not hovered/selected
+            color = QColor(group_color)
+            color.setAlpha(25)
+            painter.fillRect(option.rect, color)
 
         # Remove selection highlight for default painting
         new_option = QStyleOptionViewItem(option)

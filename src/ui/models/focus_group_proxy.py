@@ -15,9 +15,10 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QModelIndex, QObject, QSortFilterProxyModel
+from PyQt6.QtCore import QModelIndex, QObject, QSortFilterProxyModel, QTimer
 
 from ui.models.transcription_model import TranscriptionModel
+from ui.utils.error_handler import safe_callback
 
 if TYPE_CHECKING:
     from PyQt6.QtCore import QAbstractItemModel
@@ -40,6 +41,12 @@ class FocusGroupProxyModel(QSortFilterProxyModel):
         super().__init__(parent)
         self._group_id: int | None = None
         self.setRecursiveFilteringEnabled(True)
+        
+        # Defer filter invalidation to avoid segfaults during context menu callbacks
+        self._invalidate_timer = QTimer()
+        self._invalidate_timer.setSingleShot(True)
+        self._invalidate_timer.setInterval(0)
+        self._invalidate_timer.timeout.connect(self.invalidateFilter)
 
     def set_group_id(self, group_id: int | None) -> None:
         """Set the focus group ID to filter by."""
@@ -58,41 +65,58 @@ class FocusGroupProxyModel(QSortFilterProxyModel):
         Day headers (no parent) are shown if they have matching children.
         Entries are shown if their group_id matches our filter.
         """
-        source_model = self.sourceModel()
-        if source_model is None:
-            return True
+        try:
+            source_model = self.sourceModel()
+            if source_model is None:
+                return True
 
-        source_index = source_model.index(source_row, 0, source_parent)
-        if not source_index.isValid():
-            return False
+            source_index = source_model.index(source_row, 0, source_parent)
+            if not source_index.isValid():
+                return False
 
-        is_header = source_index.data(TranscriptionModel.IsHeaderRole)
+            is_header = source_index.data(TranscriptionModel.IsHeaderRole)
 
-        if is_header:
-            return self._has_matching_children(source_index)
+            if is_header:
+                return self._has_matching_children(source_index)
 
-        entry_group_id = source_index.data(TranscriptionModel.GroupIDRole)
-        return entry_group_id == self._group_id
+            entry_group_id = source_index.data(TranscriptionModel.GroupIDRole)
+            return entry_group_id == self._group_id
+        except Exception:
+            logger.exception("Error in filterAcceptsRow")
+            return True  # Default to showing row on error
 
     def _has_matching_children(self, parent_index: QModelIndex) -> bool:
         """Check if a day header has any entries matching our filter."""
-        source_model = self.sourceModel()
-        if source_model is None:
+        try:
+            source_model = self.sourceModel()
+            if source_model is None:
+                return False
+
+            child_count = source_model.rowCount(parent_index)
+
+            for i in range(child_count):
+                child_index = source_model.index(i, 0, parent_index)
+                entry_group_id = child_index.data(TranscriptionModel.GroupIDRole)
+                if entry_group_id == self._group_id:
+                    return True
+
             return False
-
-        child_count = source_model.rowCount(parent_index)
-
-        for i in range(child_count):
-            child_index = source_model.index(i, 0, parent_index)
-            entry_group_id = child_index.data(TranscriptionModel.GroupIDRole)
-            if entry_group_id == self._group_id:
-                return True
-
-        return False
+        except Exception:
+            logger.exception("Error in _has_matching_children")
+            return False
 
     def setSourceModel(self, source_model: QAbstractItemModel | None) -> None:
         """Set the source model (should be TranscriptionModel)."""
         super().setSourceModel(source_model)
         if isinstance(source_model, TranscriptionModel):
-            source_model.entryAdded.connect(lambda _: self.invalidateFilter())
-            source_model.entryDeleted.connect(lambda _: self.invalidateFilter())
+            # Use deferred invalidation to prevent segfaults when changes
+            # happen during context menu callbacks or other Qt operations
+            source_model.entryAdded.connect(
+                safe_callback(lambda _: self._invalidate_timer.start(), "proxy_entry_added")
+            )
+            source_model.entryDeleted.connect(
+                safe_callback(lambda _: self._invalidate_timer.start(), "proxy_entry_deleted")
+            )
+            source_model.entryUpdated.connect(
+                safe_callback(lambda _: self._invalidate_timer.start(), "proxy_entry_updated")
+            )

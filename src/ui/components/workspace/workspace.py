@@ -10,6 +10,7 @@ States:
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -34,6 +35,8 @@ from ui.components.workspace.header import WorkspaceHeader
 
 if TYPE_CHECKING:
     from history_manager import HistoryEntry, HistoryManager
+
+logger = logging.getLogger(__name__)
 
 
 class MainWorkspace(QWidget):
@@ -243,8 +246,11 @@ class MainWorkspace(QWidget):
 
     def set_state(self, state: WorkspaceState) -> None:
         """Change workspace state."""
-        self._state = state
-        self._update_for_state()
+        try:
+            self._state = state
+            self._update_for_state()
+        except Exception as e:
+            logger.exception("Error setting workspace state")
 
     def get_state(self) -> WorkspaceState:
         """Return current state."""
@@ -252,59 +258,78 @@ class MainWorkspace(QWidget):
 
     def load_transcript(self, text: str, timestamp: str) -> None:
         """Load a transcript for viewing/editing."""
-        # Try to fetch duration and speech_duration from history manager
-        duration_ms = None
-        speech_duration_ms = None
-        if self._history_manager:
-            entry = self._history_manager.get_entry_by_timestamp(timestamp)
-            if entry:
-                duration_ms = entry.duration_ms
-                speech_duration_ms = entry.speech_duration_ms
-        
-        self.content.set_transcript(text, timestamp)
-        self.header.set_timestamp(timestamp)
-        self._has_unsaved_changes = False
+        try:
+            # Try to fetch duration and speech_duration from history manager
+            duration_ms = None
+            speech_duration_ms = None
+            if self._history_manager:
+                entry = self._history_manager.get_entry_by_timestamp(timestamp)
+                if entry:
+                    duration_ms = entry.duration_ms
+                    speech_duration_ms = entry.speech_duration_ms
+            
+            self.content.set_transcript(text, timestamp)
+            self.header.set_timestamp(timestamp)
+            self._has_unsaved_changes = False
 
-        # Update metrics if we have duration data
-        if text and duration_ms is not None:
-            word_count = len(text.split())
-            self.metrics.set_metrics(duration_ms, speech_duration_ms, word_count)
-            self.metrics.show()
-        else:
-            self.metrics.hide()
+            # Update metrics if we have duration data
+            if text and duration_ms is not None:
+                word_count = len(text.split())
+                self.metrics.set_metrics(duration_ms, speech_duration_ms, word_count)
+                self.metrics.show()
+            else:
+                self.metrics.hide()
 
-        if text:
-            self.set_state(WorkspaceState.VIEWING)
-        else:
-            self.set_state(WorkspaceState.IDLE)
+            if text:
+                self.set_state(WorkspaceState.VIEWING)
+            else:
+                self.set_state(WorkspaceState.IDLE)
+        except Exception as e:
+            logger.exception("Error loading transcript")
+            raise
 
     def display_new_transcript(self, entry: HistoryEntry) -> None:
         """Display a newly created transcript."""
-        self.content.set_transcript(entry.text, entry.timestamp)
-        self.header.set_timestamp(entry.timestamp)
-        self._has_unsaved_changes = False
-        
-        # Update metrics with entry data
-        if entry.text and entry.duration_ms is not None:
-            word_count = len(entry.text.split())
-            self.metrics.set_metrics(entry.duration_ms, entry.speech_duration_ms, word_count)
-            self.metrics.show()
-        else:
-            self.metrics.hide()
-        
-        self.set_state(WorkspaceState.VIEWING)
+        try:
+            self.content.set_transcript(entry.text, entry.timestamp)
+            self.header.set_timestamp(entry.timestamp)
+            self._has_unsaved_changes = False
+            
+            # Update metrics with entry data
+            if entry.text and entry.duration_ms is not None:
+                word_count = len(entry.text.split())
+                self.metrics.set_metrics(entry.duration_ms, entry.speech_duration_ms, word_count)
+                self.metrics.show()
+            else:
+                self.metrics.hide()
+            
+            self.set_state(WorkspaceState.VIEWING)
+        except Exception as e:
+            logger.exception("Error displaying new transcript")
+            raise
 
     def show_transcribing_status(self) -> None:
         """Show transcribing indicator (after recording stops)."""
-        self.header.update_for_transcribing()
+        try:
+            self.header.update_for_transcribing()
+        except Exception as e:
+            logger.exception("Error showing transcribing status")
 
     def get_current_text(self) -> str:
         """Return current transcript text."""
-        return self.content.get_text()
+        try:
+            return self.content.get_text()
+        except Exception as e:
+            logger.exception("Error getting current text")
+            return ""
 
     def get_current_timestamp(self) -> str:
         """Return current transcript timestamp."""
-        return self.content.get_timestamp()
+        try:
+            return self.content.get_timestamp()
+        except Exception as e:
+            logger.exception("Error getting current timestamp")
+            return ""
 
     def has_unsaved_changes(self) -> bool:
         """Check if there are unsaved edits."""
@@ -312,60 +337,82 @@ class MainWorkspace(QWidget):
 
     def copy_current(self) -> None:
         """Copy current transcript to clipboard."""
-        text = self.content.get_text()
-        if text:
-            copy_text(text)
+        try:
+            text = self.content.get_text()
+            if text:
+                copy_text(text)
+        except Exception as e:
+            logger.exception("Error copying text to clipboard")
 
     def add_audio_level(self, level: float) -> None:
         """Forward audio level to waveform visualization."""
-        self.content.add_audio_level(level)
+        try:
+            self.content.add_audio_level(level)
+        except Exception as e:
+            # Don't log every audio level error to avoid spam
+            pass
 
     # Button handlers
 
     def _on_primary_click(self) -> None:
         """Handle primary button (Start/Stop) click."""
-        match self._state:
-            case WorkspaceState.IDLE | WorkspaceState.VIEWING:
-                self.set_state(WorkspaceState.RECORDING)
-                self.startRequested.emit()
-            case WorkspaceState.RECORDING:
-                self.show_transcribing_status()
-                self.stopRequested.emit()
+        try:
+            match self._state:
+                case WorkspaceState.IDLE | WorkspaceState.VIEWING:
+                    self.set_state(WorkspaceState.RECORDING)
+                    self.startRequested.emit()
+                case WorkspaceState.RECORDING:
+                    self.show_transcribing_status()
+                    self.stopRequested.emit()
+        except Exception as e:
+            logger.exception("Error in primary button click")
 
     def _on_edit_save_click(self) -> None:
         """Handle Edit/Save button click."""
-        match self._state:
-            case WorkspaceState.VIEWING:
-                self.set_state(WorkspaceState.EDITING)
-            case WorkspaceState.EDITING:
-                edited_text = self.content.get_text()
-                self.content.set_transcript(edited_text, self.content.get_timestamp())
-                self._has_unsaved_changes = False
-                self.saveRequested.emit(edited_text)
-                self.set_state(WorkspaceState.VIEWING)
+        try:
+            match self._state:
+                case WorkspaceState.VIEWING:
+                    self.set_state(WorkspaceState.EDITING)
+                case WorkspaceState.EDITING:
+                    edited_text = self.content.get_text()
+                    self.content.set_transcript(edited_text, self.content.get_timestamp())
+                    self._has_unsaved_changes = False
+                    self.saveRequested.emit(edited_text)
+                    self.set_state(WorkspaceState.VIEWING)
+        except Exception as e:
+            logger.exception("Error in edit/save button click")
 
     def _on_destructive_click(self) -> None:
         """Handle Cancel/Delete button click."""
-        match self._state:
-            case WorkspaceState.RECORDING:
-                self.cancelRequested.emit()
-                self.set_state(WorkspaceState.IDLE)
-            case WorkspaceState.EDITING:
-                self._has_unsaved_changes = False
-                self.set_state(WorkspaceState.VIEWING)
-            case WorkspaceState.VIEWING:
-                self.deleteRequested.emit()
+        try:
+            match self._state:
+                case WorkspaceState.RECORDING:
+                    self.cancelRequested.emit()
+                    self.set_state(WorkspaceState.IDLE)
+                case WorkspaceState.EDITING:
+                    self._has_unsaved_changes = False
+                    self.set_state(WorkspaceState.VIEWING)
+                case WorkspaceState.VIEWING:
+                    self.deleteRequested.emit()
+        except Exception as e:
+            logger.exception("Error in destructive button click")
 
     def _on_text_changed(self) -> None:
         """Track when text is edited."""
-        if self._state == WorkspaceState.EDITING:
-            self._has_unsaved_changes = True
-            self.textEdited.emit()
+        try:
+            if self._state == WorkspaceState.EDITING:
+                self._has_unsaved_changes = True
+                self.textEdited.emit()
+        except Exception as e:
+            logger.exception("Error tracking text change")
 
     # Resize handling
 
     def resizeEvent(self, event) -> None:
         """Handle resize for responsive typography."""
-        super().resizeEvent(event)
-        width = event.size().width()
-        self.header.scale_font(width)
+        try:
+            super().resizeEvent(event)
+            width = event.size().width()
+            self.header.scale_font(width)
+        except Exception as e:
+            logger.exception("Error in resize event")
