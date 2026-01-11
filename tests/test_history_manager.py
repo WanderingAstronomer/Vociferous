@@ -53,7 +53,7 @@ class TestDatabaseInitialization:
         assert temp_db.exists()
 
     def test_creates_required_tables(self, history_manager, temp_db):
-        """Should create transcripts, focus_groups, and schema_version tables."""
+        """Should create transcripts and focus_groups tables."""
         with sqlite3.connect(temp_db) as conn:
             cursor = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
@@ -62,7 +62,8 @@ class TestDatabaseInitialization:
 
         assert "transcripts" in tables
         assert "focus_groups" in tables
-        assert "schema_version" in tables
+        # schema_version absent in SQLAlchemy version
+
 
     def test_transcripts_schema(self, history_manager, temp_db):
         """Transcripts table should have correct columns."""
@@ -87,9 +88,9 @@ class TestDatabaseInitialization:
             )
             indexes = {row[0] for row in cursor}
 
-        assert "idx_transcripts_created" in indexes
-        assert "idx_transcripts_timestamp" in indexes
-        assert "idx_transcripts_focus" in indexes
+        assert "ix_transcripts_created_at" in indexes
+        assert "ix_transcripts_timestamp" in indexes
+        assert "ix_transcripts_focus_group_id" in indexes
 
     def test_foreign_key_constraint(self, history_manager, temp_db):
         """Should have foreign key from transcripts to focus_groups."""

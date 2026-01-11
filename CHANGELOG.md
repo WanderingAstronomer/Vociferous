@@ -2,6 +2,32 @@
 
 ---
 
+# v2.2.0 - Architecture Overhaul (SQLAlchemy Migration)
+
+**Date:** January 2026
+**Status:** Major Release
+
+---
+
+## Summary
+
+Complete persistence layer rewrite migrating from raw SQLite cursors to **SQLAlchemy 2.0 ORM**. This architectural shift lays the foundation for complex hierarchical data relationships (subgroups), external integrations, and robust schema management.
+
+**⚠️ BREAKING CHANGE**: This release resets the local database structure. Legacy history files will be recreated (nuked) upon first launch to ensure schema consistency.
+
+## Changed
+
+### Core Infrastructure
+- **Database Engine**: Replaced hand-rolled `sqlite3` queries with **SQLAlchemy** ORM sessions.
+- **Schema Management**: Introduced declarative models (`src/models.py`) for `Transcript` and `FocusGroup` entities.
+- **Migration Strategy**: Implemented "fresh start" policy—legacy databases are detected and reset to pristine state to guarantee stability.
+
+### Internal API
+- **Refactoring**: Rewrote `HistoryManager` to utilize SQLAlchemy `Session` for all CRUD operations, improving safety and maintainability.
+- **Type Safety**: Enhanced type constraints on database models ensuring integrity at the application level before persistence.
+
+---
+
 # v2.1.6 - UI Polish (Focus Group Indicators)
 
 **Date:** January 2026
