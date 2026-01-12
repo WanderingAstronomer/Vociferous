@@ -11,7 +11,7 @@ from collections import deque
 
 from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSlot
 from PyQt6.QtGui import QColor, QPainter
-from PyQt6.QtWidgets import QWidget, QSizePolicy
+from PyQt6.QtWidgets import QSizePolicy, QWidget
 
 from ui.constants import Colors
 
@@ -36,7 +36,9 @@ class WaveformVisualizer(QWidget):
         self.setObjectName("waveformVisualizer")
 
         # Configuration - sized for visual impact
-        self.num_bars = 600  # Number of bars in history buffer (supports ultra-wide displays)
+        self.num_bars = (
+            600  # Number of bars in history buffer (supports ultra-wide displays)
+        )
         self.bar_width = 4  # Fixed width per bar in pixels
         self.decay_rate = 0.92  # Smooth decay factor (lower = faster decay)
         self.bar_spacing = 2  # Space between bars in pixels
@@ -97,7 +99,7 @@ class WaveformVisualizer(QWidget):
         # Apply noise gate - ignore levels below threshold
         if amplitude < self.noise_threshold:
             amplitude = 0.0
-        
+
         self.target_level = max(0.0, min(1.0, amplitude))
 
     @pyqtSlot()
@@ -122,10 +124,12 @@ class WaveformVisualizer(QWidget):
 
         # Get current widget width (force fresh calculation)
         available_width = self.size().width()
-        
+
         # Calculate how many bars can fit
-        max_visible_bars = max(1, available_width // (self.bar_width + self.bar_spacing))
-        
+        max_visible_bars = max(
+            1, available_width // (self.bar_width + self.bar_spacing)
+        )
+
         # Always draw enough bars to fill the width, padding with zeros on left if needed
         if len(self.levels) >= max_visible_bars:
             visible_levels = list(self.levels)[-max_visible_bars:]

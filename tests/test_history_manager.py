@@ -23,6 +23,7 @@ import pytest
 
 from history_manager import HistoryEntry, HistoryManager
 
+
 @pytest.fixture
 def temp_db():
     """Create a temporary database for testing."""
@@ -63,7 +64,6 @@ class TestDatabaseInitialization:
         assert "transcripts" in tables
         assert "focus_groups" in tables
         # schema_version absent in SQLAlchemy version
-
 
     def test_transcripts_schema(self, history_manager, temp_db):
         """Transcripts table should have correct columns."""
@@ -108,7 +108,9 @@ class TestDatabaseInitialization:
             conn.execute("CREATE TABLE schema_version (version INTEGER)")
             conn.execute("INSERT INTO schema_version VALUES (1)")
             # Create old transcripts table with different schema to verify it gets reset
-            conn.execute("CREATE TABLE transcripts (id INTEGER PRIMARY KEY, old_col TEXT)")
+            conn.execute(
+                "CREATE TABLE transcripts (id INTEGER PRIMARY KEY, old_col TEXT)"
+            )
 
         # 2. Init HistoryManager (should trigger nuke and rebuild)
         HistoryManager(history_file=temp_db)

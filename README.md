@@ -34,12 +34,26 @@ This release introduces **Refinement Profiles** and **Dynamic VRAM Management**.
 - Metrics showing recording time, words/minute, and time saved
 
 ### History & Organization
-- SQLite-backed persistent history
+- Persistent history using **SQLAlchemy 2.0+**
 - Focus groups for organizing transcripts by topic
 - Editable transcriptions (original preserved, edits saved separately)
 - Export to TXT, CSV, or Markdown
 
 [![Recording State](docs/images/recording_state.png)](docs/images/recording_state.png)
+
+---
+
+## Technical Architecture
+
+### Stack
+- **Languages**: Python 3.12+
+- **GUI**: PyQt6 (Frameless custom design)
+- **AI**: darker-whisper (Transcription), Qwen-based SLM (Refinement)
+- **Data**: SQLAlchemy ORM (SQLite backend)
+
+### Design Patterns
+- **User Intents**: Interactions are decoupled via an Command/Intent pattern (`src/ui/interaction/`).
+- **Dual-Text Storage**: Originals are immutable; edits are mutable.
 
 ---
 

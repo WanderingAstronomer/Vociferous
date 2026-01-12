@@ -84,11 +84,21 @@ Performance-critical widgets use custom `paintEvent` handlers instead of composi
 *   **`WaveformVisualizer`**: Draws audio amplitudes using `QPainter` for high frame rates (60fps).
 *   **`TranscriptItem`**: The history list items are drawn manually by a Delegate to support complex layouts (badges, timestamps, text truncation) without the overhead of creating hundreds of widgets.
 
+## Interaction Layer (Intents)
+
+To decouple user intent from execution logic, we use the **Intent Pattern** (`src/ui/interaction/`).
+
+*   **Intents** are immutable dataclasses (e.g., `ViewTranscriptIntent`, `SearchIntent`).
+*   **Producers**: Low-level widgets (buttons, list items) create intents.
+*   **Consumers**: High-level controllers (`MainWindow`, `MainWorkspace`) consume intents and execute logic.
+
+This prevents "spaghetti code" where a button deeper in the hierarchy tries to directly manipulate a sibling widget.
+
 ## Signal Flow
 
 Communication follows the hierarchy:
 
-1.  **Child Widget** emits signal (e.g., `recordClicked`)
+1.  **Child Widget** emits signal (e.g., `recordClicked`) carrying an `Intent` or simple state.
 2.  **Component** catches signal, maybe processes it, and re-emits a semantic signal (e.g., `startRecordingRequested`).
 3.  **MainWindow** connects component signals to `Main` controller or other components.
 

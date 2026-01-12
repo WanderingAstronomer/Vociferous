@@ -27,7 +27,7 @@ def paint_transcript_entry_background(
 ) -> None:
     """
     Paint the background for a transcript entry (selection/hover states).
-    
+
     Args:
         painter: The QPainter to use.
         option: The style option with state flags.
@@ -47,13 +47,13 @@ def paint_transcript_entry(
 ) -> None:
     """
     Paint a complete transcript entry row.
-    
+
     This is the SINGLE SOURCE OF TRUTH for transcript entry rendering.
     Both Focus Groups and Ungrouped Transcripts use this function.
-    
+
     Layout:
         [Preview text (left-aligned)]  ...gap...  [Time (right-aligned, blue)]
-    
+
     Args:
         painter: The QPainter to use.
         option: The style option with rect, state, font info.
@@ -63,79 +63,74 @@ def paint_transcript_entry(
     """
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    
+
     rect = option.rect
     padding_h = 8  # Horizontal padding
     gap = 12  # Gap between preview and time
-    
+
     # Draw background if requested
     if draw_background:
         paint_transcript_entry_background(painter, option)
-    
+
     # === TIME COLUMN (right side, blue) ===
     time_font = QFont(option.font)
     time_font.setPointSize(Typography.DAY_HEADER_SIZE)
     time_font.setWeight(QFont.Weight.Normal)
-    
+
     time_metrics = QFontMetrics(time_font)
     time_width = time_metrics.horizontalAdvance(time_text)
-    
+
     time_rect = QRect(
-        rect.right() - padding_h - time_width,
-        rect.top(),
-        time_width,
-        rect.height()
+        rect.right() - padding_h - time_width, rect.top(), time_width, rect.height()
     )
-    
+
     painter.setFont(time_font)
     painter.setPen(QColor(Colors.ACCENT_BLUE))
     painter.drawText(
         time_rect,
         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-        time_text
+        time_text,
     )
-    
+
     # === PREVIEW COLUMN (left side, primary text) ===
     preview_font = QFont(option.font)
     preview_font.setPointSize(Typography.TRANSCRIPT_ITEM_SIZE)
     preview_font.setWeight(QFont.Weight.Normal)
-    
+
     preview_rect = QRect(
         rect.left() + padding_h,
         rect.top(),
         rect.width() - padding_h - time_width - gap - padding_h,
-        rect.height()
+        rect.height(),
     )
-    
+
     painter.setFont(preview_font)
     painter.setPen(QColor(Colors.TEXT_PRIMARY))
-    
+
     # Elide preview text if too long
     preview_metrics = QFontMetrics(preview_font)
     elided_preview = preview_metrics.elidedText(
-        preview_text,
-        Qt.TextElideMode.ElideRight,
-        preview_rect.width()
+        preview_text, Qt.TextElideMode.ElideRight, preview_rect.width()
     )
-    
+
     painter.drawText(
         preview_rect,
         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-        elided_preview
+        elided_preview,
     )
-    
+
     painter.restore()
 
 
 def get_transcript_entry_option(option: QStyleOptionViewItem) -> QStyleOptionViewItem:
     """
     Create a modified option with selection state removed.
-    
+
     This prevents Qt's default selection painting from interfering.
-    
+
     Args:
         option: The original style option.
-        
+
     Returns:
         A new option with State_Selected removed.
     """

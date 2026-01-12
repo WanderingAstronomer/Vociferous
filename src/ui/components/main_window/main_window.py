@@ -7,8 +7,8 @@ Integrates sidebar, main workspace, and metrics strip in a responsive layout.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import (
     QEvent,
@@ -23,8 +23,8 @@ from PyQt6.QtGui import (
     QDesktopServices,
     QGuiApplication,
     QIcon,
-    QTransform,
     QPixmap,
+    QTransform,
 )
 from PyQt6.QtWidgets import (
     QDialog,
@@ -44,7 +44,14 @@ from ui.components.main_window.menu_builder import MenuBuilder
 from ui.components.sidebar.sidebar_new import SidebarWidget
 from ui.components.title_bar import TitleBar
 from ui.components.workspace import MainWorkspace
-from ui.constants import Colors, Dimensions, Spacing, Typography, WindowSize, WorkspaceState
+from ui.constants import (
+    Colors,
+    Dimensions,
+    Spacing,
+    Typography,
+    WindowSize,
+    WorkspaceState,
+)
 from ui.interaction import IntentOutcome, IntentSource, ViewTranscriptIntent
 from ui.widgets.dialogs import ConfirmationDialog, MessageDialog, show_error_dialog
 from ui.widgets.metrics_strip import MetricsStrip
@@ -100,12 +107,12 @@ class MainWindow(QMainWindow):
         self._sidebar_expanded_width = Dimensions.SIDEBAR_MIN_WIDTH
         self._content_layout: QHBoxLayout | None = None
         self._initial_state_restored = False
-        
+
         # Debounce timer for metrics refresh (avoid blocking on rapid transcripts)
         self._metrics_refresh_timer = QTimer()
         self._metrics_refresh_timer.setSingleShot(True)
         self._metrics_refresh_timer.setInterval(1000)  # 1s debounce
-        
+
         self._init_ui()
         self._create_menu_bar()
         self._restore_state()
@@ -142,26 +149,30 @@ class MainWindow(QMainWindow):
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
         )
         self.sidebar.entrySelected.connect(self._on_entry_selected)
-        
+
         # Connect resize grip signals
         self.sidebar.resizeRequested.connect(self._on_sidebar_resize)
         self.sidebar.collapseRequested.connect(self._collapse_sidebar)
         self.sidebar.expandRequested.connect(self._expand_sidebar)
-        
+
         # Floating expand button (shown when sidebar collapsed)
         self._expand_button = QToolButton(self)
         self._expand_button.setText("▶")  # Fallback text
-        
+
         # Try to load SVG icon for expand button (mirrored/rotated)
-        icon_path = Path(__file__).parent.parent.parent.parent.parent / "icons" / "sidebar-toggle.svg"
+        icon_path = (
+            Path(__file__).parent.parent.parent.parent.parent
+            / "icons"
+            / "sidebar-toggle.svg"
+        )
         if icon_path.exists():
             pixmap = QPixmap(str(icon_path))
             if not pixmap.isNull():
                 # Mirror it horizontally since the original points left (collapse)
                 mirrored_pixmap = pixmap.transformed(QTransform().scale(-1, 1))
                 self._expand_button.setIcon(QIcon(mirrored_pixmap))
-                self._expand_button.setText("") # Clear text if icon loaded
-        
+                self._expand_button.setText("")  # Clear text if icon loaded
+
         self._expand_button.setFixedSize(20, 60)
         self._expand_button.setStyleSheet(f"""
             QToolButton {{
@@ -194,7 +205,7 @@ class MainWindow(QMainWindow):
         self._content_layout.addWidget(self.workspace, 1)
 
         main_layout.addLayout(self._content_layout, 1)
-        
+
         # Connect debounce timer now that metrics_strip exists
         self._metrics_refresh_timer.timeout.connect(self.metrics_strip.refresh)
 
@@ -204,7 +215,9 @@ class MainWindow(QMainWindow):
         # Status bar for intent feedback (Phase 6)
         # Hidden by default, only shows when messages are displayed
         self._status_bar = self.statusBar()
-        self._status_bar.setSizeGripEnabled(True)  # Enable resize grip in bottom-right corner
+        self._status_bar.setSizeGripEnabled(
+            True
+        )  # Enable resize grip in bottom-right corner
         self._status_bar.hide()  # Hide by default to prevent empty space
         self._status_bar.setStyleSheet(f"""
             QStatusBar {{
@@ -219,13 +232,16 @@ class MainWindow(QMainWindow):
         """)
         # Center align status bar messages
         from PyQt6.QtWidgets import QLabel
+
         self._status_label = QLabel()
         self._status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._status_bar.addWidget(self._status_label, 1)
-        
+
         # Intent feedback handler (Phase 6: Outcome Visibility)
         self._intent_feedback = IntentFeedbackHandler(self._status_bar, self)
-        self.workspace.intentProcessed.connect(self._intent_feedback.on_intent_processed)
+        self.workspace.intentProcessed.connect(
+            self._intent_feedback.on_intent_processed
+        )
 
     def _create_menu_bar(self) -> None:
         """Create menu bar with all menus."""
@@ -264,7 +280,7 @@ class MainWindow(QMainWindow):
     @pyqtSlot()
     def _on_cancel_requested(self) -> None:
         """Handle cancel signal from workspace.
-        
+
         Note: Workspace's _apply_cancel_recording already set state to IDLE.
         This handler only forwards to orchestrator.
         """
@@ -292,7 +308,7 @@ class MainWindow(QMainWindow):
     @pyqtSlot()
     def _on_delete_requested(self) -> None:
         """Handle delete signal from workspace.
-        
+
         Phase 5: Workspace validated preconditions in _apply_delete_transcript.
         This handler shows confirmation, performs I/O, then clears workspace.
         """
@@ -313,7 +329,7 @@ class MainWindow(QMainWindow):
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 # Clear workspace FIRST to prevent Qt from accessing deleted item
                 self.workspace.clear_transcript()
-                
+
                 # Then delete from database and refresh UI
                 if self.history_manager:
                     self.history_manager.delete_entry(timestamp)
@@ -331,7 +347,7 @@ class MainWindow(QMainWindow):
     @pyqtSlot(str, str)
     def _on_entry_selected(self, text: str, timestamp: str) -> None:
         """Handle sidebar entry selection via intent layer.
-        
+
         Phase 5: Routes through ViewTranscriptIntent for authority consolidation.
         Phase 6: Now fetches variants for carousel support.
         """
@@ -347,10 +363,10 @@ class MainWindow(QMainWindow):
                 timestamp=timestamp,
                 text=text,
                 source=IntentSource.SIDEBAR,
-                variants=variants
+                variants=variants,
             )
             result = self.workspace.handle_intent(intent)
-            
+
             if result.outcome == IntentOutcome.REJECTED:
                 logger.warning(f"ViewTranscriptIntent rejected: {result.reason}")
                 # Could show error dialog here, but rejection during editing
@@ -391,12 +407,17 @@ class MainWindow(QMainWindow):
         import os
         import subprocess
         import sys
-        
+
         try:
             # Use the run.py script for proper GPU library loading
-            scripts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "scripts")
+            scripts_dir = os.path.join(
+                os.path.dirname(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+                ),
+                "scripts",
+            )
             run_script = os.path.join(scripts_dir, "run.py")
-            
+
             if os.path.exists(run_script):
                 # Launch via run.py for proper LD_LIBRARY_PATH setup
                 subprocess.Popen(
@@ -405,12 +426,15 @@ class MainWindow(QMainWindow):
                 )
             else:
                 # Fallback: launch main.py directly
-                main_script = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "main.py")
+                main_script = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                    "main.py",
+                )
                 subprocess.Popen(
                     [sys.executable, main_script],
                     start_new_session=True,
                 )
-            
+
             # Close the current application
             self.close()
         except Exception as e:
@@ -424,7 +448,7 @@ class MainWindow(QMainWindow):
     def _show_about_dialog(self) -> None:
         """Show the About Vociferous dialog."""
         from ui.components.title_bar import DialogTitleBar
-        
+
         dialog = QDialog(self)
         dialog.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         dialog.setModal(True)
@@ -432,12 +456,12 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout(dialog)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-        
+
         # Add draggable title bar
         title_bar = DialogTitleBar("About Vociferous", dialog)
         title_bar.closeRequested.connect(dialog.reject)
         main_layout.addWidget(title_bar)
-        
+
         # Content container
         content = QWidget()
         content.setObjectName("dialogContent")
@@ -514,8 +538,10 @@ class MainWindow(QMainWindow):
 
     def _show_metrics_explanation(self) -> None:
         """Show the Metrics Calculations explanation dialog."""
-        from ui.widgets.dialogs.metrics_explanation_dialog import MetricsExplanationDialog
-        
+        from ui.widgets.dialogs.metrics_explanation_dialog import (
+            MetricsExplanationDialog,
+        )
+
         dialog = MetricsExplanationDialog(self)
         dialog.exec()
 
@@ -527,20 +553,23 @@ class MainWindow(QMainWindow):
 
     def sync_recording_status_from_engine(self, status: str) -> None:
         """Sync workspace state with background transcription engine status.
-        
+
         ORCHESTRATION PRIVILEGE (Invariant 8):
         This is the ONLY method in MainWindow allowed to call workspace.set_state().
         It coordinates the engine's status updates with the UI, not user interactions.
-        
+
         Called by: main.py when ResultThread reports status changes.
-        
+
         Edit Safety: Only transitions IDLE/VIEWING↔RECORDING, never touches EDITING.
         This protects users from losing unsaved edits when the engine sends updates.
         """
         match status:
             case "recording":
                 # Only set if idle or viewing - don't interrupt editing
-                if self.workspace.get_state() in (WorkspaceState.IDLE, WorkspaceState.VIEWING):
+                if self.workspace.get_state() in (
+                    WorkspaceState.IDLE,
+                    WorkspaceState.VIEWING,
+                ):
                     self.workspace.set_state(WorkspaceState.RECORDING)
             case "transcribing":
                 self.workspace.show_transcribing_status()
@@ -570,10 +599,10 @@ class MainWindow(QMainWindow):
 
         self.raise_()
         self.activateWindow()
-    
+
     def _debounced_metrics_refresh(self) -> None:
         """Refresh metrics with debouncing to prevent blocking on rapid transcripts."""
-        if hasattr(self, '_metrics_refresh_timer'):
+        if hasattr(self, "_metrics_refresh_timer"):
             self._metrics_refresh_timer.start()
 
     @property
@@ -582,7 +611,7 @@ class MainWindow(QMainWindow):
 
     def load_entry_for_edit(self, text: str, timestamp: str) -> None:
         """Load an entry for editing via intent layer.
-        
+
         Phase 5: Routes through ViewTranscriptIntent for authority consolidation.
         """
         try:
@@ -592,9 +621,11 @@ class MainWindow(QMainWindow):
                 source=IntentSource.CONTROLS,
             )
             result = self.workspace.handle_intent(intent)
-            
+
             if result.outcome == IntentOutcome.REJECTED:
-                logger.warning(f"ViewTranscriptIntent rejected in load_entry_for_edit: {result.reason}")
+                logger.warning(
+                    f"ViewTranscriptIntent rejected in load_entry_for_edit: {result.reason}"
+                )
         except Exception as e:
             logger.exception("Error loading entry for edit")
             show_error_dialog(
@@ -612,11 +643,11 @@ class MainWindow(QMainWindow):
                 return
 
             from ui.widgets.dialogs import ExportDialog
-            
+
             dialog = ExportDialog(self)
             if dialog.exec():
                 file_path, fmt = dialog.get_export_path()
-                
+
                 success = self.history_manager.export_to_file(file_path, fmt)
 
                 if success:
@@ -642,7 +673,7 @@ class MainWindow(QMainWindow):
 
     def _clear_all_history(self) -> None:
         """Clear all transcription history.
-        
+
         Phase 5: Uses clear_transcript() for terminal state mutation.
         """
         try:
@@ -674,14 +705,14 @@ class MainWindow(QMainWindow):
             )
 
     # Sidebar resize handling
-    
+
     @pyqtSlot(int)
     def _on_sidebar_resize(self, new_width: int) -> None:
         """Handle resize grip drag."""
         try:
             # Ensure width is within valid bounds
             clamped_width = Dimensions.clamp_sidebar_width(new_width, self.width())
-            
+
             # Set both min and max to lock at this width (no fixed width conflicts)
             self.sidebar.setMinimumWidth(clamped_width)
             self.sidebar.setMaximumWidth(clamped_width)
@@ -697,19 +728,21 @@ class MainWindow(QMainWindow):
         try:
             if self._sidebar_collapsed:
                 return
-            
+
             # Save current width before collapsing
             current_width = self.sidebar.width()
             # Ensure saved width is within valid bounds
-            self._sidebar_expanded_width = Dimensions.clamp_sidebar_width(current_width, self.width())
-            
+            self._sidebar_expanded_width = Dimensions.clamp_sidebar_width(
+                current_width, self.width()
+            )
+
             self.sidebar.hide()
             self._expand_button.show()
             self._position_expand_button()
-            
+
             if self._content_layout:
                 self._content_layout.setSpacing(0)
-            
+
             self._sidebar_collapsed = True
             self.settings.setValue("sidebar_visible", False)
             self.settings.setValue("sidebar_width", self._sidebar_expanded_width)
@@ -722,13 +755,13 @@ class MainWindow(QMainWindow):
         try:
             if not self._sidebar_collapsed:
                 return
-            
+
             # Determine target width
             if target_width <= 0:
                 target_width = self._sidebar_expanded_width
             if target_width < Dimensions.SIDEBAR_MIN_WIDTH:
                 target_width = self._calculate_sidebar_width()
-            
+
             # Ensure width is within valid bounds for current window size
             target_width = Dimensions.clamp_sidebar_width(target_width, self.width())
 
@@ -753,8 +786,13 @@ class MainWindow(QMainWindow):
             if not self._expand_button.isVisible():
                 return
             # Position at left edge, vertically centered
-            title_bar_height = self.title_bar.height() if hasattr(self, "title_bar") else 44
-            y = title_bar_height + (self.height() - title_bar_height - self._expand_button.height()) // 2
+            title_bar_height = (
+                self.title_bar.height() if hasattr(self, "title_bar") else 44
+            )
+            y = (
+                title_bar_height
+                + (self.height() - title_bar_height - self._expand_button.height()) // 2
+            )
             self._expand_button.move(0, y)
         except Exception:
             logger.exception("Error positioning expand button")
@@ -763,21 +801,21 @@ class MainWindow(QMainWindow):
         """Calculate sidebar width (30% of window, clamped to valid range)."""
         target = int(self.width() * Dimensions.SIDEBAR_DEFAULT_RATIO)
         return Dimensions.clamp_sidebar_width(target, self.width())
-    
+
     def _ensure_sidebar_width(self) -> None:
         """Ensure sidebar has proper width after window is fully shown."""
         if self._sidebar_collapsed:
             return
-        
+
         window_width = self.width()
         min_width_absolute = Dimensions.get_sidebar_min_width(window_width)
-        
+
         current_width = self.sidebar.width()
         if current_width < min_width_absolute:
             # Use saved width if valid, otherwise use minimum
             width = max(self._sidebar_expanded_width, min_width_absolute)
             width = Dimensions.clamp_sidebar_width(width, window_width)
-            
+
             # Set both min and max to lock at this width
             self.sidebar.setMinimumWidth(width)
             self.sidebar.setMaximumWidth(width)
@@ -820,7 +858,7 @@ class MainWindow(QMainWindow):
             # Ensure width is within valid bounds for current window
             width = Dimensions.clamp_sidebar_width(width, self.width())
             self._sidebar_expanded_width = width
-            
+
             # Set both min and max to lock at this width
             self.sidebar.setMinimumWidth(width)
             self.sidebar.setMaximumWidth(width)
@@ -869,10 +907,10 @@ class MainWindow(QMainWindow):
         if hasattr(self, "sidebar") and self._initial_state_restored:
             window_width = self.width()
             current_width = self.sidebar.width()
-            
+
             # Clamp current width to new window constraints
             new_width = Dimensions.clamp_sidebar_width(current_width, window_width)
-            
+
             # Only update if width actually needs to change
             if new_width != current_width:
                 self.sidebar.setMinimumWidth(new_width)

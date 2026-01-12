@@ -28,18 +28,20 @@ from ui.widgets.styled_button import ButtonStyle, StyledButton
 class StyledDialog(QDialog):
     """Base class for styled dialogs with custom title bar."""
 
-    def __init__(self, parent: QWidget | None = None, title: str = "Vociferous") -> None:
+    def __init__(
+        self, parent: QWidget | None = None, title: str = "Vociferous"
+    ) -> None:
         super().__init__(parent)
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
         self.setModal(True)
 
         # Styles are applied at app level via generate_unified_stylesheet()
-        
+
         self._setup_base_ui(title)
 
     def _finalize_size(self, min_width: int = 400) -> None:
         """Auto-size the dialog to fit its content.
-        
+
         Sets a minimum width and lets Qt compute the natural height.
         """
         self.setMinimumWidth(min_width)
@@ -91,9 +93,7 @@ class StyledDialog(QDialog):
         self.button_container.setObjectName("dialogButtonContainer")
         self.button_layout = QHBoxLayout(self.button_container)
         # Taller margins around buttons for better visual breathing room
-        self.button_layout.setContentsMargins(
-            MAJOR_GAP, 16, MAJOR_GAP, 16
-        )
+        self.button_layout.setContentsMargins(MAJOR_GAP, 16, MAJOR_GAP, 16)
         self.button_layout.setSpacing(MINOR_GAP)
         self._container_layout.addWidget(self.button_container)
 
@@ -117,12 +117,12 @@ class StyledDialog(QDialog):
             style = ButtonStyle.DESTRUCTIVE
 
         btn = StyledButton(text, style)
-        
+
         # Configure default button behavior for primary/destructive actions
         if role in ("primary", "destructive"):
             btn.setDefault(True)
             btn.setAutoDefault(True)
-            
+
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setMinimumHeight(40)  # Ensure buttons have adequate vertical size
 

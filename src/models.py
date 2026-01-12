@@ -13,6 +13,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy models."""
+
     pass
 
 
@@ -20,6 +21,7 @@ class FocusGroup(Base):
     """
     Represents a grouping of transcripts.
     """
+
     __tablename__ = "focus_groups"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -28,18 +30,16 @@ class FocusGroup(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Hierarchical Relationship
-    parent_id: Mapped[int | None] = mapped_column(ForeignKey("focus_groups.id"), nullable=True)
-    
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("focus_groups.id"), nullable=True
+    )
+
     # Self-referential accessors
     children: Mapped[list["FocusGroup"]] = relationship(
-        "FocusGroup", 
-        back_populates="parent",
-        cascade="all, delete-orphan"
+        "FocusGroup", back_populates="parent", cascade="all, delete-orphan"
     )
     parent: Mapped["FocusGroup | None"] = relationship(
-        "FocusGroup", 
-        back_populates="children", 
-        remote_side=[id]
+        "FocusGroup", back_populates="children", remote_side=[id]
     )
 
     transcripts: Mapped[list["Transcript"]] = relationship(
@@ -55,11 +55,16 @@ class TranscriptVariant(Base):
     Represents a version of the transcript text (raw, edited, or refined).
     Ensures non-destructive history.
     """
+
     __tablename__ = "transcript_variants"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    transcript_id: Mapped[int] = mapped_column(ForeignKey("transcripts.id", ondelete="CASCADE"), nullable=False)
-    kind: Mapped[str] = mapped_column(String, nullable=False)  # 'raw', 'user_edit', 'refined'
+    transcript_id: Mapped[int] = mapped_column(
+        ForeignKey("transcripts.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(
+        String, nullable=False
+    )  # 'raw', 'user_edit', 'refined'
     text: Mapped[str] = mapped_column(String, nullable=False)
     model_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -71,7 +76,7 @@ class TranscriptVariant(Base):
 class Transcript(Base):
     """
     Represents a single audio transcription.
-    
+
     Attributes:
         raw_text: Immutable original transcription
         normalized_text: Mutable text for user edits (Storage for legacy/fallback)
@@ -79,11 +84,16 @@ class Transcript(Base):
         speech_duration_ms: Time containing speech (VAD)
         current_variant_id: Pointer to the active text version
     """
+
     __tablename__ = "transcripts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    timestamp: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    timestamp: Mapped[str] = mapped_column(
+        String, unique=True, nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, index=True
+    )
     raw_text: Mapped[str] = mapped_column(String, nullable=False)
     normalized_text: Mapped[str] = mapped_column(String, nullable=False)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
@@ -95,17 +105,18 @@ class Transcript(Base):
         Integer, ForeignKey("transcript_variants.id"), nullable=True
     )
 
-    focus_group: Mapped[Optional[FocusGroup]] = relationship(back_populates="transcripts")
-    
-    current_variant: Mapped[Optional[TranscriptVariant]] = relationship(
-        foreign_keys=[current_variant_id],
-        post_update=True
+    focus_group: Mapped[Optional[FocusGroup]] = relationship(
+        back_populates="transcripts"
     )
-    
+
+    current_variant: Mapped[Optional[TranscriptVariant]] = relationship(
+        foreign_keys=[current_variant_id], post_update=True
+    )
+
     variants: Mapped[list[TranscriptVariant]] = relationship(
         foreign_keys=[TranscriptVariant.transcript_id],
         backref="transcript",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
 
     @property
@@ -114,11 +125,11 @@ class Transcript(Base):
         if self.current_variant:
             return self.current_variant.text
         return self.normalized_text
-    
+
     @text.setter
     def text(self, value: str) -> None:
-        # Note: Setters on hybrid properties or proxies can be tricky. 
-        # For now, we update normalized_text as fallback, but the HistoryManager 
+        # Note: Setters on hybrid properties or proxies can be tricky.
+        # For now, we update normalized_text as fallback, but the HistoryManager
         # should prefer creating variants.
         self.normalized_text = value
 
@@ -129,7 +140,7 @@ class Transcript(Base):
             timestamp_short = self.timestamp.split("T")[1][:8]
         except IndexError:
             timestamp_short = self.timestamp[-8:]
-            
+
         current_text = self.normalized_text
         if len(current_text) > max_length:
             text_preview = current_text[:max_length] + "..."

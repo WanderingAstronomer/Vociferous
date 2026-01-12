@@ -17,13 +17,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ui.components.sidebar.sidebar_edge import SidebarEdge
+from ui.components.sidebar.transcript_tree import TranscriptTreeView
 from ui.constants import Spacing
 from ui.models import TranscriptionModel
 from ui.widgets.collapsible_section import CollapsibleSection
 from ui.widgets.focus_group import FocusGroupContainer
-
-from ui.components.sidebar.sidebar_edge import SidebarEdge
-from ui.components.sidebar.transcript_tree import TranscriptTreeView
 
 if TYPE_CHECKING:
     from history_manager import HistoryEntry, HistoryManager

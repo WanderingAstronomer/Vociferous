@@ -81,7 +81,7 @@ class DialogTitleBar(QWidget):
                         event.accept()
                         self._drag_pos = None
                         return
-                
+
                 # On X11, track position for manual dragging
                 self._drag_pos = (
                     event.globalPosition().toPoint() - parent.frameGeometry().topLeft()

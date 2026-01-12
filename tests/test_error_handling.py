@@ -65,6 +65,7 @@ class TestErrorLogger:
     def test_log_exception_captures_traceback(self):
         """log_exception should capture exception traceback."""
         import sys
+
         from ui.utils.error_handler import get_error_logger
 
         logger = get_error_logger()
@@ -142,6 +143,7 @@ class TestFormatException:
     def test_format_exception_for_display(self):
         """format_exception_for_display should format exception nicely."""
         import sys
+
         from ui.utils.error_handler import format_exception_for_display
 
         try:
@@ -230,7 +232,9 @@ class TestErrorDialog:
 
         # Mock exec to prevent blocking
         with patch.object(
-            __import__("ui.widgets.dialogs.error_dialog", fromlist=["ErrorDialog"]).ErrorDialog,
+            __import__(
+                "ui.widgets.dialogs.error_dialog", fromlist=["ErrorDialog"]
+            ).ErrorDialog,
             "exec",
             return_value=None,
         ):
@@ -261,7 +265,9 @@ class TestSettingsValidation:
         invalid_codes = ["xyz", "english", "123", ""]
 
         for code in invalid_codes:
-            assert code not in SettingsDialog.VALID_LANGUAGES, f"{code} should be invalid"
+            assert code not in SettingsDialog.VALID_LANGUAGES, (
+                f"{code} should be invalid"
+            )
 
     def test_device_compute_type_validation(self, qapp):
         """Device and compute_type should be validated for compatibility."""
@@ -365,6 +371,7 @@ class TestErrorPathIntegration:
     def test_focus_group_proxy_filter_handles_invalid_index(self, qapp):
         """FocusGroupProxyModel should handle invalid indices gracefully."""
         from PyQt6.QtCore import QModelIndex
+
         from ui.models.focus_group_proxy import FocusGroupProxyModel
 
         proxy = FocusGroupProxyModel()
@@ -415,6 +422,7 @@ class TestErrorPathIntegration:
     def test_transcription_model_handles_corrupted_data(self, qapp):
         """TranscriptionModel should handle corrupted index data."""
         from PyQt6.QtCore import QModelIndex
+
         from ui.models.transcription_model import TranscriptionModel
 
         # Create a mock history manager
@@ -432,4 +440,3 @@ class TestErrorPathIntegration:
         # rowCount should handle None parent
         count = model.rowCount(None)
         assert count == 0
-

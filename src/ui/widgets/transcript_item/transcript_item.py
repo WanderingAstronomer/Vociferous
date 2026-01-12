@@ -55,9 +55,7 @@ def create_transcript_item(
     item.setData(0, ROLE_IS_HEADER, False)
 
     # Alignment
-    item.setTextAlignment(
-        0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-    )
+    item.setTextAlignment(0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
     # Styling
     preview_font = QFont()

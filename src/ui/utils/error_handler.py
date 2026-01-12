@@ -102,9 +102,7 @@ class ErrorLogger:
         # Console handler for development
         console_handler = logging.StreamHandler(sys.stderr)
         console_handler.setLevel(logging.INFO)
-        console_formatter = logging.Formatter(
-            "%(levelname)-8s | %(message)s"
-        )
+        console_formatter = logging.Formatter("%(levelname)-8s | %(message)s")
         console_handler.setFormatter(console_formatter)
         root_logger.addHandler(console_handler)
 
@@ -243,7 +241,9 @@ def get_error_logger() -> ErrorLogger:
     return _error_logger
 
 
-def install_exception_hook(error_callback: Callable[[str, str, str], None] | None = None) -> None:
+def install_exception_hook(
+    error_callback: Callable[[str, str, str], None] | None = None,
+) -> None:
     """
     Install a global exception hook to catch uncaught exceptions.
 
@@ -269,7 +269,9 @@ def install_exception_hook(error_callback: Callable[[str, str, str], None] | Non
 
         # Build user-friendly message
         error_name = exc_type.__name__
-        error_message = str(exc_value) if str(exc_value) else "An unexpected error occurred"
+        error_message = (
+            str(exc_value) if str(exc_value) else "An unexpected error occurred"
+        )
 
         title = f"Unexpected Error: {error_name}"
         message = error_message
@@ -282,7 +284,10 @@ def install_exception_hook(error_callback: Callable[[str, str, str], None] | Non
             except Exception as callback_error:
                 # If the callback itself fails, at least log it
                 logger.error(f"Error callback failed: {callback_error}")
-                print(f"CRITICAL: Error displaying error dialog: {callback_error}", file=sys.stderr)
+                print(
+                    f"CRITICAL: Error displaying error dialog: {callback_error}",
+                    file=sys.stderr,
+                )
                 print(f"Original error: {tb_string}", file=sys.stderr)
 
     sys.excepthook = exception_hook
@@ -302,6 +307,7 @@ def safe_slot(context: str = "") -> Callable:
     Args:
         context: Description of the slot for error logging
     """
+
     def decorator(func: Callable) -> Callable:
         def wrapper(*args, **kwargs):
             try:
@@ -317,6 +323,7 @@ def safe_slot(context: str = "") -> Callable:
                 # Try to show error dialog
                 try:
                     from ui.widgets.dialogs.error_dialog import show_error_dialog
+
                     show_error_dialog(
                         title=f"Error in {context or func.__name__}",
                         message=str(e),
@@ -332,6 +339,7 @@ def safe_slot(context: str = "") -> Callable:
         wrapper.__name__ = func.__name__
         wrapper.__doc__ = func.__doc__
         return wrapper
+
     return decorator
 
 
@@ -411,6 +419,7 @@ def safe_slot_silent(context: str = "") -> Callable:
     Args:
         context: Description of the slot for error logging
     """
+
     def decorator(func: Callable) -> Callable:
         def wrapper(*args, **kwargs):
             try:
@@ -423,4 +432,5 @@ def safe_slot_silent(context: str = "") -> Callable:
         wrapper.__name__ = func.__name__
         wrapper.__doc__ = func.__doc__
         return wrapper
+
     return decorator

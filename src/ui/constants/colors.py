@@ -18,10 +18,10 @@ class Colors:
     # =================================================================
     # BACKGROUNDS (4-level surface hierarchy)
     # =================================================================
-    BACKGROUND = "#1e1e1e"   # L0: Main window/app background
-    SURFACE = "#252526"      # L1: Panels, cards, dialogs
+    BACKGROUND = "#1e1e1e"  # L0: Main window/app background
+    SURFACE = "#252526"  # L1: Panels, cards, dialogs
     SURFACE_ALT = "#2a2a2a"  # L2: List items, hover states
-    HEADER = "#1a1a1a"       # L-1: Section headers (darker)
+    HEADER = "#1a1a1a"  # L-1: Section headers (darker)
 
     # Legacy aliases (deprecated - use semantic names above)
     BG_PRIMARY = BACKGROUND
@@ -33,14 +33,14 @@ class Colors:
     # =================================================================
     # TEXT HIERARCHY (per Refactoring UI: 3 tiers)
     # =================================================================
-    TEXT_PRIMARY = "#d4d4d4"    # Headlines, important content
+    TEXT_PRIMARY = "#d4d4d4"  # Headlines, important content
     TEXT_SECONDARY = "#888888"  # Supporting text, metadata
-    TEXT_TERTIARY = "#555555"   # Disabled, very subtle hints
+    TEXT_TERTIARY = "#555555"  # Disabled, very subtle hints
 
     # Special text colors
-    TEXT_ACCENT = "#5a9fd4"     # Links, interactive text
+    TEXT_ACCENT = "#5a9fd4"  # Links, interactive text
     TEXT_ON_ACCENT = "#ffffff"  # Text on accent backgrounds
-    TEXT_GREETING = "#ffffff"   # Hero/greeting text
+    TEXT_GREETING = "#ffffff"  # Hero/greeting text
 
     # Legacy alias
     TEXT_MUTED = TEXT_TERTIARY
@@ -58,7 +58,7 @@ class Colors:
     ACCENT_BLUE_HOVER = PRIMARY_HOVER
     ACCENT_BLUE_DARK = PRIMARY_PRESSED
     ACCENT_BLUE_PRESSED = PRIMARY_PRESSED
-    ACCENT_BLUE_BRIGHT = PRIMARY           # Consolidated
+    ACCENT_BLUE_BRIGHT = PRIMARY  # Consolidated
     ACCENT_BLUE_BRIGHT_HOVER = PRIMARY_HOVER  # Consolidated
     ACCENT_PRIMARY = PRIMARY
     ACCENT_HOVER = PRIMARY_HOVER
@@ -77,7 +77,7 @@ class Colors:
     DESTRUCTIVE = "#ff6b6b"
     DESTRUCTIVE_HOVER = "#ff8585"
     DESTRUCTIVE_PRESSED = "#cc5656"
-    DESTRUCTIVE_BG = "#5a2d2d"      # Subtle background tint
+    DESTRUCTIVE_BG = "#5a2d2d"  # Subtle background tint
 
     # Warning (orange)
     WARNING = "#ffa500"
@@ -124,7 +124,7 @@ class Colors:
     # =================================================================
     # INTERACTIVE STATES
     # =================================================================
-    HOVER_BG = "#2d3d4d"          # Primary hover bg
+    HOVER_BG = "#2d3d4d"  # Primary hover bg
     HOVER_OVERLAY = "rgba(255, 255, 255, 0.08)"
     PRESSED_OVERLAY = "rgba(255, 255, 255, 0.12)"
     SELECTED_BG = PRIMARY_PRESSED

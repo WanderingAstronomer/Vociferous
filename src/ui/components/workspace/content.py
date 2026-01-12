@@ -13,12 +13,12 @@ from __future__ import annotations
 from enum import IntEnum
 
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QCursor
+from PyQt6.QtGui import QCursor, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QHBoxLayout,
-    QPushButton,
     QLabel,
     QMenu,
+    QPushButton,
     QSizePolicy,
     QStackedWidget,
     QTextBrowser,
@@ -26,7 +26,6 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PyQt6.QtGui import QKeySequence, QShortcut
 
 from ui.constants import Colors, Typography
 from ui.utils.clipboard_utils import copy_text
@@ -79,7 +78,7 @@ class WorkspaceContent(QWidget):
         self.carousel_container = QWidget()
         self.carousel_container.setObjectName("carouselContainer")
         self.carousel_container.hide()
-        
+
         # Carousel Styling
         self.carousel_container.setStyleSheet(f"""
             QWidget#carouselContainer {{
@@ -125,18 +124,18 @@ class WorkspaceContent(QWidget):
         self.btn_next_variant.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_next_variant.setToolTip("Next Version")
         self.btn_next_variant.clicked.connect(self.next_variant)
-        
+
         carousel_layout.addWidget(self.btn_prev_variant)
         carousel_layout.addWidget(self.lbl_variant_info)
         carousel_layout.addWidget(self.btn_next_variant)
-        
+
         layout.addWidget(self.carousel_container)
         # ----------------------------------------------
 
         # Shortcuts (Alt+Left/Right for carousel navigation)
         self.shortcut_prev = QShortcut(QKeySequence("Alt+Left"), self)
         self.shortcut_prev.activated.connect(self.prev_variant)
-        
+
         self.shortcut_next = QShortcut(QKeySequence("Alt+Right"), self)
         self.shortcut_next.activated.connect(self.next_variant)
 
@@ -226,7 +225,7 @@ class WorkspaceContent(QWidget):
     def update_for_editing(self) -> None:
         """Show transcript in editor."""
         self.waveform.stop()
-        self.carousel_container.hide() # Hide carousel during editing
+        self.carousel_container.hide()  # Hide carousel during editing
         self.transcript_editor.setPlainText(self._current_text)
         self.stack.setCurrentIndex(ContentPage.EDITING)
         self.transcript_editor.setFocus()
@@ -235,7 +234,7 @@ class WorkspaceContent(QWidget):
         """Set the current transcript text and timestamp."""
         self._current_text = text
         self._current_timestamp = timestamp
-        
+
         # If clearing (empty text), also clear variants and hide carousel
         if not text and not timestamp:
             self._variants = []
@@ -250,7 +249,7 @@ class WorkspaceContent(QWidget):
     def set_variants(self, variants: list[dict]) -> None:
         """Set the list of transcript variants and update carousel."""
         self._variants = variants
-        
+
         # Determine initial index
         self._current_variant_index = 0
         if variants:
@@ -261,14 +260,17 @@ class WorkspaceContent(QWidget):
                     self._current_variant_index = i
                     found_current = True
                     break
-            
+
             # If no current flag (e.g. legacy), use last refined, or last item
             if not found_current and variants:
-                 self._current_variant_index = len(variants) - 1
+                self._current_variant_index = len(variants) - 1
 
             # Initial display update
             if 0 <= self._current_variant_index < len(variants):
-                self.set_transcript(variants[self._current_variant_index]["text"], self._current_timestamp)
+                self.set_transcript(
+                    variants[self._current_variant_index]["text"],
+                    self._current_timestamp,
+                )
 
         self._update_carousel_ui()
 
@@ -283,10 +285,10 @@ class WorkspaceContent(QWidget):
             self._current_variant_index = len(self._variants) - 1
 
         self.carousel_container.show()
-        
+
         current = self._variants[self._current_variant_index]
         kind = current.get("kind", "raw")
-        
+
         # Label Logic
         if kind == "raw":
             label = "Original Transcript"
@@ -300,14 +302,18 @@ class WorkspaceContent(QWidget):
                     # Find THIS variant's index within the refined sub-list
                     curr_id = current.get("id")
                     if curr_id:
-                         matches = [i for i, v in enumerate(refined_list) if v.get("id") == curr_id]
-                         if matches:
-                             idx = matches[0] + 1
-                             label = f"Refined Transcript ({idx}/{len(refined_list)})"
-                         else:
-                             label = "Refined Transcript"
+                        matches = [
+                            i
+                            for i, v in enumerate(refined_list)
+                            if v.get("id") == curr_id
+                        ]
+                        if matches:
+                            idx = matches[0] + 1
+                            label = f"Refined Transcript ({idx}/{len(refined_list)})"
+                        else:
+                            label = "Refined Transcript"
                     else:
-                         label = "Refined Transcript"
+                        label = "Refined Transcript"
                 except Exception:
                     label = "Refined Transcript"
         else:
@@ -315,17 +321,22 @@ class WorkspaceContent(QWidget):
             label = kind.replace("_", " ").title()
 
         self.lbl_variant_info.setText(label)
-        
+
         # Button States
         self.btn_prev_variant.setEnabled(self._current_variant_index > 0)
-        self.btn_next_variant.setEnabled(self._current_variant_index < len(self._variants) - 1)
+        self.btn_next_variant.setEnabled(
+            self._current_variant_index < len(self._variants) - 1
+        )
 
     @pyqtSlot()
     def prev_variant(self) -> None:
         """Navigate to previous variant."""
         if self._variants and self._current_variant_index > 0:
             self._current_variant_index -= 1
-            self.set_transcript(self._variants[self._current_variant_index]["text"], self._current_timestamp)
+            self.set_transcript(
+                self._variants[self._current_variant_index]["text"],
+                self._current_timestamp,
+            )
             self._update_carousel_ui()
 
     @pyqtSlot()
@@ -333,7 +344,10 @@ class WorkspaceContent(QWidget):
         """Navigate to next variant."""
         if self._variants and self._current_variant_index < len(self._variants) - 1:
             self._current_variant_index += 1
-            self.set_transcript(self._variants[self._current_variant_index]["text"], self._current_timestamp)
+            self.set_transcript(
+                self._variants[self._current_variant_index]["text"],
+                self._current_timestamp,
+            )
             self._update_carousel_ui()
 
     def get_text(self) -> str:

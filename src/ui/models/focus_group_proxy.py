@@ -14,7 +14,13 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import QAbstractItemModel, QModelIndex, QObject, QSortFilterProxyModel, QTimer
+from PyQt6.QtCore import (
+    QAbstractItemModel,
+    QModelIndex,
+    QObject,
+    QSortFilterProxyModel,
+    QTimer,
+)
 
 from ui.models.transcription_model import TranscriptionModel
 
@@ -36,8 +42,10 @@ class FocusGroupProxyModel(QSortFilterProxyModel):
         super().__init__(parent)
         self._group_id: int | None = None
         self.setRecursiveFilteringEnabled(True)
-        self.setDynamicSortFilter(True)  # Ensure updates to group_id trigger re-filtering
-        
+        self.setDynamicSortFilter(
+            True
+        )  # Ensure updates to group_id trigger re-filtering
+
         # Defer filter invalidation to avoid segfaults during context menu callbacks
         self._invalidate_timer = QTimer()
         self._invalidate_timer.setSingleShot(True)
@@ -60,7 +68,9 @@ class FocusGroupProxyModel(QSortFilterProxyModel):
         if sourceModel:
             sourceModel.dataChanged.connect(self._on_source_data_changed)
 
-    def _on_source_data_changed(self, topLeft: QModelIndex, bottomRight: QModelIndex, roles: list[int] = []) -> None:
+    def _on_source_data_changed(
+        self, topLeft: QModelIndex, bottomRight: QModelIndex, roles: list[int] = []
+    ) -> None:
         """Handle source data changes to trigger re-filtering if needed."""
         # If the GroupIDRole changed, we MUST re-filter regardless of automatic dynamic sorting
         # This ensures that assigning a group immediately removes it from the view if needed

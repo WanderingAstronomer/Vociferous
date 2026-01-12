@@ -61,11 +61,13 @@ class CancelRecordingIntent(InteractionIntent):
 @dataclass(frozen=True, slots=True)
 class ViewTranscriptIntent(InteractionIntent):
     """User desires to view a specific transcript.
-    
+
     Phase 5: Now carries both timestamp and text for _apply_view_transcript.
     """
 
-    timestamp: str = ""  # Transcript identifier (required but has default for inheritance)
+    timestamp: str = (
+        ""  # Transcript identifier (required but has default for inheritance)
+    )
     text: str = ""  # Transcript content (required but has default for inheritance)
     source: IntentSource = field(default=IntentSource.SIDEBAR)
     variants: list = field(default_factory=list)
@@ -97,5 +99,7 @@ class DiscardEditsIntent(InteractionIntent):
 class DeleteTranscriptIntent(InteractionIntent):
     """User desires to delete the current transcript."""
 
-    timestamp: str = ""  # Transcript identifier (required but has default for inheritance)
+    timestamp: str = (
+        ""  # Transcript identifier (required but has default for inheritance)
+    )
     source: IntentSource = field(default=IntentSource.CONTROLS)

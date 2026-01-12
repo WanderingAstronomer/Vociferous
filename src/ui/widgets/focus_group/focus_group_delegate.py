@@ -47,21 +47,21 @@ class FocusGroupDelegate(QStyledItemDelegate):
         indent_width = 20  # Default fallback
         if hasattr(option.widget, "indentation"):
             indent_width = option.widget.indentation()
-        
+
         depth = 0
         parent = index.parent()
         while parent.isValid():
             depth += 1
             parent = parent.parent()
-            
+
         indent_offset = depth * indent_width
-        
+
         # Create adjusted option with offset rect
         # We modify the rect to start AFTER the indentation
         # This ensures backgrounds and content are properly indented
         adj_option = QStyleOptionViewItem(option)
         adj_option.rect.setLeft(adj_option.rect.left() + indent_offset)
-        
+
         is_group = index.data(self.ROLE_IS_GROUP)
 
         if is_group:
@@ -88,7 +88,7 @@ class FocusGroupDelegate(QStyledItemDelegate):
         color: str,
     ) -> None:
         """Paint a group header with color marker."""
-        text = index.data(0) or "" # Column 0 has name now
+        text = index.data(0) or ""  # Column 0 has name now
         font = QFont(option.font)
         font.setPointSize(Typography.FOCUS_GROUP_NAME_SIZE)
         font.setWeight(QFont.Weight.DemiBold)
@@ -112,12 +112,12 @@ class FocusGroupDelegate(QStyledItemDelegate):
 
         # Text, padded
         text_rect = rect.adjusted(6 + marker_w + 10, 0, -12, 0)
-        
+
         # Subgroups (nested groups) use secondary text color
         text_color = QColor(Colors.TEXT_PRIMARY)
         if index.parent().isValid():
             text_color = QColor(Colors.TEXT_SECONDARY)
-            
+
         painter.setPen(text_color)
         painter.drawText(
             text_rect,
@@ -137,7 +137,7 @@ class FocusGroupDelegate(QStyledItemDelegate):
             painter.fillRect(option.rect, QColor(Colors.HOVER_BG_SECTION))
         else:
             painter.fillRect(option.rect, QColor(Colors.BG_TERTIARY))
-        
+
         # Manually draw text since we might be bypassing super().paint
         text = index.data(0) or ""
         painter.save()
@@ -145,9 +145,7 @@ class FocusGroupDelegate(QStyledItemDelegate):
         # Add basic padding
         text_rect = QRectF(option.rect).adjusted(8, 0, -8, 0)
         painter.drawText(
-            text_rect, 
-            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, 
-            text
+            text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text
         )
         painter.restore()
 
@@ -157,8 +155,10 @@ class FocusGroupDelegate(QStyledItemDelegate):
         """Paint a transcript child row with parent group's color and indent."""
         # Get parent group's color
         parent_index = index.parent()
-        group_color = parent_index.data(self.ROLE_COLOR) if parent_index.isValid() else None
-        
+        group_color = (
+            parent_index.data(self.ROLE_COLOR) if parent_index.isValid() else None
+        )
+
         # Use simple hover/selection background (subtle)
         # We removed the "bright solid rectangular blue square" effect by using standard hover colors
         if option.state & QStyle.StateFlag.State_Selected:
@@ -168,7 +168,7 @@ class FocusGroupDelegate(QStyledItemDelegate):
         elif group_color:
             # Very subtle tint for static state if group has color
             color = QColor(group_color)
-            color.setAlpha(15) 
+            color.setAlpha(15)
             painter.fillRect(option.rect, color)
 
         # Draw "blue circular dot" selection indicator
@@ -176,17 +176,19 @@ class FocusGroupDelegate(QStyledItemDelegate):
             painter.save()
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.setPen(Qt.PenStyle.NoPen)
-            
+
             # Use group color if available, else standard accent
-            dot_color = QColor(group_color) if group_color else QColor(Colors.ACCENT_PRIMARY)
+            dot_color = (
+                QColor(group_color) if group_color else QColor(Colors.ACCENT_PRIMARY)
+            )
             painter.setBrush(dot_color)
-            
+
             # Position dot on the left side
             dot_size = 6
             # 8px left padding match
             dot_x = option.rect.left() + 4
             dot_y = option.rect.center().y() - (dot_size / 2)
-            
+
             painter.drawEllipse(QRectF(dot_x, dot_y, dot_size, dot_size))
             painter.restore()
 
@@ -200,7 +202,7 @@ class FocusGroupDelegate(QStyledItemDelegate):
                 time_text = format_time_compact(dt)
             except (ValueError, TypeError):
                 pass
-        
+
         # Create modified option with more padding for the dot if selected
         text_option = QStyleOptionViewItem(option)
         if option.state & QStyle.StateFlag.State_Selected:
@@ -208,9 +210,5 @@ class FocusGroupDelegate(QStyledItemDelegate):
 
         # Delegate to unified painter (draw_background=False since we handled tints)
         paint_transcript_entry(
-            painter, 
-            text_option, 
-            preview_text, 
-            time_text, 
-            draw_background=False
+            painter, text_option, preview_text, time_text, draw_background=False
         )

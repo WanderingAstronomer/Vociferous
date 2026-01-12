@@ -2,6 +2,25 @@
 
 ---
 
+# v2.4.2 - Developer Experience (DX) & Architecture Documentation
+
+**Date:** January 12, 2026
+**Status:** Maintenance Release
+
+---
+
+## Changed
+
+### Documentation
+- **Copilot Instructions**: Completely overhauled `.github/copilot-instructions.md` to strictly enforce the **Intent Pattern** for UI transitions and **SQLAlchemy** best practices for data persistence.
+- **Wiki**: Added formally defined "Interaction Layer (Intents)" section to `docs/wiki/UI-Architecture.md`.
+- **README**: Added "Technical Architecture" section detailing the stack and design patterns.
+
+### Developer Resources
+- **Architecture Audit**: Added `docs/agent_resources/agent_reports/2026-01-12_architecture_audit.md` as a canonical reference for the system's current architectural state.
+
+---
+
 # v2.4.1 - Documentation Polish
 
 **Date:** January 2026

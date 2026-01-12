@@ -46,7 +46,9 @@ class MenuBuilder:
         """Build all menus with action handlers."""
         self._create_file_menu(on_exit, on_restart)
         self._create_history_menu(on_export, on_clear)
-        self._create_view_menu(on_toggle_metrics, on_focus_history, on_toggle_sidebar=on_toggle_sidebar)
+        self._create_view_menu(
+            on_toggle_metrics, on_focus_history, on_toggle_sidebar=on_toggle_sidebar
+        )
         self._create_settings_menu()
         self._create_help_menu(on_about, on_metrics_explanation)
 
@@ -122,9 +124,7 @@ class MenuBuilder:
         settings_menu.addAction(self.settings_action)
 
     def _create_help_menu(
-        self,
-        on_about: Callable[[], None],
-        on_metrics_explanation: Callable[[], None]
+        self, on_about: Callable[[], None], on_metrics_explanation: Callable[[], None]
     ) -> None:
         """Create Help menu."""
         help_menu = self._menu_bar.addMenu("&Help")

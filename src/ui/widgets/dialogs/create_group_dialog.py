@@ -84,7 +84,9 @@ class CreateGroupDialog(QDialog):
     - Cancel/Create buttons
     """
 
-    def __init__(self, parent: QWidget | None = None, title: str = "New Focus Group") -> None:
+    def __init__(
+        self, parent: QWidget | None = None, title: str = "New Focus Group"
+    ) -> None:
         super().__init__(parent)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint

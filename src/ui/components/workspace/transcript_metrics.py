@@ -23,7 +23,7 @@ TYPING_SPEED_WPM = 40  # Average typing speed for composition
 class TranscriptMetrics(QWidget):
     """
     Displays comprehensive metrics for a single transcript.
-    
+
     Implements multi-metric framework:
     - Human time (raw duration with pauses)
     - Machine time (speech duration after VAD)
@@ -74,7 +74,9 @@ class TranscriptMetrics(QWidget):
 
         # Column 2: Time Saved
         self.saved_label = self._create_metric_label("Typing-Equivalent Time Saved:")
-        self.saved_label.setToolTip("Compared to typing at 40 WPM (see Help → Metrics Calculations)")
+        self.saved_label.setToolTip(
+            "Compared to typing at 40 WPM (see Help → Metrics Calculations)"
+        )
         self.saved_value = self._create_value_label("0s")
         layout.addWidget(self.saved_label, 1, 2)
         layout.addWidget(self.saved_value, 1, 3)
@@ -94,41 +96,46 @@ class TranscriptMetrics(QWidget):
     def _create_metric_label(self, text: str) -> QLabel:
         """Create a label for the metric name (gray)."""
         label = QLabel(text)
-        label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; font-size: {Typography.FONT_SIZE_SM}px;")
+        label.setStyleSheet(
+            f"color: {Colors.TEXT_SECONDARY}; font-size: {Typography.FONT_SIZE_SM}px;"
+        )
         return label
 
     def _create_value_label(self, text: str) -> QLabel:
         """Create a label for the metric value (white)."""
         label = QLabel(text)
-        label.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; font-size: {Typography.FONT_SIZE_SM}px; font-weight: {Typography.FONT_WEIGHT_EMPHASIS};")
+        label.setStyleSheet(
+            f"color: {Colors.TEXT_PRIMARY}; font-size: {Typography.FONT_SIZE_SM}px; font-weight: {Typography.FONT_WEIGHT_EMPHASIS};"
+        )
         return label
 
     def set_metrics(
-        self,
-        raw_duration_ms: int,
-        speech_duration_ms: int | None,
-        word_count: int
+        self, raw_duration_ms: int, speech_duration_ms: int | None, word_count: int
     ) -> None:
         """
         Update metrics display with comprehensive framework.
-        
+
         Args:
             raw_duration_ms: Total recording duration (human cognitive time)
             speech_duration_ms: Effective speech duration after VAD (or None if not available)
             word_count: Number of words in transcript
         """
         raw_duration_seconds = raw_duration_ms / 1000
-        speech_duration_seconds = (speech_duration_ms / 1000) if speech_duration_ms else 0
+        speech_duration_seconds = (
+            (speech_duration_ms / 1000) if speech_duration_ms else 0
+        )
 
         # Primary Metric 1: Raw Duration (human cognitive time)
         self.raw_duration_value.setText(self._format_duration(raw_duration_seconds))
 
         # Primary Metric 2: Speech Duration (after VAD filtering)
         if speech_duration_ms and speech_duration_ms > 0:
-            self.speech_duration_value.setText(self._format_duration(speech_duration_seconds))
+            self.speech_duration_value.setText(
+                self._format_duration(speech_duration_seconds)
+            )
             self.speech_duration_label.setVisible(True)
             self.speech_duration_value.setVisible(True)
-            
+
             # Also show Silence Time (absolute thinking/pause time)
             silence_seconds = raw_duration_seconds - speech_duration_seconds
             self.silence_time_value.setText(self._format_duration(silence_seconds))
@@ -153,7 +160,11 @@ class TranscriptMetrics(QWidget):
         self.saved_value.setText(self._format_duration(time_saved_seconds))
 
         # Derived Metric 4: Speaking Rate (WPM during active speech, excluding pauses)
-        if speech_duration_seconds > 0 and speech_duration_ms and speech_duration_ms > 0:
+        if (
+            speech_duration_seconds > 0
+            and speech_duration_ms
+            and speech_duration_ms > 0
+        ):
             speaking_rate = (word_count / speech_duration_seconds) * 60
             self.speaking_rate_value.setText(f"{speaking_rate:.0f} WPM")
             self.speaking_rate_label.setVisible(True)
@@ -167,7 +178,7 @@ class TranscriptMetrics(QWidget):
         if seconds < 1.0:
             # Show one decimal place for sub-second durations
             return f"{seconds:.1f}s"
-            
+
         if seconds < 60:
             return f"{int(seconds)}s"
 

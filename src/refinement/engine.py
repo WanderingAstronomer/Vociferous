@@ -5,6 +5,7 @@ from pathlib import Path
 try:
     import ctranslate2
     from tokenizers import Tokenizer
+
     from utils import ConfigManager
 except ImportError:
     ctranslate2 = None
@@ -13,14 +14,15 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
 class RefinementEngine:
     """
     Refinement Engine using CTranslate2 and Qwen3-4B-Instruct.
-    
+
     Wraps the loaded model and tokenizer to provide a simple refine() interface.
     Uses instruction-following (ChatML-like) prompting for granular control.
     """
-    
+
     DEFAULT_SYSTEM_PROMPT = """
 You are Vociferous Refinement Engine, a high-precision copy editor for automatic speech-to-text (ASR) transcripts.
 
@@ -67,10 +69,16 @@ Return the final refined transcript only, with no surrounding markers.
         ),
     }
 
-    def __init__(self, model_path: Path, tokenizer_path: Path, device: str = "cpu", device_index: int = 0):
+    def __init__(
+        self,
+        model_path: Path,
+        tokenizer_path: Path,
+        device: str = "cpu",
+        device_index: int = 0,
+    ):
         """
         Initialize the Refinement engine.
-        
+
         Args:
             model_path: Path to the directory containing CTranslate2 model artifacts
             tokenizer_path: Path to the tokenizer.json file
@@ -85,39 +93,43 @@ Return the final refined transcript only, with no surrounding markers.
         if not tokenizer_path.exists():
             raise FileNotFoundError(f"Tokenizer path not found: {tokenizer_path}")
 
-        logger.info(f"Loading Refinement Engine from {model_path} on {device}:{device_index}...")
+        logger.info(
+            f"Loading Refinement Engine from {model_path} on {device}:{device_index}..."
+        )
         start_time = time.perf_counter()
-        
+
         # Load Tokenizer
         self.tokenizer = Tokenizer.from_file(str(tokenizer_path))
-        
+
         # Load Model
         # Optimize compute_type for device
         # CPU: "int8" is most efficient for quantized models
         # GPU (CUDA): "int8_float16" is standard for int8 weights + fp16 math (Tensor Cores)
         # Using pure "int8" on GPU can sometimes be slower or unsupported depending on arch
         compute_type = "int8_float16" if device == "cuda" else "int8"
-        
-        logger.info(f"Initializing CTranslate2 Generator on {device} with {compute_type}...")
-        
+
+        logger.info(
+            f"Initializing CTranslate2 Generator on {device} with {compute_type}..."
+        )
+
         self.generator = ctranslate2.Generator(
-            str(model_path), 
+            str(model_path),
             device=device,
             device_index=[device_index],
-            compute_type=compute_type
+            compute_type=compute_type,
         )
-        
+
         load_time = time.perf_counter() - start_time
         logger.info(f"Refinement Engine loaded in {load_time:.2f}s")
-        
+
     def _format_prompt(self, user_text: str, profile: str = "BALANCED") -> str:
         """Format input using ChatML-style template with security boundaries."""
-        
+
         # Get profile rules (fallback to BALANCED if invalid)
         profile_key = profile.upper()
         if profile_key not in self.PROFILE_RULES:
             profile_key = "BALANCED"
-        
+
         rule_text = self.PROFILE_RULES[profile_key]
 
         directive_block = f"""
@@ -143,11 +155,11 @@ Directives:
     def refine(self, text: str, profile: str = "BALANCED") -> str:
         """
         Refine the input text using the loaded Instruct model.
-        
+
         Args:
             text: Raw input text
             profile: Refinement intensity (MINIMAL, BALANCED, STRONG)
-            
+
         Returns:
             Refined (grammatically corrected) text
         """
@@ -156,10 +168,10 @@ Directives:
 
         # 1. Prepare Input (Chat Template)
         prompt = self._format_prompt(text, profile)
-        
+
         # 2. Tokenize
         tokens = self.tokenizer.encode(prompt).tokens
-        
+
         # 3. Generate
         # max_length refers to new tokens. Qwen3-4B context is large.
         # greedy decoding (beam_size=1, temperature=0 or sampling_topk=1)
@@ -170,13 +182,15 @@ Directives:
             max_batch_size=1,
             beam_size=1,
             sampling_temperature=0,  # Deterministic
-            max_length=32768,        # Bump context to 32k max tokens
-            include_prompt_in_result=False
+            max_length=32768,  # Bump context to 32k max tokens
+            include_prompt_in_result=False,
         )
-        
+
         # 4. Detokenize
         output_tokens = results[0].sequences[0]
         # Convert generator to list for decoding
-        refined_text = self.tokenizer.decode([self.tokenizer.token_to_id(t) for t in output_tokens])
-        
+        refined_text = self.tokenizer.decode(
+            [self.tokenizer.token_to_id(t) for t in output_tokens]
+        )
+
         return refined_text.strip()

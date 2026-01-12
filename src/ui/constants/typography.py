@@ -21,52 +21,52 @@ class Typography:
     # TYPE SCALE (hand-crafted, ~25%+ jumps between sizes)
     # =================================================================
     # Scale: 11 -> 13 (18%) -> 16 (23%) -> 20 (25%) -> 24 (20%) -> 32 (33%) -> 48 (50%)
-    FONT_SIZE_XS = 11      # Captions, timestamps, tertiary labels
-    FONT_SIZE_SM = 13      # Secondary text, metadata
-    FONT_SIZE_BASE = 16    # Body text, UI controls
-    FONT_SIZE_MD = 20      # Subheadings, emphasized content
-    FONT_SIZE_LG = 24      # Section headers
-    FONT_SIZE_XL = 32      # Page titles
-    FONT_SIZE_XXL = 48     # Hero/greeting text
+    FONT_SIZE_XS = 11  # Captions, timestamps, tertiary labels
+    FONT_SIZE_SM = 13  # Secondary text, metadata
+    FONT_SIZE_BASE = 16  # Body text, UI controls
+    FONT_SIZE_MD = 20  # Subheadings, emphasized content
+    FONT_SIZE_LG = 24  # Section headers
+    FONT_SIZE_XL = 32  # Page titles
+    FONT_SIZE_XXL = 48  # Hero/greeting text
 
     # =================================================================
     # FONT WEIGHTS (per Refactoring UI: stick to two weights)
     # =================================================================
-    FONT_WEIGHT_NORMAL = 400   # Default for most text
-    FONT_WEIGHT_EMPHASIS = 600 # Bold/emphasis for hierarchy
+    FONT_WEIGHT_NORMAL = 400  # Default for most text
+    FONT_WEIGHT_EMPHASIS = 600  # Bold/emphasis for hierarchy
 
     # Legacy weight aliases (for backward compatibility)
     FONT_WEIGHT_REGULAR = FONT_WEIGHT_NORMAL
-    FONT_WEIGHT_MEDIUM = 500   # Kept for subtle emphasis cases
+    FONT_WEIGHT_MEDIUM = 500  # Kept for subtle emphasis cases
     FONT_WEIGHT_SEMIBOLD = FONT_WEIGHT_EMPHASIS
-    FONT_WEIGHT_BOLD = 700     # Rarely needed, prefer 600
+    FONT_WEIGHT_BOLD = 700  # Rarely needed, prefer 600
 
     # =================================================================
     # SEMANTIC SIZE ALIASES
     # =================================================================
     # These map semantic names to the scale for specific UI contexts
-    BODY_SIZE = FONT_SIZE_BASE          # 16px - main content
-    SMALL_SIZE = FONT_SIZE_SM           # 13px - secondary info
-    GREETING_SIZE = FONT_SIZE_LG        # 24px - welcome text
+    BODY_SIZE = FONT_SIZE_BASE  # 16px - main content
+    SMALL_SIZE = FONT_SIZE_SM  # 13px - secondary info
+    GREETING_SIZE = FONT_SIZE_LG  # 24px - welcome text
 
     # Sidebar typography hierarchy
     SECTION_HEADER_SIZE = FONT_SIZE_LG  # 24px - "History", "Focus Groups"
-    DAY_HEADER_SIZE = FONT_SIZE_XS      # 11px - "Today", "Yesterday"
-    TRANSCRIPT_ITEM_SIZE = FONT_SIZE_SM # 13px - transcript previews
+    DAY_HEADER_SIZE = FONT_SIZE_XS  # 11px - "Today", "Yesterday"
+    TRANSCRIPT_ITEM_SIZE = FONT_SIZE_SM  # 13px - transcript previews
     FOCUS_GROUP_NAME_SIZE = FONT_SIZE_BASE  # 16px - group names
 
     # Legacy aliases (deprecated - use scale names instead)
-    FONT_SIZE_BODY = FONT_SIZE_BASE     # Use FONT_SIZE_BASE
-    FONT_SIZE_LARGE = FONT_SIZE_MD      # Use FONT_SIZE_MD
-    FONT_SIZE_HEADER = FONT_SIZE_LG     # Use FONT_SIZE_LG
-    FONT_SIZE_TITLE = FONT_SIZE_XXL     # Use FONT_SIZE_XXL
+    FONT_SIZE_BODY = FONT_SIZE_BASE  # Use FONT_SIZE_BASE
+    FONT_SIZE_LARGE = FONT_SIZE_MD  # Use FONT_SIZE_MD
+    FONT_SIZE_HEADER = FONT_SIZE_LG  # Use FONT_SIZE_LG
+    FONT_SIZE_TITLE = FONT_SIZE_XXL  # Use FONT_SIZE_XXL
 
     # =================================================================
     # LINE HEIGHTS
     # =================================================================
-    GREETING_LINE_HEIGHT = 56   # ~1.2x for XXL
-    BODY_LINE_HEIGHT = 24       # 1.5x for BASE
-    SMALL_LINE_HEIGHT = 18      # ~1.4x for SM
+    GREETING_LINE_HEIGHT = 56  # ~1.2x for XXL
+    BODY_LINE_HEIGHT = 24  # 1.5x for BASE
+    SMALL_LINE_HEIGHT = 18  # ~1.4x for SM
 
     # Clamps for responsive line heights
     BODY_LINE_HEIGHT_MIN = 20

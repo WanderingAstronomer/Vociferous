@@ -9,7 +9,7 @@ def copy_text(text: str) -> None:
         text: Text to copy to clipboard
     """
     from PyQt6.QtWidgets import QApplication
-    
+
     clipboard = QApplication.clipboard()
     if clipboard:
         clipboard.setText(text)

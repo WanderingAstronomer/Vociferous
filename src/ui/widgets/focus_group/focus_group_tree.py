@@ -12,13 +12,13 @@ from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import (
-    QColor, 
-    QDragEnterEvent, 
-    QDragMoveEvent, 
-    QDropEvent, 
-    QFont, 
-    QIcon, 
-    QPixmap
+    QColor,
+    QDragEnterEvent,
+    QDragMoveEvent,
+    QDropEvent,
+    QFont,
+    QIcon,
+    QPixmap,
 )
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -31,7 +31,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.constants import Colors, Dimensions, FocusGroupColors, Typography
-from ui.widgets.dialogs import ConfirmationDialog, InputDialog, CreateGroupDialog
+from ui.widgets.dialogs import ConfirmationDialog, CreateGroupDialog, InputDialog
 from ui.widgets.dialogs.error_dialog import show_error_dialog
 from ui.widgets.focus_group.focus_group_delegate import FocusGroupDelegate
 from ui.widgets.transcript_item import (
@@ -112,18 +112,18 @@ class FocusGroupTreeWidget(QTreeWidget):
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        
+
         # Enable Drag and Drop
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.setDropIndicatorShown(True)
-        
+
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        
+
         # Explicitly disable default selection painting to prevent "blue rectangle"
         # The delegate handles all background painting.
         self.setStyleSheet("""
@@ -244,7 +244,7 @@ class FocusGroupTreeWidget(QTreeWidget):
         """Load focus groups and their transcripts from history manager."""
         # Save expanded state recursively
         expanded_group_ids = set()
-        
+
         def collect_expanded(item: QTreeWidgetItem) -> None:
             if item.isExpanded():
                 group_id = item.data(0, self.ROLE_GROUP_ID)
@@ -262,7 +262,7 @@ class FocusGroupTreeWidget(QTreeWidget):
             return
 
         groups = self._history_manager.get_focus_groups()
-        
+
         # Maps for hierarchy building
         group_items: dict[int, QTreeWidgetItem] = {}
         group_data: dict[int, tuple] = {}
@@ -275,7 +275,7 @@ class FocusGroupTreeWidget(QTreeWidget):
             else:
                 group_id, name, color = row
                 parent_id = None
-                
+
             item = self._create_group_item(group_id, name, color)
             group_items[group_id] = item
             group_data[group_id] = (name, color, parent_id)
@@ -283,7 +283,7 @@ class FocusGroupTreeWidget(QTreeWidget):
         # 2. Build Tree Hierarchy
         for group_id, item in group_items.items():
             parent_id = group_data[group_id][2]
-            
+
             if parent_id is not None and parent_id in group_items:
                 group_items[parent_id].addChild(item)
             else:
@@ -368,13 +368,15 @@ class FocusGroupTreeWidget(QTreeWidget):
     def _show_group_context_menu(self, item: QTreeWidgetItem, position) -> None:
         """Show context menu for group items."""
         group_id = item.data(0, self.ROLE_GROUP_ID)
-        group_name = item.text(0) # Moved from column 1 to 0 in _create_group_item? No, _create_group_item sets text on 0.
+        group_name = item.text(
+            0
+        )  # Moved from column 1 to 0 in _create_group_item? No, _create_group_item sets text on 0.
         # Check _create_group_item: item = QTreeWidgetItem([name]). So it's col 0.
         # But wait, original code was: group_name = item.text(1).split("  (")[0]
         # Let's verify _create_group_item implementation.
         # I read it earlier: item = QTreeWidgetItem([name]). It uses one column?
         # Let's re-read _create_group_item to be sure.
-        
+
         current_color = item.data(0, self.ROLE_COLOR)
 
         menu = QMenu(self)
@@ -383,7 +385,7 @@ class FocusGroupTreeWidget(QTreeWidget):
         rename_action.triggered.connect(
             lambda checked: self._rename_group(group_id, group_name)
         )
-        
+
         # New: Create Subgroup
         # Limit nesting to 1 level (only top-level groups can have subgroups)
         if item.parent() is None:
@@ -431,30 +433,38 @@ class FocusGroupTreeWidget(QTreeWidget):
         if self._history_manager:
             groups = self._history_manager.get_focus_groups()
             if groups:
-                menu_label = "Move to group" if count == 1 else f"Move {count} items to group"
+                menu_label = (
+                    "Move to group" if count == 1 else f"Move {count} items to group"
+                )
                 move_menu = menu.addMenu(menu_label)
-                
+
                 # Get current group(s) to exclude from menu
-                current_groups = {item.parent().data(0, self.ROLE_GROUP_ID) for item in selected_items if item.parent()}
-                
+                current_groups = {
+                    item.parent().data(0, self.ROLE_GROUP_ID)
+                    for item in selected_items
+                    if item.parent()
+                }
+
                 for row in groups:
                     # Unpack safely to handle 3 or 4 elements
                     if len(row) == 4:
                         gid, gname, gcolor, _ = row
                     else:
                         gid, gname, gcolor = row
-                        
+
                     if gid not in current_groups:
                         action = move_menu.addAction(
-                            self._create_color_icon(gcolor) if gcolor else QIcon(), 
-                            gname
+                            self._create_color_icon(gcolor) if gcolor else QIcon(),
+                            gname,
                         )
                         # Store items and group_id for bulk move
                         action.setData((selected_items, gid))
                         action.triggered.connect(self._handle_bulk_move_to_group)
 
         # Remove from group
-        remove_label = "Remove from group" if count == 1 else f"Remove {count} items from group"
+        remove_label = (
+            "Remove from group" if count == 1 else f"Remove {count} items from group"
+        )
         remove_action = menu.addAction(remove_label)
         remove_action.triggered.connect(
             lambda checked, items=selected_items: self._remove_items_from_group(items)
@@ -463,7 +473,9 @@ class FocusGroupTreeWidget(QTreeWidget):
         menu.addSeparator()
 
         # Delete transcript
-        delete_label = "Delete transcript…" if count == 1 else f"Delete {count} transcripts…"
+        delete_label = (
+            "Delete transcript…" if count == 1 else f"Delete {count} transcripts…"
+        )
         delete_action = menu.addAction(delete_label)
         delete_action.triggered.connect(
             lambda checked, items=selected_items: self._delete_transcripts(items)
@@ -484,14 +496,15 @@ class FocusGroupTreeWidget(QTreeWidget):
     def _handle_bulk_move_to_group(self) -> None:
         """Handle bulk move to group action triggered from context menu."""
         from PyQt6.QtGui import QAction
+
         action = self.sender()
         if not action or not isinstance(action, QAction):
             return
-        
+
         data = action.data()
         if not data or not isinstance(data, tuple) or len(data) != 2:
             return
-        
+
         items, group_id = data
         for item in items:
             timestamp = item.data(0, ROLE_TIMESTAMP_ISO)
@@ -501,14 +514,15 @@ class FocusGroupTreeWidget(QTreeWidget):
     def _handle_move_to_group(self) -> None:
         """Handle move to group action triggered from context menu."""
         from PyQt6.QtGui import QAction
+
         action = self.sender()
         if not action or not isinstance(action, QAction):
             return
-        
+
         data = action.data()
         if not data or not isinstance(data, tuple) or len(data) != 2:
             return
-        
+
         timestamp, group_id = data
         self._move_to_group(timestamp, group_id)
 
@@ -516,7 +530,9 @@ class FocusGroupTreeWidget(QTreeWidget):
         """Move a transcript to another focus group."""
         try:
             if self._history_manager:
-                self._history_manager.assign_transcript_to_focus_group(timestamp, group_id)
+                self._history_manager.assign_transcript_to_focus_group(
+                    timestamp, group_id
+                )
                 QTimer.singleShot(0, self.load_groups)
                 # Notify assignment changed
                 self.entryAssignmentChanged.emit()
@@ -565,8 +581,12 @@ class FocusGroupTreeWidget(QTreeWidget):
         try:
             count = len(items)
             title = "Delete Transcript" if count == 1 else f"Delete {count} Transcripts"
-            message = "Are you sure you want to delete this transcript?\n\nThis action cannot be undone." if count == 1 else f"Are you sure you want to delete {count} transcripts?\n\nThis action cannot be undone."
-            
+            message = (
+                "Are you sure you want to delete this transcript?\n\nThis action cannot be undone."
+                if count == 1
+                else f"Are you sure you want to delete {count} transcripts?\n\nThis action cannot be undone."
+            )
+
             dialog = ConfirmationDialog(
                 self,
                 title,
@@ -627,8 +647,9 @@ class FocusGroupTreeWidget(QTreeWidget):
             if dialog.exec():
                 new_name = dialog.get_text()
                 if new_name and new_name != current_name:
-                    if self._history_manager and self._history_manager.rename_focus_group(
-                        group_id, new_name
+                    if (
+                        self._history_manager
+                        and self._history_manager.rename_focus_group(group_id, new_name)
                     ):
                         self.load_groups()
                         self.groupRenamed.emit(group_id, new_name)
@@ -676,7 +697,9 @@ class FocusGroupTreeWidget(QTreeWidget):
                 parent=self,
             )
 
-    def create_group(self, name: str, color: str | None = None, parent_id: int | None = None) -> int | None:
+    def create_group(
+        self, name: str, color: str | None = None, parent_id: int | None = None
+    ) -> int | None:
         """Create a new focus group via manager."""
         try:
             if not self._history_manager:
@@ -686,14 +709,16 @@ class FocusGroupTreeWidget(QTreeWidget):
                 groups = self._history_manager.get_focus_groups()
                 existing_colors = []
                 for g in groups:
-                     if len(g) >= 3:
-                         existing_colors.append(g[2])
+                    if len(g) >= 3:
+                        existing_colors.append(g[2])
                 color = FocusGroupColors.get_next_color(existing_colors)
 
-            group_id = self._history_manager.create_focus_group(name, color, parent_id=parent_id)
+            group_id = self._history_manager.create_focus_group(
+                name, color, parent_id=parent_id
+            )
             if group_id:
                 self.load_groups()
-                
+
                 if parent_id:
                     iterator = QTreeWidgetItemIterator(self)
                     while iterator.value():
@@ -702,7 +727,7 @@ class FocusGroupTreeWidget(QTreeWidget):
                             item.setExpanded(True)
                             break
                         iterator += 1
-                
+
                 self.groupCreated.emit(group_id, name)
 
             return group_id

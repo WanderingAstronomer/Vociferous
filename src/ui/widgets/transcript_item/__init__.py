@@ -9,9 +9,9 @@ from .transcript_item import (
     create_transcript_item,
 )
 from .transcript_painter import (
+    get_transcript_entry_option,
     paint_transcript_entry,
     paint_transcript_entry_background,
-    get_transcript_entry_option,
 )
 
 __all__ = [

@@ -41,6 +41,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 def qapp_session():
     """Session-scoped QApplication for ConfigManager and other Qt objects."""
     from PyQt6.QtWidgets import QApplication
+
     app = QApplication.instance()
     if app is None:
         app = QApplication([])

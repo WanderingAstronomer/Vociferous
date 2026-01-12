@@ -10,16 +10,16 @@ they name them. Execution remains in existing handlers until Phase 3.
 """
 
 from ui.interaction.intents import (
-    InteractionIntent,
-    IntentSource,
     BeginRecordingIntent,
+    CancelRecordingIntent,
+    CommitEditsIntent,
+    DeleteTranscriptIntent,
+    DiscardEditsIntent,
+    EditTranscriptIntent,
+    IntentSource,
+    InteractionIntent,
     StopRecordingIntent,
     ViewTranscriptIntent,
-    EditTranscriptIntent,
-    CommitEditsIntent,
-    DiscardEditsIntent,
-    DeleteTranscriptIntent,
-    CancelRecordingIntent,
 )
 from ui.interaction.results import IntentOutcome, IntentResult
 

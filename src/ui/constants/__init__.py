@@ -6,6 +6,63 @@ Re-exports all constants for convenient import:
 """
 
 # Spacing (non-linear scale: 4, 8, 12, 16, 24, 32, 48, 64)
+# Audio
+from .audio import AudioConfig
+
+# Colors
+from .colors import Colors, FocusGroupColors
+
+# Dimensions
+from .dimensions import (
+    BLURB_MAX_WIDTH,
+    BLURB_MAX_WIDTH_RATIO,
+    BUTTON_HEIGHT_DESTRUCTIVE,
+    BUTTON_HEIGHT_PRIMARY,
+    BUTTON_HEIGHT_SECONDARY,
+    BUTTON_MIN_WIDTH_PRIMARY,
+    CONTENT_COLUMN_MAX_WIDTH,
+    CONTENT_COLUMN_MIN_WIDTH,
+    CONTENT_COLUMN_OUTER_MARGIN,
+    CONTENT_PANEL_PADDING,
+    CONTENT_PANEL_RADIUS,
+    DAY_INDENT,
+    DAY_ROW_HEIGHT,
+    FOCUS_GROUP_ROW_HEIGHT,
+    HISTORY_EXPORT_LIMIT,
+    HISTORY_PREVIEW_LENGTH,
+    HISTORY_RECENT_LIMIT,
+    METRICS_BLOCK_PADDING,
+    METRICS_DIVIDER_INSET,
+    METRICS_DIVIDER_WIDTH,
+    METRICS_STRIP_HEIGHT_COLLAPSED,
+    METRICS_STRIP_HEIGHT_EXPANDED,
+    METRICS_STRIP_PADDING_H,
+    QT_WIDGET_MAX_HEIGHT,
+    SECTION_HEADER_HEIGHT,
+    SECTION_HEADER_PADDING_H,
+    SECTION_HEADER_PADDING_V,
+    SECTION_HEADER_RADIUS,
+    SIDEBAR_BOTTOM_PADDING,
+    SIDEBAR_DEFAULT_RATIO,
+    SIDEBAR_LEFT_INSET,
+    SIDEBAR_MAX_RATIO,
+    SIDEBAR_MIN_RATIO,
+    SIDEBAR_MIN_WIDTH,
+    SIDEBAR_PREVIEW_LENGTH,
+    SIDEBAR_SECTION_GAP,
+    SIDEBAR_SIDE_PADDING,
+    SIDEBAR_TOP_PADDING,
+    SPLITTER_HANDLE_WIDTH,
+    SPLITTER_HIT_AREA,
+    TRANSCRIPT_INDENT,
+    TRANSCRIPT_ROW_HEIGHT,
+    WORKSPACE_PADDING,
+    Dimensions,  # Class export
+    WindowSize,
+)
+
+# Enums
+from .enums import WorkspaceState
 from .spacing import (
     APP_OUTER_PADDING,
     BUTTON_GAP,
@@ -40,77 +97,19 @@ from .spacing import (
     Spacing,  # Class export
 )
 
-# Dimensions
-from .dimensions import (
-    BLURB_MAX_WIDTH,
-    BLURB_MAX_WIDTH_RATIO,
-    BUTTON_HEIGHT_DESTRUCTIVE,
-    BUTTON_HEIGHT_PRIMARY,
-    BUTTON_HEIGHT_SECONDARY,
-    BUTTON_MIN_WIDTH_PRIMARY,
-    CONTENT_COLUMN_MAX_WIDTH,
-    CONTENT_COLUMN_MIN_WIDTH,
-    CONTENT_COLUMN_OUTER_MARGIN,
-    CONTENT_PANEL_PADDING,
-    CONTENT_PANEL_RADIUS,
-    DAY_INDENT,
-    DAY_ROW_HEIGHT,
-    Dimensions,  # Class export
-    FOCUS_GROUP_ROW_HEIGHT,
-    HISTORY_EXPORT_LIMIT,
-    HISTORY_PREVIEW_LENGTH,
-    HISTORY_RECENT_LIMIT,
-    METRICS_BLOCK_PADDING,
-    METRICS_DIVIDER_INSET,
-    METRICS_DIVIDER_WIDTH,
-    METRICS_STRIP_HEIGHT_COLLAPSED,
-    METRICS_STRIP_HEIGHT_EXPANDED,
-    METRICS_STRIP_PADDING_H,
-    QT_WIDGET_MAX_HEIGHT,
-    SECTION_HEADER_HEIGHT,
-    SECTION_HEADER_PADDING_H,
-    SECTION_HEADER_PADDING_V,
-    SECTION_HEADER_RADIUS,
-    SIDEBAR_BOTTOM_PADDING,
-    SIDEBAR_DEFAULT_RATIO,
-    SIDEBAR_LEFT_INSET,
-    SIDEBAR_MAX_RATIO,
-    SIDEBAR_MIN_RATIO,
-    SIDEBAR_MIN_WIDTH,
-    SIDEBAR_PREVIEW_LENGTH,
-    SIDEBAR_SECTION_GAP,
-    SIDEBAR_SIDE_PADDING,
-    SIDEBAR_TOP_PADDING,
-    SPLITTER_HANDLE_WIDTH,
-    SPLITTER_HIT_AREA,
-    TRANSCRIPT_INDENT,
-    TRANSCRIPT_ROW_HEIGHT,
-    WindowSize,
-    WORKSPACE_PADDING,
+# Timing
+from .timing import (
+    SPEAKING_SPEED_WPM,
+    TYPING_SPEED_WPM,
+    AnimationDurations,
+    Opacity,
+    TimerType,
+    Timing,
+    defer_call,
 )
 
 # Typography
 from .typography import Typography
-
-# Colors
-from .colors import Colors, FocusGroupColors
-
-# Enums
-from .enums import WorkspaceState
-
-# Timing
-from .timing import (
-    AnimationDurations,
-    defer_call,
-    Opacity,
-    SPEAKING_SPEED_WPM,
-    Timing,
-    TimerType,
-    TYPING_SPEED_WPM,
-)
-
-# Audio
-from .audio import AudioConfig
 
 __all__ = [
     # Spacing (non-linear scale)

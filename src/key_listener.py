@@ -465,6 +465,7 @@ class EvdevBackend:
         self.devices: list = []  # List of evdev.InputDevice
         self.key_map: dict[int, KeyCode] | None = None
         from typing import Any
+
         self.evdev: Any = None
         self.thread: threading.Thread | None = None
         self.stop_event: threading.Event | None = None
@@ -812,6 +813,7 @@ class PynputBackend:
     def __init__(self) -> None:
         """Initialize PynputBackend."""
         from typing import Any
+
         self.keyboard_listener: Any = None
         self.mouse_listener: Any = None
         self.keyboard: Any = None

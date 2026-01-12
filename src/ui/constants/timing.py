@@ -28,18 +28,21 @@ class _TimerType:
     def ANIMATION(self):
         """Animation timer type (CoarseTimer for reduced CPU usage)."""
         from PyQt6.QtCore import Qt
+
         return Qt.TimerType.CoarseTimer
 
     @property
     def PRECISE(self):
         """Precise timer type (PreciseTimer for exact timing)."""
         from PyQt6.QtCore import Qt
+
         return Qt.TimerType.PreciseTimer
 
     @property
     def BACKGROUND(self):
         """Background timer type (VeryCoarseTimer for background tasks)."""
         from PyQt6.QtCore import Qt
+
         return Qt.TimerType.VeryCoarseTimer
 
 

@@ -80,7 +80,7 @@ class TreeHoverDelegate(QStyledItemDelegate):
         # Get both columns' data
         time_index = model.index(index.row(), 0, index.parent())
         preview_index = model.index(index.row(), 1, index.parent())
-        
+
         time_text = str(time_index.data(Qt.ItemDataRole.DisplayRole) or "")
         preview_text = str(preview_index.data(Qt.ItemDataRole.DisplayRole) or "")
 
@@ -91,16 +91,16 @@ class TreeHoverDelegate(QStyledItemDelegate):
             # Calculate the full row rect spanning both columns
             # Get the rect for column 1 to determine full width
             view = option.widget
-            if view and hasattr(view, 'visualRect'):
+            if view and hasattr(view, "visualRect"):
                 col1_rect = view.visualRect(preview_index)
                 full_rect = option.rect.united(col1_rect)
             else:
                 full_rect = option.rect
-            
+
             # Create a modified option with the full rect
             full_option = QStyleOptionViewItem(option)
             full_option.rect = full_rect
-            
+
             # Use the unified painter
             paint_transcript_entry(
                 painter,

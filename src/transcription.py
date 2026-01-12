@@ -82,7 +82,7 @@ def transcribe(
 
     Converts int16 to float32, runs VAD-filtered transcription,
     then post-processes the result.
-    
+
     Returns:
         Tuple of (transcription_text, speech_duration_ms)
         speech_duration_ms is the sum of all speech segments after VAD filtering
@@ -111,7 +111,7 @@ def transcribe(
     # Combine segments and calculate effective speech duration
     segment_list = list(segments)
     transcription = "".join(segment.text for segment in segment_list).strip()
-    
+
     # Calculate total speech duration from segments (end - start of each segment)
     speech_duration_seconds = sum(
         segment.end - segment.start for segment in segment_list

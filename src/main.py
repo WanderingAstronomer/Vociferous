@@ -10,9 +10,17 @@ import os
 import sys
 from pathlib import Path
 
-from PyQt6.QtCore import QLockFile, QObject, pyqtSignal, pyqtSlot, qInstallMessageHandler, QThread, QTimer
+from PyQt6.QtCore import (
+    QLockFile,
+    QObject,
+    QThread,
+    QTimer,
+    pyqtSignal,
+    pyqtSlot,
+    qInstallMessageHandler,
+)
 from PyQt6.QtGui import QAction, QIcon
-from PyQt6.QtWidgets import QApplication, QMenu, QStyle, QSystemTrayIcon, QMessageBox
+from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QStyle, QSystemTrayIcon
 
 from history_manager import HistoryManager
 from key_listener import KeyListener
@@ -66,15 +74,15 @@ class _HotkeyDispatcher(QObject):
 class VociferousApp(QObject):
     """Main application orchestrator coordinating all components."""
 
-    requestRefinement = pyqtSignal(int, str, str) # id, text, profile
+    requestRefinement = pyqtSignal(int, str, str)  # id, text, profile
 
     def __init__(self) -> None:
         # Initialize error logging FIRST (before anything else)
         get_error_logger()
-        
+
         # Install global exception hook with error dialog callback
         install_exception_hook(self._show_global_error)
-        
+
         _install_qt_message_handler()
         # Check for existing instance BEFORE creating QApplication
         import tempfile
@@ -125,14 +133,14 @@ class VociferousApp(QObject):
 
         # Initialize components
         self.initialize_components()
-        
+
         logger.info("Vociferous initialized successfully")
-    
+
     def _show_global_error(self, title: str, message: str, details: str) -> None:
         """Show an error dialog for uncaught exceptions."""
         try:
             # Try to get the main window as parent
-            parent = getattr(self, 'main_window', None)
+            parent = getattr(self, "main_window", None)
             show_error_dialog(
                 title=title,
                 message=message,
@@ -144,7 +152,9 @@ class VociferousApp(QObject):
             logger.error(f"Failed to show error dialog: {e}")
             print(f"CRITICAL ERROR: {title}\n{message}\n{details}", file=sys.stderr)
 
-    def _on_gpu_confirmation_requested(self, free_mb: int, total_mb: int, needed_mb: int) -> None:
+    def _on_gpu_confirmation_requested(
+        self, free_mb: int, total_mb: int, needed_mb: int
+    ) -> None:
         """
         Handle request for GPU usage confirmation when VRAM is tight.
         Called from SLMService background thread via signal (QueuedConnection).
@@ -152,11 +162,13 @@ class VociferousApp(QObject):
         # Calculate percentages
         remaining_mb = free_mb - needed_mb
         headroom_pct = (remaining_mb / total_mb) * 100
-        
-        logger.info(f"Prompting user for GPU usage: Free={free_mb}, Needed={needed_mb}, Headroom={headroom_pct:.1f}%")
-        
+
+        logger.info(
+            f"Prompting user for GPU usage: Free={free_mb}, Needed={needed_mb}, Headroom={headroom_pct:.1f}%"
+        )
+
         reply = QMessageBox.question(
-            getattr(self, 'main_window', None),
+            getattr(self, "main_window", None),
             "GPU Configuration Warning",
             f"<b>Limited VRAM Detected</b><br><br>"
             f"Vociferous wants to load the refinement model into GPU memory for speed.<br>"
@@ -169,10 +181,10 @@ class VociferousApp(QObject):
             f"Loading to GPU with &lt;20% headroom might cause system instability or crash other applications.<br><br>"
             f"Do you want to proceed with GPU loading?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
-        
-        use_gpu = (reply == QMessageBox.StandardButton.Yes)
+
+        use_gpu = reply == QMessageBox.StandardButton.Yes
         self.slm_service.submit_gpu_choice(use_gpu)
 
     def initialize_components(self) -> None:
@@ -190,7 +202,9 @@ class VociferousApp(QObject):
             )
 
             # Load whisper model
-            ConfigManager.console_print("Loading Whisper model (this may take a moment)...")
+            ConfigManager.console_print(
+                "Loading Whisper model (this may take a moment)..."
+            )
             self.local_model = create_local_model()
 
             # Result thread (for recording/transcription)
@@ -214,7 +228,9 @@ class VociferousApp(QObject):
 
             # Connect workspace start/stop signals
             self.main_window.startRecordingRequested.connect(self.start_result_thread)
-            self.main_window.stopRecordingRequested.connect(self._stop_recording_from_ui)
+            self.main_window.stopRecordingRequested.connect(
+                self._stop_recording_from_ui
+            )
 
             # System tray
             self.create_tray_icon()
@@ -227,18 +243,22 @@ class VociferousApp(QObject):
             self.slm_thread = QThread()
             self.slm_service = SLMService()
             self.slm_service.moveToThread(self.slm_thread)
-            
+
             self.requestRefinement.connect(self.slm_service.handle_refinement_request)
             self.slm_service.refinementSuccess.connect(self._on_refinement_success)
             self.slm_service.refinementError.connect(self._on_refinement_error)
-            
+
             # Handle GPU Confirmation
-            self.slm_service.askGPUConfirmation.connect(self._on_gpu_confirmation_requested)
-            
+            self.slm_service.askGPUConfirmation.connect(
+                self._on_gpu_confirmation_requested
+            )
+
             # Connect Workspace signal
-            if hasattr(self.main_window, 'workspace'):
-                 self.main_window.workspace.refineRequested.connect(self._on_refine_requested)
-            
+            if hasattr(self.main_window, "workspace"):
+                self.main_window.workspace.refineRequested.connect(
+                    self._on_refine_requested
+                )
+
             self.slm_thread.start()
 
             if ConfigManager.get_config_value("refinement", "enabled"):
@@ -251,12 +271,13 @@ class VociferousApp(QObject):
                 "recording_options", "activation_key"
             )
             ConfigManager.console_print(f"Ready! Press '{activation_key}' to start.")
-            
+
             # NOW apply stylesheet after all widgets are initialized
             # (applying stylesheet during widget tree creation causes Qt crashes)
             from ui.styles.unified_stylesheet import generate_unified_stylesheet
+
             self.app.setStyleSheet(generate_unified_stylesheet())
-            
+
         except Exception as e:
             logger.exception("Failed to initialize components")
             self._show_global_error(
@@ -390,7 +411,11 @@ class VociferousApp(QObject):
                 return
 
             # Reload model when model options change
-            if section == "model_options" and key in {"compute_type", "device", "language"}:
+            if section == "model_options" and key in {
+                "compute_type",
+                "device",
+                "language",
+            }:
                 self._reload_model()
         except Exception as e:
             logger.exception("Error applying config change")
@@ -570,7 +595,9 @@ class VociferousApp(QObject):
                 case ThreadState.COMPLETE:
                     self.main_window.sync_recording_status_from_engine("idle")
                     self.update_tray_status("idle")
-                    self._on_transcription_complete(result.text, result.duration_ms, result.speech_duration_ms)
+                    self._on_transcription_complete(
+                        result.text, result.duration_ms, result.speech_duration_ms
+                    )
                 case ThreadState.ERROR:
                     self.main_window.sync_recording_status_from_engine("idle")
                     self.update_tray_status("error")
@@ -608,14 +635,18 @@ class VociferousApp(QObject):
             self.status_action.setText(text)
             self.tray_icon.setToolTip(text)
 
-    def _on_transcription_complete(self, result: str, duration_ms: int, speech_duration_ms: int) -> None:
+    def _on_transcription_complete(
+        self, result: str, duration_ms: int, speech_duration_ms: int
+    ) -> None:
         """Handle completed transcription: add to history and copy to clipboard."""
         try:
             if not result:
                 return
 
             # Add to history and display using the persisted entry to keep timestamps aligned
-            entry = self.history_manager.add_entry(result, duration_ms=duration_ms, speech_duration_ms=speech_duration_ms)
+            entry = self.history_manager.add_entry(
+                result, duration_ms=duration_ms, speech_duration_ms=speech_duration_ms
+            )
             self.main_window.display_transcription(entry)
 
             # Always copy to clipboard for manual paste
@@ -666,13 +697,13 @@ class VociferousApp(QObject):
     def _on_refine_requested(self) -> None:
         """Handle refinement request from workspace."""
         try:
-            if not hasattr(self.main_window, 'workspace'):
+            if not hasattr(self.main_window, "workspace"):
                 return
 
             content = self.main_window.workspace.content
             text = content.get_text()
             timestamp = content.get_timestamp()
-            
+
             if not text or not timestamp:
                 logger.warning("Refinement requested but no content loaded.")
                 return
@@ -680,44 +711,56 @@ class VociferousApp(QObject):
             transcript_id = self.history_manager.get_id_by_timestamp(timestamp)
             if transcript_id is None:
                 logger.error(f"Could not find transcript ID for timestamp {timestamp}")
-                self._show_global_error("Refinement Error", "Could not associate text with a database record.", "")
+                self._show_global_error(
+                    "Refinement Error",
+                    "Could not associate text with a database record.",
+                    "",
+                )
                 return
 
             if not ConfigManager.get_config_value("refinement", "enabled"):
-                 self._show_global_error("Feature Disabled", "Refinement is disabled in settings.", "")
-                 return
+                self._show_global_error(
+                    "Feature Disabled", "Refinement is disabled in settings.", ""
+                )
+                return
 
             ConfigManager.console_print("Refining transcript...")
             # Profile is passed from signal, or defaults if using old signature
             # But the slot signature is distinct, so we should rely on what comes in
-            # This method signature will change to accept profile 
+            # This method signature will change to accept profile
         except Exception:
-             logger.exception("Error handling refine request")
+            logger.exception("Error handling refine request")
 
     @pyqtSlot(str)
     def _on_refine_requested(self, profile: str) -> None:
         """Handle refinement request with profile."""
         try:
-             # Get current transcript details from UI
-             text = self.main_window.workspace.content.get_text()
-             timestamp = self.main_window.workspace.content.get_timestamp()
-             
-             if not text or not timestamp:
-                 logger.warning("Refine requested but no content loaded")
-                 return
-                 
-             transcript_id = self.history_manager.get_id_by_timestamp(timestamp)
-             if transcript_id is None:
-                logger.error(f"Could not find transcript ID for timestamp {timestamp}")
-                self._show_global_error("Refinement Error", "Could not associate text with a database record.", "")
+            # Get current transcript details from UI
+            text = self.main_window.workspace.content.get_text()
+            timestamp = self.main_window.workspace.content.get_timestamp()
+
+            if not text or not timestamp:
+                logger.warning("Refine requested but no content loaded")
                 return
 
-             if not ConfigManager.get_config_value("refinement", "enabled"):
-                 self._show_global_error("Feature Disabled", "Refinement is disabled in settings.", "")
-                 return
+            transcript_id = self.history_manager.get_id_by_timestamp(timestamp)
+            if transcript_id is None:
+                logger.error(f"Could not find transcript ID for timestamp {timestamp}")
+                self._show_global_error(
+                    "Refinement Error",
+                    "Could not associate text with a database record.",
+                    "",
+                )
+                return
 
-             ConfigManager.console_print(f"Refining transcript (Profile: {profile})...")
-             self.requestRefinement.emit(transcript_id, text, profile)
+            if not ConfigManager.get_config_value("refinement", "enabled"):
+                self._show_global_error(
+                    "Feature Disabled", "Refinement is disabled in settings.", ""
+                )
+                return
+
+            ConfigManager.console_print(f"Refining transcript (Profile: {profile})...")
+            self.requestRefinement.emit(transcript_id, text, profile)
         except Exception:
             logger.exception("Error handling refine request")
 
@@ -728,22 +771,19 @@ class VociferousApp(QObject):
             logger.info(f"Refinement successful for ID {transcript_id}")
             # Add variant to DB
             success = self.history_manager.add_variant_atomic(
-                transcript_id, 
-                text, 
-                "refined", 
-                SLMService.SOURCE_REPO_ID
+                transcript_id, text, "refined", SLMService.SOURCE_REPO_ID
             )
-            
+
             if not success:
-               logger.error("Failed to save refined variant to DB")
-               return
+                logger.error("Failed to save refined variant to DB")
+                return
 
             ConfigManager.console_print("Refinement complete and saved.")
 
             # Update UI if still viewing this transcript
             content = self.main_window.workspace.content
             current_ts = content.get_timestamp()
-            
+
             if current_ts:
                 current_id = self.history_manager.get_id_by_timestamp(current_ts)
                 if current_id == transcript_id:
@@ -751,11 +791,13 @@ class VociferousApp(QObject):
                     # If the refined text is wildly different (structure wise) we just show it
                     self.main_window.workspace.load_transcript(text, current_ts)
                     # Refresh carousel with new variants
-                    variants = self.history_manager.get_transcript_variants(transcript_id)
+                    variants = self.history_manager.get_transcript_variants(
+                        transcript_id
+                    )
                     self.main_window.workspace.content.set_variants(variants)
 
         except Exception:
-             logger.exception("Error in refinement success handler")
+            logger.exception("Error in refinement success handler")
 
     @pyqtSlot(int, str)
     def _on_refinement_error(self, transcript_id: int, message: str) -> None:
@@ -802,7 +844,7 @@ class VociferousApp(QObject):
             # Release lock file
             if hasattr(self, "lock"):
                 self.lock.unlock()
-                
+
             logger.info("Vociferous cleanup completed")
         except Exception:
             logger.exception("Error during cleanup")

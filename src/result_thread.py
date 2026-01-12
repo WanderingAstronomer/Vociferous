@@ -200,7 +200,7 @@ class ResultThread(QThread):
                 if self.sample_rate
                 else 0
             )
-            
+
             self.resultReady.emit(
                 ThreadResult(
                     state=ThreadState.COMPLETE,

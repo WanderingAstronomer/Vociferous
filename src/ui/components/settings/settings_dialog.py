@@ -67,16 +67,105 @@ class SettingsDialog(QDialog):
 
     # Valid ISO-639-1 language codes for Whisper
     VALID_LANGUAGES: set[str] = {
-        "en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr",
-        "pl", "ca", "nl", "ar", "sv", "it", "id", "hi", "fi", "vi",
-        "he", "uk", "el", "ms", "cs", "ro", "da", "hu", "ta", "no",
-        "th", "ur", "hr", "bg", "lt", "la", "mi", "ml", "cy", "sk",
-        "te", "fa", "lv", "bn", "sr", "az", "sl", "kn", "et", "mk",
-        "br", "eu", "is", "hy", "ne", "mn", "bs", "kk", "sq", "sw",
-        "gl", "mr", "pa", "si", "km", "sn", "yo", "so", "af", "oc",
-        "ka", "be", "tg", "sd", "gu", "am", "yi", "lo", "uz", "fo",
-        "ht", "ps", "tk", "nn", "mt", "sa", "lb", "my", "bo", "tl",
-        "mg", "as", "tt", "haw", "ln", "ha", "ba", "jw", "su",
+        "en",
+        "zh",
+        "de",
+        "es",
+        "ru",
+        "ko",
+        "fr",
+        "ja",
+        "pt",
+        "tr",
+        "pl",
+        "ca",
+        "nl",
+        "ar",
+        "sv",
+        "it",
+        "id",
+        "hi",
+        "fi",
+        "vi",
+        "he",
+        "uk",
+        "el",
+        "ms",
+        "cs",
+        "ro",
+        "da",
+        "hu",
+        "ta",
+        "no",
+        "th",
+        "ur",
+        "hr",
+        "bg",
+        "lt",
+        "la",
+        "mi",
+        "ml",
+        "cy",
+        "sk",
+        "te",
+        "fa",
+        "lv",
+        "bn",
+        "sr",
+        "az",
+        "sl",
+        "kn",
+        "et",
+        "mk",
+        "br",
+        "eu",
+        "is",
+        "hy",
+        "ne",
+        "mn",
+        "bs",
+        "kk",
+        "sq",
+        "sw",
+        "gl",
+        "mr",
+        "pa",
+        "si",
+        "km",
+        "sn",
+        "yo",
+        "so",
+        "af",
+        "oc",
+        "ka",
+        "be",
+        "tg",
+        "sd",
+        "gu",
+        "am",
+        "yi",
+        "lo",
+        "uz",
+        "fo",
+        "ht",
+        "ps",
+        "tk",
+        "nn",
+        "mt",
+        "sa",
+        "lb",
+        "my",
+        "bo",
+        "tl",
+        "mg",
+        "as",
+        "tt",
+        "haw",
+        "ln",
+        "ha",
+        "ba",
+        "jw",
+        "su",
     }
 
     def __init__(
@@ -136,9 +225,7 @@ class SettingsDialog(QDialog):
         content_widget = QWidget()
         content_widget.setObjectName("dialogContent")
         content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(
-            Spacing.MAJOR_GAP, 12, Spacing.MAJOR_GAP, 12
-        )
+        content_layout.setContentsMargins(Spacing.MAJOR_GAP, 12, Spacing.MAJOR_GAP, 12)
         content_layout.setSpacing(12)
 
         # Settings form
@@ -180,9 +267,7 @@ class SettingsDialog(QDialog):
         button_container.setObjectName("settingsButtonContainer")
 
         button_layout = QHBoxLayout(button_container)
-        button_layout.setContentsMargins(
-            Spacing.MAJOR_GAP, 12, Spacing.MAJOR_GAP, 12
-        )
+        button_layout.setContentsMargins(Spacing.MAJOR_GAP, 12, Spacing.MAJOR_GAP, 12)
         button_layout.setSpacing(Spacing.MINOR_GAP)
 
         button_layout.addStretch()
@@ -356,7 +441,7 @@ class SettingsDialog(QDialog):
 
     def _validate_all(self) -> bool:
         """Validate all settings and update UI accordingly.
-        
+
         Returns True if all validations pass.
         """
         self._validation_errors.clear()
@@ -456,7 +541,9 @@ class SettingsDialog(QDialog):
 
             if error:
                 label.setText(f"⚠ {error}")
-                label.setStyleSheet(f"color: {Colors.DESTRUCTIVE}; font-size: {Typography.FONT_SIZE_XS}px;")
+                label.setStyleSheet(
+                    f"color: {Colors.DESTRUCTIVE}; font-size: {Typography.FONT_SIZE_XS}px;"
+                )
                 label.show()
                 # Add error styling to widget
                 if widget:
@@ -516,7 +603,7 @@ class SettingsDialog(QDialog):
 
     def _apply_changes(self) -> bool:
         """Write widget values back to ConfigManager.
-        
+
         Returns True if changes were applied successfully.
         """
         # Run validation first
@@ -536,6 +623,7 @@ class SettingsDialog(QDialog):
         except Exception as e:
             logger.exception("Failed to apply settings changes")
             from ui.widgets.dialogs import show_error_dialog
+
             show_error_dialog(
                 title="Settings Error",
                 message="Failed to save settings.",

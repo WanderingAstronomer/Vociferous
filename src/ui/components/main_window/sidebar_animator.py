@@ -47,7 +47,7 @@ class SidebarAnimator:
         on_finished: Callable[[], None] | None = None,
     ) -> None:
         """Animate sidebar width and button position.
-        
+
         Animates both minimumWidth and maximumWidth simultaneously to keep
         the sidebar locked at a specific width throughout the animation.
         This prevents layout jitter and ensures smooth transitions.
@@ -87,7 +87,7 @@ class SidebarAnimator:
 
     def _toggle_pos(self, sidebar_width: int) -> QPoint:
         """Compute toggle button position for a given sidebar width.
-        
+
         Positions the button overlapping the right edge of the sidebar.
         """
         # Position button 12px back from the sidebar's right edge to overlap nicely
@@ -97,7 +97,7 @@ class SidebarAnimator:
 
     def calculate_sidebar_width(self, window_width: int) -> int:
         """Calculate locked sidebar width (30% of window, clamped to valid range).
-        
+
         Uses centralized clamping logic to ensure consistency across all components.
         """
         target = int(window_width * Dimensions.SIDEBAR_DEFAULT_RATIO)

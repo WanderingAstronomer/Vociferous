@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QKeySequence, QShortcut, QKeyEvent
+from PyQt6.QtGui import QKeyEvent, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QDialog,
@@ -115,7 +115,7 @@ class ExportDialog(QDialog):
         format_layout.setSpacing(MAJOR_GAP)
 
         self.format_group = QButtonGroup(self)
-        
+
         self.txt_radio = QRadioButton("Plain Text (.txt)")
         self.txt_radio.setProperty("class", "styledRadio")
         self.txt_radio.setChecked(True)
@@ -219,7 +219,7 @@ class ExportDialog(QDialog):
         button_layout.addWidget(self.export_btn)
 
         frame_layout.addWidget(button_container)
-        
+
         # Connect Enter key in filename input to export action
         self.filename_input.returnPressed.connect(self.export_btn.click)
 
@@ -237,9 +237,9 @@ class ExportDialog(QDialog):
 
     def _browse_location(self) -> None:
         """Browse for save location using Qt-styled file dialog."""
-        from PyQt6.QtWidgets import QFileDialog, QTreeView, QDialogButtonBox
         from PyQt6.QtCore import QTimer
-        
+        from PyQt6.QtWidgets import QDialogButtonBox, QFileDialog, QTreeView
+
         # Create a custom file dialog instance
         dialog = QFileDialog(self)
         dialog.setWindowTitle("Select Save Location")
@@ -247,7 +247,7 @@ class ExportDialog(QDialog):
         dialog.setFileMode(QFileDialog.FileMode.Directory)
         dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
         dialog.setOption(QFileDialog.Option.ShowDirsOnly, True)
-        
+
         # Configure dialog widgets after it's fully constructed
         def configure_dialog():
             # Hide extra columns in tree view
@@ -255,14 +255,14 @@ class ExportDialog(QDialog):
             if tree_view:
                 for i in range(4, tree_view.header().count()):
                     tree_view.setColumnHidden(i, True)
-            
+
             # Style the buttons to match app design
             button_box = dialog.findChild(QDialogButtonBox)
             if button_box:
                 # Find and style the buttons
                 for button in button_box.buttons():
                     role = button_box.buttonRole(button)
-                    
+
                     # Style Choose/Open button (AcceptRole)
                     if role == QDialogButtonBox.ButtonRole.AcceptRole:
                         button.setStyleSheet(f"""
@@ -283,7 +283,7 @@ class ExportDialog(QDialog):
                                 background-color: {Colors.PRIMARY_PRESSED};
                             }}
                         """)
-                    
+
                     # Style Cancel button (RejectRole)
                     elif role == QDialogButtonBox.ButtonRole.RejectRole:
                         button.setStyleSheet(f"""
@@ -305,10 +305,10 @@ class ExportDialog(QDialog):
                                 background-color: {Colors.BG_SECONDARY};
                             }}
                         """)
-        
+
         # Apply configuration after dialog is shown
         QTimer.singleShot(0, configure_dialog)
-        
+
         if dialog.exec():
             selected = dialog.selectedFiles()
             if selected:
@@ -319,7 +319,9 @@ class ExportDialog(QDialog):
     def _update_path_preview(self) -> None:
         """Update the full path preview label."""
         if self._filename:
-            full_path = self._save_directory / f"{self._filename}.{self._selected_format}"
+            full_path = (
+                self._save_directory / f"{self._filename}.{self._selected_format}"
+            )
             self.path_preview.setText(str(full_path))
         else:
             self.path_preview.setText("(enter a filename)")

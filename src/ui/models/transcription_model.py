@@ -80,10 +80,12 @@ class TranscriptionModel(QAbstractItemModel):
             self._days = []
             self._group_colors = {}
 
-    def _make_index_data(self, is_day_header: bool, day_idx: int, entry_idx: int = 0) -> int:
+    def _make_index_data(
+        self, is_day_header: bool, day_idx: int, entry_idx: int = 0
+    ) -> int:
         """
         Create deterministic ID from (is_header, day, entry).
-        
+
         Packing scheme (64-bit):
         - Bit 63: is_header flag
         - Bits 32-62: day_idx (31 bits)
@@ -93,9 +95,9 @@ class TranscriptionModel(QAbstractItemModel):
         # Ensure indices fit in allocated bits
         day_idx = day_idx & 0x7FFFFFFF
         entry_idx = entry_idx & 0xFFFFFFFF
-        
+
         return (header_bit << 63) | (day_idx << 32) | entry_idx
-    
+
     def _get_index_data(self, idx_id: int) -> tuple[bool, int, int]:
         """Retrieve index metadata from ID."""
         is_header = bool((idx_id >> 63) & 1)
@@ -217,19 +219,19 @@ class TranscriptionModel(QAbstractItemModel):
             # Safety: check parameter validity
             if column < 0 or row < 0:
                 return QModelIndex()
-            
+
             # Safety check for _days existence - must be a list
-            if not hasattr(self, '_days'):
+            if not hasattr(self, "_days"):
                 return QModelIndex()
             if self._days is None:
                 return QModelIndex()
             if not isinstance(self._days, list):
                 return QModelIndex()
-            
+
             # Handle None parent - treat as root
             if parent is None:
                 parent = QModelIndex()
-            
+
             # Root level items (days)
             if not parent.isValid():
                 if 0 <= row < len(self._days):
@@ -237,7 +239,7 @@ class TranscriptionModel(QAbstractItemModel):
                     idx_data = self._make_index_data(True, row, 0)
                     return self.createIndex(row, column, idx_data)
                 return QModelIndex()
-            
+
             # Child items (entries within a day)
             # Use internalId from parent to get day_idx
             parent_internal = parent.internalId()
@@ -249,7 +251,7 @@ class TranscriptionModel(QAbstractItemModel):
                     if isinstance(entries, list) and 0 <= row < len(entries):
                         idx_data = self._make_index_data(False, day_idx, row)
                         return self.createIndex(row, column, idx_data)
-            
+
             return QModelIndex()
         except Exception as e:
             print(f"Exception in index(): {e}", file=sys.stderr)
@@ -260,18 +262,18 @@ class TranscriptionModel(QAbstractItemModel):
         try:
             if index is None:
                 index = QModelIndex()
-            
+
             if not index.isValid():
                 return QModelIndex()
 
             # Get metadata for this index
             internal_id = index.internalId()
             is_day_header, day_idx, entry_idx = self._get_index_data(internal_id)
-            
+
             # Day headers have no parent
             if is_day_header:
                 return QModelIndex()
-            
+
             # Entries have the day header as parent
             if 0 <= day_idx < len(self._days):
                 parent_idx_data = self._make_index_data(True, day_idx, 0)
@@ -285,11 +287,15 @@ class TranscriptionModel(QAbstractItemModel):
     def rowCount(self, parent: QModelIndex | None = None) -> int:
         """Number of rows under parent."""
         # Safety: check if _days exists
-        if not hasattr(self, '_days') or self._days is None:
+        if not hasattr(self, "_days") or self._days is None:
             return 0
-        
+
         # Handle None parent - don't create temporary QModelIndex objects
-        if parent is None or not isinstance(parent, QModelIndex) or not parent.isValid():
+        if (
+            parent is None
+            or not isinstance(parent, QModelIndex)
+            or not parent.isValid()
+        ):
             # Root level - return number of days
             return len(self._days) if self._days else 0
 
@@ -299,17 +305,21 @@ class TranscriptionModel(QAbstractItemModel):
         try:
             internal_id = parent.internalId()
             # _get_index_data returns (is_day_header, day_idx, entry_idx)
-            is_day_header, day_idx, _, = self._get_index_data(internal_id)
-            
+            (
+                is_day_header,
+                day_idx,
+                _,
+            ) = self._get_index_data(internal_id)
+
             if is_day_header:
                 # Parent is a day header -> return number of entries in this day
                 if 0 <= day_idx < len(self._days):
                     entries = self._days[day_idx][2]
                     return len(entries) if entries else 0
-            
+
             # Entries do not have children
             return 0
-            
+
         except Exception as e:
             print(f"Error in rowCount(): {e}", file=sys.stderr)
             return 0
@@ -324,18 +334,22 @@ class TranscriptionModel(QAbstractItemModel):
             # Protect against calls with invalid/corrupted indices
             if not isinstance(index, QModelIndex):
                 return None
-            
+
             # The safest check - wrapping isValid in a try/except
             try:
                 is_valid = index.isValid()
             except Exception:
                 return None
-            
+
             if not is_valid:
                 return None
 
             # Safety check: ensure _days exists and is a list
-            if not hasattr(self, '_days') or self._days is None or not isinstance(self._days, list):
+            if (
+                not hasattr(self, "_days")
+                or self._days is None
+                or not isinstance(self._days, list)
+            ):
                 return None
 
             # Get metadata for this index

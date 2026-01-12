@@ -242,7 +242,7 @@ class CollapsibleSection(QWidget):
         """Clean up resources before destruction."""
         try:
             # Remove event filter
-            if hasattr(self, '_header_click_filter') and self._header_click_filter:
+            if hasattr(self, "_header_click_filter") and self._header_click_filter:
                 self.header.removeEventFilter(self._header_click_filter)
         except Exception:
             pass

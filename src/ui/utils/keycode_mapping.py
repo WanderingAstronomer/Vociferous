@@ -102,7 +102,18 @@ for letter in "abcdefghijklmnopqrstuvwxyz":
     KEY_CONFIG_NAMES[key_code] = letter
 
 # Add number mappings
-number_names = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"]
+number_names = [
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+]
 for i, name in enumerate(number_names):
     key_code = getattr(KeyCode, name.upper())
     REVERSE_KEY_MAP[str(i)] = key_code

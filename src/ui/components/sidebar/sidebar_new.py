@@ -11,29 +11,28 @@ Uses shared TranscriptionModel as single source of truth for all views.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QSize
+from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
-    QSizePolicy,
 )
-
-from ui.constants import Colors, Dimensions, Spacing, Typography
-from ui.models import TranscriptionModel
-from ui.utils.error_handler import safe_callback
-from ui.widgets.focus_group import FocusGroupContainer
 
 from ui.components.sidebar.resize_grip import SidebarResizeGrip
 from ui.components.sidebar.search_panel import SearchPanel
 from ui.components.sidebar.sidebar_tab_bar import SidebarTabBar
 from ui.components.sidebar.transcript_tree import TranscriptTreeView
+from ui.constants import Colors, Dimensions, Spacing, Typography
+from ui.models import TranscriptionModel
+from ui.utils.error_handler import safe_callback
+from ui.widgets.focus_group import FocusGroupContainer
 
 if TYPE_CHECKING:
     from history_manager import HistoryEntry, HistoryManager
@@ -42,12 +41,12 @@ if TYPE_CHECKING:
 class SidebarWidget(QWidget):
     """
     Main sidebar widget with tabbed navigation.
-    
+
     Tabs:
         0 - Focus Groups: Project organization
-        1 - Transcripts: Recent 7 days 
+        1 - Transcripts: Recent 7 days
         2 - Search: Full-text search
-    
+
     Signals:
         entrySelected(str, str): Emitted when entry is selected (text, timestamp)
         resizeRequested(int): Emitted when resize grip is dragged
@@ -69,17 +68,19 @@ class SidebarWidget(QWidget):
         self.setObjectName("sidebar")
         self.setAutoFillBackground(True)
         self._history_manager = history_manager
-        
+
         # Create shared model (single source of truth)
         self._model: TranscriptionModel | None = None
         if history_manager:
             self._model = TranscriptionModel(history_manager)
-        
+
         # Debounce timer for focus group reloads
         self._reload_groups_timer = QTimer()
         self._reload_groups_timer.setSingleShot(True)
         self._reload_groups_timer.setInterval(500)  # 500ms debounce
-        self._reload_groups_timer.timeout.connect(lambda: self.focus_groups.load_groups())
+        self._reload_groups_timer.timeout.connect(
+            lambda: self.focus_groups.load_groups()
+        )
 
         self._setup_ui()
         self._setup_connections()
@@ -109,9 +110,11 @@ class SidebarWidget(QWidget):
 
         # Tab bar at top
         self._tab_bar = SidebarTabBar()
-        self._tab_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._tab_bar.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
         header_layout.addWidget(self._tab_bar)
-        
+
         # Collapse button
         self._collapse_btn = QPushButton()
         self._collapse_btn.setFixedSize(52, 44)  # Match search button dimensions
@@ -119,15 +122,19 @@ class SidebarWidget(QWidget):
         self._collapse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._collapse_btn.setToolTip("Collapse Sidebar (Ctrl+B)")
         self._collapse_btn.clicked.connect(self.collapseRequested.emit)
-        
+
         # Try to load SVG icon
-        icon_path = Path(__file__).parent.parent.parent.parent.parent / "icons" / "sidebar-toggle.svg"
+        icon_path = (
+            Path(__file__).parent.parent.parent.parent.parent
+            / "icons"
+            / "sidebar-toggle.svg"
+        )
         if icon_path.exists():
             self._collapse_btn.setIcon(QIcon(str(icon_path)))
             self._collapse_btn.setIconSize(QSize(24, 24))
         else:
-            self._collapse_btn.setText("◀") # Fallback
-            
+            self._collapse_btn.setText("◀")  # Fallback
+
         self._collapse_btn.setStyleSheet(f"""
             QPushButton#collapseSidebarBtn {{
                 background-color: {Colors.SURFACE_ALT};
@@ -141,40 +148,40 @@ class SidebarWidget(QWidget):
                 color: {Colors.TEXT_PRIMARY};
             }}
         """)
-        
+
         # Align top to match tabs (which have bottom margin)
         header_layout.addWidget(self._collapse_btn, 0, Qt.AlignmentFlag.AlignTop)
-        
+
         content_layout.addLayout(header_layout)
 
         # Stacked widget for tab content
         self._stack = QStackedWidget()
         self._stack.setObjectName("sidebarStack")
-        
+
         # Page 0: Focus Groups
         self._groups_page = self._create_groups_page()
         self._stack.addWidget(self._groups_page)
-        
+
         # Page 1: Transcripts (Recent)
         self._transcripts_page = self._create_transcripts_page()
         self._stack.addWidget(self._transcripts_page)
-        
+
         # Page 2: Search
         self._search_page = SearchPanel(self._history_manager)
         self._search_page.entrySelected.connect(self.entrySelected)
         self._stack.addWidget(self._search_page)
-        
+
         # Set default tab to Recent (index 1)
         self._stack.setCurrentIndex(SidebarTabBar.TAB_TRANSCRIPTS)
-        
+
         content_layout.addWidget(self._stack, 1)
-        
+
         outer_layout.addWidget(self.content, 1)
 
         # Resize grip on right edge
         self._resize_grip = SidebarResizeGrip(self)
         outer_layout.addWidget(self._resize_grip, 0)
-        
+
     def _create_groups_page(self) -> QWidget:
         """Create the Focus Groups tab content."""
         page = QWidget()
@@ -182,7 +189,7 @@ class SidebarWidget(QWidget):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, Spacing.MINOR_GAP, Spacing.SIDEBAR_SIDE, 0)
         layout.setSpacing(Spacing.MINOR_GAP)
-        
+
         # "Create New Focus Group" button with dashed border styling
         self._create_group_btn = QPushButton("+ Create New Focus Group")
         self._create_group_btn.setObjectName("createGroupBtn")
@@ -208,38 +215,46 @@ class SidebarWidget(QWidget):
             }}
         """)
         layout.addWidget(self._create_group_btn)
-        
+
         # Focus Groups tree (no collapsible wrapper)
         self.focus_groups = FocusGroupContainer(self._history_manager)
         self.focus_groups.entrySelected.connect(self.entrySelected)
-        
+
         if self._model:
             # Only reload focus groups when entries are actually deleted or updated
             # Adding ungrouped entries doesn't affect focus groups, so skip expensive reload
             self._model.entryDeleted.connect(
-                safe_callback(lambda _: self.focus_groups.load_groups(), "focus_groups_reload_deleted")
+                safe_callback(
+                    lambda _: self.focus_groups.load_groups(),
+                    "focus_groups_reload_deleted",
+                )
             )
             # Don't reload on every add - most adds are ungrouped
             # self._model.entryAdded.connect(...) - REMOVED for performance
-            
+
             # Only reload on updates if they might affect group membership
             self._model.entryUpdated.connect(
-                safe_callback(lambda _: self._debounced_reload_groups(), "focus_groups_reload_updated")
+                safe_callback(
+                    lambda _: self._debounced_reload_groups(),
+                    "focus_groups_reload_updated",
+                )
             )
-        
+
         self.focus_groups.groupDeleted.connect(self._on_group_deleted)
         self.focus_groups.groupRenamed.connect(self._on_group_metadata_changed)
         self.focus_groups.groupColorChanged.connect(self._on_group_metadata_changed)
         self.focus_groups.groupCreated.connect(self._on_group_metadata_changed)
-        
+
         # When entries are moved into/out of groups, refresh the main model
         if self._model:
-            self.focus_groups.entryAssignmentChanged.connect(self._model.refresh_from_manager)
-        
+            self.focus_groups.entryAssignmentChanged.connect(
+                self._model.refresh_from_manager
+            )
+
         layout.addWidget(self.focus_groups, 1)
-        
+
         return page
-    
+
     def _create_transcripts_page(self) -> QWidget:
         """Create the Transcripts (Recent) tab content."""
         page = QWidget()
@@ -247,39 +262,39 @@ class SidebarWidget(QWidget):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, Spacing.MINOR_GAP, Spacing.SIDEBAR_SIDE, 0)
         layout.setSpacing(0)
-        
+
         # Transcript tree directly (no collapsible wrapper - tab indicates content)
         self.transcript_list = TranscriptTreeView()
         if self._model:
             self.transcript_list.set_source_model(self._model)
         if self._history_manager:
             self.transcript_list.set_history_manager(self._history_manager)
-        
+
         self.transcript_list.entrySelected.connect(self.entrySelected)
         self.transcript_list.entryGroupChanged.connect(self._on_entry_group_changed)
-        
+
         layout.addWidget(self.transcript_list, 1)
-        
+
         return page
-    
+
     def _setup_connections(self) -> None:
         """Connect signals."""
         # Tab switching
         self._tab_bar.tabChanged.connect(self._on_tab_changed)
-        
+
         # Resize grip
         self._resize_grip.resized.connect(self.resizeRequested)
         self._resize_grip.collapseRequested.connect(self.collapseRequested)
         self._resize_grip.expandRequested.connect(self.expandRequested)
-    
+
     def _on_tab_changed(self, tab_id: int) -> None:
         """Handle tab switch."""
         self._stack.setCurrentIndex(tab_id)
-        
+
         # Focus search input when switching to search tab
         if tab_id == SidebarTabBar.TAB_SEARCH:
             self._search_page.focus_search()
-    
+
     def _on_create_group_clicked(self) -> None:
         """Handle create group button click."""
         self.focus_groups.create_new_group()
@@ -300,7 +315,7 @@ class SidebarWidget(QWidget):
         self._debounced_reload_groups()
 
     # === Public API ===
-    
+
     def get_model(self) -> TranscriptionModel | None:
         """Get the shared transcription model."""
         return self._model
@@ -315,7 +330,7 @@ class SidebarWidget(QWidget):
         """Restore collapsed state from settings."""
         if not isinstance(state, dict):
             return
-            
+
         # Restore current tab (default to Groups)
         current_tab = state.get("current_tab", 0)
         if isinstance(current_tab, int) and 0 <= current_tab <= 2:
@@ -353,37 +368,38 @@ class SidebarWidget(QWidget):
         if self._model:
             self._model.refresh_from_manager()
         self.focus_groups.load_groups()
-    
+
     def clear_selection(self) -> None:
         """Clear selection in all tabs (transcript list, focus groups, search)."""
         try:
             # Clear tree view selections safely
-            if hasattr(self, 'transcript_list') and self.transcript_list:
-                if hasattr(self.transcript_list, 'clearSelection'):
+            if hasattr(self, "transcript_list") and self.transcript_list:
+                if hasattr(self.transcript_list, "clearSelection"):
                     self.transcript_list.clearSelection()
-            
-            if hasattr(self, 'focus_groups') and self.focus_groups:
-                if hasattr(self.focus_groups, 'clearSelection'):
+
+            if hasattr(self, "focus_groups") and self.focus_groups:
+                if hasattr(self.focus_groups, "clearSelection"):
                     self.focus_groups.clearSelection()
-            
-            if hasattr(self, '_search_page') and self._search_page:
-                if hasattr(self._search_page, 'clearSelection'):
+
+            if hasattr(self, "_search_page") and self._search_page:
+                if hasattr(self._search_page, "clearSelection"):
                     self._search_page.clearSelection()
         except Exception as e:
             # Log but don't crash on selection clearing
             import logging
+
             logger = logging.getLogger(__name__)
             logger.warning(f"Error clearing sidebar selection: {e}")
-    
+
     def _debounced_reload_groups(self) -> None:
         """Reload focus groups with debouncing to prevent rapid-fire refreshes."""
-        if hasattr(self, '_reload_groups_timer'):
+        if hasattr(self, "_reload_groups_timer"):
             self._reload_groups_timer.start()
-        
+
     def current_tab(self) -> int:
         """Return current active tab index."""
         return self._tab_bar.current_tab()
-    
+
     def set_tab(self, tab_id: int) -> None:
         """Switch to specified tab."""
         self._tab_bar.set_tab(tab_id)
@@ -397,16 +413,16 @@ class SidebarWidget(QWidget):
         """Clean up resources before destruction."""
         try:
             # Cleanup child widgets
-            if hasattr(self, 'focus_groups') and self.focus_groups:
-                if hasattr(self.focus_groups, 'cleanup'):
+            if hasattr(self, "focus_groups") and self.focus_groups:
+                if hasattr(self.focus_groups, "cleanup"):
                     self.focus_groups.cleanup()
-            
-            if hasattr(self, 'transcript_list') and self.transcript_list:
-                if hasattr(self.transcript_list, 'cleanup'):
+
+            if hasattr(self, "transcript_list") and self.transcript_list:
+                if hasattr(self.transcript_list, "cleanup"):
                     self.transcript_list.cleanup()
-            
-            if hasattr(self, '_search_page') and self._search_page:
-                if hasattr(self._search_page, 'cleanup'):
+
+            if hasattr(self, "_search_page") and self._search_page:
+                if hasattr(self._search_page, "cleanup"):
                     self._search_page.cleanup()
         except Exception:
             pass

@@ -11,7 +11,14 @@ import logging
 from contextlib import suppress
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QAbstractItemModel, QFileSystemWatcher, QModelIndex, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import (
+    QAbstractItemModel,
+    QFileSystemWatcher,
+    QModelIndex,
+    Qt,
+    QTimer,
+    pyqtSignal,
+)
 from PyQt6.QtGui import QColor, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -124,12 +131,12 @@ class HistoryTreeView(QTreeView):
     def setModel(self, model: QAbstractItemModel | None) -> None:
         """Override to track model changes and connect signals."""
         super().setModel(model)
-        
+
         # Defer header configuration to next event loop iteration
         # This ensures the header has processed the model's columnCount
         QTimer.singleShot(0, self._configure_header)
         QTimer.singleShot(0, self._restore_expansion_state)
-        
+
         if not isinstance(model, (TranscriptionModel, FocusGroupProxyModel)):
             return
 
@@ -142,7 +149,7 @@ class HistoryTreeView(QTreeView):
             source.entryAdded.connect(self._on_model_changed)
             source.entryDeleted.connect(self._on_model_changed)
             source.entryUpdated.connect(self._on_model_changed)
-            
+
             # Note: We listen to reset signals on the direct model (self.model())
             # to ensure we capture state relative to what the view sees (e.g. Proxy)
             # model.modelAboutToBeReset/modelReset are connected below
@@ -157,13 +164,13 @@ class HistoryTreeView(QTreeView):
 
     def _configure_header(self) -> None:
         """Configure header for single-column layout.
-        
+
         Called after model is set via QTimer.singleShot to ensure
         the header has processed the model's columnCount.
         """
         header = self.header()
         col_count = header.count()
-        
+
         if col_count >= 1:
             # Single column stretches to fill all available width
             header.setStretchLastSection(True)
@@ -194,7 +201,7 @@ class HistoryTreeView(QTreeView):
             row_index = self.model().index(index.row(), 0, index.parent())
             new_expanded = not self.isExpanded(row_index)
             self.setExpanded(row_index, new_expanded)
-            
+
             # Track expansion state by day key
             day_key = index.data(TranscriptionModel.DayKeyRole)
             if day_key:
@@ -248,7 +255,10 @@ class HistoryTreeView(QTreeView):
             text = selected_indices[0].data(TranscriptionModel.FullTextRole) or ""
             copy_action = menu.addAction("Copy")
             copy_action.triggered.connect(
-                safe_callback(lambda checked: self._copy_entry(selected_indices[0], text), "copy_entry")
+                safe_callback(
+                    lambda checked: self._copy_entry(selected_indices[0], text),
+                    "copy_entry",
+                )
             )
 
         # Focus group assignment
@@ -256,19 +266,25 @@ class HistoryTreeView(QTreeView):
             menu.addSeparator()
 
             # Get group IDs for selected items
-            group_ids = {idx.data(TranscriptionModel.GroupIDRole) for idx in selected_indices}
+            group_ids = {
+                idx.data(TranscriptionModel.GroupIDRole) for idx in selected_indices
+            }
             current_group_id = group_ids.pop() if len(group_ids) == 1 else None
             focus_groups = self._history_manager.get_focus_groups()
 
             if focus_groups:
-                menu_label = "Assign to Group" if count == 1 else f"Assign {count} Items to Group"
+                menu_label = (
+                    "Assign to Group"
+                    if count == 1
+                    else f"Assign {count} Items to Group"
+                )
                 assign_menu = menu.addMenu(menu_label)
-                
+
                 # Build hierarchy map
                 # groups: list of (id, name, color, parent_id)
                 roots = []
                 children_map: dict[int | None, list[tuple]] = {}
-                
+
                 for row in focus_groups:
                     # Handle flexible tuple unpacking for migration safety
                     if len(row) == 4:
@@ -290,43 +306,68 @@ class HistoryTreeView(QTreeView):
                     # Use a subtle indicator for hierarchy
                     prefix = "↳ " if indent > 0 else ""
                     display_name = prefix + g_name
-                    
+
                     # Create icon
                     icon = QIcon()
                     if g_color:
                         pixmap = QPixmap(12, 12)
                         pixmap.fill(QColor(g_color))
                         icon = QIcon(pixmap)
-                        
+
                     action = menu_obj.addAction(icon, display_name)
                     is_current = g_id == current_group_id
                     action.setCheckable(True)
                     action.setChecked(is_current)
-                    
+
                     # Always connect, checkable state handles UI feedback
                     action.triggered.connect(
                         safe_callback(
-                            lambda checked, gid=g_id, indices=selected_indices: self._assign_items_to_group(indices, gid),
-                            "assign_to_group"
+                            lambda checked,
+                            gid=g_id,
+                            indices=selected_indices: self._assign_items_to_group(
+                                indices, gid
+                            ),
+                            "assign_to_group",
                         )
                     )
 
                 # Render menu items in order
                 for gid, name, color in roots:
                     add_group_action(assign_menu, gid, name, color, indent=0)
-                    
+
                     # Add children if any
                     if gid in children_map:
                         for child_gid, child_name, child_color in children_map[gid]:
-                            add_group_action(assign_menu, child_gid, child_name, child_color, indent=1)
+                            add_group_action(
+                                assign_menu,
+                                child_gid,
+                                child_name,
+                                child_color,
+                                indent=1,
+                            )
 
                 assign_menu.addSeparator()
-                ungroup_label = "Remove from Group" if count == 1 else f"Remove {count} Items from Group"
+                ungroup_label = (
+                    "Remove from Group"
+                    if count == 1
+                    else f"Remove {count} Items from Group"
+                )
                 ungroup_action = assign_menu.addAction(ungroup_label)
                 # Enable if any selected item has a group
-                ungroup_action.setEnabled(any(idx.data(TranscriptionModel.GroupIDRole) is not None for idx in selected_indices))
+                ungroup_action.setEnabled(
+                    any(
+                        idx.data(TranscriptionModel.GroupIDRole) is not None
+                        for idx in selected_indices
+                    )
+                )
                 ungroup_action.triggered.connect(
-                    safe_callback(lambda checked, indices=selected_indices: self._assign_items_to_group(indices, None), "ungroup")
+                    safe_callback(
+                        lambda checked,
+                        indices=selected_indices: self._assign_items_to_group(
+                            indices, None
+                        ),
+                        "ungroup",
+                    )
                 )
 
                 menu.addSeparator()
@@ -335,7 +376,10 @@ class HistoryTreeView(QTreeView):
         delete_label = "Delete Entry" if count == 1 else f"Delete {count} Entries"
         delete_action = menu.addAction(delete_label)
         delete_action.triggered.connect(
-            safe_callback(lambda checked, indices=selected_indices: self._delete_entries(indices), "delete_entries")
+            safe_callback(
+                lambda checked, indices=selected_indices: self._delete_entries(indices),
+                "delete_entries",
+            )
         )
 
         menu.exec(self.viewport().mapToGlobal(position))
@@ -351,7 +395,9 @@ class HistoryTreeView(QTreeView):
                     entries.append(index)
         return entries
 
-    def _assign_items_to_group(self, indices: list[QModelIndex], group_id: int | None) -> None:
+    def _assign_items_to_group(
+        self, indices: list[QModelIndex], group_id: int | None
+    ) -> None:
         """Assign multiple transcripts to a focus group."""
         for index in indices:
             timestamp = index.data(TranscriptionModel.TimestampRole)
@@ -364,7 +410,9 @@ class HistoryTreeView(QTreeView):
             if not self._history_manager or not timestamp:
                 return
 
-            if self._history_manager.assign_transcript_to_focus_group(timestamp, group_id):
+            if self._history_manager.assign_transcript_to_focus_group(
+                timestamp, group_id
+            ):
                 source_model = self._get_source_model()
                 if source_model:
                     source_model.update_entry_group(timestamp, group_id)
@@ -407,7 +455,11 @@ class HistoryTreeView(QTreeView):
             count = len(indices)
             # Confirm deletion
             title = "Delete Transcript" if count == 1 else f"Delete {count} Transcripts"
-            message = "Are you sure you want to delete this transcript?" if count == 1 else f"Are you sure you want to delete {count} transcripts?"
+            message = (
+                "Are you sure you want to delete this transcript?"
+                if count == 1
+                else f"Are you sure you want to delete {count} transcripts?"
+            )
             dialog = ConfirmationDialog(
                 self,
                 title=title,
@@ -492,7 +544,7 @@ class HistoryTreeView(QTreeView):
                 self.entrySelected.emit("", "")
 
             self._emit_count()
-            
+
             # Force viewport update to ensure proper geometry after deletion
             self.updateGeometry()
             self.viewport().update()
@@ -568,16 +620,16 @@ class HistoryTreeView(QTreeView):
         """Save which day headers are expanded before model reset."""
         if not self.model():
             return
-        
+
         model = self.model()
-        
+
         # If model is empty (e.g. initial load or glitch), don't wipe out existing saved state
         # This acts as a persistence buffer so state survives transient empty reloads
         if model.rowCount() == 0:
             return
 
         self._expanded_day_keys.clear()
-        
+
         for day_row in range(model.rowCount()):
             day_index = model.index(day_row, 0)
             if self.isExpanded(day_index):
@@ -589,20 +641,21 @@ class HistoryTreeView(QTreeView):
         """Restore expansion state after model reset."""
         if not self.model():
             return
-        
+
         model = self.model()
         row_count = model.rowCount()
-        
+
         # Handle empty model - nothing to expand
         if row_count == 0:
             self._expanded_day_keys.clear()
             return
-        
+
         # On first load (empty _expanded_day_keys), initialize with today if it exists
         if not self._expanded_day_keys:
             from datetime import date
+
             today_key = date.today().isoformat()
-            
+
             # Check if today exists in the model
             has_today = False
             for day_row in range(row_count):
@@ -611,22 +664,22 @@ class HistoryTreeView(QTreeView):
                 if day_key == today_key:
                     has_today = True
                     break
-            
+
             # Only add today to expanded set if it actually exists
             if has_today:
                 self._expanded_day_keys = {today_key}
             else:
                 # No today, start with everything collapsed
                 self._expanded_day_keys = set()
-        
+
         for day_row in range(row_count):
             day_index = model.index(day_row, 0)
             day_key = day_index.data(TranscriptionModel.DayKeyRole)
-            
+
             # Expand only if in the expanded set
             should_expand = day_key in self._expanded_day_keys
             self.setExpanded(day_index, should_expand)
-        
+
         # Force viewport update to ensure proper geometry after model reset
         self.updateGeometry()
         self.viewport().update()

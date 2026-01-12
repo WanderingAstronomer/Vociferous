@@ -25,28 +25,28 @@ class Dimensions:
     @staticmethod
     def get_sidebar_min_width(window_width: int) -> int:
         """Calculate minimum sidebar width based on window size.
-        
+
         Returns max of absolute minimum (240px) or 33% of window width.
         This ensures sidebar is always readable on any screen size.
         """
         return max(Dimensions.SIDEBAR_MIN_WIDTH, int(window_width * 0.33))
-    
+
     @staticmethod
     def get_sidebar_max_width(window_width: int) -> int:
         """Calculate maximum sidebar width based on window size.
-        
+
         Returns 50% of window width to prevent sidebar from dominating.
         """
         return int(window_width * Dimensions.SIDEBAR_MAX_RATIO)
-    
+
     @staticmethod
     def clamp_sidebar_width(width: int, window_width: int) -> int:
         """Clamp sidebar width to valid range for given window size.
-        
+
         Args:
             width: Desired sidebar width
             window_width: Current window width
-            
+
         Returns:
             Width clamped to [min_width, max_width] range
         """
@@ -100,8 +100,8 @@ class Dimensions:
     CONTENT_PANEL_RADIUS = 8  # Use BORDER_RADIUS_MD
 
     # Button sizes (consistent heights using spacing scale)
-    BUTTON_HEIGHT_PRIMARY = 48   # Snapped to scale (was 52)
-    BUTTON_HEIGHT_SECONDARY = 40 # Snapped to scale (was 44)
+    BUTTON_HEIGHT_PRIMARY = 48  # Snapped to scale (was 52)
+    BUTTON_HEIGHT_SECONDARY = 40  # Snapped to scale (was 44)
     BUTTON_HEIGHT_DESTRUCTIVE = 40
     BUTTON_MIN_WIDTH_PRIMARY = 240
 
@@ -112,8 +112,8 @@ class Dimensions:
     # =================================================================
     # BORDER RADII (consolidated scale: 4, 8, 12, 16)
     # =================================================================
-    BORDER_RADIUS_SM = 4   # Small: inputs, chips
-    BORDER_RADIUS_MD = 8   # Medium: cards, buttons
+    BORDER_RADIUS_SM = 4  # Small: inputs, chips
+    BORDER_RADIUS_MD = 8  # Medium: cards, buttons
     BORDER_RADIUS_LG = 12  # Large: dialogs, panels
     BORDER_RADIUS_XL = 16  # Extra large: modals
 

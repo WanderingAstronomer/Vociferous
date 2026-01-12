@@ -24,9 +24,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.constants import MINOR_GAP, Typography, Colors
-from ui.widgets.styled_button import ButtonStyle, StyledButton
+from ui.constants import MINOR_GAP, Colors, Typography
 from ui.widgets.dialogs.custom_dialog import StyledDialog
+from ui.widgets.styled_button import ButtonStyle, StyledButton
 
 
 class ErrorDialog(StyledDialog):
@@ -63,7 +63,7 @@ class ErrorDialog(StyledDialog):
             show_view_logs: Whether to show the View Logs button
         """
         super().__init__(parent, title)
-        
+
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
         self.setSizeGripEnabled(True)
 
@@ -97,14 +97,20 @@ class ErrorDialog(StyledDialog):
             }}
         """)
         error_indicator.setFixedWidth(40)
-        error_indicator.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+        error_indicator.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
+        )
         message_row.addWidget(error_indicator)
 
         # Message text
         message_label = QLabel(self._message)
         message_label.setWordWrap(True)
-        message_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        message_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        message_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
+        message_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
+        )
         message_label.setObjectName("errorDialogMessage")
         message_row.addWidget(message_label, 1)
 
@@ -158,13 +164,15 @@ class ErrorDialog(StyledDialog):
         self.details_text.setMinimumHeight(120)
 
         # Use black text color for visibility
-        self.details_text.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; background-color: {Colors.SURFACE_ALT};")
-        
+        self.details_text.setStyleSheet(
+            f"color: {Colors.TEXT_PRIMARY}; background-color: {Colors.SURFACE_ALT};"
+        )
+
         # Monospace font for stack traces
         mono_font = QFont("monospace")
         mono_font.setPointSize(Typography.SMALL_SIZE)
         self.details_text.setFont(mono_font)
-        
+
         details_layout.addWidget(self.details_text)
 
         self.details_container.hide()
@@ -234,6 +242,7 @@ class ErrorDialog(StyledDialog):
         """Open the log file in the system editor."""
         try:
             from ui.utils.error_handler import ErrorLogger
+
             ErrorLogger.open_log_file()
         except Exception:
             # If we can't open logs, at least don't crash
@@ -253,6 +262,7 @@ class ErrorDialog(StyledDialog):
         """Log the error when the dialog is shown."""
         try:
             from ui.utils.error_handler import get_error_logger
+
             error_logger = get_error_logger()
             error_logger.log_error(
                 f"Error dialog shown: {self._message}",
@@ -283,6 +293,7 @@ def show_error_dialog(
     # Get parent window if not specified
     if parent is None:
         from PyQt6.QtWidgets import QApplication
+
         app = QApplication.instance()
         if app:
             # Try to get the active window
