@@ -1,6 +1,6 @@
 # Vociferous
 
-**Version 2.2.1** — Group Hierarchy & UI Polish
+**Version 2.4.0** — Advanced AI Refinement
 
 Vociferous is a fast, local speech-to-text dictation application for Linux. It transcribes your voice using OpenAI's Whisper model (via faster-whisper) and copies the result directly to your clipboard. No cloud services, no account required—just press a hotkey, speak, and paste.
 
@@ -8,18 +8,13 @@ Vociferous is a fast, local speech-to-text dictation application for Linux. It t
 
 ---
 
-## What Changed in Beta 2.0
+## What Changed in v2.4.0
 
-**Beta 2.0 introduces no new user-facing features.** Its value lies entirely in correctness, safety, and long-term maintainability.
+This release introduces **Refinement Profiles** and **Dynamic VRAM Management**.
 
-This release stabilizes the interaction architecture:
-
-- **Predictable behavior**: All user actions follow a single, validated path through the system
-- **Edit safety**: You cannot accidentally lose unsaved edits—the application enforces this
-- **Clear feedback**: The system tells you *why* an action was rejected, not just that it failed
-- **Architectural guardrails**: Automated tests prevent future changes from breaking these guarantees
-
-Beta 2.0 is a foundation release. Feature development resumes in version 2.1.
+- **Control Your Edit**: Choose between `Minimal` (grammar only), `Balanced` (cleanup), or `Strong` (flow) refinement.
+- **Smart Loading**: The system automatically detects your GPU's VRAM headroom and optimizes model loading for speed vs. stability.
+- **Improved Engine**: Upgraded backend to `Qwen3-4B-Instruct` for professional-grade copy editing.
 
 ---
 
@@ -27,6 +22,7 @@ Beta 2.0 is a foundation release. Feature development resumes in version 2.1.
 
 ### Core Transcription
 - Fast local transcription using faster-whisper (CTranslate2 backend)
+- **AI Grammar Refinement**: Single-click cleanup using local Instruct models (Qwen3-4B) with selectable profiles
 - GPU acceleration (NVIDIA CUDA) with automatic CPU fallback
 - Voice Activity Detection filters silence automatically
 - Clipboard-first workflow—no input injection or typing simulation

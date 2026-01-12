@@ -5,7 +5,6 @@ Ensures consistent rendering between HistoryTreeWidget and FocusGroupTreeWidget.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt
@@ -14,10 +13,7 @@ from PyQt6.QtWidgets import QTreeWidgetItem
 
 from ui.constants import Colors, Typography
 from ui.utils.history_utils import (
-    format_day_header,
     format_preview,
-    format_time,
-    format_time_compact,
 )
 
 if TYPE_CHECKING:

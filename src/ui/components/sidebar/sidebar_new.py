@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QSize
-from PyQt6.QtGui import QIcon, QTransform, QPixmap
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
@@ -114,7 +114,7 @@ class SidebarWidget(QWidget):
         
         # Collapse button
         self._collapse_btn = QPushButton()
-        self._collapse_btn.setFixedSize(24, 24)
+        self._collapse_btn.setFixedSize(52, 44)  # Match search button dimensions
         self._collapse_btn.setObjectName("collapseSidebarBtn")
         self._collapse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._collapse_btn.setToolTip("Collapse Sidebar (Ctrl+B)")
@@ -124,25 +124,26 @@ class SidebarWidget(QWidget):
         icon_path = Path(__file__).parent.parent.parent.parent.parent / "icons" / "sidebar-toggle.svg"
         if icon_path.exists():
             self._collapse_btn.setIcon(QIcon(str(icon_path)))
-            self._collapse_btn.setIconSize(QSize(16, 16))
+            self._collapse_btn.setIconSize(QSize(24, 24))
         else:
             self._collapse_btn.setText("◀") # Fallback
             
         self._collapse_btn.setStyleSheet(f"""
             QPushButton#collapseSidebarBtn {{
-                background-color: transparent;
+                background-color: {Colors.SURFACE_ALT};
                 border: none;
                 border-radius: {Dimensions.BORDER_RADIUS_SM}px;
                 color: {Colors.TEXT_SECONDARY};
                 font-weight: bold;
             }}
             QPushButton#collapseSidebarBtn:hover {{
-                background-color: {Colors.HOVER_BG_ITEM};
+                background-color: {Colors.SURFACE};
                 color: {Colors.TEXT_PRIMARY};
             }}
         """)
         
-        header_layout.addWidget(self._collapse_btn)
+        # Align top to match tabs (which have bottom margin)
+        header_layout.addWidget(self._collapse_btn, 0, Qt.AlignmentFlag.AlignTop)
         
         content_layout.addLayout(header_layout)
 

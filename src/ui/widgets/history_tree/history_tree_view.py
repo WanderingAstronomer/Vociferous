@@ -142,8 +142,16 @@ class HistoryTreeView(QTreeView):
             source.entryAdded.connect(self._on_model_changed)
             source.entryDeleted.connect(self._on_model_changed)
             source.entryUpdated.connect(self._on_model_changed)
-            source.modelAboutToBeReset.connect(self._save_expansion_state)
-            source.modelReset.connect(self._restore_expansion_state)
+            
+            # Note: We listen to reset signals on the direct model (self.model())
+            # to ensure we capture state relative to what the view sees (e.g. Proxy)
+            # model.modelAboutToBeReset/modelReset are connected below
+
+        # Connect to the direct model for reset handling
+        # This ensures we handle proxy resets correctly
+        if model:
+            model.modelAboutToBeReset.connect(self._save_expansion_state)
+            model.modelReset.connect(self._restore_expansion_state)
 
         self._emit_count()
 
@@ -253,13 +261,13 @@ class HistoryTreeView(QTreeView):
             focus_groups = self._history_manager.get_focus_groups()
 
             if focus_groups:
-                menu_label = f"Assign to Group" if count == 1 else f"Assign {count} Items to Group"
+                menu_label = "Assign to Group" if count == 1 else f"Assign {count} Items to Group"
                 assign_menu = menu.addMenu(menu_label)
                 
                 # Build hierarchy map
                 # groups: list of (id, name, color, parent_id)
                 roots = []
-                children_map = {}
+                children_map: dict[int | None, list[tuple]] = {}
                 
                 for row in focus_groups:
                     # Handle flexible tuple unpacking for migration safety
@@ -561,8 +569,14 @@ class HistoryTreeView(QTreeView):
         if not self.model():
             return
         
-        self._expanded_day_keys.clear()
         model = self.model()
+        
+        # If model is empty (e.g. initial load or glitch), don't wipe out existing saved state
+        # This acts as a persistence buffer so state survives transient empty reloads
+        if model.rowCount() == 0:
+            return
+
+        self._expanded_day_keys.clear()
         
         for day_row in range(model.rowCount()):
             day_index = model.index(day_row, 0)

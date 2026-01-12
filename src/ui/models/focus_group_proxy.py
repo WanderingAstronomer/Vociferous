@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import QModelIndex, QObject, QSortFilterProxyModel, QTimer
+from PyQt6.QtCore import QAbstractItemModel, QModelIndex, QObject, QSortFilterProxyModel, QTimer
 
 from ui.models.transcription_model import TranscriptionModel
 
@@ -54,10 +54,14 @@ class FocusGroupProxyModel(QSortFilterProxyModel):
         """Get the current focus group ID."""
         return self._group_id
 
-    def sourceDataChanged(self, topLeft: QModelIndex, bottomRight: QModelIndex, roles: list[int] = []) -> None:
+    def setSourceModel(self, sourceModel: QAbstractItemModel | None) -> None:
+        """Set the source model and connect signals."""
+        super().setSourceModel(sourceModel)
+        if sourceModel:
+            sourceModel.dataChanged.connect(self._on_source_data_changed)
+
+    def _on_source_data_changed(self, topLeft: QModelIndex, bottomRight: QModelIndex, roles: list[int] = []) -> None:
         """Handle source data changes to trigger re-filtering if needed."""
-        super().sourceDataChanged(topLeft, bottomRight, roles)
-        
         # If the GroupIDRole changed, we MUST re-filter regardless of automatic dynamic sorting
         # This ensures that assigning a group immediately removes it from the view if needed
         if not roles or TranscriptionModel.GroupIDRole in roles:

@@ -80,6 +80,18 @@ output_options:
     description: "Delay between keystrokes."
     _internal: true
 
+refinement:
+  enabled:
+    value: true
+    type: bool
+    description: "Enable experimental grammar refinement."
+    _internal: false
+  system_prompt:
+    value: "You are a professional editor. Your task is to correct grammar, punctuation, and flow while preserving the original meaning and tone. Output ONLY the refined text."
+    type: str
+    description: "System instruction for the refinement model."
+    _internal: true
+
 # Internal state (never shown in settings)
 _internal:
   auto_submit_warned:

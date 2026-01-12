@@ -6,16 +6,19 @@ Primary action button (Start/Stop) and secondary buttons (Edit, Save, Cancel, De
 
 from __future__ import annotations
 
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
+    QRadioButton,
+    QButtonGroup,
 )
 
-from ui.constants import Dimensions, Spacing
+from ui.constants import Dimensions, Spacing, Colors
+from utils import ConfigManager
 
 
 class WorkspaceControls(QWidget):
@@ -28,13 +31,13 @@ class WorkspaceControls(QWidget):
         primaryClicked(): Start/Stop button clicked
         editSaveClicked(): Edit/Save button clicked
         destructiveClicked(): Cancel/Delete button clicked
-        refineClicked(): Refine button clicked
+        refineClicked(str): Refine button clicked, passing profile (MINIMAL, BALANCED, STRONG)
     """
 
     primaryClicked = pyqtSignal()
     editSaveClicked = pyqtSignal()
     destructiveClicked = pyqtSignal()
-    refineClicked = pyqtSignal()
+    refineClicked = pyqtSignal(str) # Passes profile
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -75,20 +78,85 @@ class WorkspaceControls(QWidget):
 
         layout.addLayout(row2)
 
-        # Optional refinement button (hidden until feature enabled)
+        # Optional refinement row (hidden until feature enabled)
+        self.refine_row = QWidget()
+        refine_layout = QHBoxLayout(self.refine_row)
+        # Match gap of other buttons
+        refine_layout.setContentsMargins(0, 0, 0, 0)
+        refine_layout.setSpacing(Spacing.BUTTON_GAP) 
+        
+        # Profile Radio Buttons
+        self.profile_group = QButtonGroup(self)
+        self.profile_minimal = QRadioButton("Min")
+        self.profile_balanced = QRadioButton("Bal")
+        self.profile_strong = QRadioButton("Str")
+        
+        # Tooltips
+        self.profile_minimal.setToolTip("Minimal: Fixes spelling and grammar only.")
+        self.profile_balanced.setToolTip("Balanced: Fixes grammar + cleans stutters.")
+        self.profile_strong.setToolTip("Strong: Smooths output and fixes sentence flow.")
+        
+        # Default
+        self.profile_balanced.setChecked(True)
+        
+        self.profile_group.addButton(self.profile_minimal)
+        self.profile_group.addButton(self.profile_balanced)
+        self.profile_group.addButton(self.profile_strong)
+        
+        # Simple styling for radios to align better
+        radio_style = f"""
+            QRadioButton {{
+                color: {Colors.TEXT_SECONDARY};
+                font-weight: 500;
+            }}
+            QRadioButton:checked {{
+                color: {Colors.PRIMARY};
+                font-weight: bold;
+            }}
+        """
+        self.profile_minimal.setStyleSheet(radio_style)
+        self.profile_balanced.setStyleSheet(radio_style)
+        self.profile_strong.setStyleSheet(radio_style)
+        
+        # Radios Container
+        radios_container = QWidget()
+        radios_layout = QHBoxLayout(radios_container)
+        radios_layout.setContentsMargins(0, 0, 0, 0)
+        radios_layout.setSpacing(8)
+        radios_layout.addWidget(self.profile_minimal)
+        radios_layout.addWidget(self.profile_balanced)
+        radios_layout.addWidget(self.profile_strong)
+        
+        # Add to row - takes up 50% roughly
+        refine_layout.addWidget(radios_container, 1)
+
         self.refine_btn = QPushButton("Refine")
         self.refine_btn.setObjectName("secondaryButton")
         self.refine_btn.setFixedHeight(Dimensions.BUTTON_HEIGHT_SECONDARY)
-        self.refine_btn.clicked.connect(self.refineClicked.emit)
-        self.refine_btn.hide()
-        layout.addWidget(self.refine_btn)
+        self.refine_btn.clicked.connect(self._on_refine_clicked) # Local handler first
+        
+        # Refine button takes the other share
+        refine_layout.addWidget(self.refine_btn, 1)
+        
+        self.refine_row.hide()
+        layout.addWidget(self.refine_row)
+
+    def _on_refine_clicked(self) -> None:
+        """Determine selected profile and emit."""
+        profile = "BALANCED"
+        if self.profile_minimal.isChecked():
+            profile = "MINIMAL"
+        elif self.profile_strong.isChecked():
+            profile = "STRONG"
+            
+        self.refineClicked.emit(profile)
 
     def update_for_idle(self) -> None:
         """Configure for idle state."""
         self.primary_btn.setText("Start")
         self.primary_btn.setEnabled(True)
         self.edit_save_btn.hide()
-        self.refine_btn.hide()
+        self.refine_row.hide()
         self.destructive_btn.hide()
 
     def update_for_recording(self) -> None:
@@ -96,7 +164,7 @@ class WorkspaceControls(QWidget):
         self.primary_btn.setText("Stop")
         self.primary_btn.setEnabled(True)
         self.edit_save_btn.hide()
-        self.refine_btn.hide()
+        self.refine_row.hide()
         self.destructive_btn.setText("Cancel")
         self.destructive_btn.setEnabled(True)
         self.destructive_btn.show()
@@ -108,7 +176,14 @@ class WorkspaceControls(QWidget):
         self.edit_save_btn.setText("Edit")
         self.edit_save_btn.setEnabled(True)
         self.edit_save_btn.show()
-        self.refine_btn.hide()
+        
+        # Show Refine button if feature is enabled
+        if ConfigManager.get_config_value("refinement", "enabled"):
+            self.refine_row.show()
+            self.refine_btn.setEnabled(True)
+        else:
+            self.refine_row.hide()
+            
         self.destructive_btn.setText("Delete")
         self.destructive_btn.setEnabled(True)
         self.destructive_btn.show()
@@ -120,7 +195,7 @@ class WorkspaceControls(QWidget):
         self.edit_save_btn.setText("Save")
         self.edit_save_btn.setEnabled(True)
         self.edit_save_btn.show()
-        self.refine_btn.hide()
+        self.refine_row.hide()
         self.destructive_btn.setText("Cancel")
         self.destructive_btn.setEnabled(True)
         self.destructive_btn.show()

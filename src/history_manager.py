@@ -17,7 +17,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, select, delete, update, func, desc, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from models import Base, Transcript, FocusGroup
+from models import Base, Transcript, FocusGroup, TranscriptVariant
 from ui.constants import HISTORY_EXPORT_LIMIT, HISTORY_RECENT_LIMIT
 from ui.utils import format_day_header, format_time
 from utils import ConfigManager
@@ -107,6 +107,20 @@ class HistoryManager:
                     conn.commit()
         except Exception as e:
             logger.warning(f"Schema migration check failed: {e}")
+            
+        # Micro-migration for v3.0: Add current_variant_id to transcripts
+        try:
+            from sqlalchemy import inspect
+            inspector = inspect(self.engine)
+            if "transcripts" in inspector.get_table_names():
+                columns = [c["name"] for c in inspector.get_columns("transcripts")]
+                if "current_variant_id" not in columns:
+                    logger.info("Migrating schema: Adding current_variant_id to transcripts")
+                    with self.engine.connect() as conn:
+                        conn.execute(text("ALTER TABLE transcripts ADD COLUMN current_variant_id INTEGER"))
+                        conn.commit()
+        except Exception as e:
+            logger.warning(f"Schema migration check for variants failed: {e}")
 
         # Enforce foreign keys (SQLite specific)
         with self.engine.connect() as conn:
@@ -166,6 +180,150 @@ class HistoryManager:
             logger.error(f"Failed to get entry by timestamp: {e}")
             return None
 
+    def get_id_by_timestamp(self, timestamp: str) -> int | None:
+        """Get the database ID for a given timestamp."""
+        try:
+            with self.Session() as session:
+                stmt = select(Transcript.id).where(Transcript.timestamp == timestamp)
+                return session.execute(stmt).scalar_one_or_none()
+        except Exception as e:
+            logger.error(f"Failed to get ID by timestamp: {e}")
+            return None
+
+    def get_transcript_variants(self, transcript_id: int) -> list[dict]:
+        """Get all variants for a specific transcript."""
+        try:
+            with self.Session() as session:
+                # Get current variant ID to flag active state and transcript context
+                t_stmt = select(Transcript).where(Transcript.id == transcript_id)
+                transcript = session.execute(t_stmt).scalar_one_or_none()
+
+                if not transcript:
+                    return []
+
+                stmt = select(TranscriptVariant).where(
+                    TranscriptVariant.transcript_id == transcript_id
+                ).order_by(TranscriptVariant.created_at.asc())
+                variants = session.execute(stmt).scalars().all()
+                
+                results = []
+
+                # Ensure we have a representation of the original (raw) text
+                has_raw = any(v.kind == 'raw' for v in variants)
+                
+                if not has_raw:
+                    # Synthesize a raw variant from the base transcript
+                    # It is current if no refinement is active (current_variant_id is None)
+                    is_current = (transcript.current_variant_id is None)
+                    
+                    results.append({
+                        "id": 0, # Synthetic ID for base transcript
+                        "kind": "raw",
+                        "text": transcript.raw_text, 
+                        "is_current": is_current,
+                        "created_at": transcript.created_at
+                    })
+
+                for v in variants:
+                    results.append({
+                        "id": v.id,
+                        "kind": v.kind,
+                        "text": v.text,
+                        "is_current": (v.id == transcript.current_variant_id),
+                        "created_at": v.created_at
+                    })
+                return results
+        except Exception as e:
+            logger.error(f"Failed to get variants: {e}")
+            return []
+
+    def add_variant_atomic(self, transcript_id: int, text: str, kind: str, model_id: str | None = None) -> bool:
+        """
+        Atomically add a new variant and update the transcript pointer.
+        
+        Args:
+            transcript_id: ID of the transcript to update
+            text: New text content
+            kind: Variant kind ('raw', 'user_edit', 'refined')
+            model_id: Optional ID of the model that generated this text
+            
+        Returns:
+            bool: True if successful
+        """
+        try:
+            with self.Session() as session:
+                # 0. Check for exact duplicate (same kind, same text) to prevent spam
+                stmt_dup = select(TranscriptVariant).where(
+                    TranscriptVariant.transcript_id == transcript_id,
+                    TranscriptVariant.kind == kind,
+                    TranscriptVariant.text == text
+                ).limit(1)
+                existing_variant = session.execute(stmt_dup).scalar_one_or_none()
+
+                if existing_variant:
+                    logger.info(f"Refusing to add duplicate variant {existing_variant.id} for transcript {transcript_id}")
+                    # Update current pointer to this existing variant anyway
+                    stmt_update = (
+                        update(Transcript)
+                        .where(Transcript.id == transcript_id)
+                        .values(current_variant_id=existing_variant.id)
+                    )
+                    session.execute(stmt_update)
+                    session.commit()
+                    return True
+
+                # 1. Enforce Refinement Limits (Delete oldest if > 3 exists)
+                if kind == "refined":
+                    stmt_count = select(TranscriptVariant.id).where(
+                        TranscriptVariant.transcript_id == transcript_id,
+                        TranscriptVariant.kind == "refined"
+                    ).order_by(TranscriptVariant.created_at.asc())
+                    
+                    refined_ids = session.execute(stmt_count).scalars().all()
+                    
+                    # Max 3 refined variants allowed. If adding 1, we must have at most 2 existing.
+                    # So if len >= 3, delete (len - 2) oldest.
+                    MAX_REFINEMENTS = 3
+                    if len(refined_ids) >= MAX_REFINEMENTS:
+                        ids_to_delete = refined_ids[:len(refined_ids) - MAX_REFINEMENTS + 1]
+                        if ids_to_delete:
+                             logger.info(f"Enforcing limit: deleting old refined variants {ids_to_delete}")
+                             session.execute(delete(TranscriptVariant).where(TranscriptVariant.id.in_(ids_to_delete)))
+
+                # 2. Create New Variant
+                variant = TranscriptVariant(
+                    transcript_id=transcript_id,
+                    text=text,
+                    kind=kind,
+                    model_id=model_id
+                )
+                session.add(variant)
+                session.flush()  # Get ID
+                
+                # 3. Update Transcript Pointer
+                stmt = (
+                    update(Transcript)
+                    .where(Transcript.id == transcript_id)
+                    .values(
+                        current_variant_id=variant.id,
+                        normalized_text=text  # Update legacy field for fallback
+                    )
+                )
+                result = session.execute(stmt)
+                
+                if result.rowcount == 0:  # type: ignore[attr-defined]
+                    logger.warning(f"Transcript ID {transcript_id} not found during variant update")
+                    session.rollback()
+                    return False
+                    
+                session.commit()
+                logger.info(f"Added variant {variant.id} ({kind}) to transcript {transcript_id}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Failed to add variant: {e}")
+            return False
+
     def get_recent(self, limit: int = HISTORY_RECENT_LIMIT) -> list[HistoryEntry]:
         """Get most recent entries (newest first)."""
         try:
@@ -224,7 +382,7 @@ class HistoryManager:
                 result = session.execute(stmt)
                 session.commit()
 
-                if result.rowcount > 0:
+                if result.rowcount > 0:  # type: ignore[attr-defined]
                     logger.info(f"Updated history entry: {timestamp}")
                     return True
                 else:
@@ -243,7 +401,7 @@ class HistoryManager:
                 result = session.execute(stmt)
                 session.commit()
 
-                if result.rowcount > 0:
+                if result.rowcount > 0:  # type: ignore[attr-defined]
                     logger.info(f"Deleted history entry: {timestamp}")
                     return True
                 else:
@@ -372,7 +530,7 @@ class HistoryManager:
                 result = session.execute(stmt)
                 session.commit()
 
-                if result.rowcount > 0:
+                if result.rowcount > 0:  # type: ignore[attr-defined]
                     logger.info(f"Renamed focus group {focus_group_id} to '{new_name}'")
                     return True
                 else:
@@ -391,7 +549,7 @@ class HistoryManager:
                 result = session.execute(stmt)
                 session.commit()
 
-                if result.rowcount > 0:
+                if result.rowcount > 0:  # type: ignore[attr-defined]
                     logger.info(f"Updated focus group {focus_group_id} color to '{color}'")
                     return True
                 else:
@@ -428,7 +586,7 @@ class HistoryManager:
                 result = session.execute(stmt)
                 session.commit()
 
-                if result.rowcount > 0:
+                if result.rowcount > 0:  # type: ignore[attr-defined]
                     logger.info(f"Deleted focus group {focus_group_id}")
                     return True
                 else:
@@ -449,7 +607,7 @@ class HistoryManager:
                 result = session.execute(stmt)
                 session.commit()
 
-                if result.rowcount > 0:
+                if result.rowcount > 0:  # type: ignore[attr-defined]
                     group_str = f"group {focus_group_id}" if focus_group_id else "ungrouped"
                     logger.info(f"Assigned transcript {timestamp} to {group_str}")
                     return True

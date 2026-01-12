@@ -12,7 +12,6 @@ from ui.constants import (
     CONTENT_PANEL_RADIUS,
     SECTION_HEADER_RADIUS,
     SPLITTER_HANDLE_WIDTH,
-    STANDARD_RADIUS,
     Colors,
     Dimensions,
     Spacing,

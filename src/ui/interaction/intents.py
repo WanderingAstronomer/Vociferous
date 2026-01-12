@@ -68,6 +68,7 @@ class ViewTranscriptIntent(InteractionIntent):
     timestamp: str = ""  # Transcript identifier (required but has default for inheritance)
     text: str = ""  # Transcript content (required but has default for inheritance)
     source: IntentSource = field(default=IntentSource.SIDEBAR)
+    variants: list = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)

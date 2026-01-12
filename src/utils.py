@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal, QStandardPaths
 
 _DEFAULT_CONFIG_PATH = Path("src") / "config.yaml"
 _SCHEMA_FILENAME = "config_schema.yaml"
@@ -197,3 +197,15 @@ class ConfigManager(QObject):
         )
         if print_enabled:
             logger.info(message)
+
+
+def get_model_cache_dir() -> Path:
+    """
+    Get the application-managed cache directory for models.
+    Follows QStandardPaths.CacheLocation conventions (e.g., ~/.cache/Vociferous/models).
+    """
+    cache_root = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.CacheLocation))
+    model_dir = cache_root / "Vociferous" / "models"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    return model_dir
+

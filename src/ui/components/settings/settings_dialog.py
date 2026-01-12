@@ -229,6 +229,10 @@ class SettingsDialog(QDialog):
         self._add_section_header("Output")
         self._add_setting("output_options", "add_trailing_space")
 
+        # Group 4: Refinement
+        self._add_section_header("Grammar Refinement")
+        self._add_setting("refinement", "enabled")
+
     def _add_section_header(self, title: str) -> None:
         """Add a visual section separator."""
         header = QLabel(title)

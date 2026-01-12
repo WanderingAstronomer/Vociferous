@@ -2,6 +2,73 @@
 
 ---
 
+# v2.4.0 - Advanced Refinement & Resource Intelligence
+
+**Date:** January 2026
+**Status:** Feature Release
+
+---
+
+## Summary
+
+This release brings significant maturity to the AI Refinement engine, replacing the legacy experimental backend with a robust **Qwen3-4B-Instruct** foundation. We introduce **Refinement Profiles** (Minimal, Balanced, Strong) to give users granular control over editing intensity, and a **Dynamic Resource Manager** that intelligently loads models into GPU memory based on available headroom.
+
+The input system has been hardened against prompt injection using a "Swiss-Army-Knife" system prompt strategy, treating transcripts strictly as data rather than instructions.
+
+## Added
+
+### AI Refinement
+- **Directive-Based Prompting**: New "Refinement Profiles" allow selecting between `MINIMAL` (grammar only), `BALANCED` (light cleanup), and `STRONG` (flow/structure) editing modes.
+- **Dynamic VRAM Management**: The engine now queries `nvidia-smi` to calculate available GPU headroom:
+  - **>40% Free**: Auto-loads to GPU (CUDA) for maximum speed.
+  - **20-40% Free**: Defaults to GPU but logs warnings.
+  - **<20% Free**: Pauses initialization and asks the user for explicit confirmation to avoid system instability.
+- **32k Context Window**: Increased context limit from 4k to 32k tokens to support long-form dictation refinement.
+
+### UI / UX
+- **Profile Controls**: Integrated radio control group (Min/Bal/Str) directly into the workspace toolbar.
+- **Sidebar Polish**: Aligned sidebar collapse button with search controls and improved styling consistency.
+
+## Changed
+
+### Core Infrastructure
+- **Model Upgrade**: Replaced `vennify/t5-base` (Encoder-Decoder) with `Qwen/Qwen3-4B-Instruct` (Decoder-Only) for superior semantic reasoning.
+- **Inference Optimization**: Switched CUDA compute type to `int8_float16` for optimal Tensor Core utilization on NVIDIA GPUs.
+
+---
+
+# v2.3.0 - AI Grammar Refinement (MVP)
+
+**Date:** January 2026
+**Status:** Feature Release
+
+---
+
+## Summary
+
+Introduces **Single-Click AI Refinement**, a powerful new capability to instantly correct grammar, tense, and phrasing in your transcripts. Powered by a local, purpose-built GEC (Grammatical Error Correction) model, this feature transforms raw dictation, such as "him going to the store", into polished prose ("He was going to the store") without any valid text losing its meaning.
+
+This release integrates a production-grade CTranslate2 inference engine directly into Vociferous, ensuring zero external dependencies at runtime and complete privacy.
+
+## Added
+
+### Core Features
+- **Grammar Refinement (GEC)**: New backend engine using the `vennify/t5-base-grammar-correction` model (converted to quantized CTranslate2 format).
+- **Non-Destructive Editing**: Refinements are saved as "variants" of the original transcript. The original raw text is never lost.
+- **Local Inference**: All processing happens on-device using optimized CPU inference (Int8 quantization). No GPU required.
+
+### UI / UX
+- **Refinement Toggle**: New "Refine" button added to the Workspace (visible when enabled in settings).
+- **Settings**: Added "Grammar Refinement" section to the Settings dialog to toggle the feature.
+- **Status Feedback**: Real-time status messages during model loading and inference.
+
+### Infrastructure
+- **Model Management**: Automatic schema migration for variant support (`current_variant_id` column).
+- **Artifact Caching**: Secure caching of model artifacts in standard system locations (`~/.cache/Vociferous/models`).
+- **Dependencies**: Removed runtime dependence on heavy ML libraries (`torch`, `transformers`) in favor of lightweight inference runtimes.
+
+---
+
 # v2.2.1 - Group Hierarchy & UI Polish
 
 **Date:** January 2026

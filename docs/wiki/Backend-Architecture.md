@@ -69,6 +69,14 @@ Wrapper around faster-whisper:
 - Returns `(text, speech_duration_ms)` tuple for metrics
 - `post_process_transcription()`: Applies user preferences (spacing)
 
+### services/slm_service.py - Refinement Service
+
+Manages the lifecycle of the post-processing refinement model:
+
+- **Model**: Qwen3-4B-Instruct (CTranslate2 Int8)
+- **Role**: Provisioning (Download/Convert), Loading, and Inference
+- **Architecture**: Decoder-Only Instruction Following (See [Refinement Architecture](Refinement-Architecture.md))
+
 ### history_manager.py - Persistence
 
 SQLite-backed storage for transcription history:

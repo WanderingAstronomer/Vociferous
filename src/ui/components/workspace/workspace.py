@@ -74,7 +74,7 @@ class MainWorkspace(QWidget):
     cancelRequested = pyqtSignal()
     saveRequested = pyqtSignal(str)
     deleteRequested = pyqtSignal()
-    refineRequested = pyqtSignal()
+    refineRequested = pyqtSignal(str) # Passes profile
     textEdited = pyqtSignal()
 
     # Intent processing signal (Phase 2: observability only)
@@ -794,6 +794,13 @@ class MainWorkspace(QWidget):
                     speech_duration_ms = entry.speech_duration_ms
             
             self.content.set_transcript(text, timestamp)
+            
+            # Pass variants to content for carousel (Phase 6)
+            if hasattr(intent, "variants"):
+                self.content.set_variants(intent.variants)
+            else:
+                self.content.set_variants([])
+
             self.header.set_timestamp(timestamp)
             self._has_unsaved_changes = False
             

@@ -22,8 +22,6 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import (
     QDesktopServices,
     QGuiApplication,
-    QKeySequence,
-    QShortcut,
     QIcon,
     QTransform,
     QPixmap,
@@ -335,12 +333,21 @@ class MainWindow(QMainWindow):
         """Handle sidebar entry selection via intent layer.
         
         Phase 5: Routes through ViewTranscriptIntent for authority consolidation.
+        Phase 6: Now fetches variants for carousel support.
         """
         try:
+            # Fetch variants if history manager is available
+            variants = []
+            if self.history_manager:
+                t_id = self.history_manager.get_id_by_timestamp(timestamp)
+                if t_id:
+                    variants = self.history_manager.get_transcript_variants(t_id)
+
             intent = ViewTranscriptIntent(
                 timestamp=timestamp,
                 text=text,
                 source=IntentSource.SIDEBAR,
+                variants=variants
             )
             result = self.workspace.handle_intent(intent)
             
