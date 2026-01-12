@@ -506,11 +506,19 @@ class MainWorkspace(QWidget):
             self.set_state(WorkspaceState.RECORDING)
             self.startRequested.emit()
             
-            # Invariant assertions: RECORDING implies clean slate
-            assert self._state == WorkspaceState.RECORDING, \
-                f"BeginRecordingIntent accepted but state is {self._state.value}"
-            assert not self._has_unsaved_changes, \
-                "BeginRecordingIntent accepted but has_unsaved_changes is True"
+            # Invariant checks: RECORDING implies clean slate
+            if self._state != WorkspaceState.RECORDING:
+                message = (
+                    f"BeginRecordingIntent accepted but state is {self._state.value}"
+                )
+                logger.error(message)
+                raise RuntimeError(message)
+            if self._has_unsaved_changes:
+                message = (
+                    "BeginRecordingIntent accepted but has_unsaved_changes is True"
+                )
+                logger.error(message)
+                raise RuntimeError(message)
             
             return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
         else:
