@@ -398,7 +398,10 @@ class KeyListener:
         key, event_type = event
 
         if self.capture_mode and self.capture_callback:
-            self.capture_callback(key, event_type)
+            try:
+                self.capture_callback(key, event_type)
+            except Exception:
+                logger.exception("Error in capture callback")
             return
         was_active = self.key_chord.is_active()
         is_active = self.key_chord.update(key, event_type)
@@ -429,7 +432,10 @@ class KeyListener:
     def _trigger_callbacks(self, event: str) -> None:
         """Trigger all callbacks associated with a specific event."""
         for callback in self.callbacks.get(event, []):
-            callback()
+            try:
+                callback()
+            except Exception:
+                logger.exception(f"Error in {event} callback")
 
     def update_activation_keys(self) -> None:
         """Update activation keys from the current configuration."""

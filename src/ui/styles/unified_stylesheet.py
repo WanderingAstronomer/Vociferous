@@ -9,11 +9,9 @@ and applied together here instead of per-widget setStyleSheet() calls.
 """
 
 from ui.constants import (
-    BUTTON_RADIUS_RECT,
     CONTENT_PANEL_RADIUS,
     SECTION_HEADER_RADIUS,
     SPLITTER_HANDLE_WIDTH,
-    STANDARD_RADIUS,
     Colors,
     Dimensions,
     Spacing,
@@ -144,8 +142,35 @@ QMenu::item {{
 }}
 
 QMenu::item:selected {{
-    background-color: {c.ACCENT_BLUE_HOVER};
-    color: {c.TEXT_ACCENT};
+    background-color: {c.ACCENT_BLUE};
+    color: {c.TEXT_ON_ACCENT};
+}}
+
+/* =================================================================
+   RADIO BUTTONS (Styled)
+   ================================================================= */
+
+QRadioButton[class="styledRadio"] {{
+    color: {c.TEXT_PRIMARY};
+    spacing: 8px;
+    padding: 4px 0px;
+}}
+
+QRadioButton[class="styledRadio"]::indicator {{
+    width: 16px;
+    height: 16px;
+    border: 2px solid {c.BORDER_DEFAULT};
+    border-radius: 8px;
+    background-color: {c.BG_TERTIARY};
+}}
+
+QRadioButton[class="styledRadio"]::indicator:checked {{
+    background-color: {c.ACCENT_PRIMARY};
+    border-color: {c.ACCENT_PRIMARY};
+}}
+
+QRadioButton[class="styledRadio"]::indicator:hover {{
+    border-color: {c.ACCENT_PRIMARY};
 }}
 
 /* =================================================================
@@ -192,15 +217,15 @@ QToolButton#titleBarControl:pressed {{
 QToolButton#titleBarClose {{
     background-color: transparent;
     border: none;
-    border-radius: {Dimensions.BORDER_RADIUS_SMALL}px;
+    border-radius: {Dimensions.BORDER_RADIUS_SM}px;
 }}
 
 QToolButton#titleBarClose:hover {{
-    background-color: {c.ACCENT_DESTRUCTIVE};
+    background-color: {c.DESTRUCTIVE};
 }}
 
 QToolButton#titleBarClose:pressed {{
-    background-color: #c0392b;
+    background-color: {c.DESTRUCTIVE_PRESSED};
 }}
 
 QWidget#dialogTitleBar {{
@@ -315,9 +340,7 @@ QTreeWidget#focusGroupTree::item {{
     border: none;
 }}
 
-QTreeWidget#focusGroupTree::item:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-}}
+/* Hover and selection handled by FocusGroupDelegate */
 
 QTreeWidget#focusGroupTree::item:selected {{
     background-color: {c.HOVER_BG_SECTION};
@@ -492,101 +515,127 @@ QFrame#contentPanel[recording="true"] {{
 }}
 
 /* =================================================================
-   BUTTONS - Primary/Secondary/Destructive
+   BUTTONS - Following Refactoring UI Hierarchy Principles
+   
+   Primary: Solid high-contrast bg - THE main action on the page
+   Secondary: Outline/low-contrast - clear but not prominent
+   Destructive: Styled like secondary, only bold-red in confirmation dialogs
+   
+   All buttons use consistent padding (12px 24px) and border radius (12px)
    ================================================================= */
 
+/* --- Primary Buttons (solid, high-contrast) --- */
 QPushButton#primaryButton {{
-    background-color: {c.ACCENT_PRIMARY};
+    background-color: {c.PRIMARY};
     color: {c.TEXT_ON_ACCENT};
     border: none;
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-    font-size: {Typography.BODY_SIZE}pt;
-    font-weight: 600;
-    padding: 0 {Spacing.BUTTON_PADDING}px;
+    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
+    font-size: {Typography.FONT_SIZE_BASE}px;
+    font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
+    padding: {Spacing.S2}px {Spacing.S4}px;
 }}
 
 QPushButton#primaryButton:hover {{
-    background-color: {c.ACCENT_HOVER};
+    background-color: {c.PRIMARY_HOVER};
 }}
 
 QPushButton#primaryButton:pressed {{
-    background-color: {c.ACCENT_PRESSED};
+    background-color: {c.PRIMARY_PRESSED};
 }}
 
 QPushButton#primaryButton:disabled {{
-    background-color: {c.BG_TERTIARY};
+    background-color: {c.SURFACE_ALT};
     color: {c.TEXT_TERTIARY};
 }}
 
+/* --- Secondary Buttons (outline, subdued) --- */
 QPushButton#secondaryButton {{
-    background-color: {c.BG_TERTIARY};
+    background-color: transparent;
     color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_COLOR};
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-    font-size: {Typography.BODY_SIZE}pt;
-    padding: 0 {Spacing.BUTTON_PADDING}px;
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
+    font-size: {Typography.FONT_SIZE_BASE}px;
+    font-weight: {Typography.FONT_WEIGHT_NORMAL};
+    padding: {Spacing.S2}px {Spacing.S4}px;
 }}
 
 QPushButton#secondaryButton:hover {{
     background-color: {c.HOVER_BG_ITEM};
+    border-color: {c.PRIMARY};
+    color: {c.TEXT_ACCENT};
 }}
 
+QPushButton#secondaryButton:disabled {{
+    color: {c.TEXT_TERTIARY};
+    border-color: {c.TEXT_TERTIARY};
+}}
+
+/* --- Destructive Buttons (outline, red accent on hover) --- */
+/* Per Refactoring UI: destructive actions look secondary until confirmation */
 QPushButton#destructiveButton {{
     background-color: transparent;
-    color: {c.ACCENT_DESTRUCTIVE};
-    border: 1px solid {c.ACCENT_DESTRUCTIVE};
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-    font-size: {Typography.BODY_SIZE}pt;
-    padding: 0 {Spacing.BUTTON_PADDING}px;
+    color: {c.TEXT_SECONDARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
+    font-size: {Typography.FONT_SIZE_BASE}px;
+    font-weight: {Typography.FONT_WEIGHT_NORMAL};
+    padding: {Spacing.S2}px {Spacing.S4}px;
 }}
 
 QPushButton#destructiveButton:hover {{
-    background-color: rgba(231, 76, 60, 0.1);
+    background-color: {c.DESTRUCTIVE_BG};
+    color: {c.DESTRUCTIVE};
+    border-color: {c.DESTRUCTIVE};
 }}
 
-/* Styled Buttons (dialogs) */
+/* --- Styled Buttons (dialogs - same principles) --- */
 QPushButton#styledPrimary {{
-    background-color: {c.ACCENT_BLUE};
-    color: {c.BG_PRIMARY};
+    background-color: {c.PRIMARY};
+    color: {c.TEXT_ON_ACCENT};
     border: none;
-    border-radius: {BUTTON_RADIUS_RECT}px;
-    padding: 10px 24px;
-    font-weight: bold;
+    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
+    font-size: {Typography.FONT_SIZE_BASE}px;
+    font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
+    padding: {Spacing.S2}px {Spacing.S4}px;
 }}
 
 QPushButton#styledPrimary:hover {{
-    background-color: {c.ACCENT_BLUE_HOVER};
+    background-color: {c.PRIMARY_HOVER};
 }}
 
 QPushButton#styledPrimary:disabled {{
-    background-color: {c.BG_HEADER};
-    color: {c.TEXT_SECONDARY};
+    background-color: {c.SURFACE_ALT};
+    color: {c.TEXT_TERTIARY};
 }}
 
 QPushButton#styledSecondary {{
-    background-color: {c.BG_TERTIARY};
+    background-color: transparent;
     color: {c.TEXT_PRIMARY};
     border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: {BUTTON_RADIUS_RECT}px;
-    padding: 10px 24px;
+    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
+    font-size: {Typography.FONT_SIZE_BASE}px;
+    font-weight: {Typography.FONT_WEIGHT_NORMAL};
+    padding: {Spacing.S2}px {Spacing.S4}px;
 }}
 
 QPushButton#styledSecondary:hover {{
-    background-color: {c.HOVER_BG};
-    border-color: {c.ACCENT_BLUE};
+    background-color: {c.HOVER_BG_ITEM};
+    border-color: {c.PRIMARY};
     color: {c.TEXT_ACCENT};
 }}
 
 QPushButton#styledDestructive {{
-    background-color: {c.BG_TERTIARY};
-    color: {c.TEXT_PRIMARY};
+    background-color: transparent;
+    color: {c.TEXT_SECONDARY};
     border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: {BUTTON_RADIUS_RECT}px;
-    padding: 10px 24px;
+    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
+    font-size: {Typography.FONT_SIZE_BASE}px;
+    font-weight: {Typography.FONT_WEIGHT_NORMAL};
+    padding: {Spacing.S2}px {Spacing.S4}px;
 }}
 
 QPushButton#styledDestructive:hover {{
-    background-color: {c.DESTRUCTIVE_HOVER};
+    background-color: {c.DESTRUCTIVE_BG};
     color: {c.DESTRUCTIVE};
     border-color: {c.DESTRUCTIVE};
 }}
@@ -596,8 +645,8 @@ QPushButton#styledDestructive:hover {{
    ================================================================= */
 
 QWidget#metricsStrip {{
-    background-color: {c.BG_SECONDARY};
-    border-radius: 6px;
+    background-color: {c.SURFACE};
+    border-radius: {Dimensions.BORDER_RADIUS_MD}px;
 }}
 
 QLabel#metricLabel {{
@@ -649,7 +698,14 @@ QLabel#hotkeyValidation {{
    ================================================================= */
 
 QDialog {{
+    background-color: transparent;
+    border: none;
+}}
+
+QFrame#dialogFrame {{
     background-color: {c.BG_PRIMARY};
+    border: 3px solid {c.BORDER_ACCENT};
+    border-radius: 0px;
 }}
 
 QWidget#dialogContent {{
@@ -658,8 +714,6 @@ QWidget#dialogContent {{
 
 QWidget#dialogContainer {{
     background-color: {c.BG_PRIMARY};
-    border: 1px solid {c.BORDER_ACCENT};
-    border-radius: {STANDARD_RADIUS}px;
 }}
 
 QWidget#dialogButtonContainer {{
@@ -672,6 +726,7 @@ QWidget#dialogButtonContainer {{
 QLabel#dialogLabel {{
     color: {c.TEXT_PRIMARY};
     font-size: {Typography.BODY_SIZE}pt;
+    border: none;
 }}
 
 QLineEdit#dialogInput {{
@@ -685,10 +740,6 @@ QLineEdit#dialogInput {{
 
 QLineEdit#dialogInput:focus {{
     border-color: {c.ACCENT_BLUE};
-}}
-
-QDialog#createGroupDialog {{
-    background-color: {c.BG_PRIMARY};
 }}
 
 QLabel#groupDialogLabel {{
@@ -713,12 +764,6 @@ QLineEdit#groupNameInput:focus {{
 /* =================================================================
    SETTINGS DIALOG
    ================================================================= */
-
-QDialog#settingsDialog {{
-    background-color: {c.BG_PRIMARY};
-    border: 1px solid {c.BORDER_COLOR};
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-}}
 
 QScrollArea#settingsScrollArea {{
     background-color: transparent;
@@ -904,5 +949,174 @@ QLabel#aboutCreator {{
 
 QWidget#waveformVisualizer {{
     background-color: transparent;
+}}
+
+/* =================================================================
+   FILE DIALOG (Qt-styled, non-native)
+   ================================================================= */
+
+QFileDialog {{
+    background-color: {c.BG_PRIMARY};
+    color: {c.TEXT_PRIMARY};
+}}
+
+QFileDialog QWidget {{
+    background-color: {c.BG_PRIMARY};
+    color: {c.TEXT_PRIMARY};
+}}
+
+QFileDialog QLabel {{
+    color: {c.TEXT_PRIMARY};
+    background: transparent;
+}}
+
+/* File/Directory list views */
+QFileDialog QListView,
+QFileDialog QTreeView {{
+    background-color: {c.BG_SECONDARY};
+    color: {c.TEXT_PRIMARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: {Dimensions.BORDER_RADIUS}px;
+    selection-background-color: {c.ACCENT_PRIMARY};
+    selection-color: {c.TEXT_ON_ACCENT};
+}}
+
+QFileDialog QListView::item,
+QFileDialog QTreeView::item {{
+    padding: 6px 8px;
+    color: {c.TEXT_PRIMARY};
+}}
+
+QFileDialog QListView::item:hover,
+QFileDialog QTreeView::item:hover {{
+    background-color: {c.HOVER_BG_ITEM};
+}}
+
+QFileDialog QListView::item:selected,
+QFileDialog QTreeView::item:selected {{
+    background-color: {c.ACCENT_PRIMARY};
+    color: {c.TEXT_ON_ACCENT};
+}}
+
+/* Header columns */
+QFileDialog QHeaderView::section {{
+    background-color: {c.BG_TERTIARY};
+    color: {c.TEXT_SECONDARY};
+    border: none;
+    border-bottom: 1px solid {c.BORDER_DEFAULT};
+    padding: 8px;
+    font-weight: {Typography.FONT_WEIGHT_MEDIUM};
+}}
+
+/* Input fields */
+QFileDialog QLineEdit {{
+    background-color: {c.BG_SECONDARY};
+    color: {c.TEXT_PRIMARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: {Dimensions.BORDER_RADIUS}px;
+    padding: 8px 12px;
+    selection-background-color: {c.ACCENT_PRIMARY};
+    selection-color: {c.TEXT_ON_ACCENT};
+}}
+
+QFileDialog QLineEdit:focus {{
+    border: 1px solid {c.ACCENT_PRIMARY};
+}}
+
+/* Dropdown/Combobox */
+QFileDialog QComboBox {{
+    background-color: {c.BG_SECONDARY};
+    color: {c.TEXT_PRIMARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: {Dimensions.BORDER_RADIUS}px;
+    padding: 8px 12px;
+}}
+
+QFileDialog QComboBox:focus {{
+    border: 1px solid {c.ACCENT_PRIMARY};
+}}
+
+QFileDialog QComboBox::drop-down {{
+    border: none;
+    width: 24px;
+}}
+
+QFileDialog QComboBox QAbstractItemView {{
+    background-color: {c.BG_SECONDARY};
+    color: {c.TEXT_PRIMARY};
+    border: 1px solid {c.ACCENT_PRIMARY};
+    selection-background-color: {c.ACCENT_PRIMARY};
+    selection-color: {c.TEXT_ON_ACCENT};
+}}
+
+/* Toolbar and view buttons */
+QFileDialog QToolBar {{
+    background-color: {c.BG_PRIMARY};
+    border: none;
+    spacing: 4px;
+}}
+
+QFileDialog QToolButton {{
+    background-color: {c.BG_SECONDARY};
+    color: {c.TEXT_PRIMARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: {Dimensions.BORDER_RADIUS}px;
+    padding: 6px;
+    margin: 2px;
+}}
+
+QFileDialog QToolButton:hover {{
+    background-color: {c.HOVER_BG_ITEM};
+    border-color: {c.ACCENT_PRIMARY};
+}}
+
+QFileDialog QToolButton:checked {{
+    background-color: {c.ACCENT_PRIMARY};
+    border-color: {c.ACCENT_PRIMARY};
+    color: {c.TEXT_ON_ACCENT};
+}}
+
+QFileDialog QToolButton:pressed {{
+    background-color: {c.ACCENT_PRESSED};
+}}
+
+/* Sidebar (places/shortcuts) */
+QFileDialog QSidebar {{
+    background-color: {c.BG_SECONDARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+}}
+
+QFileDialog QSidebar::item {{
+    color: {c.TEXT_PRIMARY};
+    padding: 6px;
+}}
+
+QFileDialog QSidebar::item:hover {{
+    background-color: {c.HOVER_BG_ITEM};
+}}
+
+QFileDialog QSidebar::item:selected {{
+    background-color: {c.ACCENT_PRIMARY};
+    color: {c.TEXT_ON_ACCENT};
+}}
+
+/* Buttons - will be overridden programmatically for Choose/Cancel */
+QFileDialog QPushButton {{
+    background-color: {c.BG_TERTIARY};
+    color: {c.TEXT_PRIMARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: {Dimensions.BORDER_RADIUS}px;
+    padding: 10px 20px;
+    min-width: 80px;
+    font-size: {Typography.BODY_SIZE}pt;
+}}
+
+QFileDialog QPushButton:hover {{
+    background-color: {c.HOVER_BG_ITEM};
+    border-color: {c.ACCENT_PRIMARY};
+}}
+
+QFileDialog QPushButton:pressed {{
+    background-color: {c.ACCENT_PRESSED};
 }}
 """

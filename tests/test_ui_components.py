@@ -2,9 +2,15 @@
 Comprehensive UI component tests for dialogs, widgets, and interactions.
 
 Tests Focus Groups, History Tree, Settings Dialog, and other UI components.
+
+Test Tier: UI-Dependent (Tier 2)
+- Requires QApplication and Qt widget instantiation
+- May fail with SIGABRT in headless environments
+- Run with: pytest -m "ui_dependent"
 """
 
 import pytest
+from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import QApplication
 
 from history_manager import HistoryManager
@@ -15,6 +21,9 @@ from ui.widgets.dialogs import CreateGroupDialog
 from ui.widgets.focus_group import FocusGroupContainer, FocusGroupTreeWidget
 from ui.widgets.history_tree import HistoryTreeView
 from ui.widgets.hotkey_widget import HotkeyWidget
+
+# Mark entire module as UI-dependent
+pytestmark = pytest.mark.ui_dependent
 
 
 @pytest.fixture(scope="module")
@@ -143,9 +152,9 @@ class TestFocusGroupWidget:
         assert group_id is not None
         assert tree.topLevelItemCount() == 1
 
-        # Verify group data (text is in column 1, column 0 is for color bar)
+        # Verify group data (single column layout, text is in column 0)
         item = tree.topLevelItem(0)
-        assert "Test Group" in item.text(1)
+        assert "Test Group" in item.text(0)
         assert item.data(0, tree.ROLE_GROUP_ID) == group_id
         assert item.data(0, tree.ROLE_COLOR) == "#3a4f5c"
 
@@ -172,8 +181,8 @@ class TestFocusGroupWidget:
         tree.load_groups()
 
         item = tree.topLevelItem(0)
-        # Text is in column 1 - count display was removed per user preference
-        assert "My Group" in item.text(1)
+        # Text is in column 0 - single column layout
+        assert "My Group" in item.text(0)
 
     def test_container_signals(self, qapp, temp_history_manager):
         """Test that container emits correct signals."""

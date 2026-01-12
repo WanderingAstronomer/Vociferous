@@ -3,6 +3,7 @@ Test single-instance enforcement.
 """
 
 import os
+import signal
 import subprocess
 import time
 

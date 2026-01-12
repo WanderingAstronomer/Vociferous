@@ -287,11 +287,23 @@ class SearchPanel(QWidget):
         self._results_tree.clear()
         self._results_tree.show()
         
+        # Build group map for context
+        group_map = {}
+        if self._history_manager:
+            try:
+                groups = self._history_manager.get_focus_groups()
+                for row in groups:
+                    # Handle tuple variations (id, name, color...)
+                    if row and len(row) >= 2:
+                        group_map[row[0]] = row[1]
+            except Exception:
+                pass  # Fail gracefully if group fetch fails
+
         for entry in results:
-            item = self._create_result_item(entry, query)
+            item = self._create_result_item(entry, query, group_map)
             self._results_tree.addTopLevelItem(item)
     
-    def _create_result_item(self, entry: "HistoryEntry", query: str) -> QTreeWidgetItem:
+    def _create_result_item(self, entry: "HistoryEntry", query: str, group_map: dict = None) -> QTreeWidgetItem:
         """Create a tree widget item for a search result."""
         # Parse timestamp for display
         try:
@@ -301,6 +313,12 @@ class SearchPanel(QWidget):
             display_time = f"{date_str} {time_str}"
         except (ValueError, TypeError):
             display_time = entry.timestamp[:16] if entry.timestamp else ""
+            
+        # Add group context if available
+        if group_map and entry.focus_group_id in group_map:
+            group_name = group_map[entry.focus_group_id]
+            # Prepend group name to timestamp/metadata column
+            display_time = f"[{group_name}]  {display_time}"
         
         # Create preview with query highlighted context
         preview = format_preview(entry.text, 80)

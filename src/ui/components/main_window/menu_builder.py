@@ -34,23 +34,34 @@ class MenuBuilder:
         self,
         *,
         on_exit: Callable[[], None],
+        on_restart: Callable[[], None],
         on_export: Callable[[], None],
         on_clear: Callable[[], None],
         on_toggle_metrics: Callable[[bool], None],
         on_focus_history: Callable[[], None],
         on_about: Callable[[], None],
         on_metrics_explanation: Callable[[], None],
+        on_toggle_sidebar: Callable[[], None] | None = None,
     ) -> None:
         """Build all menus with action handlers."""
-        self._create_file_menu(on_exit)
+        self._create_file_menu(on_exit, on_restart)
         self._create_history_menu(on_export, on_clear)
-        self._create_view_menu(on_toggle_metrics, on_focus_history)
+        self._create_view_menu(on_toggle_metrics, on_focus_history, on_toggle_sidebar=on_toggle_sidebar)
         self._create_settings_menu()
         self._create_help_menu(on_about, on_metrics_explanation)
 
-    def _create_file_menu(self, on_exit: Callable[[], None]) -> None:
+    def _create_file_menu(
+        self, on_exit: Callable[[], None], on_restart: Callable[[], None]
+    ) -> None:
         """Create File menu."""
         file_menu = self._menu_bar.addMenu("&File")
+
+        restart_action = QAction("Restart", self._window)
+        restart_action.setShortcut(QKeySequence("Ctrl+Shift+R"))
+        restart_action.triggered.connect(on_restart)
+        file_menu.addAction(restart_action)
+
+        file_menu.addSeparator()
 
         exit_action = QAction("Exit", self._window)
         exit_action.triggered.connect(on_exit)
@@ -77,9 +88,17 @@ class MenuBuilder:
         self,
         on_toggle_metrics: Callable[[bool], None],
         on_focus_history: Callable[[], None],
+        on_toggle_sidebar: Callable[[], None] | None = None,
     ) -> None:
         """Create View menu."""
         view_menu = self._menu_bar.addMenu("&View")
+
+        if on_toggle_sidebar:
+            self.toggle_sidebar_action = QAction("Toggle Sidebar", self._window)
+            self.toggle_sidebar_action.setShortcut(QKeySequence("Ctrl+B"))
+            self.toggle_sidebar_action.triggered.connect(on_toggle_sidebar)
+            view_menu.addAction(self.toggle_sidebar_action)
+            view_menu.addSeparator()
 
         self.focus_history_action = QAction("Focus History", self._window)
         self.focus_history_action.setShortcut(QKeySequence("Ctrl+H"))

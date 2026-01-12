@@ -10,6 +10,7 @@ States:
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -27,6 +28,20 @@ from PyQt6.QtWidgets import (
 from ui.constants import Spacing, Typography, WorkspaceState
 from ui.utils.clipboard_utils import copy_text
 from ui.widgets.content_panel import ContentPanel
+from ui.interaction import (
+    InteractionIntent,
+    IntentOutcome,
+    IntentResult,
+    IntentSource,
+    BeginRecordingIntent,
+    StopRecordingIntent,
+    CancelRecordingIntent,
+    ViewTranscriptIntent,
+    EditTranscriptIntent,
+    CommitEditsIntent,
+    DiscardEditsIntent,
+    DeleteTranscriptIntent,
+)
 
 from ui.components.workspace.content import WorkspaceContent
 from ui.components.workspace.controls import WorkspaceControls
@@ -34,6 +49,8 @@ from ui.components.workspace.header import WorkspaceHeader
 
 if TYPE_CHECKING:
     from history_manager import HistoryEntry
+
+logger = logging.getLogger(__name__)
 
 
 class MainWorkspace(QWidget):
@@ -57,8 +74,11 @@ class MainWorkspace(QWidget):
     cancelRequested = pyqtSignal()
     saveRequested = pyqtSignal(str)
     deleteRequested = pyqtSignal()
-    refineRequested = pyqtSignal()
+    refineRequested = pyqtSignal(str) # Passes profile
     textEdited = pyqtSignal()
+
+    # Intent processing signal (Phase 2: observability only)
+    intentProcessed = pyqtSignal(object)  # IntentResult
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -230,7 +250,7 @@ class MainWorkspace(QWidget):
                 self.controls.update_for_editing()
                 self.content.update_for_editing()
                 self.hotkey_hint.setText("Press Alt to start recording")
-                self.metrics.hide()
+                # Metrics visibility preserved from VIEWING state
                 self.content_scroll.setVerticalScrollBarPolicy(
                     Qt.ScrollBarPolicy.ScrollBarAsNeeded
                 )
@@ -243,8 +263,11 @@ class MainWorkspace(QWidget):
 
     def set_state(self, state: WorkspaceState) -> None:
         """Change workspace state."""
-        self._state = state
-        self._update_for_state()
+        try:
+            self._state = state
+            self._update_for_state()
+        except Exception:
+            logger.exception("Error setting workspace state")
 
     def get_state(self) -> WorkspaceState:
         """Return current state."""
@@ -252,59 +275,78 @@ class MainWorkspace(QWidget):
 
     def load_transcript(self, text: str, timestamp: str) -> None:
         """Load a transcript for viewing/editing."""
-        # Try to fetch duration and speech_duration from history manager
-        duration_ms = None
-        speech_duration_ms = None
-        if self._history_manager:
-            entry = self._history_manager.get_entry_by_timestamp(timestamp)
-            if entry:
-                duration_ms = entry.duration_ms
-                speech_duration_ms = entry.speech_duration_ms
-        
-        self.content.set_transcript(text, timestamp)
-        self.header.set_timestamp(timestamp)
-        self._has_unsaved_changes = False
+        try:
+            # Try to fetch duration and speech_duration from history manager
+            duration_ms = None
+            speech_duration_ms = None
+            if self._history_manager:
+                entry = self._history_manager.get_entry_by_timestamp(timestamp)
+                if entry:
+                    duration_ms = entry.duration_ms
+                    speech_duration_ms = entry.speech_duration_ms
+            
+            self.content.set_transcript(text, timestamp)
+            self.header.set_timestamp(timestamp)
+            self._has_unsaved_changes = False
 
-        # Update metrics if we have duration data
-        if text and duration_ms is not None:
-            word_count = len(text.split())
-            self.metrics.set_metrics(duration_ms, speech_duration_ms, word_count)
-            self.metrics.show()
-        else:
-            self.metrics.hide()
+            # Update metrics if we have duration data
+            if text and duration_ms is not None:
+                word_count = len(text.split())
+                self.metrics.set_metrics(duration_ms, speech_duration_ms, word_count)
+                self.metrics.show()
+            else:
+                self.metrics.hide()
 
-        if text:
-            self.set_state(WorkspaceState.VIEWING)
-        else:
-            self.set_state(WorkspaceState.IDLE)
+            if text:
+                self.set_state(WorkspaceState.VIEWING)
+            else:
+                self.set_state(WorkspaceState.IDLE)
+        except Exception:
+            logger.exception("Error loading transcript")
+            raise
 
     def display_new_transcript(self, entry: HistoryEntry) -> None:
         """Display a newly created transcript."""
-        self.content.set_transcript(entry.text, entry.timestamp)
-        self.header.set_timestamp(entry.timestamp)
-        self._has_unsaved_changes = False
-        
-        # Update metrics with entry data
-        if entry.text and entry.duration_ms is not None:
-            word_count = len(entry.text.split())
-            self.metrics.set_metrics(entry.duration_ms, entry.speech_duration_ms, word_count)
-            self.metrics.show()
-        else:
-            self.metrics.hide()
-        
-        self.set_state(WorkspaceState.VIEWING)
+        try:
+            self.content.set_transcript(entry.text, entry.timestamp)
+            self.header.set_timestamp(entry.timestamp)
+            self._has_unsaved_changes = False
+            
+            # Update metrics with entry data
+            if entry.text and entry.duration_ms is not None:
+                word_count = len(entry.text.split())
+                self.metrics.set_metrics(entry.duration_ms, entry.speech_duration_ms, word_count)
+                self.metrics.show()
+            else:
+                self.metrics.hide()
+            
+            self.set_state(WorkspaceState.VIEWING)
+        except Exception:
+            logger.exception("Error displaying new transcript")
+            raise
 
     def show_transcribing_status(self) -> None:
         """Show transcribing indicator (after recording stops)."""
-        self.header.update_for_transcribing()
+        try:
+            self.header.update_for_transcribing()
+        except Exception:
+            logger.exception("Error showing transcribing status")
 
     def get_current_text(self) -> str:
         """Return current transcript text."""
-        return self.content.get_text()
+        try:
+            return self.content.get_text()
+        except Exception:
+            logger.exception("Error getting current text")
+            return ""
 
     def get_current_timestamp(self) -> str:
         """Return current transcript timestamp."""
-        return self.content.get_timestamp()
+        try:
+            return self.content.get_timestamp()
+        except Exception:
+            logger.exception("Error getting current timestamp")
+            return ""
 
     def has_unsaved_changes(self) -> bool:
         """Check if there are unsaved edits."""
@@ -312,60 +354,502 @@ class MainWorkspace(QWidget):
 
     def copy_current(self) -> None:
         """Copy current transcript to clipboard."""
-        text = self.content.get_text()
-        if text:
-            copy_text(text)
+        try:
+            text = self.content.get_text()
+            if text:
+                copy_text(text)
+        except Exception:
+            logger.exception("Error copying text to clipboard")
 
     def add_audio_level(self, level: float) -> None:
         """Forward audio level to waveform visualization."""
-        self.content.add_audio_level(level)
+        try:
+            self.content.add_audio_level(level)
+        except Exception:
+            # Don't log every audio level error to avoid spam
+            pass
 
     # Button handlers
 
     def _on_primary_click(self) -> None:
-        """Handle primary button (Start/Stop) click."""
-        match self._state:
-            case WorkspaceState.IDLE | WorkspaceState.VIEWING:
-                self.set_state(WorkspaceState.RECORDING)
-                self.startRequested.emit()
-            case WorkspaceState.RECORDING:
-                self.show_transcribing_status()
-                self.stopRequested.emit()
+        """Handle primary button (Start/Stop) click via intent system."""
+        try:
+            # Phase 3: Route through intent system (handle_intent is authoritative)
+            match self._state:
+                case WorkspaceState.IDLE | WorkspaceState.VIEWING:
+                    self.handle_intent(BeginRecordingIntent(source=IntentSource.CONTROLS))
+                case WorkspaceState.RECORDING:
+                    self.handle_intent(StopRecordingIntent(source=IntentSource.CONTROLS))
+        except Exception:
+            logger.exception("Error in primary button click")
 
     def _on_edit_save_click(self) -> None:
-        """Handle Edit/Save button click."""
-        match self._state:
-            case WorkspaceState.VIEWING:
-                self.set_state(WorkspaceState.EDITING)
-            case WorkspaceState.EDITING:
-                edited_text = self.content.get_text()
-                self.content.set_transcript(edited_text, self.content.get_timestamp())
-                self._has_unsaved_changes = False
-                self.saveRequested.emit(edited_text)
-                self.set_state(WorkspaceState.VIEWING)
+        """Handle Edit/Save button click.
+        
+        Phase 4: VIEWING state now routes through intent layer for edit.
+        EDITING state still uses legacy path for save (pending migration).
+        """
+        try:
+            match self._state:
+                case WorkspaceState.VIEWING:
+                    # Phase 4: Route through intent layer
+                    self.handle_intent(EditTranscriptIntent(source=IntentSource.CONTROLS))
+                case WorkspaceState.EDITING:
+                    # Phase 4: Route through intent layer
+                    edited_text = self.content.get_text()
+                    self.handle_intent(CommitEditsIntent(
+                        source=IntentSource.CONTROLS,
+                        content=edited_text,
+                    ))
+        except Exception:
+            logger.exception("Error in edit/save button click")
 
     def _on_destructive_click(self) -> None:
-        """Handle Cancel/Delete button click."""
-        match self._state:
-            case WorkspaceState.RECORDING:
-                self.cancelRequested.emit()
-                self.set_state(WorkspaceState.IDLE)
-            case WorkspaceState.EDITING:
-                self._has_unsaved_changes = False
-                self.set_state(WorkspaceState.VIEWING)
-            case WorkspaceState.VIEWING:
-                self.deleteRequested.emit()
+        """Handle Cancel/Delete button click.
+        
+        Phase 5: All cases now route through intent layer.
+        """
+        try:
+            match self._state:
+                case WorkspaceState.RECORDING:
+                    # Phase 3: Route through intent layer
+                    self.handle_intent(CancelRecordingIntent(source=IntentSource.HOTKEY))
+                case WorkspaceState.EDITING:
+                    # Phase 4: Route through intent layer
+                    self.handle_intent(DiscardEditsIntent(source=IntentSource.CONTROLS))
+                case WorkspaceState.VIEWING:
+                    # Phase 5: Route through intent layer
+                    self.handle_intent(DeleteTranscriptIntent(source=IntentSource.CONTROLS))
+        except Exception:
+            logger.exception("Error in destructive button click")
 
     def _on_text_changed(self) -> None:
         """Track when text is edited."""
+        try:
+            if self._state == WorkspaceState.EDITING:
+                self._has_unsaved_changes = True
+                self.textEdited.emit()
+        except Exception:
+            logger.exception("Error tracking text change")
+
+    # Intent handling (Phase 2: bridge to existing handlers)
+
+    def handle_intent(self, intent: InteractionIntent) -> IntentResult:
+        """
+        Process an interaction intent and return the outcome.
+
+        Phase 2: This is a compatibility bridge. It logs the intent,
+        delegates to existing handlers, and produces an IntentResult.
+        No behavior changes; existing signal wiring remains authoritative.
+
+        Args:
+            intent: The semantic intent to process
+
+        Returns:
+            IntentResult describing what happened
+        """
+        logger.debug("Intent received: %s", type(intent).__name__)
+
+        result: IntentResult
+
+        match intent:
+            # Authoritative apply methods (Phase 3)
+            case BeginRecordingIntent():
+                result = self._apply_begin_recording(intent)
+
+            case StopRecordingIntent():
+                result = self._apply_stop_recording(intent)
+
+            case CancelRecordingIntent():
+                result = self._apply_cancel_recording(intent)
+
+            case EditTranscriptIntent():
+                result = self._apply_edit_transcript(intent)
+
+            case CommitEditsIntent(content=text):
+                result = self._apply_commit_edits(intent, text)
+
+            case DiscardEditsIntent():
+                result = self._apply_discard_edits(intent)
+
+            # Authoritative apply methods
+
+            case DeleteTranscriptIntent():
+                result = self._apply_delete_transcript(intent)
+
+            case ViewTranscriptIntent(timestamp=ts, text=txt):
+                result = self._apply_view_transcript(intent, ts, txt)
+
+            case _:
+                result = IntentResult(
+                    outcome=IntentOutcome.REJECTED,
+                    intent=intent,
+                    reason=f"Unknown intent type: {type(intent).__name__}",
+                )
+
+        logger.debug("Intent result: %s (%s)", result.outcome.name, result.reason or "")
+        self.intentProcessed.emit(result)
+        return result
+
+    def _apply_begin_recording(self, intent: BeginRecordingIntent) -> IntentResult:
+        """Apply BeginRecordingIntent: transition to RECORDING state.
+        
+        Phase 3: Authoritative state mutator for BeginRecordingIntent.
+        All state mutation for this intent happens here. Bridges route,
+        applies mutate.
+        
+        Precondition: state in (IDLE, VIEWING)
+        Postcondition: state == RECORDING, no unsaved changes
+        """
+        if self._state in (WorkspaceState.IDLE, WorkspaceState.VIEWING):
+            # Authoritative mutation
+            self.set_state(WorkspaceState.RECORDING)
+            self.startRequested.emit()
+            
+            # Invariant checks: RECORDING implies clean slate
+            if self._state != WorkspaceState.RECORDING:
+                message = (
+                    f"BeginRecordingIntent accepted but state is {self._state.value}"
+                )
+                logger.error(message)
+                raise RuntimeError(message)
+            if self._has_unsaved_changes:
+                message = (
+                    "BeginRecordingIntent accepted but has_unsaved_changes is True"
+                )
+                logger.error(message)
+                raise RuntimeError(message)
+            
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+        else:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason=f"Cannot start recording in {self._state.value} state",
+            )
+
+    def _apply_stop_recording(self, intent: StopRecordingIntent) -> IntentResult:
+        """Apply StopRecordingIntent: request transcription and show status.
+        
+        Phase 3: Authoritative state mutator for StopRecordingIntent.
+        State remains RECORDING until transcription completes externally.
+        Bridges route, applies mutate.
+        
+        Precondition: state == RECORDING
+        Postcondition: transcribing UI visible, stopRequested emitted
+        """
+        if self._state == WorkspaceState.RECORDING:
+            # Authoritative mutation: show transcribing UI and emit signal
+            self.show_transcribing_status()
+            self.stopRequested.emit()
+            
+            # Note: State remains RECORDING here. Transition to VIEWING happens
+            # when transcription completes via show_transcription().
+            
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+        else:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason="Not currently recording",
+            )
+
+    def _apply_cancel_recording(self, intent: CancelRecordingIntent) -> IntentResult:
+        """Apply CancelRecordingIntent: abort recording and return to IDLE.
+        
+        Phase 3: Authoritative state mutator for CancelRecordingIntent.
+        Bridges route, applies mutate.
+        
+        Precondition: state == RECORDING
+        Postcondition: state == IDLE, cancelRequested emitted
+        """
+        if self._state == WorkspaceState.RECORDING:
+            # Authoritative mutation
+            self.cancelRequested.emit()
+            self.set_state(WorkspaceState.IDLE)
+            
+            # Invariant assertions: IDLE implies clean slate
+            assert self._state == WorkspaceState.IDLE, \
+                f"CancelRecordingIntent accepted but state is {self._state.value}"
+            assert not self._has_unsaved_changes, \
+                "CancelRecordingIntent accepted but has_unsaved_changes is True"
+            
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+        else:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason="Not currently recording",
+            )
+
+    def _apply_edit_transcript(self, intent: EditTranscriptIntent) -> IntentResult:
+        """Apply EditTranscriptIntent: enter editing mode for current transcript.
+        
+        Phase 4: Authoritative state mutator for EditTranscriptIntent.
+        Bridges route, applies mutate.
+        
+        Precondition: state == VIEWING, current transcript loaded
+        Postcondition: state == EDITING
+        
+        Invariant 1: Editing implies selected transcript (enforced here)
+        
+        Note: _has_unsaved_changes may become True after set_state(EDITING)
+        due to Qt's textChanged signal firing when the editor is populated.
+        This is expected behavior. The unsaved flag is cleared by terminal
+        intents (CommitEditsIntent, DiscardEditsIntent).
+        """
+        if self._state == WorkspaceState.VIEWING:
+            # Invariant 1: Must have a transcript loaded to edit
+            current_ts = self.get_current_timestamp()
+            if not current_ts:
+                return IntentResult(
+                    outcome=IntentOutcome.REJECTED,
+                    intent=intent,
+                    reason="No transcript loaded to edit",
+                )
+            
+            # Authoritative mutation
+            self.set_state(WorkspaceState.EDITING)
+            
+            # Postcondition assertions
+            assert self._state == WorkspaceState.EDITING, \
+                f"EditTranscriptIntent accepted but state is {self._state.value}"
+            # Note: Do not assert _has_unsaved_changes here - Qt's textChanged
+            # fires when the editor is populated, setting the flag to True.
+            
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+        elif self._state == WorkspaceState.EDITING:
+            return IntentResult(
+                outcome=IntentOutcome.NO_OP,
+                intent=intent,
+                reason="Already in edit mode",
+            )
+        else:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason=f"Cannot edit in {self._state.value} state",
+            )
+
+    def _apply_commit_edits(self, intent: CommitEditsIntent, content: str) -> IntentResult:
+        """Apply CommitEditsIntent: save edited content and exit editing mode.
+        
+        Phase 4: Authoritative state mutator for CommitEditsIntent.
+        This is a terminal intent for editing sessions.
+        Bridges route, applies mutate.
+        
+        Precondition: state == EDITING
+        Postcondition: state == VIEWING, _has_unsaved_changes == False
+        
+        Invariant 4: Editing can only exit through terminal intents.
+        """
         if self._state == WorkspaceState.EDITING:
-            self._has_unsaved_changes = True
-            self.textEdited.emit()
+            # Authoritative mutation: persist edits and transition to VIEWING
+            self.content.set_transcript(content, self.content.get_timestamp())
+            self._has_unsaved_changes = False
+            self.saveRequested.emit(content)
+            self.set_state(WorkspaceState.VIEWING)
+            
+            # Postcondition assertions
+            assert self._state == WorkspaceState.VIEWING, \
+                f"CommitEditsIntent accepted but state is {self._state.value}"
+            assert not self._has_unsaved_changes, \
+                "CommitEditsIntent: unsaved changes should be False after commit"
+            
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+        else:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason="Not in edit mode",
+            )
+
+    def _apply_discard_edits(self, intent: DiscardEditsIntent) -> IntentResult:
+        """Apply DiscardEditsIntent: abandon edits and exit editing mode.
+        
+        Phase 4: Authoritative state mutator for DiscardEditsIntent.
+        This is a terminal intent for editing sessions.
+        Bridges route, applies mutate.
+        
+        Precondition: state == EDITING
+        Postcondition: state == VIEWING, _has_unsaved_changes == False
+        
+        Invariant 4: Editing can only exit through terminal intents.
+        """
+        if self._state == WorkspaceState.EDITING:
+            # Authoritative mutation: discard edits and transition to VIEWING
+            self._has_unsaved_changes = False
+            self.set_state(WorkspaceState.VIEWING)
+            
+            # Postcondition assertions
+            assert self._state == WorkspaceState.VIEWING, \
+                f"DiscardEditsIntent accepted but state is {self._state.value}"
+            assert not self._has_unsaved_changes, \
+                "DiscardEditsIntent: unsaved changes should be False after discard"
+            
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+        else:
+            return IntentResult(
+                outcome=IntentOutcome.NO_OP,
+                intent=intent,
+                reason="Not in edit mode",
+            )
+
+    def _apply_delete_transcript(self, intent: DeleteTranscriptIntent) -> IntentResult:
+        """Apply DeleteTranscriptIntent: request deletion of current transcript.
+        
+        Phase 5: Authoritative validator for DeleteTranscriptIntent.
+        
+        Precondition: state == VIEWING (must have a transcript to delete)
+        Postcondition: deleteRequested emitted
+        
+        Note: This does NOT change state. Actual deletion and state transition
+        happen when MainWindow confirms and calls clear_transcript().
+        The confirmation dialog is a UX concern owned by MainWindow.
+        """
+        # Precondition: can only delete while viewing
+        if self._state != WorkspaceState.VIEWING:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason=f"Cannot delete in {self._state.value} state",
+            )
+        
+        # Precondition: must have a transcript selected
+        timestamp = self.get_current_timestamp()
+        if not timestamp:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason="No transcript selected",
+            )
+        
+        # Emit signal for MainWindow to handle (shows confirmation, performs I/O)
+        self.deleteRequested.emit()
+        
+        # State change happens in clear_transcript() after confirmation
+        return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+    
+    def clear_transcript(self) -> None:
+        """Clear the current transcript and transition to IDLE.
+        
+        Called by MainWindow after delete confirmation and I/O completion.
+        This is the terminal state mutation for delete operations.
+        """
+        self.set_state(WorkspaceState.IDLE)
+        self._has_unsaved_changes = False
+        self.content.set_transcript("", "")
+        self.header.set_timestamp("")
+        self.metrics.hide()
+
+    def _apply_view_transcript(
+        self, intent: ViewTranscriptIntent, timestamp: str, text: str
+    ) -> IntentResult:
+        """Apply ViewTranscriptIntent: display a transcript for viewing.
+        
+        Phase 5: Authoritative state mutator for ViewTranscriptIntent.
+        
+        Precondition: state != RECORDING
+        Precondition: if EDITING with unsaved changes, reject (Invariant 3)
+        Postcondition: state == VIEWING if text non-empty, else IDLE
+        Postcondition: _has_unsaved_changes == False
+        """
+        # Idempotent check: already viewing this transcript
+        if (
+            self._state == WorkspaceState.VIEWING
+            and timestamp == self.get_current_timestamp()
+        ):
+            return IntentResult(
+                outcome=IntentOutcome.NO_OP,
+                intent=intent,
+                reason="Already viewing this transcript",
+            )
+        
+        # Precondition: cannot view while recording
+        if self._state == WorkspaceState.RECORDING:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason="Cannot view transcript while recording",
+            )
+        
+        # Precondition: cannot switch view with unsaved edits (Invariant 3)
+        if self._state == WorkspaceState.EDITING and self._has_unsaved_changes:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason="Unsaved changes exist",
+            )
+        
+        # Precondition: must have valid timestamp
+        if not timestamp:
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason="No timestamp provided",
+            )
+        
+        # Authoritative mutation: load transcript
+        # Inline the load_transcript logic for authority over state
+        try:
+            # Fetch duration metadata from history manager if available
+            duration_ms = None
+            speech_duration_ms = None
+            if self._history_manager:
+                entry = self._history_manager.get_entry_by_timestamp(timestamp)
+                if entry:
+                    duration_ms = entry.duration_ms
+                    speech_duration_ms = entry.speech_duration_ms
+            
+            self.content.set_transcript(text, timestamp)
+            
+            # Pass variants to content for carousel (Phase 6)
+            if hasattr(intent, "variants"):
+                self.content.set_variants(intent.variants)
+            else:
+                self.content.set_variants([])
+
+            self.header.set_timestamp(timestamp)
+            self._has_unsaved_changes = False
+            
+            # Update metrics if we have duration data
+            if text and duration_ms is not None:
+                word_count = len(text.split())
+                self.metrics.set_metrics(duration_ms, speech_duration_ms, word_count)
+                self.metrics.show()
+            else:
+                self.metrics.hide()
+            
+            # Set state based on content
+            if text:
+                self.set_state(WorkspaceState.VIEWING)
+            else:
+                self.set_state(WorkspaceState.IDLE)
+            
+            # Postcondition assertions
+            expected_state = WorkspaceState.VIEWING if text else WorkspaceState.IDLE
+            assert self._state == expected_state, \
+                f"ViewTranscriptIntent: expected {expected_state.value}, got {self._state.value}"
+            assert not self._has_unsaved_changes, \
+                "ViewTranscriptIntent: _has_unsaved_changes should be False"
+            
+            return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
+            
+        except Exception as e:
+            logger.exception("Error in _apply_view_transcript")
+            return IntentResult(
+                outcome=IntentOutcome.REJECTED,
+                intent=intent,
+                reason=f"Load failed: {e}",
+            )
 
     # Resize handling
 
     def resizeEvent(self, event) -> None:
         """Handle resize for responsive typography."""
-        super().resizeEvent(event)
-        width = event.size().width()
-        self.header.scale_font(width)
+        try:
+            super().resizeEvent(event)
+            width = event.size().width()
+            self.header.scale_font(width)
+        except Exception:
+            logger.exception("Error in resize event")

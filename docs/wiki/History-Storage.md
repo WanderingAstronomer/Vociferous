@@ -1,154 +1,86 @@
 # History Storage
 
-Transcription history is persisted using JSONL (JSON Lines) format.
+Transcription history is persisted using SQLite database with **SQLAlchemy** ORM.
 
 ## File Location
 
 ```
-~/.config/vociferous/history.jsonl
+~/.config/vociferous/vociferous.db
 ```
 
-Created automatically on first transcription.
+Created automatically on first start.
 
-## Format
+## Database Architecture (SQLAlchemy)
 
-Each line is a complete JSON object:
+The system uses SQLAlchemy 2.0+ ORM with declarative models defined in `src/models.py`.
 
-```json
-{"timestamp":"2025-01-15T10:30:45.123456","text":"Hello world","duration_ms":2500}
-{"timestamp":"2025-01-15T10:31:12.654321","text":"Another transcription","duration_ms":1800}
-```
+###  `transcripts` Table (Transcript Model)
 
-### Fields
-
-| Field | Type | Description |
+| Column | Type | Description |
 | --- | --- | --- |
-| `timestamp` | string | ISO-8601 format with microseconds |
-| `text` | string | Transcribed text |
-| `duration_ms` | int | Recording duration in milliseconds |
+| `id` | INTEGER | Auto-increment primary key |
+| `timestamp` | TEXT | ISO-8601 format with microseconds (Unique Index, Business Key) |
+| `created_at` | DATETIME | Insertion timestamp (Indexed) |
+| `raw_text` | TEXT | Original Whisper output (immutable) |
+| `normalized_text` | TEXT | Editable user content |
+| `duration_ms` | INTEGER | Recording duration in milliseconds |
+| `speech_duration_ms` | INTEGER | VAD-filtered speech time |
+| `focus_group_id` | INTEGER | Foreign key to `focus_groups.id` (Indexed) |
 
-## Why JSONL?
+### `focus_groups` Table (FocusGroup Model)
 
-- **Append-only**: New entries added without reading entire file
-- **Thread-safe**: Single-line writes are atomic on most filesystems
-- **Human-readable**: Easy to inspect and edit manually
-- **Streamable**: Can process line by line without loading all into memory
-- **Export-friendly**: Simple to convert to CSV, markdown, etc.
+| Column | Type | Description |
+| --- | --- | --- |
+| `id` | INTEGER | Auto-increment primary key |
+| `name` | TEXT | User-defined group name |
+| `color` | TEXT | Hex color code (e.g. #FF0000) or null |
+| `parent_id` | INTEGER | Foreign key to `focus_groups.id` (Nullable, Recursive) |
+| `created_at` | DATETIME | Creation timestamp |
 
-## Operations
+## Dual-Text Architecture
 
-### Add Entry
+Each transcript stores two versions of the text:
+
+- **`raw_text`**: Immutable. The exact output from Whisper. Never modified.
+- **`normalized_text`**: Editable. Target for user edits and future refinement.
+
+Both are initialized to identical values on creation.
+
+## Technology Stack
+
+- **Engine**: SQLite (via `sqlite3` driver)
+- **ORM**: SQLAlchemy (Declarative mapping)
+- **Migrations**: Automatic schema creation on startup. Legacy schemas are replaced ("nuked") to ensure consistency with current models.
+
+## Usage
+
+### Add Transcript
 
 ```python
-entry = HistoryEntry(
-    timestamp=datetime.now().isoformat(),
+# Internal Transcript model is created and persisted via Session
+manager.add_entry(
     text="Transcribed text",
-    duration_ms=2500
+    duration_ms=2500,
+    speech_duration_ms=2100
 )
-
-with open(history_file, 'a') as f:
-    f.write(entry.to_json() + '\n')
 ```
 
 ### Read Recent
 
 ```python
-with open(history_file) as f:
-    lines = f.readlines()
-
-entries = [HistoryEntry.from_json(line) for line in lines[-100:]]
-entries.reverse()  # Newest first
+# Leverages ORM lazy loading (though specific query is eager for list views)
+entries = manager.get_recent(limit=100)  # Returns HistoryEntry DTOs
 ```
 
-### Update Entry
+### Operations
 
-Requires rewriting the entire file (infrequent operation):
+Standard CRUD operations are performed via SQLAlchemy `Session` context managers ensuring ACID compliance.
+
+## Focus Groups
+
+Organize transcripts by topic or project. The `FocusGroup` model supports hierarchical relationships (prepared for future implementation).
 
 ```python
-entries = []
-for line in open(history_file):
-    entry = HistoryEntry.from_json(line)
-    if entry.timestamp == target_timestamp:
-        entry.text = new_text
-    entries.append(entry)
-
-with open(history_file, 'w') as f:
-    for entry in entries:
-        f.write(entry.to_json() + '\n')
+# Create group
+group_id = manager.create_focus_group("Work Notes", color="#FF0000")
 ```
-
-### Delete Entry
-
-Similar to update - filter out the target entry and rewrite.
-
-## Rotation
-
-When entries exceed `max_history_entries` (default 1000), oldest entries are removed:
-
-```python
-if len(lines) > max_entries:
-    with open(history_file, 'w') as f:
-        f.writelines(lines[-max_entries:])
-```
-
-Rotation happens automatically after each write.
-
-## Export Formats
-
-### Plain Text (.txt)
-
-```
-[2025-01-15T10:30:45]
-Hello world
-
-[2025-01-15T10:31:12]
-Another transcription
-```
-
-### CSV
-
-```csv
-Timestamp,Text,Duration (ms)
-2025-01-15T10:30:45,Hello world,2500
-2025-01-15T10:31:12,Another transcription,1800
-```
-
-### Markdown
-
-```markdown
-# Vociferous Transcription History
-
-## January 15th, 2025
-
-### 10:30 a.m.
-
-Hello world
-
-*Duration: 2500ms*
-
----
-```
-
-## Configuration
-
-```yaml
-output_options:
-  max_history_entries: 1000  # 0 = unlimited
-```
-
-## HistoryEntry Dataclass
-
-```python
-@dataclass(slots=True)
-class HistoryEntry:
-    timestamp: str      # ISO-8601
-    text: str
-    duration_ms: int = 0
-
-    def to_json(self) -> str: ...
-
-    @classmethod
-    def from_json(cls, json_str: str) -> 'HistoryEntry': ...
-```
-
-Uses `slots=True` for memory efficiency with many entries.

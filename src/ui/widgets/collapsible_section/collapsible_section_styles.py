@@ -51,10 +51,10 @@ COLLAPSIBLE_SECTION_STYLESHEET = f"""
     /* Section action button (e.g., "+" for creating items) */
     QPushButton#sectionActionButton {{
         background-color: transparent;
-        color: {Colors.ACCENT_BLUE};
+        color: {Colors.PRIMARY};
         border: none;
-        font-size: 18pt;
-        font-weight: bold;
+        font-size: {Typography.FONT_SIZE_LG}px;
+        font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
         padding: 0px;
         margin: 0px;
     }}
@@ -68,6 +68,6 @@ COLLAPSIBLE_SECTION_STYLESHEET = f"""
         background-color: transparent;
         border: none;
         color: {Colors.TEXT_SECONDARY};
-        font-size: 12px;
+        font-size: {Typography.FONT_SIZE_SM}px;
     }}
 """

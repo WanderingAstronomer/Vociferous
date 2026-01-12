@@ -151,6 +151,36 @@ python scripts/run.py
 
 This enables DEBUG level logging for all modules.
 
+## Error Logs
+
+Vociferous logs all errors to a rotating log file:
+
+```
+~/.local/share/vociferous/logs/vociferous.log
+```
+
+**Log rotation:**
+- Maximum file size: 5 MB
+- Backup count: 3 files
+
+**Viewing recent errors:**
+
+```bash
+# View last 50 lines
+tail -50 ~/.local/share/vociferous/logs/vociferous.log
+
+# Follow logs in real-time
+tail -f ~/.local/share/vociferous/logs/vociferous.log
+
+# Search for errors
+grep -i error ~/.local/share/vociferous/logs/vociferous.log
+```
+
+**Error handling behavior:**
+- User-triggered actions show error dialogs with "Copy Details" option
+- Background operations log silently without interrupting workflow
+- All exceptions include full stack traces in logs
+
 ## Reporting Issues
 
 When reporting bugs, include:

@@ -14,6 +14,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QDialog,
+    QFrame,
     QLabel,
     QScrollArea,
     QVBoxLayout,
@@ -21,7 +22,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.components.title_bar import DialogTitleBar
-from ui.constants import Colors
+from ui.constants import Colors, Dimensions, Typography
 
 
 class MetricsExplanationDialog(QDialog):
@@ -44,10 +45,20 @@ class MetricsExplanationDialog(QDialog):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
+        # Structural Frame Wrapper (The Dialog Frame)
+        self._dialog_frame = QFrame()
+        self._dialog_frame.setObjectName("dialogFrame")
+        main_layout.addWidget(self._dialog_frame)
+
+        # Frame layout
+        frame_layout = QVBoxLayout(self._dialog_frame)
+        frame_layout.setContentsMargins(0, 0, 0, 0)
+        frame_layout.setSpacing(0)
+
         # Title bar
         title_bar = DialogTitleBar("Metrics Calculations", self)
         title_bar.closeRequested.connect(self.reject)
-        main_layout.addWidget(title_bar)
+        frame_layout.addWidget(title_bar)
 
         # Scrollable content area
         scroll = QScrollArea()
@@ -190,15 +201,15 @@ class MetricsExplanationDialog(QDialog):
         layout.addStretch()
 
         scroll.setWidget(content)
-        main_layout.addWidget(scroll)
+        frame_layout.addWidget(scroll)
 
     def _create_section_header(self, text: str) -> QLabel:
         """Create a section header label."""
         label = QLabel(text)
         label.setStyleSheet(f"""
             color: {Colors.TEXT_PRIMARY};
-            font-size: 15px;
-            font-weight: 600;
+            font-size: {Typography.FONT_SIZE_BASE}px;
+            font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
             padding-top: 8px;
         """)
         label.setWordWrap(True)
@@ -219,38 +230,38 @@ class MetricsExplanationDialog(QDialog):
         if is_intro:
             style = f"""
                 color: {Colors.TEXT_PRIMARY};
-                font-size: 13px;
+                font-size: {Typography.FONT_SIZE_SM}px;
                 line-height: 1.5;
                 background: {Colors.SURFACE_ALT};
                 padding: 12px;
-                border-radius: 4px;
+                border-radius: {Dimensions.BORDER_RADIUS_SM}px;
             """
         elif is_example:
             style = f"""
                 color: {Colors.TEXT_SECONDARY};
-                font-size: 12px;
+                font-size: {Typography.FONT_SIZE_SM}px;
                 line-height: 1.6;
                 background: {Colors.BACKGROUND};
                 padding: 10px;
-                border-left: 3px solid #5a9fd4;
+                border-left: 3px solid {Colors.PRIMARY};
                 font-family: monospace;
             """
         elif is_philosophy:
             style = f"""
                 color: {Colors.TEXT_PRIMARY};
-                font-size: 13px;
+                font-size: {Typography.FONT_SIZE_SM}px;
                 line-height: 1.5;
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #5a9fd433,
+                    stop:0 rgba(90, 159, 212, 0.2),
                     stop:1 {Colors.SURFACE});
                 padding: 12px;
-                border-radius: 4px;
-                border-left: 3px solid #5a9fd4;
+                border-radius: {Dimensions.BORDER_RADIUS_SM}px;
+                border-left: 3px solid {Colors.PRIMARY};
             """
         else:
             style = f"""
                 color: {Colors.TEXT_SECONDARY};
-                font-size: 13px;
+                font-size: {Typography.FONT_SIZE_SM}px;
                 line-height: 1.5;
             """
         
@@ -263,12 +274,12 @@ class MetricsExplanationDialog(QDialog):
         label.setWordWrap(True)
         label.setTextFormat(Qt.TextFormat.RichText)
         label.setStyleSheet(f"""
-            color: #5a9fd4;
-            font-size: 13px;
+            color: {Colors.PRIMARY};
+            font-size: {Typography.FONT_SIZE_SM}px;
             font-family: 'Courier New', monospace;
             background: {Colors.BACKGROUND};
             padding: 10px 16px;
-            border-radius: 4px;
-            border: 1px solid #5a9fd455;
+            border-radius: {Dimensions.BORDER_RADIUS_SM}px;
+            border: 1px solid rgba(90, 159, 212, 0.33);
         """)
         return label

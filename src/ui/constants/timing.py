@@ -15,8 +15,13 @@ Timer Types (from Qt documentation):
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 
-class TimerType:
+if TYPE_CHECKING:
+    pass
+
+
+class _TimerType:
     """Qt timer precision types for different use cases."""
 
     @property
@@ -38,8 +43,8 @@ class TimerType:
         return Qt.TimerType.VeryCoarseTimer
 
 
-# Singleton instance
-TimerType = TimerType()
+# Singleton instance for timer type access
+TimerType: _TimerType = _TimerType()
 
 
 class AnimationDurations:

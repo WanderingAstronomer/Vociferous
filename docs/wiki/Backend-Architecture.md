@@ -26,7 +26,7 @@ Vociferous follows a modular architecture with clear separation of concerns.
              v                                           v
      +---------------+                        +-----------------+
      |      UI       |                        | Whisper Model   |
-     |    (PyQt)     |                        |    (ASR)        |
+     |   (PyQt6)     |                        |    (ASR)        |
      +---------------+                        +-----------------+
 ```
 
@@ -58,6 +58,7 @@ QThread that runs audio capture and transcription off the UI thread:
 - Applies Voice Activity Detection (WebRTC VAD)
 - Sends audio to Whisper model
 - Emits signals back to main thread with results
+- Returns speech duration for metrics calculation
 
 ### transcription.py - Whisper Integration
 
@@ -65,14 +66,25 @@ Wrapper around faster-whisper:
 
 - `create_local_model()`: Loads model with fallback (CUDA → CPU)
 - `transcribe()`: Converts audio to text with VAD filtering
+- Returns `(text, speech_duration_ms)` tuple for metrics
 - `post_process_transcription()`: Applies user preferences (spacing)
+
+### services/slm_service.py - Refinement Service
+
+Manages the lifecycle of the post-processing refinement model:
+
+- **Model**: Qwen3-4B-Instruct (CTranslate2 Int8)
+- **Role**: Provisioning (Download/Convert), Loading, and Inference
+- **Architecture**: Decoder-Only Instruction Following (See [Refinement Architecture](Refinement-Architecture.md))
 
 ### history_manager.py - Persistence
 
-JSONL-based storage for transcription history:
+SQLite-backed storage for transcription history:
 
-- Append-only writes (thread-safe)
-- Automatic rotation when exceeding max entries
+- `~/.config/vociferous/vociferous.db`
+- Focus groups for transcript organization
+- Dual-text architecture: `raw_text` (immutable) + `normalized_text` (editable)
+- `speech_duration_ms` column for metrics
 - Export to txt, csv, or markdown
 
 ### utils.py - Configuration
@@ -82,6 +94,39 @@ Thread-safe singleton ConfigManager:
 - Schema-driven configuration from YAML
 - Hot-reload support
 - PyQt signals for live updates
+
+## UI Architecture
+
+The UI follows a component-based architecture under `src/ui/`:
+
+```
+ui/
+├── components/           # Page-level components
+│   ├── main_window/      # App shell, menu, sidebar animator
+│   ├── settings/         # Settings dialog
+│   ├── sidebar/          # Focus groups, search, transcript tree
+│   ├── title_bar/        # Custom frameless title bar
+│   └── workspace/        # Content area, controls, metrics
+├── constants/            # Design system tokens
+│   ├── colors.py         # 3-tier text hierarchy, accents
+│   ├── dimensions.py     # Border radii, sizes
+│   ├── spacing.py        # Non-linear spacing scale
+│   └── typography.py     # Hand-crafted type scale
+├── styles/
+│   └── unified_stylesheet.py  # Single app-wide stylesheet
+├── utils/                # Helpers (clipboard, error handling)
+└── widgets/              # Reusable UI components
+    ├── collapsible_section/
+    ├── content_panel/
+    ├── dialogs/
+    ├── focus_group/
+    ├── history_tree/
+    ├── hotkey_widget/
+    ├── metrics_strip/
+    ├── styled_button/
+    ├── transcript_item/
+    └── waveform_visualizer/
+```
 
 ## Design Patterns
 

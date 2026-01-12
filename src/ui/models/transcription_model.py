@@ -27,7 +27,6 @@ from PyQt6.QtCore import QAbstractItemModel, QModelIndex, QObject, Qt, pyqtSigna
 from ui.utils.history_utils import (
     format_day_header,
     format_preview,
-    format_time_compact,
     group_entries_by_day,
 )
 
@@ -74,9 +73,6 @@ class TranscriptionModel(QAbstractItemModel):
         self._history_manager = history_manager
         self._days: list[tuple[str, datetime, list[HistoryEntry]]] = []
         self._group_colors: dict[int, str | None] = {}
-        # Map from Python object id to (is_day_header, day_idx, entry_idx)
-        self._index_map: dict[int, tuple[bool, int, int]] = {}
-        self._next_id = 0
         try:
             self._refresh_data()
         except Exception as e:
@@ -85,15 +81,27 @@ class TranscriptionModel(QAbstractItemModel):
             self._group_colors = {}
 
     def _make_index_data(self, is_day_header: bool, day_idx: int, entry_idx: int = 0) -> int:
-        """Create and store index metadata, return ID."""
-        idx_id = self._next_id
-        self._next_id += 1
-        self._index_map[idx_id] = (is_day_header, day_idx, entry_idx)
-        return idx_id
+        """
+        Create deterministic ID from (is_header, day, entry).
+        
+        Packing scheme (64-bit):
+        - Bit 63: is_header flag
+        - Bits 32-62: day_idx (31 bits)
+        - Bits 0-31: entry_idx (32 bits)
+        """
+        header_bit = 1 if is_day_header else 0
+        # Ensure indices fit in allocated bits
+        day_idx = day_idx & 0x7FFFFFFF
+        entry_idx = entry_idx & 0xFFFFFFFF
+        
+        return (header_bit << 63) | (day_idx << 32) | entry_idx
     
     def _get_index_data(self, idx_id: int) -> tuple[bool, int, int]:
-        """Retrieve index metadata."""
-        return self._index_map.get(idx_id, (False, -1, -1))
+        """Retrieve index metadata from ID."""
+        is_header = bool((idx_id >> 63) & 1)
+        day_idx = (idx_id >> 32) & 0x7FFFFFFF
+        entry_idx = idx_id & 0xFFFFFFFF
+        return is_header, day_idx, entry_idx
 
     def _refresh_data(self) -> None:
         """Reload data from HistoryManager."""
@@ -189,6 +197,7 @@ class TranscriptionModel(QAbstractItemModel):
                         entry_model_index,
                         [self.GroupIDRole, self.ColorRole],
                     )
+                    self.entryUpdated.emit(timestamp)
                     return
 
     def _find_day_index(self, day_key: str) -> int | None:
@@ -223,7 +232,7 @@ class TranscriptionModel(QAbstractItemModel):
             
             # Root level items (days)
             if not parent.isValid():
-                if row < len(self._days):
+                if 0 <= row < len(self._days):
                     # Create index for day header
                     idx_data = self._make_index_data(True, row, 0)
                     return self.createIndex(row, column, idx_data)
@@ -237,7 +246,7 @@ class TranscriptionModel(QAbstractItemModel):
                 day_idx = parent_data[1]
                 if 0 <= day_idx < len(self._days):
                     entries = self._days[day_idx][2]
-                    if row < len(entries):
+                    if isinstance(entries, list) and 0 <= row < len(entries):
                         idx_data = self._make_index_data(False, day_idx, row)
                         return self.createIndex(row, column, idx_data)
             
@@ -284,17 +293,30 @@ class TranscriptionModel(QAbstractItemModel):
             # Root level - return number of days
             return len(self._days) if self._days else 0
 
-        # Parent is a valid index - return entries for that day
-        day_idx = parent.row()
-        if 0 <= day_idx < len(self._days):
-            entries = self._days[day_idx][2]
-            return len(entries) if entries else 0
-
-        return 0
+        # Parent is a valid index - check if it's a day header or entry
+        # WE MUST CHECK internalId TO DISCRIMINATE BETWEEN HEADERS AND ENTRIES.
+        # Failing to do so causes infinite recursion where entries claim to have children.
+        try:
+            internal_id = parent.internalId()
+            # _get_index_data returns (is_day_header, day_idx, entry_idx)
+            is_day_header, day_idx, _, = self._get_index_data(internal_id)
+            
+            if is_day_header:
+                # Parent is a day header -> return number of entries in this day
+                if 0 <= day_idx < len(self._days):
+                    entries = self._days[day_idx][2]
+                    return len(entries) if entries else 0
+            
+            # Entries do not have children
+            return 0
+            
+        except Exception as e:
+            print(f"Error in rowCount(): {e}", file=sys.stderr)
+            return 0
 
     def columnCount(self, parent: QModelIndex | None = None) -> int:
-        """Always 2 columns: [time/day, preview/text]."""
-        return 2
+        """Single column layout for unified row interaction."""
+        return 1
 
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
         """Return data for a given index and role."""
@@ -366,12 +388,8 @@ class TranscriptionModel(QAbstractItemModel):
 
         match role:
             case Qt.ItemDataRole.DisplayRole:
-                if column == 0:
-                    dt = datetime.fromisoformat(entry.timestamp)
-                    return format_time_compact(dt)
-                elif column == 1:
-                    return format_preview(entry.text, max_length=60)
-                return ""
+                # Single column: return preview text (time rendered by delegate)
+                return format_preview(entry.text, max_length=60)
             case self.TimestampRole:
                 return entry.timestamp
             case self.FullTextRole:

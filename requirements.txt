@@ -12,6 +12,9 @@ webrtcvad-wheels>=2.0.11
 # GPU Support (cuDNN for onnxruntime VAD)
 nvidia-cudnn-cu12>=9.0.0
 
+# Database
+sqlalchemy>=2.0.0
+
 # Model Management & Downloads
 huggingface-hub>=1.0.0
 tokenizers>=0.22.0

@@ -87,11 +87,11 @@ class SidebarResizeGrip(QWidget):
         """Start drag operation."""
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
-            self._drag_start_x = event.globalPosition().x()
+            self._drag_start_x = int(event.globalPosition().x())
             
             # Get current sidebar width from parent
             sidebar = self.parent()
-            if sidebar:
+            if sidebar and isinstance(sidebar, QWidget):
                 self._drag_start_width = sidebar.width()
             
             self.update()
@@ -107,7 +107,11 @@ class SidebarResizeGrip(QWidget):
         
         # Get window width for percentage-based bounds
         parent = self.parent()
-        window_width = parent.parent().width() if parent and parent.parent() else 1000
+        if parent and isinstance(parent, QWidget):
+            grandparent = parent.parent()
+            window_width = grandparent.width() if grandparent and isinstance(grandparent, QWidget) else 1000
+        else:
+            window_width = 1000
         
         # Use centralized clamping logic for consistency
         new_width = Dimensions.clamp_sidebar_width(new_width, window_width)

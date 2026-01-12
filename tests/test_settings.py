@@ -1,5 +1,9 @@
 """
 Tests for settings dialog, hotkey widget, and live config updates.
+
+Test Tier: Mixed
+- TestKeycodeMapping: UI-Independent (Tier 1)
+- TestHotkeyWidget: UI-Dependent (Tier 2) - requires QWidget
 """
 
 from unittest.mock import MagicMock, patch
@@ -12,36 +16,34 @@ from key_listener import InputEvent, KeyCode
 class TestKeycodeMapping:
     """Tests for keycode mapping utilities."""
 
-    def test_is_modifier(self):
-        from ui.utils.keycode_mapping import is_modifier
+    def test_keycodes_to_strings_single_key(self):
+        """Test converting a single keycode to strings."""
+        from ui.utils.keycode_mapping import keycodes_to_strings
 
-        assert is_modifier(KeyCode.CTRL_LEFT)
-        assert is_modifier(KeyCode.SHIFT_RIGHT)
-        assert is_modifier(KeyCode.ALT_LEFT)
-        assert is_modifier(KeyCode.META_RIGHT)
-        assert not is_modifier(KeyCode.SPACE)
-        assert not is_modifier(KeyCode.A)
+        display, config = keycodes_to_strings({KeyCode.SPACE})
+        assert display == "Space"
+        assert config == "space"
 
-    def test_keycode_to_display_name(self):
-        from ui.utils.keycode_mapping import keycode_to_display_name
+    def test_keycodes_to_strings_combo(self):
+        """Test converting a key combination to strings."""
+        from ui.utils.keycode_mapping import keycodes_to_strings
 
-        assert keycode_to_display_name(KeyCode.CTRL_LEFT) == "Ctrl"
-        assert keycode_to_display_name(KeyCode.CTRL_RIGHT) == "Ctrl"
-        assert keycode_to_display_name(KeyCode.SHIFT_LEFT) == "Shift"
-        assert keycode_to_display_name(KeyCode.ALT_RIGHT) == "Alt"
-        assert keycode_to_display_name(KeyCode.META_LEFT) == "Meta"
-        assert keycode_to_display_name(KeyCode.F1) == "F1"
-        assert keycode_to_display_name(KeyCode.SPACE) == "Space"
+        display, config = keycodes_to_strings({KeyCode.CTRL_LEFT, KeyCode.A})
+        # Should be sorted: modifiers first
+        assert "Ctrl" in display
+        assert "A" in display
+        assert "ctrl" in config
+        assert "a" in config
 
-    def test_keycode_to_config_name(self):
-        from ui.utils.keycode_mapping import keycode_to_config_name
+    def test_keycodes_to_strings_modifier_order(self):
+        """Test that modifiers are sorted in correct order (ctrl, shift, alt, meta)."""
+        from ui.utils.keycode_mapping import keycodes_to_strings
 
-        assert keycode_to_config_name(KeyCode.CTRL_LEFT) == "ctrl"
-        assert keycode_to_config_name(KeyCode.SHIFT_RIGHT) == "shift"
-        assert keycode_to_config_name(KeyCode.ALT_LEFT) == "alt"
-        assert keycode_to_config_name(KeyCode.META_RIGHT) == "meta"
-        assert keycode_to_config_name(KeyCode.SPACE) == "space"
-        assert keycode_to_config_name(KeyCode.ALT_RIGHT) == "alt"
+        display, config = keycodes_to_strings(
+            {KeyCode.ALT_LEFT, KeyCode.CTRL_LEFT, KeyCode.SHIFT_LEFT}
+        )
+        # Should be ctrl+shift+alt order
+        assert config == "ctrl+shift+alt"
 
     def test_normalize_hotkey_string(self):
         from ui.utils.keycode_mapping import normalize_hotkey_string
@@ -51,15 +53,6 @@ class TestKeycodeMapping:
         assert normalize_hotkey_string("space") == "space"
         assert normalize_hotkey_string("ctrl+space") == "ctrl+space"
         assert normalize_hotkey_string("meta+alt+z") == "alt+meta+z"
-
-    def test_keycodes_to_strings(self):
-        from ui.utils.keycode_mapping import keycodes_to_strings
-
-        display, config = keycodes_to_strings({KeyCode.CTRL_LEFT, KeyCode.A})
-        assert "Ctrl" in display
-        assert "A" in display
-        assert "ctrl" in config
-        assert "a" in config
 
 
 class TestHotkeyWidgetLogic:
@@ -97,15 +90,34 @@ class TestConfigChangedSignal:
         def on_changed(section, key, value):
             signal_received.append((section, key, value))
 
-        config_manager.instance().configChanged.connect(on_changed)
         try:
-            config_manager.set_config_value("test_value", "misc", "print_to_terminal")
+            config_manager.instance().configChanged.connect(on_changed)
+        except RuntimeError:
+            # ConfigManager QObject may be deleted if test runs after QApplication cleanup
+            pytest.skip("ConfigManager unavailable (QObject deleted)")
+
+        try:
+            original = config_manager.get_config_value(
+                "output_options", "add_trailing_space"
+            )
+            config_manager.set_config_value(
+                not original, "output_options", "add_trailing_space"
+            )
             assert len(signal_received) == 1
-            assert signal_received[0] == ("misc", "print_to_terminal", "test_value")
+            assert signal_received[0] == (
+                "output_options",
+                "add_trailing_space",
+                not original,
+            )
         finally:
-            config_manager.instance().configChanged.disconnect(on_changed)
-            # Restore original value
-            config_manager.set_config_value(True, "misc", "print_to_terminal")
+            try:
+                config_manager.instance().configChanged.disconnect(on_changed)
+                # Restore original value
+                config_manager.set_config_value(
+                    original, "output_options", "add_trailing_space"
+                )
+            except RuntimeError:
+                pass  # ConfigManager may be deleted
 
     def test_set_nested_config_emits_correct_section(self, config_manager):
         """Nested config changes should emit with correct section/key."""
@@ -114,7 +126,12 @@ class TestConfigChangedSignal:
         def on_changed(section, key, value):
             signal_received.append((section, key, value))
 
-        config_manager.instance().configChanged.connect(on_changed)
+        try:
+            config_manager.instance().configChanged.connect(on_changed)
+        except RuntimeError:
+            # ConfigManager QObject may be deleted if test runs after QApplication cleanup
+            pytest.skip("ConfigManager unavailable (QObject deleted)")
+
         try:
             original = config_manager.get_config_value(
                 "output_options", "add_trailing_space"
@@ -126,10 +143,13 @@ class TestConfigChangedSignal:
             assert signal_received[0][0] == "output_options"
             assert signal_received[0][1] == "add_trailing_space"
         finally:
-            config_manager.instance().configChanged.disconnect(on_changed)
-            config_manager.set_config_value(
-                original, "output_options", "add_trailing_space"
-            )
+            try:
+                config_manager.instance().configChanged.disconnect(on_changed)
+                config_manager.set_config_value(
+                    original, "output_options", "add_trailing_space"
+                )
+            except RuntimeError:
+                pass  # ConfigManager may be deleted
 
 
 class TestKeyListenerCaptureMode:

@@ -252,18 +252,21 @@ class ResultThread(QThread):
         recording: list[np.int16] = []
 
         def audio_callback(indata, frames, time_info, status) -> None:
-            if status:
-                logger.debug(f"Audio callback status: {status}")
-            # Copy audio data - numpy arrays share memory
-            frame_data = indata[:, 0].copy()
-            audio_queue.put(frame_data)
+            try:
+                if status:
+                    logger.debug(f"Audio callback status: {status}")
+                # Copy audio data - numpy arrays share memory
+                frame_data = indata[:, 0].copy()
+                audio_queue.put(frame_data)
 
-            # Calculate RMS amplitude for waveform visualization
-            # int16 range is -32768 to 32767, normalize to 0-1
-            rms = np.sqrt(np.mean(frame_data.astype(np.float32) ** 2))
-            # Normalize: boosted sensitivity for better visualization (lower divisor = bigger bars)
-            normalized = min(1.0, rms / 1500.0)
-            self.audioLevelUpdated.emit(normalized)
+                # Calculate RMS amplitude for waveform visualization
+                # int16 range is -32768 to 32767, normalize to 0-1
+                rms = np.sqrt(np.mean(frame_data.astype(np.float32) ** 2))
+                # Normalize: boosted sensitivity for better visualization (lower divisor = bigger bars)
+                normalized = min(1.0, rms / 1500.0)
+                self.audioLevelUpdated.emit(normalized)
+            except Exception:
+                logger.exception("Error in audio callback")
 
         try:
             stream = sd.InputStream(

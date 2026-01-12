@@ -1,6 +1,6 @@
 # Threading Model
 
-Vociferous uses PyQt5's threading model with signals and slots for thread-safe communication.
+Vociferous uses PyQt6's threading model with signals and slots for thread-safe communication.
 
 ## Thread Overview
 
