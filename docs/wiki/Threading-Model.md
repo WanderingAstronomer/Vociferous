@@ -5,35 +5,42 @@ Vociferous uses PyQt6's threading model with signals and slots for thread-safe c
 ## Thread Overview
 
 ```mermaid
-graph LR
-    subgraph MainThread["Main Thread (Qt Event Loop)"]
-        App[VociferousApp]
-        UI[MainWindow]
-        Tray[System Tray]
-        Signals[Signal Handlers]
+flowchart LR
+    subgraph MainThread ["Main Thread (Qt Event Loop)"]
+        App["VociferousApp"]
+        UI["MainWindow"]
+        Tray["System Tray"]
+        Signals["Signal Handlers"]
     end
 
-    subgraph ListenerThread["Input Listener Thread"]
-        Listen[evdev/pynput loop]
+    subgraph ListenerThread ["Input Listener Thread"]
+        Listen["evdev/pynput loop"]
     end
 
-    subgraph AudioThread["OS Audio Callback"]
-        Callback[sounddevice callback]
+    subgraph AudioThread ["OS Audio Callback"]
+        Callback["sounddevice callback"]
     end
 
-    subgraph WorkerThread["Transcription Worker (QThread)"]
-        Record[record + buffer]
-        Transcribe[transcribe]
+    subgraph WorkerThread ["Transcription Worker (QThread)"]
+        Record["record + buffer"]
+        Transcribe["transcribe"]
     end
 
-    Listen -->|callback events| Signals
-    Callback -->|audio buffer/queue| Record
+    subgraph RefinementThread ["SLM Service (QThread)"]
+        LLM["Qwen Inference"]
+        Load["Model Loading"]
+    end
+
+    Listen -- "callback events" --> Signals
+    Callback -- "audio buffer/queue" --> Record
     Record --> Transcribe
-    Transcribe -->|Qt signals| Signals
+    Transcribe -- "Qt signals (ThreadResult)" --> Signals
     Signals --> UI
+    UI -- "requestRefinement" --> LLM
+    LLM -- "refinementSuccess" --> Signals
 ```
 
-**Key rule:** UI stays on the Qt main thread; audio/transcription runs off-thread.
+**Key rule:** UI stays on the Qt main thread; heavy lifting (recording, ASR, LLM) runs off-thread.
 
 ## Signal/Slot Pattern
 
@@ -42,19 +49,19 @@ PyQt signals are the **only** safe way to communicate between threads:
 ```python
 # Define signals in QThread subclass
 class ResultThread(QThread):
-    statusSignal = pyqtSignal(str)
-    resultSignal = pyqtSignal(str)
+    resultReady = pyqtSignal(ThreadResult)
+    audioLevelUpdated = pyqtSignal(float)
 
     def run(self):
         # Worker code runs in separate thread
-        self.statusSignal.emit('recording')
+        self.resultReady.emit(ThreadResult(state=ThreadState.RECORDING))
         # ... do work ...
-        self.resultSignal.emit(transcribed_text)
+        self.resultReady.emit(ThreadResult(state=ThreadState.COMPLETE, text=result))
 ```
 
 ```python
 # Connect in main thread
-self.result_thread.resultSignal.connect(self.on_transcription_complete)
+self.result_thread.resultReady.connect(self._handle_thread_result)
 ```
 
 The connection automatically marshals the call to the receiver's thread.

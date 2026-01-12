@@ -1,6 +1,6 @@
 # Vociferous
 
-**Version 2.4.0** — Advanced AI Refinement
+**Version 2.4.1** — Documentation Polish
 
 Vociferous is a fast, local speech-to-text dictation application for Linux. It transcribes your voice using OpenAI's Whisper model (via faster-whisper) and copies the result directly to your clipboard. No cloud services, no account required—just press a hotkey, speak, and paste.
 
