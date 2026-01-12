@@ -38,6 +38,21 @@ Persistence is handled by **SQLAlchemy 2.0+** (`src/history_manager.py`, `src/mo
     -   Update `README.md` and relevant `docs/wiki/` files if behavior changes.
     -   Treat documentation divergence as a critical defect.
 3.  **Research Journals**: For complex tasks, create a markdown journal in `docs/agent_resources/agent_reports/` before coding.
+4.  **Auto-Commit Policy**:
+    -   **Safe State**: If a task is completed and the system is stable (tests pass), you MAY automatically commit changes (no push) with a conventional commit message.
+    -   **Unsafe/Partial**: If stability is unverified, DO NOT commit. Instead, explicitly recommend a manual commit in the Post-Task Recommendation.
+5.  **Risk Management (Branching)**:
+    -   **Stop Protocol**: If a user request implies significant architectural changes or high-risk refactoring, **STOP** and ask if they wish to create a new feature branch before proceeding.
+6.  **Definition of Done (Quality Assurance)**:
+    -   A task is ONLY "complete" if:
+        1.  **Ruff**: Passes with no errors (`ruff check .`).
+        2.  **MyPy**: Passes with no errors (`mypy .`).
+        3.  **Tests**: ALL unit tests pass (`pytest`), not just the ones related to your changes.
+
+### Virtual Environment
+**CRITICAL**: You MUST use the project's virtual environment for ALL operations.
+-   Access: `.venv/bin/python`, `.venv/bin/pip`, `.venv/bin/ruff`, etc.
+-   Do not rely on system python or global packages.
 
 ### Running the App
 **ALWAYS** use the wrapper script to handle GPU/LD_LIBRARY_PATH:
