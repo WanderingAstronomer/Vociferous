@@ -2,6 +2,20 @@
 
 ---
 
+# v2.4.1 - Documentation Polish
+
+**Date:** January 2026
+**Status:** Maintenance Release
+
+---
+
+## Fixed
+
+### Documentation
+- **Threading Model Diagram**: Updated `docs/wiki/Threading-Model.md` to use modern Mermaid `flowchart` syntax and quoted labels, fixing rendering issues with special characters in node names.
+
+---
+
 # v2.4.0 - Advanced Refinement & Resource Intelligence
 
 **Date:** January 2026
