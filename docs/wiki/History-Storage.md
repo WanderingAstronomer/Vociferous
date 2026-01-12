@@ -34,6 +34,7 @@ The system uses SQLAlchemy 2.0+ ORM with declarative models defined in `src/mode
 | `id` | INTEGER | Auto-increment primary key |
 | `name` | TEXT | User-defined group name |
 | `color` | TEXT | Hex color code (e.g. #FF0000) or null |
+| `parent_id` | INTEGER | Foreign key to `focus_groups.id` (Nullable, Recursive) |
 | `created_at` | DATETIME | Creation timestamp |
 
 ## Dual-Text Architecture

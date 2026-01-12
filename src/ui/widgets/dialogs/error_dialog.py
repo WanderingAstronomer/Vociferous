@@ -64,6 +64,9 @@ class ErrorDialog(StyledDialog):
         """
         super().__init__(parent, title)
         
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMaximizeButtonHint)
+        self.setSizeGripEnabled(True)
+
         self._message = message
         self._details = details
         self._retry_callback = retry_callback
@@ -153,7 +156,9 @@ class ErrorDialog(StyledDialog):
         self.details_text.setReadOnly(True)
         self.details_text.setPlainText(self._details)
         self.details_text.setMinimumHeight(120)
-        self.details_text.setMaximumHeight(200)
+
+        # Use black text color for visibility
+        self.details_text.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; background-color: {Colors.SURFACE_ALT};")
         
         # Monospace font for stack traces
         mono_font = QFont("monospace")
@@ -176,6 +181,7 @@ class ErrorDialog(StyledDialog):
             copy_btn.setObjectName("errorDialogCopy")
             copy_btn.clicked.connect(self._copy_to_clipboard)
             copy_btn.setMinimumHeight(32)
+            copy_btn.setStyleSheet("color: white;")  # Force text color
             action_row.addWidget(copy_btn)
 
         # View logs button
@@ -184,6 +190,7 @@ class ErrorDialog(StyledDialog):
             view_logs_btn.setObjectName("errorDialogViewLogs")
             view_logs_btn.clicked.connect(self._view_logs)
             view_logs_btn.setMinimumHeight(32)
+            view_logs_btn.setStyleSheet("color: white;")  # Force text color
             action_row.addWidget(view_logs_btn)
 
         action_row.addStretch()

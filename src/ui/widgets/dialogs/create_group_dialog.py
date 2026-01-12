@@ -84,7 +84,7 @@ class CreateGroupDialog(QDialog):
     - Cancel/Create buttons
     """
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, title: str = "New Focus Group") -> None:
         super().__init__(parent)
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -94,6 +94,7 @@ class CreateGroupDialog(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
         self.setModal(True)
 
+        self._title = title
         self._selected_color: str = GROUP_COLORS[0][0]
         self._group_name: str = ""
         self._color_swatches: list[ColorSwatch] = []
@@ -121,7 +122,7 @@ class CreateGroupDialog(QDialog):
         frame_layout.setSpacing(0)
 
         # Custom title bar (draggable)
-        self.title_bar = DialogTitleBar("New Focus Group", self)
+        self.title_bar = DialogTitleBar(self._title, self)
         self.title_bar.closeRequested.connect(self.reject)
         frame_layout.addWidget(self.title_bar)
 

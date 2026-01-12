@@ -54,6 +54,15 @@ class FocusGroupProxyModel(QSortFilterProxyModel):
         """Get the current focus group ID."""
         return self._group_id
 
+    def sourceDataChanged(self, topLeft: QModelIndex, bottomRight: QModelIndex, roles: list[int] = []) -> None:
+        """Handle source data changes to trigger re-filtering if needed."""
+        super().sourceDataChanged(topLeft, bottomRight, roles)
+        
+        # If the GroupIDRole changed, we MUST re-filter regardless of automatic dynamic sorting
+        # This ensures that assigning a group immediately removes it from the view if needed
+        if not roles or TranscriptionModel.GroupIDRole in roles:
+            self.invalidateFilter()
+
     def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:
         """
         Determine if a row should be shown.

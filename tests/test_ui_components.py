@@ -152,9 +152,9 @@ class TestFocusGroupWidget:
         assert group_id is not None
         assert tree.topLevelItemCount() == 1
 
-        # Verify group data (text is in column 1, column 0 is for color bar)
+        # Verify group data (single column layout, text is in column 0)
         item = tree.topLevelItem(0)
-        assert "Test Group" in item.text(1)
+        assert "Test Group" in item.text(0)
         assert item.data(0, tree.ROLE_GROUP_ID) == group_id
         assert item.data(0, tree.ROLE_COLOR) == "#3a4f5c"
 
@@ -181,8 +181,8 @@ class TestFocusGroupWidget:
         tree.load_groups()
 
         item = tree.topLevelItem(0)
-        # Text is in column 1 - count display was removed per user preference
-        assert "My Group" in item.text(1)
+        # Text is in column 0 - single column layout
+        assert "My Group" in item.text(0)
 
     def test_container_signals(self, qapp, temp_history_manager):
         """Test that container emits correct signals."""

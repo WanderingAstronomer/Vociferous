@@ -73,9 +73,6 @@ class TranscriptionModel(QAbstractItemModel):
         self._history_manager = history_manager
         self._days: list[tuple[str, datetime, list[HistoryEntry]]] = []
         self._group_colors: dict[int, str | None] = {}
-        # Map from Python object id to (is_day_header, day_idx, entry_idx)
-        self._index_map: dict[int, tuple[bool, int, int]] = {}
-        self._next_id = 0
         try:
             self._refresh_data()
         except Exception as e:
@@ -84,15 +81,27 @@ class TranscriptionModel(QAbstractItemModel):
             self._group_colors = {}
 
     def _make_index_data(self, is_day_header: bool, day_idx: int, entry_idx: int = 0) -> int:
-        """Create and store index metadata, return ID."""
-        idx_id = self._next_id
-        self._next_id += 1
-        self._index_map[idx_id] = (is_day_header, day_idx, entry_idx)
-        return idx_id
+        """
+        Create deterministic ID from (is_header, day, entry).
+        
+        Packing scheme (64-bit):
+        - Bit 63: is_header flag
+        - Bits 32-62: day_idx (31 bits)
+        - Bits 0-31: entry_idx (32 bits)
+        """
+        header_bit = 1 if is_day_header else 0
+        # Ensure indices fit in allocated bits
+        day_idx = day_idx & 0x7FFFFFFF
+        entry_idx = entry_idx & 0xFFFFFFFF
+        
+        return (header_bit << 63) | (day_idx << 32) | entry_idx
     
     def _get_index_data(self, idx_id: int) -> tuple[bool, int, int]:
-        """Retrieve index metadata."""
-        return self._index_map.get(idx_id, (False, -1, -1))
+        """Retrieve index metadata from ID."""
+        is_header = bool((idx_id >> 63) & 1)
+        day_idx = (idx_id >> 32) & 0x7FFFFFFF
+        entry_idx = idx_id & 0xFFFFFFFF
+        return is_header, day_idx, entry_idx
 
     def _refresh_data(self) -> None:
         """Reload data from HistoryManager."""

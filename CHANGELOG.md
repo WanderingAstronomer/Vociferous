@@ -2,6 +2,39 @@
 
 ---
 
+# v2.2.1 - Group Hierarchy & UI Polish
+
+**Date:** January 2026
+**Status:** Minor Release
+
+---
+
+## Summary
+
+Introduces hierarchical organization for Focus Groups (subgroups), enabling deeper content structuring. Enhances the sidebar with drag-and-drop management, bulk operations for transcripts, and improved visual controls.
+
+## Added
+
+### Organization
+- **Nested Focus Groups**: Added ability to create subgroups up to one level deep.
+- **Drag & Drop**: Transcripts can now be moved between groups via drag-and-drop.
+- **Bulk Actions**: Support for multi-selecting transcripts in the sidebar to move or delete them in batches.
+
+### UI / UX
+- **Sidebar Toggle**: Added a dedicated button to collapse/expand the sidebar panel.
+- **Dialog Usability**: Primary actions in dialogs now trigger on the "Enter" key.
+- **Error Dialogs**: Improved layout and text visibility for error reporting.
+
+## Changed
+
+### Core Infrastructure
+- **Database Schema**: Added `parent_id` column to `focus_groups` table with automatic micro-migration on startup.
+
+### Styling
+- **Visual Refinements**: Updated context menu selection styles and standardized radio button appearance.
+
+---
+
 # v2.2.0 - Architecture Overhaul (SQLAlchemy Migration)
 
 **Date:** January 2026

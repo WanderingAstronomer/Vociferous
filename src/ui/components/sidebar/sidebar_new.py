@@ -12,17 +12,20 @@ Uses shared TranscriptionModel as single source of truth for all views.
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QSize
+from PyQt6.QtGui import QIcon, QTransform, QPixmap
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
+    QSizePolicy,
 )
 
-from ui.constants import Colors, Spacing, Typography
+from ui.constants import Colors, Dimensions, Spacing, Typography
 from ui.models import TranscriptionModel
 from ui.utils.error_handler import safe_callback
 from ui.widgets.focus_group import FocusGroupContainer
@@ -100,9 +103,48 @@ class SidebarWidget(QWidget):
         )
         content_layout.setSpacing(0)
 
+        # Header row (Tabs + Collapse Button)
+        header_layout = QHBoxLayout()
+        header_layout.setSpacing(Spacing.MINOR_GAP)
+
         # Tab bar at top
         self._tab_bar = SidebarTabBar()
-        content_layout.addWidget(self._tab_bar)
+        self._tab_bar.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        header_layout.addWidget(self._tab_bar)
+        
+        # Collapse button
+        self._collapse_btn = QPushButton()
+        self._collapse_btn.setFixedSize(24, 24)
+        self._collapse_btn.setObjectName("collapseSidebarBtn")
+        self._collapse_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._collapse_btn.setToolTip("Collapse Sidebar (Ctrl+B)")
+        self._collapse_btn.clicked.connect(self.collapseRequested.emit)
+        
+        # Try to load SVG icon
+        icon_path = Path(__file__).parent.parent.parent.parent.parent / "icons" / "sidebar-toggle.svg"
+        if icon_path.exists():
+            self._collapse_btn.setIcon(QIcon(str(icon_path)))
+            self._collapse_btn.setIconSize(QSize(16, 16))
+        else:
+            self._collapse_btn.setText("◀") # Fallback
+            
+        self._collapse_btn.setStyleSheet(f"""
+            QPushButton#collapseSidebarBtn {{
+                background-color: transparent;
+                border: none;
+                border-radius: {Dimensions.BORDER_RADIUS_SM}px;
+                color: {Colors.TEXT_SECONDARY};
+                font-weight: bold;
+            }}
+            QPushButton#collapseSidebarBtn:hover {{
+                background-color: {Colors.HOVER_BG_ITEM};
+                color: {Colors.TEXT_PRIMARY};
+            }}
+        """)
+        
+        header_layout.addWidget(self._collapse_btn)
+        
+        content_layout.addLayout(header_layout)
 
         # Stacked widget for tab content
         self._stack = QStackedWidget()
@@ -188,6 +230,10 @@ class SidebarWidget(QWidget):
         self.focus_groups.groupRenamed.connect(self._on_group_metadata_changed)
         self.focus_groups.groupColorChanged.connect(self._on_group_metadata_changed)
         self.focus_groups.groupCreated.connect(self._on_group_metadata_changed)
+        
+        # When entries are moved into/out of groups, refresh the main model
+        if self._model:
+            self.focus_groups.entryAssignmentChanged.connect(self._model.refresh_from_manager)
         
         layout.addWidget(self.focus_groups, 1)
         

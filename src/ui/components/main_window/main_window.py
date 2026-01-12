@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
+from pathlib import Path
 
 from PyQt6.QtCore import (
     QEvent,
@@ -21,6 +22,11 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import (
     QDesktopServices,
     QGuiApplication,
+    QKeySequence,
+    QShortcut,
+    QIcon,
+    QTransform,
+    QPixmap,
 )
 from PyQt6.QtWidgets import (
     QDialog,
@@ -146,7 +152,18 @@ class MainWindow(QMainWindow):
         
         # Floating expand button (shown when sidebar collapsed)
         self._expand_button = QToolButton(self)
-        self._expand_button.setText("▶")
+        self._expand_button.setText("▶")  # Fallback text
+        
+        # Try to load SVG icon for expand button (mirrored/rotated)
+        icon_path = Path(__file__).parent.parent.parent.parent.parent / "icons" / "sidebar-toggle.svg"
+        if icon_path.exists():
+            pixmap = QPixmap(str(icon_path))
+            if not pixmap.isNull():
+                # Mirror it horizontally since the original points left (collapse)
+                mirrored_pixmap = pixmap.transformed(QTransform().scale(-1, 1))
+                self._expand_button.setIcon(QIcon(mirrored_pixmap))
+                self._expand_button.setText("") # Clear text if icon loaded
+        
         self._expand_button.setFixedSize(20, 60)
         self._expand_button.setStyleSheet(f"""
             QToolButton {{
@@ -224,6 +241,7 @@ class MainWindow(QMainWindow):
             on_focus_history=self.sidebar.focus_transcript_list,
             on_about=self._show_about_dialog,
             on_metrics_explanation=self._show_metrics_explanation,
+            on_toggle_sidebar=self._toggle_sidebar,
         )
 
         # Connect metrics strip collapse signal
@@ -344,6 +362,14 @@ class MainWindow(QMainWindow):
                 self.metrics_strip.toggle_collapse()
         except Exception:
             logger.exception("Error toggling metrics")
+
+    @pyqtSlot()
+    def _toggle_sidebar(self) -> None:
+        """Toggle sidebar visibility."""
+        if self.sidebar.isVisible():
+            self._collapse_sidebar()
+        else:
+            self._expand_sidebar()
 
     @pyqtSlot(bool)
     def _on_metrics_collapsed_changed(self, collapsed: bool) -> None:
@@ -501,13 +527,13 @@ class MainWindow(QMainWindow):
         
         Called by: main.py when ResultThread reports status changes.
         
-        Edit Safety: Only transitions IDLE↔RECORDING, never touches EDITING/VIEWING.
+        Edit Safety: Only transitions IDLE/VIEWING↔RECORDING, never touches EDITING.
         This protects users from losing unsaved edits when the engine sends updates.
         """
         match status:
             case "recording":
-                # Only set if idle - don't interrupt editing/viewing
-                if self.workspace.get_state() == WorkspaceState.IDLE:
+                # Only set if idle or viewing - don't interrupt editing
+                if self.workspace.get_state() in (WorkspaceState.IDLE, WorkspaceState.VIEWING):
                     self.workspace.set_state(WorkspaceState.RECORDING)
             case "transcribing":
                 self.workspace.show_transcribing_status()

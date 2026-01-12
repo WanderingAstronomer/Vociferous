@@ -164,6 +164,10 @@ class TranscriptMetrics(QWidget):
 
     def _format_duration(self, seconds: float) -> str:
         """Format seconds into human-readable duration."""
+        if seconds < 1.0:
+            # Show one decimal place for sub-second durations
+            return f"{seconds:.1f}s"
+            
         if seconds < 60:
             return f"{int(seconds)}s"
 

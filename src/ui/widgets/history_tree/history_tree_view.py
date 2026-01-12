@@ -12,6 +12,7 @@ from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QAbstractItemModel, QFileSystemWatcher, QModelIndex, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -97,7 +98,7 @@ class HistoryTreeView(QTreeView):
         self.setExpandsOnDoubleClick(False)
 
         self.setUniformRowHeights(True)
-        self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -222,58 +223,132 @@ class HistoryTreeView(QTreeView):
         if is_header:
             return
 
-        # Validate that this is actually a transcript entry with data
-        timestamp = index.data(TranscriptionModel.TimestampRole)
-        if not timestamp:
+        # Get all selected entries (filter out headers)
+        selected_indices = self._get_selected_entry_indices()
+        if not selected_indices:
             return
 
-        menu = QMenu(self)
-        text = index.data(TranscriptionModel.FullTextRole) or ""
+        # If clicked item is not in selection, treat as single item
+        if index not in selected_indices:
+            selected_indices = [index]
 
-        # Copy action
-        copy_action = menu.addAction("Copy")
-        copy_action.triggered.connect(
-            safe_callback(lambda checked: self._copy_entry(index, text), "copy_entry")
-        )
+        count = len(selected_indices)
+        menu = QMenu(self)
+
+        # Copy action (only for single selection)
+        if count == 1:
+            text = selected_indices[0].data(TranscriptionModel.FullTextRole) or ""
+            copy_action = menu.addAction("Copy")
+            copy_action.triggered.connect(
+                safe_callback(lambda checked: self._copy_entry(selected_indices[0], text), "copy_entry")
+            )
 
         # Focus group assignment
         if self._history_manager:
             menu.addSeparator()
 
-            current_group_id = index.data(TranscriptionModel.GroupIDRole)
+            # Get group IDs for selected items
+            group_ids = {idx.data(TranscriptionModel.GroupIDRole) for idx in selected_indices}
+            current_group_id = group_ids.pop() if len(group_ids) == 1 else None
             focus_groups = self._history_manager.get_focus_groups()
 
             if focus_groups:
-                assign_menu = menu.addMenu("Assign to Group")
+                menu_label = f"Assign to Group" if count == 1 else f"Assign {count} Items to Group"
+                assign_menu = menu.addMenu(menu_label)
+                
+                # Build hierarchy map
+                # groups: list of (id, name, color, parent_id)
+                roots = []
+                children_map = {}
+                
+                for row in focus_groups:
+                    # Handle flexible tuple unpacking for migration safety
+                    if len(row) == 4:
+                        gid, name, color, pid = row
+                    else:
+                        gid, name, color = row
+                        pid = None
 
-                for group_id, name, _ in focus_groups:
-                    action = assign_menu.addAction(name)
-                    is_current = group_id == current_group_id
+                    if pid is None:
+                        roots.append((gid, name, color))
+                    else:
+                        if pid not in children_map:
+                            children_map[pid] = []
+                        children_map[pid].append((gid, name, color))
+
+                # Helper to create action
+                def add_group_action(menu_obj, g_id, g_name, g_color, indent=0):
+                    # Visual indentation for subgroups
+                    # Use a subtle indicator for hierarchy
+                    prefix = "↳ " if indent > 0 else ""
+                    display_name = prefix + g_name
+                    
+                    # Create icon
+                    icon = QIcon()
+                    if g_color:
+                        pixmap = QPixmap(12, 12)
+                        pixmap.fill(QColor(g_color))
+                        icon = QIcon(pixmap)
+                        
+                    action = menu_obj.addAction(icon, display_name)
+                    is_current = g_id == current_group_id
                     action.setCheckable(True)
                     action.setChecked(is_current)
+                    
+                    # Always connect, checkable state handles UI feedback
                     action.triggered.connect(
                         safe_callback(
-                            lambda checked, gid=group_id, ts=timestamp: self._assign_to_group(ts, gid),
+                            lambda checked, gid=g_id, indices=selected_indices: self._assign_items_to_group(indices, gid),
                             "assign_to_group"
                         )
                     )
 
+                # Render menu items in order
+                for gid, name, color in roots:
+                    add_group_action(assign_menu, gid, name, color, indent=0)
+                    
+                    # Add children if any
+                    if gid in children_map:
+                        for child_gid, child_name, child_color in children_map[gid]:
+                            add_group_action(assign_menu, child_gid, child_name, child_color, indent=1)
+
                 assign_menu.addSeparator()
-                ungroup_action = assign_menu.addAction("Remove from Group")
-                ungroup_action.setEnabled(current_group_id is not None)
+                ungroup_label = "Remove from Group" if count == 1 else f"Remove {count} Items from Group"
+                ungroup_action = assign_menu.addAction(ungroup_label)
+                # Enable if any selected item has a group
+                ungroup_action.setEnabled(any(idx.data(TranscriptionModel.GroupIDRole) is not None for idx in selected_indices))
                 ungroup_action.triggered.connect(
-                    safe_callback(lambda checked: self._assign_to_group(timestamp, None), "ungroup")
+                    safe_callback(lambda checked, indices=selected_indices: self._assign_items_to_group(indices, None), "ungroup")
                 )
 
                 menu.addSeparator()
 
         # Delete action
-        delete_action = menu.addAction("Delete Entry")
+        delete_label = "Delete Entry" if count == 1 else f"Delete {count} Entries"
+        delete_action = menu.addAction(delete_label)
         delete_action.triggered.connect(
-            safe_callback(lambda checked: self._delete_entry(index), "delete_entry")
+            safe_callback(lambda checked, indices=selected_indices: self._delete_entries(indices), "delete_entries")
         )
 
         menu.exec(self.viewport().mapToGlobal(position))
+
+    def _get_selected_entry_indices(self) -> list[QModelIndex]:
+        """Get all selected entry indices, filtering out day headers."""
+        selected = self.selectedIndexes()
+        entries = []
+        for index in selected:
+            if index.isValid() and not index.data(TranscriptionModel.IsHeaderRole):
+                timestamp = index.data(TranscriptionModel.TimestampRole)
+                if timestamp and index not in entries:
+                    entries.append(index)
+        return entries
+
+    def _assign_items_to_group(self, indices: list[QModelIndex], group_id: int | None) -> None:
+        """Assign multiple transcripts to a focus group."""
+        for index in indices:
+            timestamp = index.data(TranscriptionModel.TimestampRole)
+            if timestamp:
+                self._assign_to_group(timestamp, group_id)
 
     def _assign_to_group(self, timestamp: str, group_id: int | None) -> None:
         """Assign transcript to a focus group."""
@@ -315,6 +390,49 @@ class HistoryTreeView(QTreeView):
         if text:
             copy_text(text)
 
+    def _delete_entries(self, indices: list[QModelIndex]) -> None:
+        """Delete multiple entries from the model and storage."""
+        try:
+            if not indices:
+                return
+
+            count = len(indices)
+            # Confirm deletion
+            title = "Delete Transcript" if count == 1 else f"Delete {count} Transcripts"
+            message = "Are you sure you want to delete this transcript?" if count == 1 else f"Are you sure you want to delete {count} transcripts?"
+            dialog = ConfirmationDialog(
+                self,
+                title=title,
+                message=message,
+                confirm_text="Delete",
+                cancel_text="Cancel",
+                is_destructive=True,
+            )
+
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+
+            # Delete all selected entries
+            source_model = self._get_source_model()
+            for index in indices:
+                timestamp = index.data(TranscriptionModel.TimestampRole)
+                if timestamp and self._history_manager:
+                    self._history_manager.delete_entry(timestamp)
+                    if source_model:
+                        source_model.delete_entry(timestamp)
+
+            self._emit_count()
+            self.updateGeometry()
+            self.viewport().update()
+
+        except Exception as e:
+            logger.exception("Error deleting entries")
+            show_error_dialog(
+                title="Delete Error",
+                message=f"Failed to delete entries: {e}",
+                parent=self,
+            )
+
     def _delete_entry(self, index: QModelIndex) -> None:
         """Delete an entry from the model and storage."""
         try:
@@ -329,6 +447,11 @@ class HistoryTreeView(QTreeView):
             if not timestamp:
                 return
 
+            # Use bulk delete for consistency
+            self._delete_entries([index])
+            return
+
+            # Old single-delete code preserved for keyboard shortcuts
             # Confirm deletion
             dialog = ConfirmationDialog(
                 self,

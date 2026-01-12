@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QKeySequence, QShortcut, QKeyEvent
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QDialog,
@@ -53,8 +54,25 @@ class ExportDialog(QDialog):
         self._save_directory = Path.home()
 
         self._setup_ui()
+        self._setup_shortcuts()
         self.setMinimumWidth(500)
         self.adjustSize()
+
+    def _setup_shortcuts(self) -> None:
+        """Set up keyboard shortcuts."""
+        # Escape to cancel
+        escape = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        escape.activated.connect(self.reject)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        """Handle keyboard interactions."""
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            # If focus is not on a specific widget that needs Enter (like multiline edit)
+            # trigger the primary action
+            self.export_btn.click()
+            event.accept()
+        else:
+            super().keyPressEvent(event)
 
     def _setup_ui(self) -> None:
         """Create dialog layout."""
@@ -99,17 +117,20 @@ class ExportDialog(QDialog):
         self.format_group = QButtonGroup(self)
         
         self.txt_radio = QRadioButton("Plain Text (.txt)")
+        self.txt_radio.setProperty("class", "styledRadio")
         self.txt_radio.setChecked(True)
         self.txt_radio.toggled.connect(lambda: self._on_format_changed("txt"))
         self.format_group.addButton(self.txt_radio)
         format_layout.addWidget(self.txt_radio)
 
         self.csv_radio = QRadioButton("CSV (.csv)")
+        self.csv_radio.setProperty("class", "styledRadio")
         self.csv_radio.toggled.connect(lambda: self._on_format_changed("csv"))
         self.format_group.addButton(self.csv_radio)
         format_layout.addWidget(self.csv_radio)
 
         self.md_radio = QRadioButton("Markdown (.md)")
+        self.md_radio.setProperty("class", "styledRadio")
         self.md_radio.toggled.connect(lambda: self._on_format_changed("md"))
         self.format_group.addButton(self.md_radio)
         format_layout.addWidget(self.md_radio)
@@ -198,6 +219,9 @@ class ExportDialog(QDialog):
         button_layout.addWidget(self.export_btn)
 
         frame_layout.addWidget(button_container)
+        
+        # Connect Enter key in filename input to export action
+        self.filename_input.returnPressed.connect(self.export_btn.click)
 
     def _on_format_changed(self, fmt: str) -> None:
         """Handle format selection change."""

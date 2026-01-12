@@ -27,6 +27,21 @@ class FocusGroup(Base):
     color: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    # Hierarchical Relationship
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("focus_groups.id"), nullable=True)
+    
+    # Self-referential accessors
+    children: Mapped[list["FocusGroup"]] = relationship(
+        "FocusGroup", 
+        back_populates="parent",
+        cascade="all, delete-orphan"
+    )
+    parent: Mapped["FocusGroup | None"] = relationship(
+        "FocusGroup", 
+        back_populates="children", 
+        remote_side=[id]
+    )
+
     transcripts: Mapped[list["Transcript"]] = relationship(
         back_populates="focus_group", cascade="all, delete-orphan"
     )

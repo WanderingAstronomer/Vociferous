@@ -143,8 +143,35 @@ QMenu::item {{
 }}
 
 QMenu::item:selected {{
-    background-color: {c.ACCENT_BLUE_HOVER};
-    color: {c.TEXT_ACCENT};
+    background-color: {c.ACCENT_BLUE};
+    color: {c.TEXT_ON_ACCENT};
+}}
+
+/* =================================================================
+   RADIO BUTTONS (Styled)
+   ================================================================= */
+
+QRadioButton[class="styledRadio"] {{
+    color: {c.TEXT_PRIMARY};
+    spacing: 8px;
+    padding: 4px 0px;
+}}
+
+QRadioButton[class="styledRadio"]::indicator {{
+    width: 16px;
+    height: 16px;
+    border: 2px solid {c.BORDER_DEFAULT};
+    border-radius: 8px;
+    background-color: {c.BG_TERTIARY};
+}}
+
+QRadioButton[class="styledRadio"]::indicator:checked {{
+    background-color: {c.ACCENT_PRIMARY};
+    border-color: {c.ACCENT_PRIMARY};
+}}
+
+QRadioButton[class="styledRadio"]::indicator:hover {{
+    border-color: {c.ACCENT_PRIMARY};
 }}
 
 /* =================================================================

@@ -43,12 +43,31 @@ class FocusGroupDelegate(QStyledItemDelegate):
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
     ) -> None:
         """Paint the item with custom styling."""
+        # Calculate indentation offset
+        indent_width = 20  # Default fallback
+        if hasattr(option.widget, "indentation"):
+            indent_width = option.widget.indentation()
+        
+        depth = 0
+        parent = index.parent()
+        while parent.isValid():
+            depth += 1
+            parent = parent.parent()
+            
+        indent_offset = depth * indent_width
+        
+        # Create adjusted option with offset rect
+        # We modify the rect to start AFTER the indentation
+        # This ensures backgrounds and content are properly indented
+        adj_option = QStyleOptionViewItem(option)
+        adj_option.rect.setLeft(adj_option.rect.left() + indent_offset)
+        
         is_group = index.data(self.ROLE_IS_GROUP)
 
         if is_group:
-            self._paint_group_item(painter, option, index)
+            self._paint_group_item(painter, adj_option, index)
         else:
-            self._paint_transcript_item(painter, option, index)
+            self._paint_transcript_item(painter, adj_option, index)
 
     def _paint_group_item(
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
@@ -91,9 +110,15 @@ class FocusGroupDelegate(QStyledItemDelegate):
         painter.setBrush(QColor(color))
         painter.drawRoundedRect(marker_rect, 3, 3)
 
-        # Text (primary), padded
+        # Text, padded
         text_rect = rect.adjusted(6 + marker_w + 10, 0, -12, 0)
-        painter.setPen(QColor(Colors.TEXT_PRIMARY))
+        
+        # Subgroups (nested groups) use secondary text color
+        text_color = QColor(Colors.TEXT_PRIMARY)
+        if index.parent().isValid():
+            text_color = QColor(Colors.TEXT_SECONDARY)
+            
+        painter.setPen(text_color)
         painter.drawText(
             text_rect,
             Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,

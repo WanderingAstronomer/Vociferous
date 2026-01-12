@@ -30,6 +30,7 @@ class FocusGroupContainer(QWidget):
 
     # Signals (forwarded from tree)
     entrySelected = pyqtSignal(str, str)
+    entryAssignmentChanged = pyqtSignal()
     groupCreated = pyqtSignal(int, str)
     groupRenamed = pyqtSignal(int, str)
     groupDeleted = pyqtSignal(int)
@@ -60,6 +61,7 @@ class FocusGroupContainer(QWidget):
     def _setup_connections(self) -> None:
         """Forward signals from tree widget."""
         self.tree.entrySelected.connect(self.entrySelected)
+        self.tree.entryAssignmentChanged.connect(self.entryAssignmentChanged)
         self.tree.groupCreated.connect(self.groupCreated)
         self.tree.groupRenamed.connect(self.groupRenamed)
         self.tree.groupDeleted.connect(self.groupDeleted)

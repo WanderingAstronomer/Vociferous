@@ -95,6 +95,19 @@ class HistoryManager:
         # Create all tables defined in models.py
         Base.metadata.create_all(self.engine)
         
+        # Micro-migration for v2.2.1: Add parent_id if missing
+        try:
+            from sqlalchemy import inspect
+            inspector = inspect(self.engine)
+            columns = [c["name"] for c in inspector.get_columns("focus_groups")]
+            if "parent_id" not in columns:
+                logger.info("Migrating schema: Adding parent_id to focus_groups")
+                with self.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE focus_groups ADD COLUMN parent_id INTEGER REFERENCES focus_groups(id)"))
+                    conn.commit()
+        except Exception as e:
+            logger.warning(f"Schema migration check failed: {e}")
+
         # Enforce foreign keys (SQLite specific)
         with self.engine.connect() as conn:
             conn.execute(text("PRAGMA foreign_keys = ON"))
@@ -326,11 +339,11 @@ class HistoryManager:
 
     # ========== Focus Group Methods ==========
 
-    def create_focus_group(self, name: str, color: str | None = None) -> int | None:
+    def create_focus_group(self, name: str, color: str | None = None, parent_id: int | None = None) -> int | None:
         """Create a new focus group."""
         try:
             with self.Session() as session:
-                group = FocusGroup(name=name, color=color)
+                group = FocusGroup(name=name, color=color, parent_id=parent_id)
                 session.add(group)
                 session.commit()
                 return group.id
@@ -339,13 +352,13 @@ class HistoryManager:
             logger.error(f"Failed to create focus group: {e}")
             return None
 
-    def get_focus_groups(self) -> list[tuple[int, str, str | None]]:
+    def get_focus_groups(self) -> list[tuple[int, str, str | None, int | None]]:
         """Get all focus groups."""
         try:
             with self.Session() as session:
                 stmt = select(FocusGroup).order_by(FocusGroup.created_at.asc())
                 groups = session.execute(stmt).scalars().all()
-                return [(g.id, g.name, g.color) for g in groups]
+                return [(g.id, g.name, g.color, g.parent_id) for g in groups]
 
         except Exception as e:
             logger.error(f"Failed to get focus groups: {e}")

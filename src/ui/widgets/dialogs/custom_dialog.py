@@ -117,6 +117,12 @@ class StyledDialog(QDialog):
             style = ButtonStyle.DESTRUCTIVE
 
         btn = StyledButton(text, style)
+        
+        # Configure default button behavior for primary/destructive actions
+        if role in ("primary", "destructive"):
+            btn.setDefault(True)
+            btn.setAutoDefault(True)
+            
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
         btn.setMinimumHeight(40)  # Ensure buttons have adequate vertical size
 
