@@ -18,7 +18,7 @@ class EvdevBackend:
     def is_available(cls) -> bool:
         """Check if the evdev library is available."""
         try:
-            import evdev
+            import evdev  # noqa: F401
 
             return True
         except ImportError:

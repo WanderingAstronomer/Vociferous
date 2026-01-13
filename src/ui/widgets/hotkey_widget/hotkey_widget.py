@@ -20,7 +20,7 @@ from ui.utils.keycode_mapping import (
 )
 
 if TYPE_CHECKING:
-    from key_listener import InputEvent, KeyCode, KeyListener
+    from input_handler import InputEvent, KeyCode, KeyListener
 
 
 class HotkeyWidget(QWidget):
@@ -81,7 +81,7 @@ class HotkeyWidget(QWidget):
 
     def _on_capture_event(self, key: KeyCode, event_type: InputEvent) -> None:
         """Handle captured key events. Defensive against widget deletion."""
-        from key_listener import InputEvent
+        from input_handler import InputEvent
 
         try:
             if event_type == InputEvent.KEY_PRESS:
@@ -135,7 +135,7 @@ class HotkeyWidget(QWidget):
 
     def _parse_hotkey_string(self, hotkey: str) -> set[KeyCode]:
         """Best-effort parse of a config hotkey string into KeyCodes for display."""
-        from key_listener import KeyCode
+        from input_handler import KeyCode
 
         lookup: dict[str, KeyCode] = {code.name.lower(): code for code in KeyCode}
         result: set[KeyCode] = set()

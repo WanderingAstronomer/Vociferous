@@ -8,7 +8,6 @@ Tracks signal connections in _thread_connections for proper cleanup.
 import logging
 import os
 import sys
-from pathlib import Path
 
 from PyQt6.QtCore import (
     QLockFile,
@@ -19,16 +18,16 @@ from PyQt6.QtCore import (
     pyqtSlot,
     qInstallMessageHandler,
 )
-from PyQt6.QtGui import QAction, QIcon
-from PyQt6.QtWidgets import QApplication, QMenu, QMessageBox, QStyle, QSystemTrayIcon
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from history_manager import HistoryManager
-from key_listener import KeyListener
+from input_handler import KeyListener
 from result_thread import ResultThread
 from services.slm_service import SLMService
 from transcription import create_local_model
 from ui.components.main_window import MainWindow
 from ui.components.settings import SettingsDialog
+from ui.components.system_tray import SystemTrayManager
 from ui.utils.clipboard_utils import copy_text
 from ui.utils.error_handler import get_error_logger, install_exception_hook
 from ui.widgets.dialogs.error_dialog import show_error_dialog
@@ -215,7 +214,7 @@ class VociferousApp(QObject):
 
             # Main window (shows recording/transcribing state)
             self.main_window = MainWindow(self.history_manager)
-            self.main_window.setWindowIcon(self._build_tray_icon())
+            self.main_window.setWindowIcon(SystemTrayManager.build_icon(self.app))
             self.main_window.on_settings_requested(self.show_settings)
 
             # Connect history widget selection to load into editor
@@ -233,7 +232,9 @@ class VociferousApp(QObject):
             )
 
             # System tray
-            self.create_tray_icon()
+            self.tray_manager = SystemTrayManager(
+                self.app, self.main_window, self.show_settings, self.exit_app
+            )
             self.main_window.windowCloseRequested.connect(self.exit_app)
 
             # React to configuration changes
@@ -287,102 +288,6 @@ class VociferousApp(QObject):
             )
             raise
 
-    def _tray_available(self) -> bool:
-        """Return True if a functional system tray is available."""
-        if sys.platform.startswith("linux"):
-            if not os.environ.get("DBUS_SESSION_BUS_ADDRESS"):
-                logger.warning("D-Bus session bus missing; skipping tray icon.")
-                return False
-            try:
-                from PyQt6.QtDBus import QDBusConnection
-            except Exception as exc:
-                logger.warning(f"QtDBus unavailable; skipping tray icon: {exc}")
-                return False
-
-            bus = QDBusConnection.sessionBus()
-            if not bus.isConnected():
-                logger.warning("D-Bus session bus not connected; skipping tray icon.")
-                return False
-
-            interface = bus.interface()
-            if not (
-                interface
-                and interface.isServiceRegistered("org.kde.StatusNotifierWatcher")
-            ):
-                logger.warning("No StatusNotifierWatcher; skipping tray icon.")
-                return False
-
-            return True
-
-        return QSystemTrayIcon.isSystemTrayAvailable()
-
-    def create_tray_icon(self) -> None:
-        """Create system tray icon with context menu."""
-        if not self._tray_available():
-            self.tray_icon = None
-            self.main_window.show_and_raise()
-            return
-
-        try:
-            icon = self._build_tray_icon()
-            self.tray_icon = QSystemTrayIcon(icon, self.app)
-
-            tray_menu = QMenu()
-
-            # Status indicator (non-clickable)
-            status_action = QAction("Vociferous - Ready", self.app)
-            status_action.setEnabled(False)
-            tray_menu.addAction(status_action)
-            self.status_action = status_action
-
-            tray_menu.addSeparator()
-
-            show_hide_action = QAction("Show/Hide Window", self.app)
-            show_hide_action.triggered.connect(self.toggle_main_window)
-            tray_menu.addAction(show_hide_action)
-            self.show_hide_action = show_hide_action
-
-            settings_action = QAction("Settings...", self.app)
-            settings_action.setEnabled(True)
-            settings_action.triggered.connect(self.show_settings)
-            tray_menu.addAction(settings_action)
-            self.settings_action = settings_action
-
-            tray_menu.addSeparator()
-
-            # Exit action
-            exit_action = QAction("Exit", self.app)
-            exit_action.triggered.connect(self.exit_app)
-            tray_menu.addAction(exit_action)
-
-            self.tray_icon.setContextMenu(tray_menu)
-            self.tray_icon.setToolTip("Vociferous - Speech to Text")
-            self.tray_icon.activated.connect(self.on_tray_activated)
-            self.tray_icon.show()
-            if _TRAY_DBUS_ERROR_SEEN:
-                logger.warning("Disabling tray icon after D-Bus error.")
-                self.tray_icon.hide()
-                self.tray_icon = None
-        except Exception as e:
-            # D-Bus errors are common on some desktop environments
-            # Tray icon is optional, so just log and continue
-            logger.warning(f"System tray initialization failed (non-fatal): {e}")
-            self.tray_icon = None
-
-        # Start with window shown on first launch
-        self.main_window.show_and_raise()
-
-    def toggle_main_window(self) -> None:
-        """Toggle window between minimized and visible."""
-        if self.main_window.isMinimized():
-            self.main_window.show_and_raise()
-        else:
-            self.main_window.showMinimized()
-
-    def on_tray_activated(self, reason):
-        """Handle tray icon activation (double-click to toggle window)."""
-        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            self.toggle_main_window()
 
     def show_settings(self) -> None:
         """Open the settings dialog and apply changes immediately."""
@@ -439,35 +344,6 @@ class VociferousApp(QObject):
                 details="The previous model will continue to be used.",
             )
 
-    def _build_tray_icon(self) -> QIcon:
-        """Return a non-empty icon for the tray using bundled assets with fallbacks."""
-        icons_dir = Path(__file__).resolve().parent.parent / "icons"
-        candidates = [
-            icons_dir / "512x512.png",
-            icons_dir / "192x192.png",
-            icons_dir / "favicon.ico",
-        ]
-
-        icon = QIcon()
-        for candidate in candidates:
-            if candidate.is_file():
-                icon.addFile(str(candidate))
-
-        if icon.isNull():
-            icon = QIcon.fromTheme("microphone-sensitivity-high")
-
-        if icon.isNull():
-            app_instance = QApplication.instance()
-            if app_instance and isinstance(app_instance, QApplication):
-                style = app_instance.style()
-                icon = (
-                    style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay)
-                    if style
-                    else QIcon()
-                )
-            else:
-                icon = QIcon()
-        return icon
 
     @pyqtSlot()
     def on_activation(self) -> None:
@@ -616,24 +492,19 @@ class VociferousApp(QObject):
 
     def update_tray_status(self, status: str) -> None:
         """Update tray icon tooltip based on current status."""
-        if _TRAY_DBUS_ERROR_SEEN and self.tray_icon:
-            self.tray_icon.hide()
-            self.tray_icon = None
+        if _TRAY_DBUS_ERROR_SEEN and hasattr(self, "tray_manager"):
+            if self.tray_manager.tray_icon:
+                self.tray_manager.tray_icon.hide()
+                # We don't want to constantly re-hide, but this attribute access is checked
+                self.tray_manager.tray_icon = None
             return
-        match status:
-            case "recording":
-                text = "Vociferous - Recording..."
-            case "transcribing":
-                text = "Vociferous - Transcribing..."
-            case "error":
-                text = "Vociferous - Error"
-            case _:
-                text = "Vociferous - Ready"
 
-        # Update tray icon if it exists (may be None if D-Bus failed)
-        if self.tray_icon:
-            self.status_action.setText(text)
-            self.tray_icon.setToolTip(text)
+        if not hasattr(self, "tray_manager"):
+            return
+
+        is_recording = status == "recording"
+        is_transcribing = status == "transcribing"
+        self.tray_manager.update_status(is_recording, is_transcribing)
 
     def _on_transcription_complete(
         self, result: str, duration_ms: int, speech_duration_ms: int
@@ -693,52 +564,16 @@ class VociferousApp(QObject):
                 details="",
             )
 
-    @pyqtSlot()
-    def _on_refine_requested(self) -> None:
-        """Handle refinement request from workspace."""
+    @pyqtSlot(str, str, str)
+    def _on_refine_requested(self, profile: str, text: str, timestamp: str) -> None:
+        """Handle refinement request with profile.
+
+        Args:
+            profile: The refinement profile to use
+            text: The text content to refine
+            timestamp: The timestamp of the transcript
+        """
         try:
-            if not hasattr(self.main_window, "workspace"):
-                return
-
-            content = self.main_window.workspace.content
-            text = content.get_text()
-            timestamp = content.get_timestamp()
-
-            if not text or not timestamp:
-                logger.warning("Refinement requested but no content loaded.")
-                return
-
-            transcript_id = self.history_manager.get_id_by_timestamp(timestamp)
-            if transcript_id is None:
-                logger.error(f"Could not find transcript ID for timestamp {timestamp}")
-                self._show_global_error(
-                    "Refinement Error",
-                    "Could not associate text with a database record.",
-                    "",
-                )
-                return
-
-            if not ConfigManager.get_config_value("refinement", "enabled"):
-                self._show_global_error(
-                    "Feature Disabled", "Refinement is disabled in settings.", ""
-                )
-                return
-
-            ConfigManager.console_print("Refining transcript...")
-            # Profile is passed from signal, or defaults if using old signature
-            # But the slot signature is distinct, so we should rely on what comes in
-            # This method signature will change to accept profile
-        except Exception:
-            logger.exception("Error handling refine request")
-
-    @pyqtSlot(str)
-    def _on_refine_requested(self, profile: str) -> None:
-        """Handle refinement request with profile."""
-        try:
-            # Get current transcript details from UI
-            text = self.main_window.workspace.content.get_text()
-            timestamp = self.main_window.workspace.content.get_timestamp()
-
             if not text or not timestamp:
                 logger.warning("Refine requested but no content loaded")
                 return
@@ -781,20 +616,15 @@ class VociferousApp(QObject):
             ConfigManager.console_print("Refinement complete and saved.")
 
             # Update UI if still viewing this transcript
-            content = self.main_window.workspace.content
-            current_ts = content.get_timestamp()
-
-            if current_ts:
-                current_id = self.history_manager.get_id_by_timestamp(current_ts)
-                if current_id == transcript_id:
-                    # Reload text and update UI metrics
-                    # If the refined text is wildly different (structure wise) we just show it
-                    self.main_window.workspace.load_transcript(text, current_ts)
-                    # Refresh carousel with new variants
-                    variants = self.history_manager.get_transcript_variants(
-                        transcript_id
-                    )
-                    self.main_window.workspace.content.set_variants(variants)
+            # We need to know the timestamp to check if it's the current one.
+            # Ideally we would pass it through requestRefinement -> SLM -> success signal,
+            # but for now we look it up from ID.
+            entry = self.history_manager.get_entry(transcript_id)
+            if entry:
+                variants = self.history_manager.get_transcript_variants(transcript_id)
+                self.main_window.workspace.on_refinement_completed(
+                    text, entry.timestamp, variants
+                )
 
         except Exception:
             logger.exception("Error in refinement success handler")

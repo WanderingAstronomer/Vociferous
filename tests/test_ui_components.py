@@ -14,7 +14,7 @@ from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import QApplication
 
 from history_manager import HistoryManager
-from key_listener import KeyListener
+from input_handler import KeyListener
 from ui.components.settings import SettingsDialog
 from ui.models import TranscriptionModel
 from ui.widgets.dialogs import CreateGroupDialog

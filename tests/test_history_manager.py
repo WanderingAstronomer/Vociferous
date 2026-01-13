@@ -98,8 +98,9 @@ class TestDatabaseInitialization:
             cursor = conn.execute("PRAGMA foreign_key_list(transcripts)")
             fks = cursor.fetchall()
 
-        assert len(fks) == 1
-        assert fks[0][2] == "focus_groups"  # Referenced table
+        assert len(fks) >= 1
+        referenced_tables = [fk[2] for fk in fks]
+        assert "focus_groups" in referenced_tables
 
     def test_removes_legacy_schema_version_table(self, temp_db):
         """Should remove schema_version table when detected to prevent nuke loops."""

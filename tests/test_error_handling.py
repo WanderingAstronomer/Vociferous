@@ -271,7 +271,7 @@ class TestSettingsValidation:
 
     def test_device_compute_type_validation(self, qapp):
         """Device and compute_type should be validated for compatibility."""
-        from key_listener import KeyListener
+        from input_handler import KeyListener
         from ui.components.settings import SettingsDialog
 
         key_listener = KeyListener()
@@ -383,7 +383,7 @@ class TestErrorPathIntegration:
 
     def test_key_listener_callback_error_isolation(self):
         """KeyListener should isolate callback errors."""
-        from key_listener import KeyListener
+        from input_handler import KeyListener
 
         listener = KeyListener()
 

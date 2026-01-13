@@ -4,7 +4,7 @@ Tests for key listener and hotkey detection.
 
 import pytest
 
-from key_listener import EvdevBackend, InputEvent, KeyChord, KeyCode, PynputBackend
+from input_handler import EvdevBackend, InputEvent, KeyChord, KeyCode, PynputBackend
 
 
 class TestKeyCode:

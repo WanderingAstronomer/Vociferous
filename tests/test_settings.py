@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from key_listener import InputEvent, KeyCode
+from input_handler import InputEvent, KeyCode
 
 
 class TestKeycodeMapping:

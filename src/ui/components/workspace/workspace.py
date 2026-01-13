@@ -73,7 +73,7 @@ class MainWorkspace(QWidget):
     cancelRequested = pyqtSignal()
     saveRequested = pyqtSignal(str)
     deleteRequested = pyqtSignal()
-    refineRequested = pyqtSignal(str)  # Passes profile
+    refineRequested = pyqtSignal(str, str, str)  # Passes (profile, text, timestamp)
     textEdited = pyqtSignal()
 
     # Intent processing signal (Phase 2: observability only)
@@ -191,11 +191,30 @@ class MainWorkspace(QWidget):
         self.controls.primaryClicked.connect(self._on_primary_click)
         self.controls.editSaveClicked.connect(self._on_edit_save_click)
         self.controls.destructiveClicked.connect(self._on_destructive_click)
-        self.controls.refineClicked.connect(self.refineRequested.emit)
+        self.controls.refineClicked.connect(self._handle_refine_request)
 
         self.content.textChanged.connect(self._on_text_changed)
         self.content.editRequested.connect(self._on_edit_save_click)
         self.content.deleteRequested.connect(self._on_destructive_click)
+
+    def _handle_refine_request(self, profile: str) -> None:
+        """Collect transcript data and emit refinement request."""
+        text = self.content.get_text()
+        timestamp = self.content.get_timestamp()
+        if text and timestamp:
+            self.refineRequested.emit(profile, text, timestamp)
+
+    def on_refinement_completed(
+        self, text: str, timestamp: str, variants: list
+    ) -> None:
+        """Handle completion of external refinement.
+
+        Updates the view only if we are still looking at the same transcript.
+        """
+        current_ts = self.content.get_timestamp()
+        if current_ts == timestamp:
+            self.load_transcript(text, timestamp)
+            self.content.set_variants(variants)
 
     def _update_for_state(self) -> None:
         """Update all components for current state."""

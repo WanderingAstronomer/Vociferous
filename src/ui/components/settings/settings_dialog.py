@@ -32,7 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from key_listener import KeyListener
+from input_handler import KeyListener
 from ui.components.title_bar import DialogTitleBar
 from ui.constants import Colors, Spacing, Typography
 from ui.widgets.hotkey_widget import HotkeyWidget

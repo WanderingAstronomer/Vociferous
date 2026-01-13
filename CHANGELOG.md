@@ -2,6 +2,23 @@
 
 ---
 
+# v2.4.3 - Code Quality and Type Integrity
+
+**Date:** January 12, 2026
+**Status:** Maintenance Release
+
+---
+
+## Fixed
+
+### Code Quality
+- **Linting**: Resolved all remaining Ruff linting errors.
+- **Typing**: Fixed multiple MyPy type errors across the project, including improved `SystemTrayManager` integration in `VociferousApp`.
+- **Database**: Cleanup of unused type ignore comments in `TranscriptRepository` and `FocusGroupRepository`.
+- **Orchestration**: Removed redundant `_on_refine_requested` implementation and fixed incomplete signal-slot signatures.
+
+---
+
 # v2.4.2 - Developer Experience (DX) & Architecture Documentation
 
 **Date:** January 12, 2026

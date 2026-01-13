@@ -23,7 +23,7 @@ class TestRefinementBackend:
         return service
 
     @patch("services.slm_service.snapshot_download")
-    @patch("services.slm_service.GECEngine")
+    @patch("services.slm_service.RefinementEngine")
     @patch("services.slm_service.get_model_cache_dir")
     def test_initialization_download(
         self, mock_get_cache, mock_engine, mock_download, slm_service
@@ -65,7 +65,7 @@ class TestRefinementBackend:
 
         mock_error_signal.emit.assert_called()
 
-    @patch("services.slm_service.GECEngine")
+    @patch("services.slm_service.RefinementEngine")
     def test_refinement_success(self, mock_engine_cls, slm_service):
         """Test successful refinement."""
         mock_engine = mock_engine_cls.return_value
@@ -78,5 +78,5 @@ class TestRefinementBackend:
 
         slm_service.handle_refinement_request(1, "Raw Text")
 
-        mock_engine.refine.assert_called_with("Raw Text")
+        mock_engine.refine.assert_called_with("Raw Text", "BALANCED")
         mock_success_signal.emit.assert_called_with(1, "Refined Text")
