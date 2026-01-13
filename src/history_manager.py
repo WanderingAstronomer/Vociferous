@@ -16,6 +16,7 @@ from database.core import DatabaseCore
 from database.repositories import TranscriptRepository, FocusGroupRepository
 from ui.constants import HISTORY_EXPORT_LIMIT
 from ui.utils import format_day_header, format_time
+from exceptions import DatabaseError
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +30,18 @@ class HistoryManager:
         # Support legacy argument for backward compatibility
         final_path = db_path or history_file
         
-        # Initialize Database Core
-        self.db = DatabaseCore(final_path)
-        
-        # Initialize Repositories
-        self.transcripts = TranscriptRepository(self.db)
-        self.focus_groups = FocusGroupRepository(self.db)
+        try:
+            # Initialize Database Core
+            self.db = DatabaseCore(final_path)
+            
+            # Initialize Repositories
+            self.transcripts = TranscriptRepository(self.db)
+            self.focus_groups = FocusGroupRepository(self.db)
+        except Exception as e:
+            raise DatabaseError(
+                f"Failed to initialize history database: {e}",
+                context={"path": str(final_path)}
+            ) from e
 
     # ========== Transcript Methods ==========
 

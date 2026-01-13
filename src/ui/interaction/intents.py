@@ -73,11 +73,35 @@ class ViewTranscriptIntent(InteractionIntent):
     variants: list = field(default_factory=list)
 
 
-@dataclass(frozen=True, slots=True)
-class EditTranscriptIntent(InteractionIntent):
-    """User desires to enter edit mode for the current transcript."""
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SwitchViewIntent(InteractionIntent):
+    """User desires to switch the main view."""
 
-    pass
+    view_id: str
+    context: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class OpenOverlayIntent(InteractionIntent):
+    """User desires to open a modal overlay."""
+
+    overlay_id: str
+    props: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class CloseOverlayIntent(InteractionIntent):
+    """User desires to close an active overlay."""
+
+    overlay_id: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EditTranscriptIntent(InteractionIntent):
+    """User desires to enter edit mode for a transcript."""
+
+    transcript_id: str
+    return_view_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

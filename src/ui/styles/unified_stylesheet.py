@@ -1119,4 +1119,66 @@ QFileDialog QPushButton:hover {{
 QFileDialog QPushButton:pressed {{
     background-color: {c.ACCENT_PRESSED};
 }}
+
+/* =================================================================
+   SHELL COMPONENTS (IconRail, ActionGrid)
+   ================================================================= */
+
+/* IconRail Container */
+IconRail {{
+    background-color: {c.BG_SECONDARY};
+    border-right: 1px solid {c.BORDER_DEFAULT};
+    min-width: 60px;
+}}
+
+/* IconRail Buttons */
+IconRail QPushButton {{
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 10px;
+    margin: 4px;
+    color: {c.TEXT_SECONDARY};
+    font-weight: bold;
+    font-size: 16px; /* Icon placeholder size */
+}}
+
+IconRail QPushButton:hover {{
+    background-color: {c.HOVER_BG_ITEM};
+    color: {c.TEXT_PRIMARY};
+}}
+
+IconRail QPushButton:checked {{
+    background-color: {c.ACCENT_TRANSPARENT};
+    color: {c.ACCENT_BLUE};
+    border-left: 3px solid {c.ACCENT_BLUE};
+}}
+
+/* ActionGrid */
+ActionGrid {{
+    background-color: {c.BG_SECONDARY};
+    border-top: 1px solid {c.BORDER_DEFAULT};
+    border-bottom: 1px solid {c.BORDER_DEFAULT};
+    /* border-radius: 8px; */ 
+}}
+
+ActionGrid QPushButton {{
+    background-color: {c.BG_TERTIARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: 4px;
+    padding: 8px;
+    color: {c.TEXT_PRIMARY};
+}}
+
+ActionGrid QPushButton:hover {{
+    background-color: {c.HOVER_BG_ITEM};
+    border-color: {c.ACCENT_BLUE};
+}}
+
+ActionGrid QPushButton:disabled {{
+    color: {c.TEXT_TERTIARY};
+    background-color: {c.BG_PRIMARY};
+    border-color: {c.BORDER_DEFAULT};
+}}
+
 """

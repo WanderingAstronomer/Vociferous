@@ -44,6 +44,7 @@ class Colors:
 
     # Legacy alias
     TEXT_MUTED = TEXT_TERTIARY
+    TEXT_DISABLED = TEXT_TERTIARY
     TEXT_ON_PRIMARY = TEXT_ON_ACCENT
 
     # =================================================================
@@ -52,6 +53,7 @@ class Colors:
     PRIMARY = "#5a9fd4"
     PRIMARY_HOVER = "#6db3e8"
     PRIMARY_PRESSED = "#2d5a7b"
+    ACCENT_TRANSPARENT = "rgba(90, 159, 212, 0.15)"
 
     # Legacy aliases (all point to PRIMARY family)
     ACCENT_BLUE = PRIMARY

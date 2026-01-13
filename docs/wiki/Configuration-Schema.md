@@ -45,6 +45,14 @@ section_name:
 | `silence_duration` | int | `900` | VAD silence threshold (ms) |
 | `min_duration` | int | `100` | Minimum recording length (ms) |
 
+### logging (New in v2.5.2)
+
+| Setting | Type | Default | Description |
+| --- | --- | --- | --- |
+| `level` | str | `INFO` | Output verbosity: DEBUG, INFO, WARNING, ERROR |
+| `console_echo` | bool | `true` | Echo logs to stdout/stderr |
+| `structured_output` | bool | `false` | Enable JSON format for Agent debugging |
+
 ### output_options
 
 | Setting | Type | Default | Description |

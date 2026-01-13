@@ -7,7 +7,6 @@ Integrates sidebar, main workspace, and metrics strip in a responsive layout.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import (
@@ -22,9 +21,6 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import (
     QDesktopServices,
     QGuiApplication,
-    QIcon,
-    QPixmap,
-    QTransform,
 )
 from PyQt6.QtWidgets import (
     QDialog,
@@ -34,27 +30,36 @@ from PyQt6.QtWidgets import (
     QMenuBar,
     QPushButton,
     QSizePolicy,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from ui.components.main_window.intent_feedback import IntentFeedbackHandler
 from ui.components.main_window.menu_builder import MenuBuilder
-from ui.components.sidebar.sidebar_new import SidebarWidget
 from ui.components.title_bar import TitleBar
-from ui.components.workspace import MainWorkspace
 from ui.constants import (
     Colors,
-    Dimensions,
     Spacing,
-    Typography,
     WindowSize,
-    WorkspaceState,
 )
-from ui.interaction import IntentOutcome, IntentSource, ViewTranscriptIntent
 from ui.widgets.dialogs import ConfirmationDialog, MessageDialog, show_error_dialog
 from ui.widgets.metrics_strip import MetricsStrip
+
+# New shell components
+from ui.components.icon_rail import IconRail
+from ui.components.view_host import ViewHost
+from ui.components.action_grid import ActionGrid
+
+# Views
+from ui.views.transcribe_view import TranscribeView
+from ui.views.recent_view import RecentView
+from ui.views.projects_view import ProjectsView
+from ui.views.search_view import SearchView
+from ui.views.refine_view import RefineView
+from ui.views.edit_view import EditView
+from ui.constants.view_ids import (
+    VIEW_TRANSCRIBE, VIEW_RECENT, VIEW_PROJECTS, VIEW_SEARCH, VIEW_REFINE, VIEW_EDIT
+)
 
 if TYPE_CHECKING:
     from history_manager import HistoryEntry, HistoryManager
@@ -102,12 +107,6 @@ class MainWindow(QMainWindow):
         # Custom title bar
         self.title_bar = TitleBar(self, self._menu_bar)
 
-        # Sidebar state
-        self._sidebar_collapsed = False
-        self._sidebar_expanded_width = Dimensions.SIDEBAR_MIN_WIDTH
-        self._content_layout: QHBoxLayout | None = None
-        self._initial_state_restored = False
-
         # Debounce timer for metrics refresh (avoid blocking on rapid transcripts)
         self._metrics_refresh_timer = QTimer()
         self._metrics_refresh_timer.setSingleShot(True)
@@ -122,8 +121,6 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Vociferous")
         self.setMinimumSize(WindowSize.MIN_WIDTH, WindowSize.MIN_HEIGHT)
 
-        # Styles are applied at app level via generate_unified_stylesheet()
-
         # Title bar as menu widget
         self.setMenuWidget(self.title_bar)
 
@@ -135,76 +132,38 @@ class MainWindow(QMainWindow):
         )
         main_layout.setSpacing(Spacing.MAJOR_GAP)
 
-        # Metrics strip at top
-        self.metrics_strip = MetricsStrip(self.history_manager)
-        main_layout.addWidget(self.metrics_strip)
-
-        # Horizontal layout for sidebar and workspace
-        self._content_layout = QHBoxLayout()
-        self._content_layout.setSpacing(Spacing.MAJOR_GAP)
-
-        # Sidebar with tabbed navigation
-        self.sidebar = SidebarWidget(self.history_manager)
-        self.sidebar.setSizePolicy(
+        # Main horizontal container (Rail | Content)
+        container_layout = QHBoxLayout()
+        container_layout.setSpacing(Spacing.MAJOR_GAP)
+        
+        # 1. Icon Rail (Navigation)
+        self.icon_rail = IconRail()
+        self.icon_rail.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
         )
-        self.sidebar.entrySelected.connect(self._on_entry_selected)
+        self.icon_rail.view_changed.connect(self._on_view_changed)
+        container_layout.addWidget(self.icon_rail, 0)
 
-        # Connect resize grip signals
-        self.sidebar.resizeRequested.connect(self._on_sidebar_resize)
-        self.sidebar.collapseRequested.connect(self._collapse_sidebar)
-        self.sidebar.expandRequested.connect(self._expand_sidebar)
+        # 2. Content Column (Views + ActionGrid + Metrics)
+        content_column = QVBoxLayout()
+        content_column.setSpacing(Spacing.MAJOR_GAP)
 
-        # Floating expand button (shown when sidebar collapsed)
-        self._expand_button = QToolButton(self)
-        self._expand_button.setText("▶")  # Fallback text
+        # 2.1 View Host (The stack of screens)
+        self.view_host = ViewHost()
+        
+        # 2.2 Action Grid (Contextual Actions)
+        self.action_grid = ActionGrid()
 
-        # Try to load SVG icon for expand button (mirrored/rotated)
-        icon_path = (
-            Path(__file__).parent.parent.parent.parent.parent
-            / "icons"
-            / "sidebar-toggle.svg"
-        )
-        if icon_path.exists():
-            pixmap = QPixmap(str(icon_path))
-            if not pixmap.isNull():
-                # Mirror it horizontally since the original points left (collapse)
-                mirrored_pixmap = pixmap.transformed(QTransform().scale(-1, 1))
-                self._expand_button.setIcon(QIcon(mirrored_pixmap))
-                self._expand_button.setText("")  # Clear text if icon loaded
+        # 2.3 Metrics Strip
+        self.metrics_strip = MetricsStrip(self.history_manager)
 
-        self._expand_button.setFixedSize(20, 60)
-        self._expand_button.setStyleSheet(f"""
-            QToolButton {{
-                background-color: {Colors.SURFACE_ALT};
-                color: {Colors.PRIMARY};
-                border: 1px solid {Colors.BORDER_LIGHT};
-                border-radius: {Dimensions.BORDER_RADIUS_SM}px;
-                font-size: {Typography.FONT_SIZE_SM}px;
-            }}
-            QToolButton:hover {{
-                background-color: {Colors.HOVER_BG_SECTION};
-                border-color: {Colors.PRIMARY};
-            }}
-        """)
-        self._expand_button.setToolTip("Expand sidebar (Ctrl+B)")
-        self._expand_button.clicked.connect(lambda: self._expand_sidebar())
-        self._expand_button.hide()  # Hidden initially
+        # Build Layout
+        content_column.addWidget(self.view_host, 1) # Expanding
+        content_column.addWidget(self.action_grid, 0) # Fixed height
+        content_column.addWidget(self.metrics_strip, 0) # Fixed height
 
-        # Main workspace
-        self.workspace = MainWorkspace()
-        self.workspace.set_history_manager(self.history_manager)
-        self.workspace.startRequested.connect(self._on_start_requested)
-        self.workspace.stopRequested.connect(self._on_stop_requested)
-        self.workspace.cancelRequested.connect(self._on_cancel_requested)
-        self.workspace.saveRequested.connect(self._on_save_requested)
-        self.workspace.deleteRequested.connect(self._on_delete_requested)
-
-        # Add widgets
-        self._content_layout.addWidget(self.sidebar, 0)
-        self._content_layout.addWidget(self.workspace, 1)
-
-        main_layout.addLayout(self._content_layout, 1)
+        container_layout.addLayout(content_column, 1)
+        main_layout.addLayout(container_layout)
 
         # Connect debounce timer now that metrics_strip exists
         self._metrics_refresh_timer.timeout.connect(self.metrics_strip.refresh)
@@ -212,13 +171,11 @@ class MainWindow(QMainWindow):
         central.setLayout(main_layout)
         self.setCentralWidget(central)
 
-        # Status bar for intent feedback (Phase 6)
-        # Hidden by default, only shows when messages are displayed
+        # Status bar for intent feedback
         self._status_bar = self.statusBar()
-        self._status_bar.setSizeGripEnabled(
-            True
-        )  # Enable resize grip in bottom-right corner
-        self._status_bar.hide()  # Hide by default to prevent empty space
+        self._status_bar.setSizeGripEnabled(True)
+        self._status_bar.hide()
+        
         self._status_bar.setStyleSheet(f"""
             QStatusBar {{
                 background: {Colors.BACKGROUND};
@@ -230,18 +187,72 @@ class MainWindow(QMainWindow):
                 border: none;
             }}
         """)
-        # Center align status bar messages
+        
         from PyQt6.QtWidgets import QLabel
-
         self._status_label = QLabel()
         self._status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._status_bar.addWidget(self._status_label, 1)
 
-        # Intent feedback handler (Phase 6: Outcome Visibility)
+        # Intent feedback handler
         self._intent_feedback = IntentFeedbackHandler(self._status_bar, self)
-        self.workspace.intentProcessed.connect(
-            self._intent_feedback.on_intent_processed
-        )
+        
+        # Initialize views (Must be after ActionGrid and ViewHost)
+        self._init_views()
+
+    def _init_views(self) -> None:
+        """Instantiate and register all application views."""
+        # Instantiate
+        self.view_transcribe = TranscribeView()
+        self.view_recent = RecentView() 
+        if self.history_manager:
+            self.view_recent.set_history_manager(self.history_manager)
+            
+        self.view_recent.editRequested.connect(self._on_edit_view_requested)
+        self.view_recent.refineRequested.connect(self._on_refine_view_requested)
+        # Refine requested via View -> passes to validation -> Orchestrator?
+        # Typically Refine needs "Text" + "Profile". 
+        # For now, let's just use the Orchestrator signal if possible, or a local handler.
+        # But RecentView emits (id). We need to show the refinement dialog first? 
+        # Or does "Refine" action jump to a specific flow?
+        # The Orchestrator has `_on_refine_requested`.
+        # Let's direct connect for now to a stub handler or MainWindow handler.
+            
+        self.view_projects = ProjectsView()
+        self.view_search = SearchView()
+        self.view_refine = RefineView()
+        self.view_edit = EditView()
+        
+        # Register
+        self.view_host.register_view(self.view_transcribe, VIEW_TRANSCRIBE)
+        self.view_host.register_view(self.view_recent, VIEW_RECENT)
+        self.view_host.register_view(self.view_projects, VIEW_PROJECTS)
+        self.view_host.register_view(self.view_search, VIEW_SEARCH)
+        self.view_host.register_view(self.view_refine, VIEW_REFINE)
+        self.view_host.register_view(self.view_edit, VIEW_EDIT)
+        
+        # Map for ActionGrid lookup
+        self._view_map = {
+            VIEW_TRANSCRIBE: self.view_transcribe,
+            VIEW_RECENT: self.view_recent,
+            VIEW_PROJECTS: self.view_projects,
+            VIEW_SEARCH: self.view_search,
+            VIEW_REFINE: self.view_refine,
+            VIEW_EDIT: self.view_edit,
+        }
+
+        # Set default view
+        self.icon_rail.set_active_view(VIEW_TRANSCRIBE)
+        self._on_view_changed(VIEW_TRANSCRIBE)
+
+    @pyqtSlot(str)
+    def _on_view_changed(self, view_id: str) -> None:
+        """Handle view switching logic."""
+        self.view_host.switch_to_view(view_id)
+        self.icon_rail.set_active_view(view_id)
+        
+        current_view = self._view_map.get(view_id)
+        if current_view:
+            self.action_grid.set_active_view(current_view)
 
     def _create_menu_bar(self) -> None:
         """Create menu bar with all menus."""
@@ -252,16 +263,30 @@ class MainWindow(QMainWindow):
             on_export=self._export_history,
             on_clear=self._clear_all_history,
             on_toggle_metrics=self._toggle_metrics,
-            on_focus_history=self.sidebar.focus_transcript_list,
+            on_focus_history=self._switch_to_history, # Modified
             on_about=self._show_about_dialog,
             on_metrics_explanation=self._show_metrics_explanation,
-            on_toggle_sidebar=self._toggle_sidebar,
+            on_toggle_sidebar=lambda: None, # Deprecated
         )
 
         # Connect metrics strip collapse signal
         self.metrics_strip.collapsedChanged.connect(self._on_metrics_collapsed_changed)
 
     # Slot handlers
+
+    @pyqtSlot(int)
+    def _on_edit_view_requested(self, transcript_id: int) -> None:
+        """Switch to EditView for a specific transcript."""
+        self._on_view_changed(VIEW_EDIT)
+        if hasattr(self.view_edit, "load_transcript_by_id"):
+             self.view_edit.load_transcript_by_id(transcript_id)
+
+    @pyqtSlot(int)
+    def _on_refine_view_requested(self, transcript_id: int) -> None:
+        """Switch to RefineView for a specific transcript."""
+        self._on_view_changed(VIEW_REFINE)
+        if hasattr(self.view_refine, "load_transcript_by_id"):
+             self.view_refine.load_transcript_by_id(transcript_id)
 
     @pyqtSlot()
     def _on_start_requested(self) -> None:
@@ -291,93 +316,18 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot(str)
     def _on_save_requested(self, text: str) -> None:
-        try:
-            timestamp = self.workspace.get_current_timestamp()
-            if self.history_manager and timestamp:
-                self.history_manager.update_entry(timestamp, text)
-                self.sidebar.load_history()
-                self.metrics_strip.refresh()
-        except Exception as e:
-            logger.exception("Error saving transcript")
-            show_error_dialog(
-                title="Save Error",
-                message=f"Failed to save transcript: {e}",
-                parent=self,
-            )
+        pass
 
     @pyqtSlot()
     def _on_delete_requested(self) -> None:
-        """Handle delete signal from workspace.
+        pass
+        
+    def show_refinement(self, transcript_id: int, original: str, refined: str) -> None:
+        """Switch to RefineView and show comparison."""
+        self._on_view_changed(VIEW_REFINE)
+        if hasattr(self.view_refine, "set_comparison"):
+            self.view_refine.set_comparison(transcript_id, original, refined)
 
-        Phase 5: Workspace validated preconditions in _apply_delete_transcript.
-        This handler shows confirmation, performs I/O, then clears workspace.
-        """
-        try:
-            timestamp = self.workspace.get_current_timestamp()
-            if not timestamp:
-                return
-
-            dialog = ConfirmationDialog(
-                self,
-                title="Delete Transcript",
-                message="Are you sure you want to delete this transcript?",
-                confirm_text="Delete",
-                cancel_text="Cancel",
-                is_destructive=True,
-            )
-
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                # Clear workspace FIRST to prevent Qt from accessing deleted item
-                self.workspace.clear_transcript()
-
-                # Then delete from database and refresh UI
-                if self.history_manager:
-                    self.history_manager.delete_entry(timestamp)
-                    self.sidebar.clear_selection()  # Prevent viewing stale selection
-                    self.sidebar.load_history()  # Refresh model after selection cleared
-                    self.metrics_strip.refresh()
-        except Exception as e:
-            logger.exception("Error deleting transcript")
-            show_error_dialog(
-                title="Delete Error",
-                message=f"Failed to delete transcript: {e}",
-                parent=self,
-            )
-
-    @pyqtSlot(str, str)
-    def _on_entry_selected(self, text: str, timestamp: str) -> None:
-        """Handle sidebar entry selection via intent layer.
-
-        Phase 5: Routes through ViewTranscriptIntent for authority consolidation.
-        Phase 6: Now fetches variants for carousel support.
-        """
-        try:
-            # Fetch variants if history manager is available
-            variants = []
-            if self.history_manager:
-                t_id = self.history_manager.get_id_by_timestamp(timestamp)
-                if t_id:
-                    variants = self.history_manager.get_transcript_variants(t_id)
-
-            intent = ViewTranscriptIntent(
-                timestamp=timestamp,
-                text=text,
-                source=IntentSource.SIDEBAR,
-                variants=variants,
-            )
-            result = self.workspace.handle_intent(intent)
-
-            if result.outcome == IntentOutcome.REJECTED:
-                logger.warning(f"ViewTranscriptIntent rejected: {result.reason}")
-                # Could show error dialog here, but rejection during editing
-                # is expected behavior (unsaved changes protection)
-        except Exception as e:
-            logger.exception("Error handling entry selection")
-            show_error_dialog(
-                title="Load Error",
-                message=f"Failed to load transcript: {e}",
-                parent=self,
-            )
 
     def _toggle_metrics(self, checked: bool) -> None:
         try:
@@ -387,12 +337,10 @@ class MainWindow(QMainWindow):
             logger.exception("Error toggling metrics")
 
     @pyqtSlot()
-    def _toggle_sidebar(self) -> None:
-        """Toggle sidebar visibility."""
-        if self.sidebar.isVisible():
-            self._collapse_sidebar()
-        else:
-            self._expand_sidebar()
+    # Removed duplicate definition of _toggle_sidebar
+    # def _toggle_sidebar(self) -> None:
+    #     """Deprecated."""
+    #     pass
 
     @pyqtSlot(bool)
     def _on_metrics_collapsed_changed(self, collapsed: bool) -> None:
@@ -555,34 +503,26 @@ class MainWindow(QMainWindow):
         """Sync workspace state with background transcription engine status.
 
         ORCHESTRATION PRIVILEGE (Invariant 8):
-        This is the ONLY method in MainWindow allowed to call workspace.set_state().
-        It coordinates the engine's status updates with the UI, not user interactions.
-
-        Called by: main.py when ResultThread reports status changes.
-
-        Edit Safety: Only transitions IDLE/VIEWING↔RECORDING, never touches EDITING.
-        This protects users from losing unsaved edits when the engine sends updates.
+        This is the ONLY method in MainWindow allowed to push engine state to UI.
         """
         match status:
             case "recording":
-                # Only set if idle or viewing - don't interrupt editing
-                if self.workspace.get_state() in (
-                    WorkspaceState.IDLE,
-                    WorkspaceState.VIEWING,
-                ):
-                    self.workspace.set_state(WorkspaceState.RECORDING)
+                self._on_view_changed(VIEW_TRANSCRIBE)
             case "transcribing":
-                self.workspace.show_transcribing_status()
+                pass
             case "idle" | "error" | _:
-                # Only reset if we were recording
-                if self.workspace.get_state() == WorkspaceState.RECORDING:
-                    self.workspace.set_state(WorkspaceState.IDLE)
+                pass
+
+    def update_audio_level(self, level: float) -> None:
+        """Route audio levels to the transcribe view if active."""
+        if hasattr(self, "view_transcribe") and self.view_host.get_current_view_id() == VIEW_TRANSCRIBE:
+             self.view_transcribe.set_audio_level(level)
 
     def display_transcription(self, entry: HistoryEntry) -> None:
-        self.sidebar.add_entry(entry)
-        self.workspace.display_new_transcript(entry)
         # Debounce metrics refresh to avoid blocking on every transcript
         self._metrics_refresh_timer.start()
+        # Optionally switch to edit view to show result
+        # self._on_view_changed(VIEW_EDIT) # Disabled for now to prevent jarring switches
 
     def show_and_raise(self) -> None:
         self.show()
@@ -605,41 +545,11 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_metrics_refresh_timer"):
             self._metrics_refresh_timer.start()
 
-    @property
-    def history_widget(self):
-        return self.sidebar.transcript_list
-
-    def load_entry_for_edit(self, text: str, timestamp: str) -> None:
-        """Load an entry for editing via intent layer.
-
-        Phase 5: Routes through ViewTranscriptIntent for authority consolidation.
-        """
-        try:
-            intent = ViewTranscriptIntent(
-                timestamp=timestamp,
-                text=text,
-                source=IntentSource.CONTROLS,
-            )
-            result = self.workspace.handle_intent(intent)
-
-            if result.outcome == IntentOutcome.REJECTED:
-                logger.warning(
-                    f"ViewTranscriptIntent rejected in load_entry_for_edit: {result.reason}"
-                )
-        except Exception as e:
-            logger.exception("Error loading entry for edit")
-            show_error_dialog(
-                title="Load Error",
-                message=f"Failed to load entry: {e}",
-                parent=self,
-            )
-
     # History operations
 
     def _export_history(self) -> None:
         try:
-            if not self.history_manager or self.sidebar.entry_count() == 0:
-                self.statusBar().showMessage("No history to export", 2000)
+            if not self.history_manager:
                 return
 
             from ui.widgets.dialogs import ExportDialog
@@ -672,10 +582,7 @@ class MainWindow(QMainWindow):
             )
 
     def _clear_all_history(self) -> None:
-        """Clear all transcription history.
-
-        Phase 5: Uses clear_transcript() for terminal state mutation.
-        """
+        """Clear all transcription history."""
         try:
             dialog = ConfirmationDialog(
                 self,
@@ -692,138 +599,29 @@ class MainWindow(QMainWindow):
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 if self.history_manager:
                     self.history_manager.clear()
-                self.sidebar.load_history()
-                # Use clear_transcript for authority-compliant state transition
-                self.workspace.clear_transcript()
                 self.metrics_strip.refresh()
-        except Exception as e:
+                if hasattr(self, "view_recent"):
+                     # RecentView should refresh itself via history signals usually
+                     pass
+        except Exception:
             logger.exception("Error clearing history")
-            show_error_dialog(
-                title="Clear History Error",
-                message=f"Failed to clear history: {e}",
-                parent=self,
-            )
 
-    # Sidebar resize handling
+    # Resize slots removed.
 
-    @pyqtSlot(int)
-    def _on_sidebar_resize(self, new_width: int) -> None:
-        """Handle resize grip drag."""
-        try:
-            # Ensure width is within valid bounds
-            clamped_width = Dimensions.clamp_sidebar_width(new_width, self.width())
 
-            # Set both min and max to lock at this width (no fixed width conflicts)
-            self.sidebar.setMinimumWidth(clamped_width)
-            self.sidebar.setMaximumWidth(clamped_width)
-            self.sidebar.updateGeometry()
-            self._sidebar_expanded_width = clamped_width
-            self.settings.setValue("sidebar_width", clamped_width)
-        except Exception:
-            logger.exception("Error resizing sidebar")
+    # Sidebar resize handling - Deprecated
 
-    @pyqtSlot()
-    def _collapse_sidebar(self) -> None:
-        """Collapse sidebar completely and show expand button."""
-        try:
-            if self._sidebar_collapsed:
-                return
 
-            # Save current width before collapsing
-            current_width = self.sidebar.width()
-            # Ensure saved width is within valid bounds
-            self._sidebar_expanded_width = Dimensions.clamp_sidebar_width(
-                current_width, self.width()
-            )
+    # Position logic removed
 
-            self.sidebar.hide()
-            self._expand_button.show()
-            self._position_expand_button()
 
-            if self._content_layout:
-                self._content_layout.setSpacing(0)
+    def _switch_to_history(self) -> None:
+        """Switch to Recent View (History)."""
+        self._on_view_changed(VIEW_RECENT)
 
-            self._sidebar_collapsed = True
-            self.settings.setValue("sidebar_visible", False)
-            self.settings.setValue("sidebar_width", self._sidebar_expanded_width)
-        except Exception:
-            logger.exception("Error collapsing sidebar")
-
-    @pyqtSlot(int)
-    def _expand_sidebar(self, target_width: int = 0) -> None:
-        """Expand sidebar to target width or last saved width."""
-        try:
-            if not self._sidebar_collapsed:
-                return
-
-            # Determine target width
-            if target_width <= 0:
-                target_width = self._sidebar_expanded_width
-            if target_width < Dimensions.SIDEBAR_MIN_WIDTH:
-                target_width = self._calculate_sidebar_width()
-
-            # Ensure width is within valid bounds for current window size
-            target_width = Dimensions.clamp_sidebar_width(target_width, self.width())
-
-            # Set both min and max to lock at this width
-            self.sidebar.setMinimumWidth(target_width)
-            self.sidebar.setMaximumWidth(target_width)
-            self.sidebar.show()
-            self._expand_button.hide()
-
-            if self._content_layout:
-                self._content_layout.setSpacing(Spacing.MAJOR_GAP)
-
-            self._sidebar_collapsed = False
-            self.settings.setValue("sidebar_visible", True)
-            self.settings.setValue("sidebar_width", target_width)
-        except Exception:
-            logger.exception("Error expanding sidebar")
-
-    def _position_expand_button(self) -> None:
-        """Position the expand button at left edge when sidebar is collapsed."""
-        try:
-            if not self._expand_button.isVisible():
-                return
-            # Position at left edge, vertically centered
-            title_bar_height = (
-                self.title_bar.height() if hasattr(self, "title_bar") else 44
-            )
-            y = (
-                title_bar_height
-                + (self.height() - title_bar_height - self._expand_button.height()) // 2
-            )
-            self._expand_button.move(0, y)
-        except Exception:
-            logger.exception("Error positioning expand button")
-
-    def _calculate_sidebar_width(self) -> int:
-        """Calculate sidebar width (30% of window, clamped to valid range)."""
-        target = int(self.width() * Dimensions.SIDEBAR_DEFAULT_RATIO)
-        return Dimensions.clamp_sidebar_width(target, self.width())
-
-    def _ensure_sidebar_width(self) -> None:
-        """Ensure sidebar has proper width after window is fully shown."""
-        if self._sidebar_collapsed:
-            return
-
-        window_width = self.width()
-        min_width_absolute = Dimensions.get_sidebar_min_width(window_width)
-
-        current_width = self.sidebar.width()
-        if current_width < min_width_absolute:
-            # Use saved width if valid, otherwise use minimum
-            width = max(self._sidebar_expanded_width, min_width_absolute)
-            width = Dimensions.clamp_sidebar_width(width, window_width)
-
-            # Set both min and max to lock at this width
-            self.sidebar.setMinimumWidth(width)
-            self.sidebar.setMaximumWidth(width)
-            self.sidebar.updateGeometry()
-            if self._content_layout:
-                self._content_layout.activate()
-        # Mark initial state as fully restored
-        self._initial_state_restored = True
+    # Note: Sidebar logic removed.
+    def _toggle_sidebar(self) -> None:
+        pass
 
     # State persistence
 
@@ -836,54 +634,12 @@ class MainWindow(QMainWindow):
             self.resize(WindowSize.BASE, WindowSize.BASE)
             self._center_on_screen()
 
-        sidebar_visible = self.settings.value("sidebar_visible", True, type=bool)
-        self._sidebar_collapsed = not sidebar_visible
-
-        if not sidebar_visible:
-            # Sidebar is collapsed - hide it and show expand button
-            self.sidebar.hide()
-            self._expand_button.show()
-            # Position button after window is shown
-            QTimer.singleShot(0, self._position_expand_button)
-            if self._content_layout:
-                self._content_layout.setSpacing(0)
-        else:
-            # Calculate sidebar width after window geometry is applied
-            # Use saved width if available, otherwise calculate
-            saved_width = self.settings.value("sidebar_width", 0, type=int)
-            if saved_width >= Dimensions.SIDEBAR_MIN_WIDTH:
-                width = saved_width
-            else:
-                width = self._calculate_sidebar_width()
-            # Ensure width is within valid bounds for current window
-            width = Dimensions.clamp_sidebar_width(width, self.width())
-            self._sidebar_expanded_width = width
-
-            # Set both min and max to lock at this width
-            self.sidebar.setMinimumWidth(width)
-            self.sidebar.setMaximumWidth(width)
-            self.sidebar.show()
-            # Force layout to process the new width
-            self.sidebar.updateGeometry()
-            if self._content_layout:
-                self._content_layout.activate()
-            # Re-apply width after window is fully shown to handle late geometry
-            QTimer.singleShot(100, self._ensure_sidebar_width)
-            if self._content_layout:
-                self._content_layout.setSpacing(Spacing.MAJOR_GAP)
-
-        collapse_state = self.settings.value("sidebar_collapse", {})
-        if isinstance(collapse_state, dict):
-            self.sidebar.set_collapse_state(collapse_state)
-
         metrics_collapsed = self.settings.value("metrics_collapsed", False)
         if metrics_collapsed == "true" or metrics_collapsed is True:
             self.metrics_strip.set_collapsed(True)
 
     def _save_state(self) -> None:
         self.settings.setValue("geometry", self.saveGeometry())
-        self.settings.setValue("sidebar_visible", not self._sidebar_collapsed)
-        self.settings.setValue("sidebar_collapse", self.sidebar.get_collapse_state())
         self.settings.setValue("metrics_collapsed", self.metrics_strip.is_collapsed())
 
     def _center_on_screen(self) -> None:
@@ -899,24 +655,7 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        if self._sidebar_collapsed:
-            self._position_expand_button()
-            return
-
-        # Ensure sidebar stays within valid bounds during window resize
-        if hasattr(self, "sidebar") and self._initial_state_restored:
-            window_width = self.width()
-            current_width = self.sidebar.width()
-
-            # Clamp current width to new window constraints
-            new_width = Dimensions.clamp_sidebar_width(current_width, window_width)
-
-            # Only update if width actually needs to change
-            if new_width != current_width:
-                self.sidebar.setMinimumWidth(new_width)
-                self.sidebar.setMaximumWidth(new_width)
-                self._sidebar_expanded_width = new_width
-                self.settings.setValue("sidebar_width", new_width)
+        # Sidebar resize logic removed.
 
     def changeEvent(self, event) -> None:
         if event.type() == QEvent.Type.WindowStateChange:

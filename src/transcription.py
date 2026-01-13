@@ -12,6 +12,7 @@ from numpy.typing import NDArray
 
 from ui.constants import AudioConfig
 from utils import ConfigManager
+from exceptions import ModelLoadError, TranscriptionError
 
 if TYPE_CHECKING:
     from faster_whisper import WhisperModel
@@ -68,8 +69,19 @@ def create_local_model() -> "WhisperModel":
         except Exception as e:
             logger.warning(f"Error loading model on {device}: {e}")
             ConfigManager.console_print("Falling back to CPU...")
-            model = WhisperModel(model_name, device="cpu", compute_type=compute_type)
-            ConfigManager.console_print(f"Model loaded: {model_name} on CPU")
+            try:
+                model = WhisperModel(model_name, device="cpu", compute_type="float32") # Force float32 for CPU
+                ConfigManager.console_print(f"Model loaded: {model_name} on CPU")
+            except Exception as final_error:
+                 raise ModelLoadError(
+                    f"Failed to load Whisper model {model_name} on both {device} and CPU.",
+                    context={
+                        "model": model_name,
+                        "initial_device": device,
+                        "initial_error": str(e),
+                        "final_error": str(final_error)
+                    }
+                ) from final_error
 
     return model
 
@@ -97,28 +109,39 @@ def transcribe(
     language: str | None = model_options.get("language", "en") or None
 
     # Convert int16 to float32 (required by faster-whisper)
-    audio_float: NDArray[np.float32] = (
-        audio_data.astype(np.float32) / AudioConfig.INT16_SCALE
-    )
+    try:
+        audio_float: NDArray[np.float32] = (
+            audio_data.astype(np.float32) / AudioConfig.INT16_SCALE
+        )
 
-    # Transcribe with VAD for cleaner output
-    segments, _ = local_model.transcribe(
-        audio=audio_float,
-        language=language,
-        vad_filter=True,
-    )
+        # Transcribe with VAD for cleaner output
+        segments, _ = local_model.transcribe(
+            audio=audio_float,
+            language=language,
+            vad_filter=True,
+        )
 
-    # Combine segments and calculate effective speech duration
-    segment_list = list(segments)
-    transcription = "".join(segment.text for segment in segment_list).strip()
+        # Combine segments and calculate effective speech duration
+        segment_list = list(segments)
+        transcription = "".join(segment.text for segment in segment_list).strip()
 
-    # Calculate total speech duration from segments (end - start of each segment)
-    speech_duration_seconds = sum(
-        segment.end - segment.start for segment in segment_list
-    )
-    speech_duration_ms = int(speech_duration_seconds * 1000)
+        # Calculate total speech duration from segments (end - start of each segment)
+        speech_duration_seconds = sum(
+            segment.end - segment.start for segment in segment_list
+        )
+        speech_duration_ms = int(speech_duration_seconds * 1000)
 
-    return post_process_transcription(transcription), speech_duration_ms
+        return post_process_transcription(transcription), speech_duration_ms
+
+    except Exception as e:
+        raise TranscriptionError(
+            f"Transcription failed: {str(e)}",
+            context={
+                "audio_size_samples": len(audio_data),
+                "language": language,
+                "model_type": str(type(local_model))
+            }
+        ) from e
 
 
 def post_process_transcription(transcription: str | None) -> str:

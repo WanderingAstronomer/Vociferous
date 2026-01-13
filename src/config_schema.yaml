@@ -48,6 +48,27 @@ recording_options:
     value: press_to_toggle
     type: str
     description: "Recording mode."
+
+# Logging options
+logging:
+  level:
+    value: INFO
+    type: str
+    description: "Logging verbosity level."
+    options:
+      - DEBUG
+      - INFO
+      - WARNING
+      - ERROR
+      - CRITICAL
+  console_echo:
+    value: true
+    type: bool
+    description: "Echo logs to console/stdout."
+  structured_output:
+    value: false
+    type: bool
+    description: "Format logs as JSON for agent analysis."
     _internal: true
   sample_rate:
     value: 16000

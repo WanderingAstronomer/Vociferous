@@ -16,6 +16,7 @@ from PyQt6.QtCore import QMutex, QThread, pyqtSignal
 from services.audio_service import AudioService
 from transcription import transcribe
 from utils import ConfigManager
+from exceptions import VociferousError
 
 if TYPE_CHECKING:
     from faster_whisper import WhisperModel
@@ -138,8 +139,20 @@ class ResultThread(QThread):
             # Run transcription (this is the CPU/GPU intensive part)
             try:
                 result, speech_duration_ms = transcribe(audio_data, self.local_model)
+            except VociferousError as e:
+                logger.error(f"Transcription error: {str(e)}", extra={"context": e.context}, exc_info=True)
+                msg = str(e)
+                if e.doc_ref:
+                    msg += f"\nSee: {e.doc_ref}"
+                self.resultReady.emit(
+                    ThreadResult(
+                        state=ThreadState.ERROR,
+                        error_message=msg,
+                    )
+                )
+                return
             except Exception as e:
-                logger.error(f"Transcription failed: {e}")
+                logger.exception(f"Unexpected transcription failure: {e}")
                 self.resultReady.emit(
                     ThreadResult(
                         state=ThreadState.ERROR,
@@ -173,9 +186,14 @@ class ResultThread(QThread):
                 )
             )
 
-        except Exception:
-            logger.exception("Error during recording/transcription")
-            self.resultReady.emit(ThreadResult(state=ThreadState.ERROR))
+        except Exception as e:
+            logger.exception("Critical error in result thread loop")
+            self.resultReady.emit(
+                ThreadResult(
+                    state=ThreadState.ERROR,
+                    error_message=f"System Error: {str(e)}"
+                )
+            )
         finally:
             self.mutex.lock()
             self.is_recording = False

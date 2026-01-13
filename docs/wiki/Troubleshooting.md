@@ -1,5 +1,29 @@
 # Troubleshooting
 
+## Diagnostics and Logging (v2.5.2+)
+
+If you encounter unexpected behavior, Vociferous provides robust logging and crash reporting tools.
+
+### Enabling Debug Logs
+To see detailed logs, edit your `~/.config/vociferous/config.yaml`:
+
+```yaml
+logging:
+  level: DEBUG
+  console_echo: true
+```
+
+### Crash Dumps
+In the event of a crash, a detailed "Agentic Crash Dump" (JSON) is created at:
+`~/.local/share/vociferous/logs/crash_dumps/`
+
+These files contain:
+- Stack traces with local variable values
+- System environment info
+- Context about what the app was doing (State)
+
+Provide these files when reporting bugs to help AI agents diagnose the issue.
+
 ## Common Issues
 
 ### Hotkey Not Working (Wayland)

@@ -123,6 +123,9 @@ class VociferousApp(QObject):
         # Initialize config
         ConfigManager.initialize()
 
+        # Re-configure logging now that config is loaded (to apply user log level)
+        get_error_logger().configure_logging()
+
         # Ensure hotkey callbacks are handled on the Qt main thread.
         self._hotkey_dispatcher = _HotkeyDispatcher()
         self._hotkey_dispatcher.activated.connect(self.on_activation)
@@ -217,11 +220,6 @@ class VociferousApp(QObject):
             self.main_window.setWindowIcon(SystemTrayManager.build_icon(self.app))
             self.main_window.on_settings_requested(self.show_settings)
 
-            # Connect history widget selection to load into editor
-            self.main_window.history_widget.entrySelected.connect(
-                self.on_edit_entry_requested
-            )
-
             # Cancel recording without transcribing
             self.main_window.cancelRecordingRequested.connect(self._cancel_recording)
 
@@ -253,12 +251,8 @@ class VociferousApp(QObject):
             self.slm_service.askGPUConfirmation.connect(
                 self._on_gpu_confirmation_requested
             )
-
-            # Connect Workspace signal
-            if hasattr(self.main_window, "workspace"):
-                self.main_window.workspace.refineRequested.connect(
-                    self._on_refine_requested
-                )
+            
+            # Workspace signal connection removed (Legacy)
 
             self.slm_thread.start()
 
@@ -401,7 +395,7 @@ class VociferousApp(QObject):
 
             # Connect audio level updates to workspace waveform visualization
             self.result_thread.audioLevelUpdated.connect(
-                self.main_window.workspace.add_audio_level
+                self.main_window.update_audio_level
             )
 
             # Auto-cleanup: when thread finishes, schedule deletion
@@ -621,10 +615,11 @@ class VociferousApp(QObject):
             # but for now we look it up from ID.
             entry = self.history_manager.get_entry(transcript_id)
             if entry:
-                variants = self.history_manager.get_transcript_variants(transcript_id)
-                self.main_window.workspace.on_refinement_completed(
-                    text, entry.timestamp, variants
-                )
+                # variants = self.history_manager.get_transcript_variants(transcript_id) # not needed for simple diff yet
+                
+                # Switch view and load
+                self.main_window.show_refinement(transcript_id, entry.text, text)
+
 
         except Exception:
             logger.exception("Error in refinement success handler")

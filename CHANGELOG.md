@@ -2,6 +2,58 @@
 
 ---
 
+# v2.5.2 - Agentic Self-Healing Logging
+
+**Date:** January 13, 2026
+**Status:** Feature Release
+
+---
+
+## Summary
+
+This release enables **"Agentic Self-Healing"** capabilities by transforming the logging infrastructure into a rich data stream for autonomous debugging. It introduces structured crash dumps, adjustable log verbosity, and referential error messages that point directly to documentation.
+
+## Added
+
+### Logging & Diagnostics
+- **Agentic Crash Dumps**: Uncaught exceptions now generate detailed JSON incidents in `~/.local/share/vociferous/logs/crash_dumps/`, capturing local variables, stack traces, and system state for AI analysis.
+- **Dynamic Verbosity**: Added configuration options to control logging levels at runtime via `config.yaml`.
+- **Structured Output**: Added `logging.structured_output` option to emit logs as machine-parseable JSON lines.
+
+### Error Handling
+- **Referential Exceptions**: Introduced `VociferousError` hierarchy (e.g., `AudioDeviceError`, `ModelLoadError`) that carries:
+  - **Context**: A dictionary of relevant variable states (e.g., model name, audio size).
+  - **Doc Links**: Direct references to Wiki pages (e.g., `docs/wiki/Audio-Recording.md`) for resolution.
+
+## Changed
+
+### Core Infrastructure
+- **Exception Hook**: Rewrote global `sys.excepthook` in `src/ui/utils/error_handler.py` to produce crash dumps before showing the user dialog.
+- **Config Schema**: Updated `src/config_schema.yaml` with the new `logging` section.
+
+---
+
+# v2.5.1 - Shell Migration Stabilization
+
+**Date:** January 13, 2026
+**Status:** Bug Fix Release
+
+---
+
+## Fixed
+
+### Shell & Navigation
+- **IconRail**: Updated to use `VIEW_ID` constants instead of legacy hardcoded strings, resolving startup errors ("Attempted to switch to unknown view_id").
+- **Navigation**: Temporarily disabled "Settings" button in rail until the Settings View is implemented.
+
+### Stability
+- **MainWindow**: Removed legacy `workspace` references that caused initialization crashes.
+- **Audio Routing**: Implemented `update_audio_level` in `MainWindow` to correctly route audio signals to the active `TranscribeView`.
+- **TranscriptList**: Added safety guards for `selectionModel` to prevent null pointer exceptions during data reloading.
+- **Refinement**: Disabled legacy callback `on_refinement_completed` to prevent crashes until `RefineView` is fully integrated.
+
+---
+
 # v2.4.3 - Code Quality and Type Integrity
 
 **Date:** January 12, 2026
