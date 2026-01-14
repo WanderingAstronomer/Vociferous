@@ -28,7 +28,6 @@ class Colors:
     BG_SECONDARY = SURFACE
     BG_TERTIARY = SURFACE_ALT
     BG_HEADER = HEADER
-    BG_SIDEBAR = SURFACE
 
     # =================================================================
     # TEXT HIERARCHY (per Refactoring UI: 3 tiers)
@@ -147,9 +146,9 @@ class Colors:
     BUTTON_SECONDARY = "#3c3c3c"
 
 
-class FocusGroupColors:
+class ProjectColors:
     """
-    Darker color palette for Focus Groups.
+    Darker color palette for Projects.
 
     Design principles:
     - Darker colors for better contrast with white text

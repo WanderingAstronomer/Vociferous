@@ -21,7 +21,7 @@ from ui.constants import Colors
 from ui.constants.view_ids import VIEW_RECENT
 from ui.contracts.capabilities import Capabilities, SelectionState, ActionId
 from ui.views.base_view import BaseView
-from ui.models import TranscriptionModel, FocusGroupProxyModel
+from ui.models import TranscriptionModel, ProjectProxyModel
 
 if TYPE_CHECKING:
     from history_manager import HistoryManager
@@ -38,13 +38,17 @@ class RecentView(BaseView):
     refineRequested = pyqtSignal(int)
 
     def __init__(self, parent=None):
-
         super().__init__(parent)
         self._history_manager: HistoryManager | None = None
         self._model: TranscriptionModel | None = None
-        self._proxy: FocusGroupProxyModel | None = None
+        self._proxy: ProjectProxyModel | None = None
         
         self._setup_ui()
+
+    def refresh(self) -> None:
+        """Reload the model state."""
+        if self._model:
+            self._model.refresh_from_manager()
 
     def _setup_ui(self) -> None:
         """Initialize the master-detail layout."""

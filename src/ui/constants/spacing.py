@@ -76,12 +76,6 @@ class Spacing:
     BUTTON_PAD_H = S3  # 16px
     BUTTON_PADDING = S3  # 16px (single-value alias)
 
-    # Sidebar
-    SIDEBAR_TOP = S3  # 16px
-    SIDEBAR_SIDE = S2  # 12px
-    SIDEBAR_BOTTOM = S2  # 12px
-    SIDEBAR_SECTION_GAP = S2  # 12px
-
     # Workspace/Content
     WORKSPACE = S3  # 16px
     CONTENT_COLUMN_OUTER = S3  # 16px

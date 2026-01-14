@@ -2,7 +2,7 @@
 HistoryTreeView - Tree view for day-grouped transcriptions.
 
 Uses Model/View pattern with TranscriptionModel as data source.
-Provides selection, deletion, focus group assignment, and file watching.
+Provides selection, deletion, Project assignment, and file watching.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from PyQt6.QtWidgets import (
     QTreeView,
 )
 
-from ui.models import FocusGroupProxyModel, TranscriptionModel
+from ui.models import ProjectProxyModel, TranscriptionModel
 from ui.utils.clipboard_utils import copy_text
 from ui.utils.error_handler import safe_callback
 from ui.widgets.dialogs.custom_dialog import ConfirmationDialog
@@ -54,7 +54,7 @@ class HistoryTreeView(QTreeView):
         entrySelected(str, str): Emitted when entry is clicked (text, timestamp)
         entryDoubleClicked(str): Emitted when entry is double-clicked (text)
         countChanged(int): Emitted when visible entry count changes
-        entryGroupChanged(str, object): Emitted when focus group changes
+        entryGroupChanged(str, object): Emitted when Project changes
     """
 
     entrySelected = pyqtSignal(str, str)  # text, timestamp
@@ -64,7 +64,7 @@ class HistoryTreeView(QTreeView):
 
     def __init__(
         self,
-        model: TranscriptionModel | FocusGroupProxyModel | None = None,
+        model: TranscriptionModel | ProjectProxyModel | None = None,
         parent=None,
         *,
         enter_copies: bool = False,
@@ -137,12 +137,12 @@ class HistoryTreeView(QTreeView):
         QTimer.singleShot(0, self._configure_header)
         QTimer.singleShot(0, self._restore_expansion_state)
 
-        if not isinstance(model, (TranscriptionModel, FocusGroupProxyModel)):
+        if not isinstance(model, (TranscriptionModel, ProjectProxyModel)):
             return
 
         # Connect to source model for data changes
         source: QAbstractItemModel | None = model
-        if isinstance(model, FocusGroupProxyModel):
+        if isinstance(model, ProjectProxyModel):
             source = model.sourceModel()
 
         if isinstance(source, TranscriptionModel):
@@ -261,7 +261,7 @@ class HistoryTreeView(QTreeView):
                 )
             )
 
-        # Focus group assignment
+        # Project assignment
         if self._history_manager:
             menu.addSeparator()
 
@@ -270,9 +270,9 @@ class HistoryTreeView(QTreeView):
                 idx.data(TranscriptionModel.GroupIDRole) for idx in selected_indices
             }
             current_group_id = group_ids.pop() if len(group_ids) == 1 else None
-            focus_groups = self._history_manager.get_focus_groups()
+            projects = self._history_manager.get_projects()
 
-            if focus_groups:
+            if projects:
                 menu_label = (
                     "Assign to Group"
                     if count == 1
@@ -285,7 +285,7 @@ class HistoryTreeView(QTreeView):
                 roots = []
                 children_map: dict[int | None, list[tuple]] = {}
 
-                for row in focus_groups:
+                for row in projects:
                     # Handle flexible tuple unpacking for migration safety
                     if len(row) == 4:
                         gid, name, color, pid = row
@@ -398,19 +398,19 @@ class HistoryTreeView(QTreeView):
     def _assign_items_to_group(
         self, indices: list[QModelIndex], group_id: int | None
     ) -> None:
-        """Assign multiple transcripts to a focus group."""
+        """Assign multiple transcripts to a Project."""
         for index in indices:
             timestamp = index.data(TranscriptionModel.TimestampRole)
             if timestamp:
                 self._assign_to_group(timestamp, group_id)
 
     def _assign_to_group(self, timestamp: str, group_id: int | None) -> None:
-        """Assign transcript to a focus group."""
+        """Assign transcript to a Project."""
         try:
             if not self._history_manager or not timestamp:
                 return
 
-            if self._history_manager.assign_transcript_to_focus_group(
+            if self._history_manager.assign_transcript_to_project(
                 timestamp, group_id
             ):
                 source_model = self._get_source_model()
@@ -434,7 +434,7 @@ class HistoryTreeView(QTreeView):
     def _get_source_model(self) -> TranscriptionModel | None:
         """Get the underlying TranscriptionModel."""
         model = self.model()
-        if isinstance(model, FocusGroupProxyModel):
+        if isinstance(model, ProjectProxyModel):
             source = model.sourceModel()
             return source if isinstance(source, TranscriptionModel) else None
         if isinstance(model, TranscriptionModel):

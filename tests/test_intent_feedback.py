@@ -66,7 +66,7 @@ class TestIntentFeedbackMapping:
         """NO_OP outcomes should not show any message."""
         result = IntentResult(
             outcome=IntentOutcome.NO_OP,
-            intent=EditTranscriptIntent(),
+            intent=EditTranscriptIntent(transcript_id=1),
             reason="Already editing",
         )
 

@@ -163,7 +163,7 @@ def generate_base_stylesheet() -> str:
             border: none;
         }}
 
-        /* Section header - transparent over unified sidebar background */
+        /* Section header - transparent over background */
         QWidget#sectionHeader {{
             background-color: transparent;
             border-radius: {SECTION_HEADER_RADIUS}px;
@@ -180,7 +180,7 @@ def generate_base_stylesheet() -> str:
             color: {c.BG_TERTIARY};
         }}
 
-        /* Bottom spacer - transparent over unified sidebar background */
+        /* Bottom spacer - transparent over background */
         QWidget#bottomSpacer {{
             background: transparent;
         }}

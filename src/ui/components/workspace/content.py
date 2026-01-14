@@ -13,7 +13,7 @@ from __future__ import annotations
 from enum import IntEnum
 
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QCursor, QKeySequence, QShortcut
+from PyQt6.QtGui import QCursor, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -210,7 +210,7 @@ class WorkspaceContent(QWidget):
 
     def set_audio_level(self, level: float) -> None:
         """Update waveform audio level."""
-        self.waveform.current_level = level
+        self.waveform.add_level(level)
 
     def set_live_text(self, text: str) -> None:
         """Update live transcription text."""

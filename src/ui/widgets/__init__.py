@@ -7,7 +7,7 @@ Available widgets:
 - collapsible_section: Expandable/collapsible sections
 - content_panel: Custom painted content panels
 - dialogs: Various dialog types (confirmation, input, message, create group)
-- focus_group: Focus group tree and container widgets
+- project: Project tree and container widgets
 - history_tree: Day-grouped history tree view
 - hotkey_widget: Hotkey recording widget
 - metrics_strip: Metrics display strip

@@ -2,6 +2,45 @@
 
 ---
 
+# v2.5.5 - UI State & Interaction Fixes
+
+**Date:** January 13, 2026
+**Status:** Feature Fix
+
+---
+
+## Summary
+
+This update addresses critical usability issues identified in the January 13th audit, specifically targeting disjointed state management, broken navigation flows, and visual redundancy in the Action Dock.
+
+## Fixed
+- **Duplicate Action Dock**: Removed the redundant `WorkspaceControls` component from `MainWorkspace`, resolving the "double dock" issue.
+- **Action Wiring**: Fully implemented `TranscribeView.dispatch_action` to route Edit, Delete, Save, Cancel, and Discard actions to the workspace via Intents.
+- **View Navigation**: Implemented robust handling of `ViewTranscriptIntent` in `MainWindow`, enabling proper transition to detail views with data loading.
+- **State Reactivity**: Added `stateChanged` signal to `MainWorkspace`, ensuring the Action Grid updates dynamically when recording starts or stops.
+- **Cancel Logic**: Ensured the 'Cancel' button correctly triggers `CancelRecordingIntent`, aborting the pipeline instead of just stopping.
+
+---
+
+# v2.5.4 - Test Suite Convergence & Architecture Hardening
+
+**Date:** January 13, 2026
+**Status:** Maintenance Release
+
+---
+
+## Summary
+
+This release resolves all outstanding test failures, enforcing strict architectural guardrails and ensuring the stability of the error handling and refinement subsystems.
+
+## Fixed
+- **Architecture Guardrails**: Whitelisted `TranscribeView` for state mutation and enforced "Edit Safety" checks in `MainWindow` state synchronization.
+- **Error Handling**: Fixed function metadata preservation in `@safe_slot` and `@safe_callback` decorators to support proper introspection.
+- **Refinement Subsystem**: Updated backend tests to gracefully handle optional dependencies (Ctranslate2) via dynamic mocking.
+- **Intent Feedback**: Corrected test data initialization for `EditTranscriptIntent` verification.
+
+---
+
 # v2.5.3 - UI Convergence & Stabilization
 
 **Date:** January 13, 2026
@@ -14,7 +53,7 @@
 This monumental release converges the entire UI implementation with the Target Specification. It enforces strict invariants for signal architecture, master-detail layouts, and selection identity, while resolving critical startup crashes and replacing legacy components.
 
 ## Added
-- **FocusGroupColors**: Added correct color palette logic for projects.
+- **ProjectColors**: Added correct color palette logic for projects.
 - **MetricsDock**: New unified statistics dock replacing the legacy MetricsStrip.
 - **EditView**: Full implementation of the standalone transcript editor.
 - **TranscribeView Editing**: Added live editing capability to the transcription preview.
@@ -96,7 +135,7 @@ This release enables **"Agentic Self-Healing"** capabilities by transforming the
 ### Code Quality
 - **Linting**: Resolved all remaining Ruff linting errors.
 - **Typing**: Fixed multiple MyPy type errors across the project, including improved `SystemTrayManager` integration in `VociferousApp`.
-- **Database**: Cleanup of unused type ignore comments in `TranscriptRepository` and `FocusGroupRepository`.
+- **Database**: Cleanup of unused type ignore comments in `TranscriptRepository` and `ProjectRepository`.
 - **Orchestration**: Removed redundant `_on_refine_requested` implementation and fixed incomplete signal-slot signatures.
 
 ---
@@ -210,12 +249,12 @@ This release integrates a production-grade CTranslate2 inference engine directly
 
 ## Summary
 
-Introduces hierarchical organization for Focus Groups (subgroups), enabling deeper content structuring. Enhances the sidebar with drag-and-drop management, bulk operations for transcripts, and improved visual controls.
+Introduces hierarchical organization for Projects (subgroups), enabling deeper content structuring. Enhances the sidebar with drag-and-drop management, bulk operations for transcripts, and improved visual controls.
 
 ## Added
 
 ### Organization
-- **Nested Focus Groups**: Added ability to create subgroups up to one level deep.
+- **Nested Projects**: Added ability to create subgroups up to one level deep.
 - **Drag & Drop**: Transcripts can now be moved between groups via drag-and-drop.
 - **Bulk Actions**: Support for multi-selecting transcripts in the sidebar to move or delete them in batches.
 
@@ -227,7 +266,7 @@ Introduces hierarchical organization for Focus Groups (subgroups), enabling deep
 ## Changed
 
 ### Core Infrastructure
-- **Database Schema**: Added `parent_id` column to `focus_groups` table with automatic micro-migration on startup.
+- **Database Schema**: Added `parent_id` column to `projects` table with automatic micro-migration on startup.
 
 ### Styling
 - **Visual Refinements**: Updated context menu selection styles and standardized radio button appearance.
@@ -251,7 +290,7 @@ Complete persistence layer rewrite migrating from raw SQLite cursors to **SQLAlc
 
 ### Core Infrastructure
 - **Database Engine**: Replaced hand-rolled `sqlite3` queries with **SQLAlchemy** ORM sessions.
-- **Schema Management**: Introduced declarative models (`src/models.py`) for `Transcript` and `FocusGroup` entities.
+- **Schema Management**: Introduced declarative models (`src/models.py`) for `Transcript` and `Project` entities.
 - **Migration Strategy**: Implemented "fresh start" policy—legacy databases are detected and reset to pristine state to guarantee stability.
 
 ### Internal API
@@ -260,7 +299,7 @@ Complete persistence layer rewrite migrating from raw SQLite cursors to **SQLAlc
 
 ---
 
-# v2.1.6 - UI Polish (Focus Group Indicators)
+# v2.1.6 - UI Polish (Project Indicators)
 
 **Date:** January 2026
 **Status:** Enhancement
@@ -270,8 +309,8 @@ Complete persistence layer rewrite migrating from raw SQLite cursors to **SQLAlc
 ## Changed
 
 ### UX / Styling
-- **Cleaned Up Tooltips**: Removed the full-text tooltip from sidebar items (transcripts and focus groups) to reduce UI clutter as requested.
-- **Improved Selection Indicator**: Changed the Focus Group item selection style from a solid block to a cohesive background with a circular dot indicator on the left. The dot inherits the group's color (or defaults to blue), providing a cleaner and more distinct visual cue.
+- **Cleaned Up Tooltips**: Removed the full-text tooltip from sidebar items (transcripts and Projects) to reduce UI clutter as requested.
+- **Improved Selection Indicator**: Changed the Project item selection style from a solid block to a cohesive background with a circular dot indicator on the left. The dot inherits the group's color (or defaults to blue), providing a cleaner and more distinct visual cue.
 
 ---
 
@@ -333,7 +372,7 @@ Complete persistence layer rewrite migrating from raw SQLite cursors to **SQLAlc
 - **Sidebar Padding**: Increased timestamp column width in sidebar delegate (70px → 90px) to prevent time cutout on systems with wider fonts or varying DPI.
 
 ### Data Binding
-- **Recent Transcripts**: Fixed regression where moving a transcript out of a Focus Group would not immediately make it reappear in the Recent list. Enabled `dynamicSortFilter` on `FocusGroupProxyModel` to react instantly to `GroupIDRole` changes.
+- **Recent Transcripts**: Fixed regression where moving a transcript out of a Project would not immediately make it reappear in the Recent list. Enabled `dynamicSortFilter` on `ProjectProxyModel` to react instantly to `GroupIDRole` changes.
 
 ---
 
@@ -369,7 +408,7 @@ Comprehensive codebase cleanliness and type safety overhaul. Achieved zero metad
 ## Fixed
 
 ### Critical Logic
-- **Focus Group Proxy**: Removed unreachable dead code referencing undefined `source_model` variable in `focus_group_proxy.py`
+- **Project Proxy**: Removed unreachable dead code referencing undefined `source_model` variable in `project_proxy.py`
 - **Intent Feedback**: Fixed valid return type violation in status message timer callback (lambda returned tuple instead of `None`)
 - **System Safety**: Replaced unsafe bare `except:` blocks with `except Exception:` in `transcription_model.py` to prevent masking system signals like `KeyboardInterrupt`
 
@@ -887,7 +926,7 @@ Planning release establishing the roadmap for intent-driven interaction architec
 
 ## Summary
 
-Stability-focused release implementing comprehensive error isolation across all signal handlers, callbacks, and critical operations. Introduces new error handling utilities (`safe_callback`, `safe_slot_silent`) and adds deferred model invalidation to prevent segfaults during focus group operations.
+Stability-focused release implementing comprehensive error isolation across all signal handlers, callbacks, and critical operations. Introduces new error handling utilities (`safe_callback`, `safe_slot_silent`) and adds deferred model invalidation to prevent segfaults during Project operations.
 
 ## Major Changes
 
@@ -904,7 +943,7 @@ Stability-focused release implementing comprehensive error isolation across all 
 
 ### Deferred Model Invalidation
 
-**Problem:** Segfault when assigning transcripts to focus groups from the Recent tab. Root cause: proxy model called `invalidateFilter()` during context menu callback, corrupting the `QModelIndex` mid-operation.
+**Problem:** Segfault when assigning transcripts to Projects from the Recent tab. Root cause: proxy model called `invalidateFilter()` during context menu callback, corrupting the `QModelIndex` mid-operation.
 
 **Solution:** Introduced `QTimer` with 0ms interval to defer filter invalidation until after the callback completes:
 
@@ -925,9 +964,9 @@ self._connections = [
 
 | Component | Protection Added |
 |-----------|------------------|
-| `FocusGroupTree` | try/except + logging on all CRUD methods |
+| `ProjectTree` | try/except + logging on all CRUD methods |
 | `HistoryTreeView` | `safe_callback` on context menu lambdas, error handling on CRUD |
-| `FocusGroupProxyModel` | `safe_callback` on signal lambdas, protected `filterAcceptsRow()` |
+| `ProjectProxyModel` | `safe_callback` on signal lambdas, protected `filterAcceptsRow()` |
 | `KeyListener` | Error isolation in `_trigger_callbacks()` |
 | `ResultThread` | try/except around audio callback |
 | `Sidebar` | `safe_callback` on lambda signal connections |
@@ -935,7 +974,7 @@ self._connections = [
 ### UI Bug Fixes
 
 - **Fixed**: Ghost context menus appearing on deleted transcript locations
-- **Fixed**: Sidebar collapsing when deleting transcripts from Recent/Focus Groups
+- **Fixed**: Sidebar collapsing when deleting transcripts from Recent/Projects
 - **Fixed**: Recording stopping when deleting a transcript during recording
 - **Fixed**: Header text overflow (month/day/timestamp truncation)
 - **Fixed**: Welcome text font size too large
@@ -944,9 +983,9 @@ self._connections = [
 
 - `src/ui/utils/error_handler.py` - Added `safe_callback()`, `safe_slot_silent()`
 - `src/ui/utils/__init__.py` - Exported new utilities
-- `src/ui/widgets/focus_group/focus_group_tree.py` - Protected all CRUD methods
+- `src/ui/widgets/project/project_tree.py` - Protected all CRUD methods
 - `src/ui/widgets/history_tree/history_tree_view.py` - Protected CRUD, wrapped lambdas
-- `src/ui/models/focus_group_proxy.py` - Deferred invalidation, protected filters
+- `src/ui/models/project_proxy.py` - Deferred invalidation, protected filters
 - `src/ui/components/sidebar/sidebar_new.py` - Wrapped lambda connections
 - `src/key_listener.py` - Isolated callback errors
 - `src/result_thread.py` - Protected audio callback
@@ -964,7 +1003,7 @@ self._connections = [
 - Deferred invalidation pattern prevents Qt model/view corruption during callbacks
 - All exceptions now logged to `~/.local/share/vociferous/logs/vociferous.log`
 - Error isolation ensures one failing callback doesn't break subsequent callbacks
-- No segfaults possible from focus group operations
+- No segfaults possible from Project operations
 
 ---
 
@@ -1024,7 +1063,7 @@ Architecture refinement release focused on design system consolidation and code 
 - `src/ui/components/sidebar/sidebar_styles.py`
 - `src/ui/components/title_bar/title_bar_styles.py`
 - `src/ui/components/workspace/workspace_styles.py`
-- `src/ui/widgets/focus_group/focus_group_styles.py`
+- `src/ui/widgets/project/project_styles.py`
 - `src/ui/widgets/history_tree/history_tree_styles.py`
 
 ### Orphan Sidebar Components
@@ -1060,15 +1099,15 @@ Architecture refinement release focused on design system consolidation and code 
 
 ## Summary
 
-Complete visual redesign and metrics foundation. Implemented focus groups UI with dynamic sidebar, functional search system, real-time waveform visualization, and comprehensive transcription analytics framework. The UI now provides transparency about the cognitive and productivity dimensions of dictation.
+Complete visual redesign and metrics foundation. Implemented Projects UI with dynamic sidebar, functional search system, real-time waveform visualization, and comprehensive transcription analytics framework. The UI now provides transparency about the cognitive and productivity dimensions of dictation.
 
 ## Major Features
 
-### Focus Groups Management
-- **Implemented**: Complete focus groups UI with visual sidebar
-- **Added**: Dynamic focus group tree with custom delegation and font sizing
-- **Added**: Create/rename/delete focus groups through sidebar context menu
-- **Added**: Proper visual distinction and color coding for focus groups
+### Projects Management
+- **Implemented**: Complete Projects UI with visual sidebar
+- **Added**: Dynamic Project tree with custom delegation and font sizing
+- **Added**: Create/rename/delete Projects through sidebar context menu
+- **Added**: Proper visual distinction and color coding for Projects
 
 ### Recent Transcripts View
 - **Implemented**: Recent transcripts tab showing last 7 days of activity
@@ -1114,7 +1153,7 @@ Complete visual redesign and metrics foundation. Implemented focus groups UI wit
 
 ### UI/UX Refinements
 - **Added**: Dynamic greeting message (Good Morning/Afternoon/Evening based on time of day)
-- **Improved**: Typography scale (greeting 42pt, body 19pt, focus group names 17pt)
+- **Improved**: Typography scale (greeting 42pt, body 19pt, Project names 17pt)
 - **Improved**: Spacing and padding throughout (GREETING_TOP_MARGIN 16px, tab buttons 18px 24px)
 - **Added**: Sidebar tab bar with bold text (font-weight 700)
 - **Added**: Tab text wrapping (white-space: normal)
@@ -1149,10 +1188,10 @@ Complete visual redesign and metrics foundation. Implemented focus groups UI wit
 ### Commits: Ready for single comprehensive commit
 
 ### Component Files Updated
-- `src/ui/components/sidebar/` - Focus groups, tab bar, styling
+- `src/ui/components/sidebar/` - Projects, tab bar, styling
 - `src/ui/components/workspace/` - Metrics, content layout, header
 - `src/ui/components/main_window/` - Menu integration for metrics dialog
-- `src/ui/widgets/` - Custom dialogs, waveform, focus group tree
+- `src/ui/widgets/` - Custom dialogs, waveform, Project tree
 - `src/ui/constants/` - Typography and spacing scales
 - `src/` - Core pipeline updates for metrics data
 
@@ -1188,7 +1227,7 @@ Refinement engine implementation planned. This provides the technical foundation
 
 ---
 
-# v1.3.0 Beta - Focus Groups (Data Layer)
+# v1.3.0 Beta - Projects (Data Layer)
 
 **Date:** January 2026  
 **Status:** Beta
@@ -1197,20 +1236,20 @@ Refinement engine implementation planned. This provides the technical foundation
 
 ## Summary
 
-Backend implementation of Focus Groups (Foci) - user-defined organization for transcripts. Provides complete CRUD operations for grouping transcripts by subject or purpose. UI integration deferred to future release.
+Backend implementation of Projects - user-defined organization for transcripts. Provides complete CRUD operations for grouping transcripts by subject or purpose. UI integration deferred to future release.
 
 ## Changes
 
-### Focus Group Data Layer
+### Project Data Layer
 
-- **Added**: `create_focus_group(name)` - Create new focus groups with user-defined names
-- **Added**: `get_focus_groups()` - Retrieve all focus groups ordered by creation date
-- **Added**: `rename_focus_group(id, new_name)` - Rename existing focus groups
-- **Added**: `delete_focus_group(id, move_to_ungrouped)` - Delete groups with safety controls:
+- **Added**: `create_project(name)` - Create new Projects with user-defined names
+- **Added**: `get_projects()` - Retrieve all Projects ordered by creation date
+- **Added**: `rename_project(id, new_name)` - Rename existing Projects
+- **Added**: `delete_project(id, move_to_ungrouped)` - Delete groups with safety controls:
   - Default behavior: move transcripts to ungrouped (via `ON DELETE SET NULL` foreign key)
   - Optional blocking: prevent deletion if group contains transcripts
-- **Added**: `assign_transcript_to_focus_group(timestamp, group_id)` - Move transcripts between groups or to ungrouped (None)
-- **Added**: `get_transcripts_by_focus_group(group_id, limit)` - Filter transcripts by group membership
+- **Added**: `assign_transcript_to_project(timestamp, group_id)` - Move transcripts between groups or to ungrouped (None)
+- **Added**: `get_transcripts_by_project(group_id, limit)` - Filter transcripts by group membership
 
 ### Database Enforcement
 
@@ -1221,23 +1260,23 @@ Backend implementation of Focus Groups (Foci) - user-defined organization for tr
 ### Testing
 
 - **Added**: 14 comprehensive unit tests covering:
-  - Focus group creation, listing, renaming, deletion
+  - Project creation, listing, renaming, deletion
   - Transcript assignment and filtering by group
   - Foreign key cascade behavior (ungrouping on delete)
   - Blocking deletion of non-empty groups
   - Ungrouped transcript queries (NULL group_id)
-- **Verified**: All 41 tests passing (27 original + 14 focus group tests)
+- **Verified**: All 41 tests passing (27 original + 14 Project tests)
 - **Verified**: Zero regressions in existing functionality
 
 ## Behavioral Notes
 
-- **Ungrouped is default**: Transcripts without a focus group assignment have `focus_group_id = NULL`
-- **Exactly one place**: Each transcript belongs to zero or one focus group (no multiple assignments)
+- **Ungrouped is default**: Transcripts without a Project assignment have `project_id = NULL`
+- **Exactly one place**: Each transcript belongs to zero or one Project (no multiple assignments)
 - **Safe deletion**: Foreign key constraint ensures transcripts never reference deleted groups
 
 ## UI Status
 
-- **No user-facing changes**: Focus groups are fully implemented in the data layer but not yet exposed in the UI
+- **No user-facing changes**: Projects are fully implemented in the data layer but not yet exposed in the UI
 - **Future work**: Phase 2 UI integration will add sidebar navigation, group management dialogs, and filtered transcript views
 
 ---
@@ -1251,7 +1290,7 @@ Backend implementation of Focus Groups (Foci) - user-defined organization for tr
 
 ## Summary
 
-Major persistence layer overhaul replacing JSONL storage with SQLite database. Introduces foundational schema for future features including focus groups (Phase 2) and content refinement (Phase 4+). All existing functionality preserved with improved performance for updates and queries.
+Major persistence layer overhaul replacing JSONL storage with SQLite database. Introduces foundational schema for future features including Projects (Phase 2) and content refinement (Phase 4+). All existing functionality preserved with improved performance for updates and queries.
 
 ## Changes
 
@@ -1262,11 +1301,11 @@ Major persistence layer overhaul replacing JSONL storage with SQLite database. I
   - `raw_text` - Immutable audit baseline (what Whisper produced)
   - `normalized_text` - Editable content (target for user edits and future refinement)
   - Both fields initialized to identical values on creation
-- **Added**: `focus_groups` table (currently unused, ready for Phase 2 navigation)
+- **Added**: `projects` table (currently unused, ready for Phase 2 navigation)
 - **Added**: `schema_version` table for future database migrations
 - **Added**: Auto-increment integer primary keys (`id`) for stable references
-- **Added**: Foreign key constraint from `transcripts.focus_group_id` to `focus_groups(id)` with `ON DELETE SET NULL`
-- **Added**: Database indexes on `id DESC`, `timestamp`, and `focus_group_id` for efficient queries
+- **Added**: Foreign key constraint from `transcripts.project_id` to `projects(id)` with `ON DELETE SET NULL`
+- **Added**: Database indexes on `id DESC`, `timestamp`, and `project_id` for efficient queries
 - **Enforced**: `raw_text` immutability - no code path modifies raw transcription after creation
 - **Enforced**: Foreign key constraints via `PRAGMA foreign_keys = ON`
 
@@ -1301,7 +1340,7 @@ Major persistence layer overhaul replacing JSONL storage with SQLite database. I
 
 - SQLite ordered by auto-increment ID ensures insertion order preserved even with rapid successive entries
 - `created_at` timestamp retained for future time-based queries but not used for ordering
-- Schema designed to support Phase 2 (focus groups) and Phase 4+ (refinement) without structural changes
+- Schema designed to support Phase 2 (Projects) and Phase 4+ (refinement) without structural changes
 - Database location consistent with existing config directory pattern
 
 ---

@@ -35,7 +35,7 @@ This release introduces **Refinement Profiles** and **Dynamic VRAM Management**.
 
 ### History & Organization
 - Persistent history using **SQLAlchemy 2.0+**
-- Focus groups for organizing transcripts by topic
+- Projects for organizing transcripts by topic
 - Editable transcriptions (original preserved, edits saved separately)
 - Export to TXT, CSV, or Markdown
 

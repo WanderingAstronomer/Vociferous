@@ -11,7 +11,7 @@ class HistoryEntry:
     text: str
     duration_ms: int
     speech_duration_ms: int = 0
-    focus_group_id: int | None = None
+    project_id: int | None = None
     id: int | None = None
 
     def to_display_string(self, max_length: int = 80) -> str:

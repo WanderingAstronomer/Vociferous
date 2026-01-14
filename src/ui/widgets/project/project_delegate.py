@@ -1,8 +1,8 @@
 """
-FocusGroupDelegate - Custom paint delegate for focus group items.
+ProjectDelegate - Custom paint delegate for Project items.
 
 Handles painting of:
-- Focus group header rows with color markers
+- Project header rows with color markers
 - Transcript child rows with hover/selection states
 """
 
@@ -27,15 +27,15 @@ from ui.widgets.transcript_item import (
 )
 
 
-class FocusGroupDelegate(QStyledItemDelegate):
+class ProjectDelegate(QStyledItemDelegate):
     """
-    Custom delegate for Focus Group items.
+    Custom delegate for Project items.
 
     Paints full-width colored bars with white text.
-    Only applies to top-level Focus Group items.
+    Only applies to top-level Project items.
     """
 
-    # Role constants - must match FocusGroupTreeWidget
+    # Role constants - must match ProjectTreeWidget
     ROLE_IS_GROUP = Qt.ItemDataRole.UserRole + 10
     ROLE_COLOR = Qt.ItemDataRole.UserRole + 12
 
@@ -72,7 +72,7 @@ class FocusGroupDelegate(QStyledItemDelegate):
     def _paint_group_item(
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
     ) -> None:
-        """Paint a focus group header row."""
+        """Paint a Project header row."""
         color = index.data(self.ROLE_COLOR)
 
         if color:

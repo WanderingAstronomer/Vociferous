@@ -92,7 +92,7 @@ class MenuBuilder:
     ) -> None:
         """Create View menu."""
         view_menu = self._menu_bar.addMenu("&View")
-        self.focus_history_action = QAction("Focus History", self._window)
+        self.focus_history_action = QAction("Project History", self._window)
         self.focus_history_action.setShortcut(QKeySequence("Ctrl+H"))
         self.focus_history_action.triggered.connect(on_focus_history)
         view_menu.addAction(self.focus_history_action)

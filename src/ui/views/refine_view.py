@@ -109,6 +109,22 @@ class RefineView(BaseView):
         # Simple simplistic "diff" visual could be added here
         # For now, just plain text
 
+    def load_transcript(self, text: str, timestamp: str | None = None) -> None:
+        """
+        Load initial transcript text.
+        
+        This sets the 'Original' text field and clears the 'Refined' field,
+        preparing the view for a new refinement operation.
+        """
+        self._original_text = text
+        self._refined_text = ""
+        # Parsing timestamp to ID isn't safe here, so we leave ID None or handle external mapping
+        self._current_transcript_id = None 
+        
+        self._txt_original.setText(text)
+        self._txt_refined.setText("")
+        self._txt_refined.setPlaceholderText("Refinement pending...")
+
     def _on_accept(self) -> None:
         """Emit intent to save this refinement as the main text."""
         # TODO: Implement wiring to Controller

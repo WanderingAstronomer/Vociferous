@@ -2,7 +2,7 @@
 Collapsible section widget.
 
 A header with toggle that expands/collapses content area.
-Used in sidebar for Focus Groups and Transcripts sections.
+Used for Projects and Transcripts sections.
 """
 
 from PyQt6.QtCore import QEvent, QObject, Qt, pyqtSignal, pyqtSlot

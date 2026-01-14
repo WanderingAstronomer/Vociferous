@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal, QEvent
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QFrame,
     QVBoxLayout,
@@ -11,9 +11,9 @@ from PyQt6.QtWidgets import (
     QWidget,
     QGraphicsDropShadowEffect
 )
-from PyQt6.QtGui import QColor, QPalette, QFont
+from PyQt6.QtGui import QColor, QFont
 
-from ui.constants import Colors, Typography
+from ui.constants import Typography
 
 class TranscriptPreviewOverlay(QFrame):
     """

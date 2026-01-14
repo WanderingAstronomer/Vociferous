@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.components.title_bar import DialogTitleBar
-from ui.constants import MAJOR_GAP, MINOR_GAP, Colors, Dimensions, Typography
+from ui.constants import MAJOR_GAP, MINOR_GAP
 from ui.widgets.styled_button import ButtonStyle, StyledButton
 
 

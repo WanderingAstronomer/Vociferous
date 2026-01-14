@@ -73,6 +73,7 @@ class MainWorkspace(QWidget):
     deleteRequested = pyqtSignal()
     refineRequested = pyqtSignal(str, str, str)  # Passes (profile, text, timestamp)
     textEdited = pyqtSignal()
+    stateChanged = pyqtSignal(WorkspaceState)
 
     # Intent processing signal (Phase 2: observability only)
     intentProcessed = pyqtSignal(object)  # IntentResult
@@ -142,8 +143,9 @@ class MainWorkspace(QWidget):
         layout.addSpacing(Spacing.CONTROLS_CONTENT_GAP)
 
         # Controls component (fixed height, no stretch)
-        self.controls = WorkspaceControls()
-        layout.addWidget(self.controls, 0)
+        # REMOVED: Duplicates ActionGrid functionality
+        # self.controls = WorkspaceControls()
+        # layout.addWidget(self.controls, 0)
 
         outer_layout.addWidget(self.content_column, 1)
 
@@ -175,10 +177,7 @@ class MainWorkspace(QWidget):
 
     def _connect_signals(self) -> None:
         """Wire up component signals to workspace handlers."""
-        self.controls.primaryClicked.connect(self._on_primary_click)
-        self.controls.editSaveClicked.connect(self._on_edit_save_click)
-        self.controls.destructiveClicked.connect(self._on_destructive_click)
-        self.controls.refineClicked.connect(self._handle_refine_request)
+        # Removed controls connections (delegated to ActionGrid)
 
         self.content.textChanged.connect(self._on_text_changed)
         self.content.editRequested.connect(self._on_edit_save_click)
@@ -218,7 +217,7 @@ class MainWorkspace(QWidget):
             case WorkspaceState.IDLE:
                 self.header.set_state(self._state)
                 self.header.update_for_idle()
-                self.controls.update_for_idle()
+                # self.controls.update_for_idle() - DEPRECATED
                 self.content.update_for_idle()
                 self.hotkey_hint.setText("Press Alt to start recording")
                 self.metrics.hide()
@@ -226,7 +225,7 @@ class MainWorkspace(QWidget):
             case WorkspaceState.RECORDING:
                 self.header.set_state(self._state)
                 self.header.update_for_recording()
-                self.controls.update_for_recording()
+                # self.controls.update_for_recording() - DEPRECATED
                 self.content.update_for_recording()
                 self.hotkey_hint.setText("Press Alt to stop recording")
                 self.metrics.hide()
@@ -234,7 +233,7 @@ class MainWorkspace(QWidget):
             case WorkspaceState.VIEWING:
                 self.header.set_state(self._state)
                 self.header.update_for_viewing()
-                self.controls.update_for_viewing()
+                # self.controls.update_for_viewing() - DEPRECATED
                 self.content.update_for_viewing()
                 self.hotkey_hint.setText("Press Alt to start recording")
                 # Metrics visibility is handled in load_transcript/display_new_transcript
@@ -242,7 +241,7 @@ class MainWorkspace(QWidget):
             case WorkspaceState.EDITING:
                 self.header.set_state(self._state)
                 self.header.update_for_editing()
-                self.controls.update_for_editing()
+                # self.controls.update_for_editing() - DEPRECATED
                 self.content.update_for_editing()
                 self.hotkey_hint.setText("Press Alt to start recording")
                 # Metrics visibility preserved from VIEWING state
@@ -264,8 +263,12 @@ class MainWorkspace(QWidget):
     def set_state(self, state: WorkspaceState) -> None:
         """Change workspace state."""
         try:
+            if self._state == state:
+                return
+
             self._state = state
             self._update_for_state()
+            self.stateChanged.emit(state)
         except Exception:
             logger.exception("Error setting workspace state")
 

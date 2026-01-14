@@ -2,7 +2,7 @@
 Unified transcript entry painting.
 
 This module provides the SINGLE SOURCE OF TRUTH for how transcript entries
-are visually rendered. Both FocusGroupDelegate and TreeHoverDelegate use
+are visually rendered. Both ProjectDelegate and TreeHoverDelegate use
 this to ensure consistent appearance across the entire application.
 
 Visual specification:
@@ -49,7 +49,7 @@ def paint_transcript_entry(
     Paint a complete transcript entry row.
 
     This is the SINGLE SOURCE OF TRUTH for transcript entry rendering.
-    Both Focus Groups and Ungrouped Transcripts use this function.
+    Both Projects and Ungrouped Transcripts use this function.
 
     Layout:
         [Preview text (left-aligned)]  ...gap...  [Time (right-aligned, blue)]

@@ -1,4 +1,4 @@
 from .transcript_repo import TranscriptRepository
-from .focus_group_repo import FocusGroupRepository
+from .project_repo import ProjectRepository
 
-__all__ = ["TranscriptRepository", "FocusGroupRepository"]
+__all__ = ["TranscriptRepository", "ProjectRepository"]

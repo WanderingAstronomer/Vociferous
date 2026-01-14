@@ -54,7 +54,7 @@ class AnimationDurations:
     """Animation timing constants in milliseconds."""
 
     PULSE_CYCLE = 800  # Recording indicator pulse
-    UI_TRANSITION = 220  # Sidebar/button animations
+    UI_TRANSITION = 220  # UI animations
     PREVIEW_RESTORE = 1000  # History tree preview reset
     STATUS_MESSAGE = 2500  # Status bar message display
     COPY_FEEDBACK = 1000  # Copy confirmation checkmark
@@ -65,7 +65,7 @@ class Timing:
     """Application timing constants."""
 
     # UI animations (milliseconds)
-    UI_TRANSITION_MS = 220  # Sidebar/button animations
+    UI_TRANSITION_MS = 220  # UI animations
     PULSE_CYCLE_MS = 800  # Recording indicator pulse cycle
     PREVIEW_RESTORE_MS = 1000  # History tree preview reset
     STATUS_MESSAGE_MS = 2500  # Status bar message display

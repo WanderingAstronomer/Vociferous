@@ -223,7 +223,7 @@
                     "name": "TabBar",
                     "description": "Segmented Control for navigation",
                     "segments": [
-                        "Focus Groups",
+                        "Projects",
                         "Recent",
                         "Search"
                     ],
@@ -263,7 +263,7 @@
                             "type": "Radio Group",
                             "options": [
                                 "All",
-                                "Focus Groups",
+                                "Projects",
                                 "7 Days",
                                 "30 Days"
                             ]

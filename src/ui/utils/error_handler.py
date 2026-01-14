@@ -17,9 +17,10 @@ import subprocess
 import sys
 import traceback
 import datetime
+import functools
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Tuple, Type
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -377,7 +378,38 @@ def install_exception_hook(
                 print(f"CRITICAL: Error displaying dialog: {callback_error}", file=sys.stderr)
 
     sys.excepthook = exception_hook
-    logger.info("Global exception hook installed")
+
+def format_exception_for_display(
+    exc_type: type[BaseException],
+    exc_value: BaseException,
+    exc_tb: "TracebackType | None",
+) -> Tuple[str, str, str]:
+    """
+    Format an exception for display in the error dialog.
+
+    Args:
+        exc_type: Exception type
+        exc_value: Exception instance
+        exc_tb: Traceback object
+
+    Returns:
+        Tuple of (title, message, details)
+    """
+    error_name = exc_type.__name__
+    error_message = str(exc_value) if str(exc_value) else "An unexpected error occurred"
+
+    # Capture extra context if available
+    if isinstance(exc_value, VociferousError) and exc_value.doc_ref:
+        error_message += f"\n\nSee: {exc_value.doc_ref}"
+
+    tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb)
+    tb_string = "".join(tb_lines)
+
+    title = f"Error: {error_name}"
+    message = error_message
+    details = f"Traceback:\n{tb_string}"
+
+    return title, message, details
 
 
 def safe_slot(context: str = "") -> Callable:
@@ -385,6 +417,7 @@ def safe_slot(context: str = "") -> Callable:
     Decorator to wrap Qt slots with exception handling.
     """
     def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
@@ -412,6 +445,7 @@ def safe_callback(func: Callable, context: str = "") -> Callable:
     """
     Decorator to wrap standard callbacks with exception handling.
     """
+    @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return func(*args, **kwargs)

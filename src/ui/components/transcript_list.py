@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Tuple
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QWidget
 
-from ui.models import FocusGroupProxyModel, TranscriptionModel
+from ui.models import ProjectProxyModel, TranscriptionModel
 from ui.widgets.history_tree.history_tree_view import HistoryTreeView
 
 if TYPE_CHECKING:
@@ -67,9 +67,9 @@ class TranscriptList(HistoryTreeView):
         """Filter the list by group ID. None means ungrouped (or all?)."""
         # If we are using a proxy, update it.
         # HistoryTreeView allows setting a model. 
-        # We usually want a FocusGroupProxyModel here.
+        # We usually want a ProjectProxyModel here.
         model = self.model()
-        if isinstance(model, FocusGroupProxyModel):
+        if isinstance(model, ProjectProxyModel):
             model.set_group_id(group_id)
         elif isinstance(model, TranscriptionModel):
             # If we are on raw model, we might need to wrap it?
@@ -80,10 +80,10 @@ class TranscriptList(HistoryTreeView):
         """Configure to show all items vs filtered."""
         # For RecentView, we might want 'All' or 'Ungrouped'
         model = self.model()
-        if isinstance(model, FocusGroupProxyModel):
+        if isinstance(model, ProjectProxyModel):
             if show:
                 # If proxy supports 'show all', otherwise we might need to 
                 # set the source model directly or similar?
-                # FocusGroupProxy usually filters by group ID.
+                # ProjectProxy usually filters by group ID.
                 # If we want ALL, maybe we shouldn't use the proxy?
                 pass

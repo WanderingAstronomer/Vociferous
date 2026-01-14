@@ -1,6 +1,6 @@
 """
 Shared factory for creating transcript tree items.
-Ensures consistent rendering between HistoryTreeWidget and FocusGroupTreeWidget.
+Ensures consistent rendering between HistoryTreeWidget and ProjectTreeWidget.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ ROLE_TIMESTAMP_ISO = Qt.ItemDataRole.UserRole + 2
 ROLE_FULL_TEXT = Qt.ItemDataRole.UserRole + 3
 ROLE_GROUP_ID = Qt.ItemDataRole.UserRole + 4
 ROLE_IS_HEADER = Qt.ItemDataRole.UserRole + 5
+ROLE_ENTRY_ID = Qt.ItemDataRole.UserRole + 6
 
 
 def create_transcript_item(
@@ -51,8 +52,9 @@ def create_transcript_item(
     item.setData(0, ROLE_TIMESTAMP_ISO, entry.timestamp)
     item.setData(0, ROLE_FULL_TEXT, entry.text)
     # item.setData(1, ROLE_FULL_TEXT, entry.text) # No longer needed
-    item.setData(0, ROLE_GROUP_ID, entry.focus_group_id)
+    item.setData(0, ROLE_GROUP_ID, entry.project_id)
     item.setData(0, ROLE_IS_HEADER, False)
+    item.setData(0, ROLE_ENTRY_ID, entry.id)
 
     # Alignment
     item.setTextAlignment(0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)

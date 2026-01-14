@@ -36,7 +36,7 @@ COLLAPSIBLE_SECTION_STYLESHEET = f"""
         color: {Colors.TEXT_PRIMARY};
     }}
 
-    /* Section header - transparent over unified sidebar background */
+    /* Section header - transparent over background */
     QWidget#sectionHeader {{
         background-color: transparent;
         border-radius: {SECTION_HEADER_RADIUS}px;

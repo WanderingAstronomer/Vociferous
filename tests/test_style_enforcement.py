@@ -61,7 +61,7 @@ def test_no_raw_hex_colors_in_ui():
             if matches:
                 violations.append(f"{file_path}:{i+1} found {matches}")
 
-    assert not violations, f"Found raw hex colors in UI files. Use ui.constants.Colors tokens:\n" + "\n".join(violations)
+    assert not violations, "Found raw hex colors in UI files. Use ui.constants.Colors tokens:\n" + "\n".join(violations)
 
 def test_no_large_inline_stylesheets():
     """

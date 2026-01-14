@@ -40,9 +40,10 @@ from ui.components.main_window.main_window_styles import get_combined_stylesheet
 from ui.components.title_bar import TitleBar
 from ui.constants import (
     WindowSize,
+    WorkspaceState,
 )
 from ui.widgets.dialogs import ConfirmationDialog, MessageDialog, show_error_dialog
-from ui.widgets.metrics_dock import MetricsDock
+from ui.widgets.metrics_strip.metrics_strip import MetricsStrip
 
 # New shell components
 from ui.components.icon_rail import IconRail
@@ -62,7 +63,7 @@ from ui.constants.view_ids import (
     VIEW_TRANSCRIBE, VIEW_RECENT, VIEW_PROJECTS, VIEW_SEARCH, VIEW_REFINE, VIEW_EDIT,
     VIEW_SETTINGS, VIEW_USER
 )
-from ui.interaction.intents import InteractionIntent, NavigateIntent
+from ui.interaction.intents import InteractionIntent, NavigateIntent, ViewTranscriptIntent
 
 if TYPE_CHECKING:
     from history_manager import HistoryEntry, HistoryManager
@@ -159,21 +160,21 @@ class MainWindow(QMainWindow):
         # 2.2 Action Grid (Contextual Actions)
         self.action_grid = ActionGrid()
 
-        # 2.3 Metrics Dock
-        self.metrics_dock = MetricsDock()
+        # 2.3 Metrics Strip
+        self.metrics_strip = MetricsStrip()
         if self.history_manager:
-            self.metrics_dock.set_history_manager(self.history_manager)
+            self.metrics_strip.set_history_manager(self.history_manager)
 
         # Build Layout
         content_column.addWidget(self.view_host, 1) # Expanding
         content_column.addWidget(self.action_grid, 0) # Fixed height
-        content_column.addWidget(self.metrics_dock, 0) # Fixed height
+        content_column.addWidget(self.metrics_strip, 0) # Fixed height
 
         container_layout.addLayout(content_column, 1)
         main_layout.addLayout(container_layout)
 
         # Connect debounce timer
-        self._metrics_refresh_timer.timeout.connect(self.metrics_dock.refresh)
+        self._metrics_refresh_timer.timeout.connect(self.metrics_strip.refresh)
 
         central.setLayout(main_layout)
         self.setCentralWidget(central)
@@ -197,8 +198,14 @@ class MainWindow(QMainWindow):
     def _init_views(self) -> None:
         """Instantiate and register all application views."""
         # Instantiate
-        self.view_transcribe = TranscribeView()
+        self.view_transcribe = TranscribeView(self.history_manager)
         self.view_transcribe.editNormalizedText.connect(self._on_transcribe_view_text_edited)
+        
+        # Connect workspace control signals directly to orchestrator signals
+        # This restores the link broken by previous TranscribeView implementation
+        self.view_transcribe.workspace.startRequested.connect(self.startRecordingRequested.emit)
+        self.view_transcribe.workspace.stopRequested.connect(self.stopRecordingRequested.emit)
+        self.view_transcribe.workspace.cancelRequested.connect(self.cancelRecordingRequested.emit)
         
         self.view_recent = RecentView() 
         if self.history_manager:
@@ -258,6 +265,18 @@ class MainWindow(QMainWindow):
         """Dispatcher for all intents bubbling up from UI components."""
         if isinstance(intent, NavigateIntent):
             self._on_navigation_requested(intent.target_view_id)
+        elif isinstance(intent, ViewTranscriptIntent):
+            self._handle_view_transcript(intent)
+
+    def _handle_view_transcript(self, intent: ViewTranscriptIntent) -> None:
+        """Handle request to view a specific transcript."""
+        # Switch to Transcribe view (View/Edit mode)
+        self.view_host.switch_to_view(VIEW_TRANSCRIBE)
+        
+        # Load the data into the view
+        if hasattr(self, "view_transcribe"):
+            # Ensure we're targeting the right view instance
+            self.view_transcribe.load_transcript(intent.text, intent.timestamp)
 
     @pyqtSlot(str)
     def _on_navigation_requested(self, view_id: str) -> None:
@@ -307,7 +326,7 @@ class MainWindow(QMainWindow):
                 self.view_projects.refresh()
         except Exception as e:
             logger.exception("Failed to update transcript text from live view")
-            show_error_dialog("Update Failed", f"Could not save changes: {e}", self)
+            show_error_dialog("Update Failed", f"Could not save changes: {e}", parent=self)
 
     @pyqtSlot(int)
     def _on_edit_view_requested(self, transcript_id: int) -> None:
@@ -384,12 +403,6 @@ class MainWindow(QMainWindow):
             self.metrics_dock.setVisible(checked)
         except Exception:
             logger.exception("Error toggling metrics")
-
-    @pyqtSlot()
-    # Removed duplicate definition of _toggle_sidebar
-    # def _toggle_sidebar(self) -> None:
-    #     """Deprecated."""
-    #     pass
 
     @pyqtSlot(bool)
     def _on_metrics_collapsed_changed(self, collapsed: bool) -> None:
@@ -554,13 +567,23 @@ class MainWindow(QMainWindow):
         ORCHESTRATION PRIVILEGE (Invariant 8):
         This is the ONLY method in MainWindow allowed to push engine state to UI.
         """
+        if not hasattr(self, "view_transcribe"):
+             return
+             
+        current_state = self.view_transcribe.workspace.get_state()
+        
         match status:
             case "recording":
-                self.view_host.switch_to_view(VIEW_TRANSCRIBE)
+                # Guard: Only IDLE -> RECORDING (Edit Safety)
+                if current_state == WorkspaceState.IDLE or self.view_transcribe.workspace.get_state() == WorkspaceState.IDLE:
+                    self.view_host.switch_to_view(VIEW_TRANSCRIBE)
+                    self.view_transcribe.update_for_recording_state(True)
             case "transcribing":
                 pass
             case "idle" | "error" | _:
-                pass
+                # Guard: Only RECORDING -> IDLE (Edit Safety)
+                if current_state == WorkspaceState.RECORDING or self.view_transcribe.workspace.get_state() == WorkspaceState.RECORDING:
+                    self.view_transcribe.update_for_recording_state(False)
 
 
     def update_audio_level(self, level: float) -> None:
@@ -574,7 +597,7 @@ class MainWindow(QMainWindow):
         
         # Show in TranscribeView for immediate editing
         if hasattr(self, "view_transcribe"):
-             self.view_transcribe.set_transcript(entry.id, entry.text)
+             self.view_transcribe.load_transcript(entry.text, entry.timestamp)
 
     def show_and_raise(self) -> None:
         self.show()
@@ -651,7 +674,7 @@ class MainWindow(QMainWindow):
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 if self.history_manager:
                     self.history_manager.clear()
-                self.metrics_dock.refresh()
+                self.metrics_strip.refresh()
                 if hasattr(self, "view_recent"):
                      # RecentView should refresh itself via history signals usually
                      pass
@@ -660,20 +683,12 @@ class MainWindow(QMainWindow):
 
     # Resize slots removed.
 
-
-    # Sidebar resize handling - Deprecated
-
-
     # Position logic removed
 
 
     def _switch_to_history(self) -> None:
         """Switch to Recent View (History)."""
         self.view_host.switch_to_view(VIEW_RECENT)
-
-    # Note: Sidebar logic removed.
-    def _toggle_sidebar(self) -> None:
-        pass
 
     # State persistence
 
@@ -688,11 +703,11 @@ class MainWindow(QMainWindow):
 
         metrics_visible = self.settings.value("metrics_visible", True)
         if str(metrics_visible).lower() == "false":
-            self.metrics_dock.hide()
+            self.metrics_strip.hide()
 
     def _save_state(self) -> None:
         self.settings.setValue("geometry", self.saveGeometry())
-        self.settings.setValue("metrics_visible", self.metrics_dock.isVisible())
+        self.settings.setValue("metrics_visible", self.metrics_strip.isVisible())
 
     def _center_on_screen(self) -> None:
         screen = self.screen().availableGeometry()
@@ -707,7 +722,6 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        # Sidebar resize logic removed.
 
     def changeEvent(self, event) -> None:
         if event.type() == QEvent.Type.WindowStateChange:

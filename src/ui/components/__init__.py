@@ -4,8 +4,7 @@ Components Package.
 High-level UI components that compose widgets into functional areas.
 
 Components:
-    MainWindow: Primary application window (sidebar, workspace, metrics strip)
-    SidebarWidget: History sidebar with transcript list
+    MainWindow: Primary application window (icon rail, workspace, metrics strip)
     MainWorkspace: Central workspace area (header, controls, content)
     TitleBar: Custom window title bar
     DialogTitleBar: Title bar for dialogs

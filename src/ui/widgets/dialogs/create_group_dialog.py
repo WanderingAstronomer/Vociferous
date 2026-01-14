@@ -1,5 +1,5 @@
 """
-Create Focus Group dialog with name and color selection.
+Create Project dialog with name and color selection.
 
 Modern styled dialog matching the settings dialog design.
 """
@@ -21,12 +21,12 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.components.title_bar import DialogTitleBar
-from ui.constants import MAJOR_GAP, MINOR_GAP, Colors, FocusGroupColors
+from ui.constants import MAJOR_GAP, MINOR_GAP, Colors, ProjectColors
 
 # Use colors and names from constants (2 rows x 3 columns)
 GROUP_COLORS = [
-    (color, FocusGroupColors.COLOR_NAMES.get(color, f"Color {i + 1}"))
-    for i, color in enumerate(FocusGroupColors.PALETTE)
+    (color, ProjectColors.COLOR_NAMES.get(color, f"Color {i + 1}"))
+    for i, color in enumerate(ProjectColors.PALETTE)
 ]
 
 
@@ -75,7 +75,7 @@ class ColorSwatch(QPushButton):
 
 class CreateGroupDialog(QDialog):
     """
-    Modal dialog for creating a new focus group.
+    Modal dialog for creating a new Project.
 
     Features:
     - Custom title bar (draggable)
@@ -85,7 +85,7 @@ class CreateGroupDialog(QDialog):
     """
 
     def __init__(
-        self, parent: QWidget | None = None, title: str = "New Focus Group"
+        self, parent: QWidget | None = None, title: str = "New Project"
     ) -> None:
         super().__init__(parent)
         self.setWindowFlags(

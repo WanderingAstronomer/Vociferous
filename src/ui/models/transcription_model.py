@@ -3,7 +3,7 @@ TranscriptionModel - Single source of truth for transcription data.
 
 Wraps HistoryManager and provides Qt Model/View interface for:
 - Day-grouped hierarchical display (day headers as parents, entries as children)
-- Multiple simultaneous views (history list, focus group trees, search results)
+- Multiple simultaneous views (history list, Project trees, search results)
 - Efficient updates via dataChanged signals instead of full reloads
 
 Tree structure:
@@ -49,8 +49,8 @@ class TranscriptionModel(QAbstractItemModel):
     - IsHeaderRole: True for day headers, False for entries
     - TimestampRole: ISO timestamp for entries
     - FullTextRole: Complete transcription text
-    - GroupIDRole: Focus group ID (or None)
-    - ColorRole: Focus group color (or None)
+    - GroupIDRole: Project ID (or None)
+    - ColorRole: Project color (or None)
     """
 
     # Custom roles
@@ -110,7 +110,7 @@ class TranscriptionModel(QAbstractItemModel):
         """Reload data from HistoryManager."""
         entries = self._history_manager.get_recent(limit=1000)
         self._days = group_entries_by_day(entries)
-        self._group_colors = self._history_manager.get_focus_group_colors()
+        self._group_colors = self._history_manager.get_project_colors()
 
     def refresh_from_manager(self) -> None:
         """Public API for external refresh."""
@@ -119,11 +119,11 @@ class TranscriptionModel(QAbstractItemModel):
         self.endResetModel()
 
     def refresh_group_colors(self) -> None:
-        """Refresh focus group colors and notify views."""
+        """Refresh Project colors and notify views."""
         if not self._history_manager:
             return
 
-        self._group_colors = self._history_manager.get_focus_group_colors()
+        self._group_colors = self._history_manager.get_project_colors()
 
         for day_idx, (_day_key, _day_dt, entries) in enumerate(self._days):
             if not entries:
@@ -188,11 +188,11 @@ class TranscriptionModel(QAbstractItemModel):
                     return
 
     def update_entry_group(self, timestamp: str, group_id: int | None) -> None:
-        """Update an entry's focus group membership."""
+        """Update an entry's Project membership."""
         for day_idx, (day_key, day_dt, entries) in enumerate(self._days):
             for entry_idx, entry in enumerate(entries):
                 if entry.timestamp == timestamp:
-                    entry.focus_group_id = group_id
+                    entry.project_id = group_id
                     day_model_index = self.index(day_idx, 0)
                     entry_model_index = self.index(entry_idx, 0, day_model_index)
                     self.dataChanged.emit(
@@ -412,10 +412,10 @@ class TranscriptionModel(QAbstractItemModel):
             case self.IsHeaderRole:
                 return False
             case self.GroupIDRole:
-                return entry.focus_group_id
+                return entry.project_id
             case self.ColorRole:
-                if entry.focus_group_id is not None:
-                    return self._group_colors.get(entry.focus_group_id)
+                if entry.project_id is not None:
+                    return self._group_colors.get(entry.project_id)
                 return None
             case self.IdRole:
                 return entry.id

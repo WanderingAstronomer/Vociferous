@@ -21,7 +21,7 @@ class TranscriptRepository:
             text=transcript.normalized_text,  # The current visible text
             duration_ms=transcript.duration_ms,
             speech_duration_ms=transcript.speech_duration_ms,
-            focus_group_id=transcript.focus_group_id,
+            project_id=transcript.project_id,
             id=transcript.id,
         )
 
@@ -255,8 +255,8 @@ class TranscriptRepository:
                 )
 
                 match scope:
-                    case "focus_groups":
-                        stmt = stmt.where(Transcript.focus_group_id.is_not(None))
+                    case "projects":
+                        stmt = stmt.where(Transcript.project_id.is_not(None))
                     case "last_7_days":
                         cutoff = datetime.now() - timedelta(days=7)
                         stmt = stmt.where(Transcript.created_at >= cutoff)
@@ -347,23 +347,23 @@ class TranscriptRepository:
             session.commit()
             logger.info(f"Rotated history: removed {to_remove} old entries")
 
-    def assign_to_focus_group(
-        self, timestamp: str, focus_group_id: int | None
+    def assign_to_project(
+        self, timestamp: str, project_id: int | None
     ) -> bool:
-        """Assign a transcript to a focus group."""
+        """Assign a transcript to a Project."""
         try:
             with self.db.get_session() as session:
                 stmt = (
                     update(Transcript)
                     .where(Transcript.timestamp == timestamp)
-                    .values(focus_group_id=focus_group_id)
+                    .values(project_id=project_id)
                 )
                 result = session.execute(stmt)
                 session.commit()
 
                 if result.rowcount > 0:
                     group_str = (
-                        f"group {focus_group_id}" if focus_group_id else "ungrouped"
+                        f"group {project_id}" if project_id else "ungrouped"
                     )
                     logger.info(f"Assigned transcript {timestamp} to {group_str}")
                     return True
@@ -372,17 +372,17 @@ class TranscriptRepository:
                     return False
 
         except Exception as e:
-            logger.error(f"Failed to assign transcript to focus group: {e}")
+            logger.error(f"Failed to assign transcript to Project: {e}")
             return False
 
-    def get_by_focus_group(
-        self, focus_group_id: int | None, limit: int = 100
+    def get_by_project(
+        self, project_id: int | None, limit: int = 100
     ) -> list[HistoryEntry]:
-        """Get transcripts belonging to a specific focus group."""
+        """Get transcripts belonging to a specific Project."""
         try:
             with self.db.get_session() as session:
                 stmt = select(Transcript).where(
-                    Transcript.focus_group_id == focus_group_id
+                    Transcript.project_id == project_id
                 )
                 stmt = stmt.order_by(desc(Transcript.id)).limit(limit)
 
@@ -390,16 +390,16 @@ class TranscriptRepository:
                 return [self._to_history_entry(t) for t in transcripts]
 
         except Exception as e:
-            logger.error(f"Failed to get transcripts by focus group: {e}")
+            logger.error(f"Failed to get transcripts by Project: {e}")
             return []
 
-    def get_focus_group_counts(self) -> dict[int | None, int]:
-        """Get transcript counts for all focus groups including ungrouped."""
+    def get_project_counts(self) -> dict[int | None, int]:
+        """Get transcript counts for all Projects including ungrouped."""
         try:
             with self.db.get_session() as session:
                 stmt = select(
-                    Transcript.focus_group_id, func.count(Transcript.id)
-                ).group_by(Transcript.focus_group_id)
+                    Transcript.project_id, func.count(Transcript.id)
+                ).group_by(Transcript.project_id)
                 results = session.execute(stmt).all()
 
                 counts = {}
@@ -408,5 +408,5 @@ class TranscriptRepository:
                 return counts
 
         except Exception as e:
-            logger.error(f"Failed to get focus group counts: {e}")
+            logger.error(f"Failed to get Project counts: {e}")
             return {}

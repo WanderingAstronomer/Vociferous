@@ -25,16 +25,16 @@ The system uses SQLAlchemy 2.0+ ORM with declarative models defined in `src/mode
 | `normalized_text` | TEXT | Editable user content |
 | `duration_ms` | INTEGER | Recording duration in milliseconds |
 | `speech_duration_ms` | INTEGER | VAD-filtered speech time |
-| `focus_group_id` | INTEGER | Foreign key to `focus_groups.id` (Indexed) |
+| `project_id` | INTEGER | Foreign key to `projects.id` (Indexed) |
 
-### `focus_groups` Table (FocusGroup Model)
+### `projects` Table (Project Model)
 
 | Column | Type | Description |
 | --- | --- | --- |
 | `id` | INTEGER | Auto-increment primary key |
 | `name` | TEXT | User-defined group name |
 | `color` | TEXT | Hex color code (e.g. #FF0000) or null |
-| `parent_id` | INTEGER | Foreign key to `focus_groups.id` (Nullable, Recursive) |
+| `parent_id` | INTEGER | Foreign key to `projects.id` (Nullable, Recursive) |
 | `created_at` | DATETIME | Creation timestamp |
 
 ## Dual-Text Architecture
@@ -76,11 +76,11 @@ entries = manager.get_recent(limit=100)  # Returns HistoryEntry DTOs
 
 Standard CRUD operations are performed via SQLAlchemy `Session` context managers ensuring ACID compliance.
 
-## Focus Groups
+## Projects
 
-Organize transcripts by topic or project. The `FocusGroup` model supports hierarchical relationships (prepared for future implementation).
+Organize transcripts by topic or project. The `Project` model supports hierarchical relationships (prepared for future implementation).
 
 ```python
 # Create group
-group_id = manager.create_focus_group("Work Notes", color="#FF0000")
+group_id = manager.create_project("Work Notes", color="#FF0000")
 ```

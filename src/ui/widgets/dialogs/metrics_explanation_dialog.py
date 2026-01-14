@@ -22,7 +22,6 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.components.title_bar import DialogTitleBar
-from ui.constants import Colors, Dimensions, Typography
 
 
 class MetricsExplanationDialog(QDialog):

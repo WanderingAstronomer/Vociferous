@@ -10,7 +10,7 @@ Re-exports all constants for convenient import:
 from .audio import AudioConfig
 
 # Colors
-from .colors import Colors, FocusGroupColors
+from .colors import Colors, ProjectColors
 
 # Dimensions
 from .dimensions import (
@@ -42,16 +42,6 @@ from .dimensions import (
     SECTION_HEADER_PADDING_H,
     SECTION_HEADER_PADDING_V,
     SECTION_HEADER_RADIUS,
-    SIDEBAR_BOTTOM_PADDING,
-    SIDEBAR_DEFAULT_RATIO,
-    SIDEBAR_LEFT_INSET,
-    SIDEBAR_MAX_RATIO,
-    SIDEBAR_MIN_RATIO,
-    SIDEBAR_MIN_WIDTH,
-    SIDEBAR_PREVIEW_LENGTH,
-    SIDEBAR_SECTION_GAP,
-    SIDEBAR_SIDE_PADDING,
-    SIDEBAR_TOP_PADDING,
     SPLITTER_HANDLE_WIDTH,
     SPLITTER_HIT_AREA,
     TRANSCRIPT_INDENT,
@@ -148,16 +138,8 @@ __all__ = [
     "HEADER_TO_LIST_GAP",
     # Dimensions
     "Dimensions",
-    "SIDEBAR_DEFAULT_RATIO",
-    "SIDEBAR_MIN_WIDTH",
-    "SIDEBAR_MIN_RATIO",
-    "SIDEBAR_MAX_RATIO",
     "SPLITTER_HANDLE_WIDTH",
     "SPLITTER_HIT_AREA",
-    "SIDEBAR_TOP_PADDING",
-    "SIDEBAR_SIDE_PADDING",
-    "SIDEBAR_BOTTOM_PADDING",
-    "SIDEBAR_SECTION_GAP",
     "SECTION_HEADER_HEIGHT",
     "SECTION_HEADER_PADDING_H",
     "SECTION_HEADER_PADDING_V",
@@ -167,7 +149,6 @@ __all__ = [
     "TRANSCRIPT_ROW_HEIGHT",
     "DAY_INDENT",
     "TRANSCRIPT_INDENT",
-    "SIDEBAR_LEFT_INSET",
     "METRICS_STRIP_HEIGHT_EXPANDED",
     "METRICS_STRIP_HEIGHT_COLLAPSED",
     "METRICS_STRIP_PADDING_H",
@@ -191,12 +172,11 @@ __all__ = [
     "HISTORY_EXPORT_LIMIT",
     "HISTORY_RECENT_LIMIT",
     "HISTORY_PREVIEW_LENGTH",
-    "SIDEBAR_PREVIEW_LENGTH",
     # Typography
     "Typography",
     # Colors
     "Colors",
-    "FocusGroupColors",
+    "ProjectColors",
     # Enums
     "WorkspaceState",
     # Timing

@@ -32,6 +32,7 @@ class TestSetStateGuardrails:
         "ui/components/workspace/workspace.py": "Workspace owns state transitions",
         "ui/components/workspace/header.py": "Header.set_state for visual updates only",
         "ui/components/main_window/main_window.py": "Orchestration privilege (sync_recording_status_from_engine only)",
+        "ui/views/transcribe_view.py": "TranscribeView updates workspace state based on engine",
     }
 
     def test_no_unauthorized_set_state(self) -> None:

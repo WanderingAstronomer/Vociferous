@@ -15,7 +15,7 @@ src/ui/
 │   ├── title_bar/      # Custom frameless window controls
 │   └── settings/       # Settings dialogs
 ├── widgets/            # Low-level reusable UI elements
-│   ├── focus_group/    # Tree view for organizing transcripts
+│   ├── project/    # Tree view for organizing transcripts
 │   ├── history_tree/   # List view of transcripts
 │   ├── metrics_strip/  # Real-time dashboard (WPM, duration)
 │   ├── transcript_item/# Rich text rendering for transcript cards
@@ -59,13 +59,13 @@ The shell. It creates the custom title bar, the sidebar, and the workspace. It h
 
 ### 2. Sidebar (`ui/components/sidebar/`)
 The navigation hub.
-*   **Focus Groups**: Hierarchical organization of transcripts.
+*   **Projects**: Hierarchical organization of transcripts.
 *   **Search**: Full-text filtering.
 *   **History**: A `QTreeView` displaying transcripts, delegating rendering to `HistoryTreeDelegate`.
 
 ### 3. Workspace (`ui/components/workspace/`)
 The "Work Bench".
-*   **Header**: Shows current Focus Group or active transcript title.
+*   **Header**: Shows current Project or active transcript title.
 *   **Content**: The main text editor / viewer area.
 *   **Controls**: The "Record" button and Waveform visualization.
 *   **Metrics**: The statistics bar at the bottom.
@@ -75,7 +75,7 @@ The "Work Bench".
 We use Qt's Model/View architecture for lists of data.
 
 *   **`TranscriptionModel`**: Wraps the list of history entries.
-*   **`FocusGroupProxy`**: A `QSortFilterProxyModel` that filters the flat history list based on the selected Focus Group in the sidebar.
+*   **`ProjectProxy`**: A `QSortFilterProxyModel` that filters the flat history list based on the selected Project in the sidebar.
 
 ## Custom Painting
 

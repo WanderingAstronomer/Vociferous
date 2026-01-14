@@ -61,7 +61,7 @@ Before copying to clipboard, the transcription receives light post-processing:
 
 ### Quick Dictation
 
-1. Focus target application (email, document, chat)
+1. Project target application (email, document, chat)
 2. Press activation key, speak, press again
 3. Ctrl+V to paste
 

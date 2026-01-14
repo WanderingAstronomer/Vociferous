@@ -7,14 +7,14 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import Qt, QSortFilterProxyModel, QSize, pyqtSlot, QRegularExpression
+from PyQt6.QtCore import Qt, QSortFilterProxyModel, pyqtSlot, QRegularExpression
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QVBoxLayout, QTableView, QHeaderView, QAbstractItemView, QWidget,
-    QLineEdit, QHBoxLayout, QLabel, QFrame
+    QVBoxLayout, QTableView, QAbstractItemView, QWidget,
+    QLineEdit, QHBoxLayout, QLabel
 )
 
-from ui.constants import Colors, Typography
+from ui.constants import Typography
 from ui.constants.view_ids import VIEW_SEARCH
 from ui.contracts.capabilities import Capabilities, SelectionState, ActionId
 from ui.views.base_view import BaseView
@@ -167,11 +167,13 @@ class SearchView(BaseView):
 
     def _on_row_activated(self, index) -> None:
         # Check validity
-        if not index.isValid(): return
+        if not index.isValid():
+            return
         source_idx = self._proxy.mapToSource(index)
         
         is_header = source_idx.data(TranscriptionModel.IsHeaderRole)
-        if is_header: return
+        if is_header:
+            return
             
         full_text = source_idx.data(TranscriptionModel.FullTextRole)
         timestamp = source_idx.data(TranscriptionModel.TimestampRole)
@@ -188,7 +190,8 @@ class SearchView(BaseView):
         
     def dispatch_action(self, action_id: ActionId) -> None:
         selection = self.get_selection()
-        if not selection.has_selection: return
+        if not selection.has_selection:
+            return
         # Basic dispatch support
         if action_id == ActionId.COPY:
              entry = self._history_manager.get_entry(selection.primary_id)

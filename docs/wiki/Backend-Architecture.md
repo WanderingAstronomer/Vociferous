@@ -82,7 +82,7 @@ Manages the lifecycle of the post-processing refinement model:
 SQLite-backed storage for transcription history:
 
 - `~/.config/vociferous/vociferous.db`
-- Focus groups for transcript organization
+- Projects for transcript organization
 - Dual-text architecture: `raw_text` (immutable) + `normalized_text` (editable)
 - `speech_duration_ms` column for metrics
 - Export to txt, csv, or markdown
@@ -104,7 +104,7 @@ ui/
 ├── components/           # Page-level components
 │   ├── main_window/      # App shell, menu, sidebar animator
 │   ├── settings/         # Settings dialog
-│   ├── sidebar/          # Focus groups, search, transcript tree
+│   ├── sidebar/          # Projects, search, transcript tree
 │   ├── title_bar/        # Custom frameless title bar
 │   └── workspace/        # Content area, controls, metrics
 ├── constants/            # Design system tokens
@@ -119,7 +119,7 @@ ui/
     ├── collapsible_section/
     ├── content_panel/
     ├── dialogs/
-    ├── focus_group/
+    ├── project/
     ├── history_tree/
     ├── hotkey_widget/
     ├── metrics_strip/

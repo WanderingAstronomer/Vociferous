@@ -21,7 +21,7 @@ For an overview, installation, and contribution rules, see [README.md](../../REA
 - [Audio Recording](Audio-Recording) - Microphone capture and VAD filtering
 - [Hotkey System](Hotkey-System) - evdev/pynput backends and key detection
 - [Text Output](Text-Output) - Clipboard workflow
-- [History Storage](History-Storage) - SQLite persistence and focus groups
+- [History Storage](History-Storage) - SQLite persistence and Projects
 
 ### Reference
 

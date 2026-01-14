@@ -368,13 +368,13 @@ class TestSafeSlotSilent:
 class TestErrorPathIntegration:
     """Integration tests for error handling in real components."""
 
-    def test_focus_group_proxy_filter_handles_invalid_index(self, qapp):
-        """FocusGroupProxyModel should handle invalid indices gracefully."""
+    def test_project_proxy_filter_handles_invalid_index(self, qapp):
+        """ProjectProxyModel should handle invalid indices gracefully."""
         from PyQt6.QtCore import QModelIndex
 
-        from ui.models.focus_group_proxy import FocusGroupProxyModel
+        from ui.models.project_proxy import ProjectProxyModel
 
-        proxy = FocusGroupProxyModel()
+        proxy = ProjectProxyModel()
         proxy.set_group_id(None)
 
         # Should not crash with no source model
@@ -428,7 +428,7 @@ class TestErrorPathIntegration:
         # Create a mock history manager
         mock_manager = MagicMock()
         mock_manager.get_recent.return_value = []
-        mock_manager.get_focus_group_colors.return_value = {}
+        mock_manager.get_project_colors.return_value = {}
 
         model = TranscriptionModel(mock_manager)
 

@@ -1,7 +1,7 @@
 """
 Comprehensive UI component tests for dialogs, widgets, and interactions.
 
-Tests Focus Groups, History Tree, Settings Dialog, and other UI components.
+Tests Projects, History Tree, Settings Dialog, and other UI components.
 
 Test Tier: UI-Dependent (Tier 2)
 - Requires QApplication and Qt widget instantiation
@@ -18,7 +18,7 @@ from input_handler import KeyListener
 from ui.components.settings import SettingsDialog
 from ui.models import TranscriptionModel
 from ui.widgets.dialogs import CreateGroupDialog
-from ui.widgets.focus_group import FocusGroupContainer, FocusGroupTreeWidget
+from ui.widgets.project import ProjectContainer, ProjectTreeWidget
 from ui.widgets.history_tree import HistoryTreeView
 from ui.widgets.hotkey_widget import HotkeyWidget
 
@@ -54,7 +54,7 @@ def key_listener():
 
 
 class TestCreateGroupDialog:
-    """Tests for the Create Focus Group dialog."""
+    """Tests for the Create Project dialog."""
 
     def test_dialog_creation(self, qapp):
         """Test that dialog can be created."""
@@ -124,28 +124,28 @@ class TestCreateGroupDialog:
 
 
 # ============================================================================
-# Focus Group Widget Tests
+# Project Widget Tests
 # ============================================================================
 
 
-class TestFocusGroupWidget:
-    """Tests for Focus Group tree widget and container."""
+class TestProjectWidget:
+    """Tests for Project tree widget and container."""
 
     def test_tree_creation(self, qapp, temp_history_manager):
-        """Test creating the focus group tree widget."""
-        tree = FocusGroupTreeWidget(temp_history_manager)
+        """Test creating the Project tree widget."""
+        tree = ProjectTreeWidget(temp_history_manager)
         assert tree is not None
         assert tree.topLevelItemCount() == 0
 
     def test_load_empty_groups(self, qapp, temp_history_manager):
         """Test loading when no groups exist."""
-        tree = FocusGroupTreeWidget(temp_history_manager)
+        tree = ProjectTreeWidget(temp_history_manager)
         tree.load_groups()
         assert tree.topLevelItemCount() == 0
 
     def test_create_group(self, qapp, temp_history_manager):
-        """Test creating a focus group."""
-        tree = FocusGroupTreeWidget(temp_history_manager)
+        """Test creating a Project."""
+        tree = ProjectTreeWidget(temp_history_manager)
 
         group_id = tree.create_group("Test Group", "#3a4f5c")
 
@@ -159,8 +159,8 @@ class TestFocusGroupWidget:
         assert item.data(0, tree.ROLE_COLOR) == "#3a4f5c"
 
     def test_multiple_groups(self, qapp, temp_history_manager):
-        """Test creating multiple focus groups."""
-        tree = FocusGroupTreeWidget(temp_history_manager)
+        """Test creating multiple Projects."""
+        tree = ProjectTreeWidget(temp_history_manager)
 
         tree.create_group("Group 1", "#3a4f5c")
         tree.create_group("Group 2", "#5a7a6d")
@@ -170,12 +170,12 @@ class TestFocusGroupWidget:
 
     def test_group_with_transcripts(self, qapp, temp_history_manager):
         """Test that group shows name (count display removed per user preference)."""
-        tree = FocusGroupTreeWidget(temp_history_manager)
+        tree = ProjectTreeWidget(temp_history_manager)
 
         # Create group and add transcript
         group_id = tree.create_group("My Group", "#3a4f5c")
         entry = temp_history_manager.add_entry("Test transcription")
-        temp_history_manager.assign_transcript_to_focus_group(entry.timestamp, group_id)
+        temp_history_manager.assign_transcript_to_project(entry.timestamp, group_id)
 
         # Reload to see changes
         tree.load_groups()
@@ -186,7 +186,7 @@ class TestFocusGroupWidget:
 
     def test_container_signals(self, qapp, temp_history_manager):
         """Test that container emits correct signals."""
-        container = FocusGroupContainer(temp_history_manager)
+        container = ProjectContainer(temp_history_manager)
 
         created_signals = []
         container.groupCreated.connect(

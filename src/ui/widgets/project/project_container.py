@@ -1,7 +1,7 @@
 """
-FocusGroupContainer - Container widget for the Focus Group section.
+ProjectContainer - Container widget for the Project section.
 
-Provides a wrapper around FocusGroupTreeWidget with:
+Provides a wrapper around ProjectTreeWidget with:
 - Layout management
 - Signal forwarding
 - External API for creating groups
@@ -15,15 +15,15 @@ from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QVBoxLayout, QWidget
 
 from ui.widgets.dialogs import CreateGroupDialog
-from ui.widgets.focus_group.focus_group_tree import FocusGroupTreeWidget
+from ui.widgets.project.project_tree import ProjectTreeWidget
 
 if TYPE_CHECKING:
     from history_manager import HistoryManager
 
 
-class FocusGroupContainer(QWidget):
+class ProjectContainer(QWidget):
     """
-    Container for the Focus Group section.
+    Container for the Project section.
 
     Includes the tree widget and forwards its signals.
     """
@@ -44,7 +44,7 @@ class FocusGroupContainer(QWidget):
         super().__init__(parent)
         self._history_manager = history_manager
 
-        self.tree = FocusGroupTreeWidget(history_manager, self)
+        self.tree = ProjectTreeWidget(history_manager, self)
         self._setup_ui()
         self._setup_connections()
 

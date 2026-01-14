@@ -1,7 +1,7 @@
 """
-FocusGroupTreeWidget - Tree widget for focus group navigation.
+ProjectTreeWidget - Tree widget for Project navigation.
 
-Displays focus groups as expandable items with nested transcripts.
+Displays Projects as expandable items with nested transcripts.
 Handles selection, context menus, and CRUD operations.
 """
 
@@ -30,13 +30,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.constants import Colors, Dimensions, FocusGroupColors, Typography
+from ui.constants import Colors, Dimensions, ProjectColors, Typography
 from ui.widgets.dialogs import ConfirmationDialog, CreateGroupDialog, InputDialog
 from ui.widgets.dialogs.error_dialog import show_error_dialog
-from ui.widgets.focus_group.focus_group_delegate import FocusGroupDelegate
+from ui.widgets.project.project_delegate import ProjectDelegate
 from ui.widgets.transcript_item import (
     ROLE_FULL_TEXT,
     ROLE_TIMESTAMP_ISO,
+    ROLE_ENTRY_ID,
     create_transcript_item,
 )
 
@@ -46,9 +47,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class FocusGroupTreeWidget(QTreeWidget):
+class ProjectTreeWidget(QTreeWidget):
     """
-    Tree widget for Focus Group navigation with nested transcripts.
+    Tree widget for Project navigation with nested transcripts.
 
     Structure:
     - Group 1
@@ -89,8 +90,8 @@ class FocusGroupTreeWidget(QTreeWidget):
         self._setup_ui()
         self._setup_connections()
 
-        self.setAccessibleName("Focus Groups")
-        self.setAccessibleDescription("List of focus groups and their transcripts")
+        self.setAccessibleName("Projects")
+        self.setAccessibleDescription("List of Projects and their transcripts")
 
         if self._history_manager:
             self.load_groups()
@@ -126,13 +127,27 @@ class FocusGroupTreeWidget(QTreeWidget):
 
         # Explicitly disable default selection painting to prevent "blue rectangle"
         # The delegate handles all background painting.
-        # Styling moved to unified_stylesheet.py (QTreeView#focusGroupTree)
+        # Styling moved to unified_stylesheet.py (QTreeView#projectGroupTree)
 
         # Custom delegate for accent bar rendering
-        self.setItemDelegate(FocusGroupDelegate(self))
+        self.setItemDelegate(ProjectDelegate(self))
 
         # Use central stylesheet via object name
-        self.setObjectName("focusGroupTree")
+        self.setObjectName("projectGroupTree")
+
+    @property
+    def selected_ids(self) -> tuple[int, ...]:
+        """Return the IDs of selected transcripts."""
+        ids = []
+        for item in self.selectedItems():
+            # Skip groups
+            if item.data(0, self.ROLE_IS_GROUP):
+                continue
+            
+            entry_id = item.data(0, ROLE_ENTRY_ID)
+            if entry_id is not None:
+                ids.append(entry_id)
+        return tuple(ids)
 
     def _setup_connections(self) -> None:
         """Connect internal signals."""
@@ -227,7 +242,7 @@ class FocusGroupTreeWidget(QTreeWidget):
         self.load_groups()
 
     def load_groups(self) -> None:
-        """Load focus groups and their transcripts from history manager."""
+        """Load Projects and their transcripts from history manager."""
         # Save expanded state recursively
         expanded_group_ids = set()
 
@@ -247,7 +262,7 @@ class FocusGroupTreeWidget(QTreeWidget):
         if not self._history_manager:
             return
 
-        groups = self._history_manager.get_focus_groups()
+        groups = self._history_manager.get_projects()
 
         # Maps for hierarchy building
         group_items: dict[int, QTreeWidgetItem] = {}
@@ -280,7 +295,7 @@ class FocusGroupTreeWidget(QTreeWidget):
                 item.setExpanded(True)
 
             # 3. Add Transcripts
-            transcripts = self._history_manager.get_transcripts_by_focus_group(group_id)
+            transcripts = self._history_manager.get_transcripts_by_project(group_id)
             for entry in transcripts:
                 child_item = create_transcript_item(entry)
                 # Transcripts are always leaf nodes in a group
@@ -292,7 +307,7 @@ class FocusGroupTreeWidget(QTreeWidget):
     def _create_group_item(
         self, group_id: int, name: str, color: str | None
     ) -> QTreeWidgetItem:
-        """Create a focus group parent item."""
+        """Create a Project parent item."""
         item = QTreeWidgetItem([name])
         # Groups: enabled, expandable, not selectable
         item.setFlags(Qt.ItemFlag.ItemIsEnabled)
@@ -381,8 +396,8 @@ class FocusGroupTreeWidget(QTreeWidget):
             )
 
         color_menu = menu.addMenu("Change color")
-        for color in FocusGroupColors.PALETTE:
-            color_name = FocusGroupColors.COLOR_NAMES.get(color, "Unknown")
+        for color in ProjectColors.PALETTE:
+            color_name = ProjectColors.COLOR_NAMES.get(color, "Unknown")
             color_action = color_menu.addAction(
                 self._create_color_icon(color), color_name
             )
@@ -417,7 +432,7 @@ class FocusGroupTreeWidget(QTreeWidget):
 
         # Move to another group submenu
         if self._history_manager:
-            groups = self._history_manager.get_focus_groups()
+            groups = self._history_manager.get_projects()
             if groups:
                 menu_label = (
                     "Move to group" if count == 1 else f"Move {count} items to group"
@@ -513,10 +528,10 @@ class FocusGroupTreeWidget(QTreeWidget):
         self._move_to_group(timestamp, group_id)
 
     def _move_to_group(self, timestamp: str, group_id: int) -> None:
-        """Move a transcript to another focus group."""
+        """Move a transcript to another Project."""
         try:
             if self._history_manager:
-                self._history_manager.assign_transcript_to_focus_group(
+                self._history_manager.assign_transcript_to_project(
                     timestamp, group_id
                 )
                 QTimer.singleShot(0, self.load_groups)
@@ -531,13 +546,13 @@ class FocusGroupTreeWidget(QTreeWidget):
             )
 
     def _remove_items_from_group(self, items: list[QTreeWidgetItem]) -> None:
-        """Remove multiple transcripts from their current focus groups."""
+        """Remove multiple transcripts from their current Projects."""
         try:
             if self._history_manager:
                 for item in items:
                     timestamp = item.data(0, ROLE_TIMESTAMP_ISO)
                     if timestamp:
-                        self._history_manager.assign_transcript_to_focus_group(
+                        self._history_manager.assign_transcript_to_project(
                             timestamp, None
                         )
                 QTimer.singleShot(0, self.load_groups)
@@ -547,10 +562,10 @@ class FocusGroupTreeWidget(QTreeWidget):
             logger.exception("Error removing items from group")
 
     def _remove_from_group(self, timestamp: str) -> None:
-        """Remove a transcript from its focus group (set to None)."""
+        """Remove a transcript from its Project (set to None)."""
         try:
             if self._history_manager:
-                self._history_manager.assign_transcript_to_focus_group(timestamp, None)
+                self._history_manager.assign_transcript_to_project(timestamp, None)
                 QTimer.singleShot(0, self.load_groups)
                 # Notify that an assignment changed (item moved to ungrouped)
                 self.entryAssignmentChanged.emit()
@@ -628,14 +643,14 @@ class FocusGroupTreeWidget(QTreeWidget):
         """Show dialog to rename group."""
         try:
             dialog = InputDialog(
-                self, "Rename Focus Group", "Enter new name:", current_name
+                self, "Rename Project", "Enter new name:", current_name
             )
             if dialog.exec():
                 new_name = dialog.get_text()
                 if new_name and new_name != current_name:
                     if (
                         self._history_manager
-                        and self._history_manager.rename_focus_group(group_id, new_name)
+                        and self._history_manager.rename_project(group_id, new_name)
                     ):
                         self.load_groups()
                         self.groupRenamed.emit(group_id, new_name)
@@ -650,7 +665,7 @@ class FocusGroupTreeWidget(QTreeWidget):
     def _change_color(self, group_id: int, color: str) -> None:
         """Update group color in history manager."""
         try:
-            if self._history_manager and self._history_manager.update_focus_group_color(
+            if self._history_manager and self._history_manager.update_project_color(
                 group_id, color
             ):
                 self.load_groups()
@@ -663,14 +678,14 @@ class FocusGroupTreeWidget(QTreeWidget):
         try:
             dialog = ConfirmationDialog(
                 self,
-                "Delete Focus Group",
+                "Delete Project",
                 f"Are you sure you want to delete '{group_name}'?\n\n"
                 "Transcripts within this group will be moved to Ungrouped.",
                 confirm_text="Delete",
                 is_destructive=True,
             )
             if dialog.exec():
-                if self._history_manager and self._history_manager.delete_focus_group(
+                if self._history_manager and self._history_manager.delete_project(
                     group_id
                 ):
                     self.load_groups()
@@ -686,20 +701,20 @@ class FocusGroupTreeWidget(QTreeWidget):
     def create_group(
         self, name: str, color: str | None = None, parent_id: int | None = None
     ) -> int | None:
-        """Create a new focus group via manager."""
+        """Create a new Project via manager."""
         try:
             if not self._history_manager:
                 return None
 
             if color is None:
-                groups = self._history_manager.get_focus_groups()
+                groups = self._history_manager.get_projects()
                 existing_colors = []
                 for g in groups:
                     if len(g) >= 3:
                         existing_colors.append(g[2])
-                color = FocusGroupColors.get_next_color(existing_colors)
+                color = ProjectColors.get_next_color(existing_colors)
 
-            group_id = self._history_manager.create_focus_group(
+            group_id = self._history_manager.create_project(
                 name, color, parent_id=parent_id
             )
             if group_id:

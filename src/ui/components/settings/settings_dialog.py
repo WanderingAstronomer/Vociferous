@@ -60,7 +60,7 @@ class SettingsDialog(QDialog):
     - Consolidated single-page layout (no tabs)
     - Schema-driven form generation
     - Inline validation with error feedback
-    - Focused on essential user-facing options
+    - Projected on essential user-facing options
     """
 
     HIDDEN_SECTIONS: set[str] = {"_internal", "ui_state"}

@@ -1,15 +1,15 @@
 from .core import DatabaseCore
-from .models import Transcript, TranscriptVariant, FocusGroup
+from .models import Transcript, TranscriptVariant, Project
 from .dtos import HistoryEntry
 from .repositories.transcript_repo import TranscriptRepository
-from .repositories.focus_group_repo import FocusGroupRepository
+from .repositories.project_repo import ProjectRepository
 
 __all__ = [
     "DatabaseCore",
     "Transcript",
     "TranscriptVariant",
-    "FocusGroup",
+    "Project",
     "HistoryEntry",
     "TranscriptRepository",
-    "FocusGroupRepository",
+    "ProjectRepository",
 ]

@@ -237,23 +237,6 @@ QLabel#dialogTitleLabel {{
     font-weight: 600;
 }}
 
-/* =================================================================
-   SIDEBAR
-   ================================================================= */
-
-QWidget#sidebar {{
-    background-color: {c.BG_SECONDARY};
-    min-width: {Dimensions.SIDEBAR_MIN_WIDTH}px;
-}}
-
-QWidget#sidebarContent {{
-    background-color: {c.BG_SECONDARY};
-}}
-
-QWidget#sidebarEdge {{
-    background-color: {c.BG_TERTIARY};
-}}
-
 QFrame#sectionDivider {{
     background-color: {c.BORDER_COLOR};
 }}
@@ -262,24 +245,8 @@ QWidget#bottomSpacer {{
     background-color: transparent;
 }}
 
-/* Sidebar toggle button */
-QPushButton#sidebarToggleBtn {{
-    background-color: {c.TRANSPARENT};
-    border: none;
-    border-radius: {Dimensions.BORDER_RADIUS_MD}px;
-    padding: {Spacing.BUTTON_PAD_V}px {Spacing.BUTTON_PAD_H}px;
-}}
-
-QPushButton#sidebarToggleBtn:hover {{
-    background-color: {c.HOVER_OVERLAY};
-}}
-
-QPushButton#sidebarToggleBtn:pressed {{
-    background-color: {c.PRESSED_OVERLAY};
-}}
-
 /* =================================================================
-   TREE VIEWS (History, Focus Groups)
+   TREE VIEWS (History, Projects)
    ================================================================= */
 
 QTreeView {{
@@ -306,47 +273,26 @@ QTreeView::branch {{
     background-color: transparent;
 }}
 
-/* Sidebar list - transparent over unified sidebar background */
-QTreeView#sidebarList {{
+/* Project tree - transparent over background */
+QTreeWidget#projectGroupTree {{
     background-color: transparent;
     border: none;
     outline: none;
 }}
 
-QTreeView#sidebarList::item {{
+QTreeWidget#projectGroupTree::item {{
     min-height: {Dimensions.TREE_ITEM_HEIGHT}px;
     padding: 4px 8px;
     border: none;
 }}
 
-QTreeView#sidebarList::item:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-}}
+/* Hover and selection handled by ProjectDelegate */
 
-QTreeView#sidebarList::item:selected {{
+QTreeWidget#projectGroupTree::item:selected {{
     background-color: {c.HOVER_BG_SECTION};
 }}
 
-/* Focus group tree - transparent over unified sidebar background */
-QTreeWidget#focusGroupTree {{
-    background-color: transparent;
-    border: none;
-    outline: none;
-}}
-
-QTreeWidget#focusGroupTree::item {{
-    min-height: {Dimensions.TREE_ITEM_HEIGHT}px;
-    padding: 4px 8px;
-    border: none;
-}}
-
-/* Hover and selection handled by FocusGroupDelegate */
-
-QTreeWidget#focusGroupTree::item:selected {{
-    background-color: {c.HOVER_BG_SECTION};
-}}
-
-QTreeWidget#focusGroupTree::branch {{
+QTreeWidget#projectGroupTree::branch {{
     background-color: transparent;
 }}
 
@@ -377,7 +323,7 @@ QLabel#sectionHeaderLabel[sectionState="expanded"] {{
     color: {c.TEXT_PRIMARY};
 }}
 
-/* Section header - transparent over unified sidebar background */
+/* Section header - transparent over background */
 QWidget#sectionHeader {{
     background-color: transparent;
     border-radius: {SECTION_HEADER_RADIUS}px;
@@ -1080,7 +1026,7 @@ QFileDialog QToolButton:pressed {{
     background-color: {c.ACCENT_PRESSED};
 }}
 
-/* Sidebar (places/shortcuts) */
+/* Navigation (places/shortcuts) */
 QFileDialog QSidebar {{
     background-color: {c.BG_SECONDARY};
     border: 1px solid {c.BORDER_DEFAULT};
@@ -1336,21 +1282,21 @@ TranscribeView QTextEdit {{
 }}
 
 /* =================================================================
-   FOCUS GROUP TREE
+   Project TREE
    ================================================================= */
-QTreeView#focusGroupTree {{
+QTreeView#projectGroupTree {{
     outline: 0;
     border: none;
     background-color: transparent;
     selection-background-color: transparent;
 }}
 
-QTreeView#focusGroupTree::item:focus {{
+QTreeView#projectGroupTree::item:focus {{
     border: none;
     outline: none;
 }}
 
-QTreeView#focusGroupTree::item:selected {{
+QTreeView#projectGroupTree::item:selected {{
     background-color: transparent;
     border: none;
 }}

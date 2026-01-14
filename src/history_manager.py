@@ -13,7 +13,7 @@ from pathlib import Path
 # Import DTO to re-export it for consumers
 from database.dtos import HistoryEntry
 from database.core import DatabaseCore
-from database.repositories import TranscriptRepository, FocusGroupRepository
+from database.repositories import TranscriptRepository, ProjectRepository
 from ui.constants import HISTORY_EXPORT_LIMIT
 from ui.utils import format_day_header, format_time
 from exceptions import DatabaseError
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 class HistoryManager:
     """
     Facade for history management.
-    Delegates persistence to TranscriptRepository and FocusGroupRepository.
+    Delegates persistence to TranscriptRepository and ProjectRepository.
     """
 
     def __init__(self, db_path: Path | None = None, history_file: Path | None = None):
@@ -36,7 +36,7 @@ class HistoryManager:
             
             # Initialize Repositories
             self.transcripts = TranscriptRepository(self.db)
-            self.focus_groups = FocusGroupRepository(self.db)
+            self.projects = ProjectRepository(self.db)
         except Exception as e:
             raise DatabaseError(
                 f"Failed to initialize history database: {e}",
@@ -77,6 +77,13 @@ class HistoryManager:
 
     def update_entry(self, timestamp: str, new_text: str) -> bool:
         return self.transcripts.update_entry(timestamp, new_text)
+
+    def update_text(self, transcript_id: int, new_text: str) -> bool:
+        """Update text by transcript ID (convenience method)."""
+        entry = self.get_entry(transcript_id)
+        if entry:
+            return self.transcripts.update_entry(entry.timestamp, new_text)
+        return False
 
     def delete_entry(self, timestamp: str) -> bool:
         return self.transcripts.delete_entry(timestamp)
@@ -137,39 +144,39 @@ class HistoryManager:
             logger.error(f"Export failed: {e}")
             return False
 
-    # ========== Focus Group Methods ==========
+    # ========== Project Methods ==========
 
-    def create_focus_group(
+    def create_project(
         self, name: str, color: str | None = None, parent_id: int | None = None
     ) -> int | None:
-        return self.focus_groups.create(name, color, parent_id)
+        return self.projects.create(name, color, parent_id)
 
-    def get_focus_groups(self) -> list[tuple[int, str, str | None, int | None]]:
-        return self.focus_groups.get_all()
+    def get_projects(self) -> list[tuple[int, str, str | None, int | None]]:
+        return self.projects.get_all()
 
-    def rename_focus_group(self, focus_group_id: int, new_name: str) -> bool:
-        return self.focus_groups.rename(focus_group_id, new_name)
+    def rename_project(self, project_id: int, new_name: str) -> bool:
+        return self.projects.rename(project_id, new_name)
 
-    def update_focus_group_color(self, focus_group_id: int, color: str | None) -> bool:
-        return self.focus_groups.update_color(focus_group_id, color)
+    def update_project_color(self, project_id: int, color: str | None) -> bool:
+        return self.projects.update_color(project_id, color)
 
-    def delete_focus_group(
-        self, focus_group_id: int, move_to_ungrouped: bool = True
+    def delete_project(
+        self, project_id: int, move_to_ungrouped: bool = True
     ) -> bool:
-        return self.focus_groups.delete(focus_group_id, move_to_ungrouped)
+        return self.projects.delete(project_id, move_to_ungrouped)
 
-    def assign_transcript_to_focus_group(
-        self, timestamp: str, focus_group_id: int | None
+    def assign_transcript_to_project(
+        self, timestamp: str, project_id: int | None
     ) -> bool:
-        return self.transcripts.assign_to_focus_group(timestamp, focus_group_id)
+        return self.transcripts.assign_to_project(timestamp, project_id)
 
-    def get_transcripts_by_focus_group(
-        self, focus_group_id: int | None, limit: int = 100
+    def get_transcripts_by_project(
+        self, project_id: int | None, limit: int = 100
     ) -> list[HistoryEntry]:
-        return self.transcripts.get_by_focus_group(focus_group_id, limit)
+        return self.transcripts.get_by_project(project_id, limit)
 
-    def get_focus_group_counts(self) -> dict[int | None, int]:
-        return self.transcripts.get_focus_group_counts()
+    def get_project_counts(self) -> dict[int | None, int]:
+        return self.transcripts.get_project_counts()
 
-    def get_focus_group_colors(self) -> dict[int, str | None]:
-        return self.focus_groups.get_colors()
+    def get_project_colors(self) -> dict[int, str | None]:
+        return self.projects.get_colors()

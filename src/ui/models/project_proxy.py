@@ -1,8 +1,8 @@
 """
-FocusGroupProxyModel - Filters transcription entries by focus group.
+ProjectProxyModel - Filters transcription entries by Project.
 
 This proxy sits between TranscriptionModel and any view that needs
-to show only entries belonging to a specific focus group.
+to show only entries belonging to a specific Project.
 
 Features:
 - Filters entries by group_id
@@ -27,12 +27,12 @@ from ui.models.transcription_model import TranscriptionModel
 logger = logging.getLogger(__name__)
 
 
-class FocusGroupProxyModel(QSortFilterProxyModel):
+class ProjectProxyModel(QSortFilterProxyModel):
     """
-    Proxy model that filters TranscriptionModel by focus group.
+    Proxy model that filters TranscriptionModel by Project.
 
     Usage:
-        proxy = FocusGroupProxyModel()
+        proxy = ProjectProxyModel()
         proxy.setSourceModel(transcription_model)
         proxy.set_group_id(42)  # Only show entries in group 42
         tree_view.setModel(proxy)
@@ -53,13 +53,13 @@ class FocusGroupProxyModel(QSortFilterProxyModel):
         self._invalidate_timer.timeout.connect(self.invalidateFilter)
 
     def set_group_id(self, group_id: int | None) -> None:
-        """Set the focus group ID to filter by."""
+        """Set the Project ID to filter by."""
         if self._group_id != group_id:
             self._group_id = group_id
             self.invalidateFilter()
 
     def get_group_id(self) -> int | None:
-        """Get the current focus group ID."""
+        """Get the current Project ID."""
         return self._group_id
 
     def setSourceModel(self, sourceModel: QAbstractItemModel | None) -> None:

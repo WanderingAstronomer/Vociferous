@@ -6,6 +6,7 @@ from .transcript_item import (
     ROLE_GROUP_ID,
     ROLE_IS_HEADER,
     ROLE_TIMESTAMP_ISO,
+    ROLE_ENTRY_ID,
     create_transcript_item,
 )
 from .transcript_painter import (
@@ -20,6 +21,7 @@ __all__ = [
     "ROLE_GROUP_ID",
     "ROLE_IS_HEADER",
     "ROLE_TIMESTAMP_ISO",
+    "ROLE_ENTRY_ID",
     "create_transcript_item",
     "paint_transcript_entry",
     "paint_transcript_entry_background",

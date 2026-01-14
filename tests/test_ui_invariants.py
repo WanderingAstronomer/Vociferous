@@ -118,7 +118,7 @@ class TestRuntimeInvariants:
         mock_history = MagicMock()
         
         try:
-            window = MainWindow(history_manager=mock_history)  # type: ignore
+            window = MainWindow(history_manager=mock_history)
         except TypeError:
             window = MainWindow()
 

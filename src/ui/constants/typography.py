@@ -49,8 +49,8 @@ class Typography:
     SMALL_SIZE = FONT_SIZE_SM  # 13px - secondary info
     GREETING_SIZE = FONT_SIZE_LG  # 24px - welcome text
 
-    # Sidebar typography hierarchy
-    SECTION_HEADER_SIZE = FONT_SIZE_LG  # 24px - "History", "Focus Groups"
+    # Section typography hierarchy
+    SECTION_HEADER_SIZE = FONT_SIZE_LG  # 24px - "History", "Projects"
     DAY_HEADER_SIZE = FONT_SIZE_XS  # 11px - "Today", "Yesterday"
     TRANSCRIPT_ITEM_SIZE = FONT_SIZE_SM  # 13px - transcript previews
     FOCUS_GROUP_NAME_SIZE = FONT_SIZE_BASE  # 16px - group names

@@ -18,7 +18,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
 )
 
-from ui.constants import Colors
 
 if TYPE_CHECKING:
     from history_manager import HistoryEntry
