@@ -11,34 +11,40 @@ Enforces Invariants:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Final, TYPE_CHECKING
 
 if TYPE_CHECKING:
     pass
 
-from PyQt6.QtCore import pyqtSignal, Qt, QTimer
+from PyQt6.QtCore import pyqtSignal, Qt, QTimer, QSize
+from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
     QPushButton,
     QAbstractButton,
     QButtonGroup,
+    QFrame,
 )
 
 from ui.constants.view_ids import (
     VIEW_TRANSCRIBE,
-    VIEW_RECENT,
+    VIEW_HISTORY,
     VIEW_PROJECTS,
     VIEW_SEARCH,
     VIEW_REFINE,
     VIEW_SETTINGS,
+    VIEW_USER,
 )
 from ui.interaction.intents import InteractionIntent, NavigateIntent, IntentSource
+from utils import ConfigManager
 
 
 # Rail constants
 RAIL_WIDTH: Final = 64
 BUTTON_SIZE: Final = 48
+ICONS_DIR: Final = Path(__file__).parents[3] / "icons"
 
 
 class RailButton(QPushButton):
@@ -49,10 +55,16 @@ class RailButton(QPushButton):
     Enforces Invariant 7.5 (View Switch Blink) via blink() method.
     """
     
-    def __init__(self, view_id: str, icon_char: str, label: str, parent: QWidget | None = None) -> None:
+    blinkFinished = pyqtSignal()
+    
+    def __init__(self, view_id: str, icon_name: str, label: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.view_id = view_id
-        self.setText(icon_char) 
+        
+        icon_path = ICONS_DIR / f"{icon_name}.svg"
+        self.setIcon(QIcon(str(icon_path)))
+        self.setIconSize(QSize(24, 24))
+        
         self.setToolTip(label)
         self.setCheckable(True)
         self.setFixedSize(BUTTON_SIZE, BUTTON_SIZE)
@@ -72,6 +84,7 @@ class RailButton(QPushButton):
     def _reset_blink(self) -> None:
         self.setProperty("blink", "inactive")
         self.style().polish(self)
+        self.blinkFinished.emit()
 
 
 class IconRail(QWidget):
@@ -109,27 +122,43 @@ class IconRail(QWidget):
 
     def _build_inventory(self) -> None:
         """Construct the rail buttons based on canonical view list."""
-        # View defs: ID, IconChar (Placeholder), Tooltip
+        # View defs: ID, IconName, Tooltip
         views = [
-            (VIEW_TRANSCRIBE, "T", "Transcribe"),
-            (VIEW_RECENT, "H", "History"),
-            (VIEW_PROJECTS, "P", "Projects"),
-            (VIEW_SEARCH, "S", "Search"),
-            (VIEW_REFINE, "R", "Refine"),
+            (VIEW_TRANSCRIBE, "rail_icon-transcribe_view", "Transcribe"),
+            (VIEW_HISTORY, "rail_icon-history_view", "History"),
+            (VIEW_PROJECTS, "rail_icon-projects_view", "Projects"),
+            (VIEW_SEARCH, "rail_icon-search_view", "Search"),
         ]
         
-        for vid, char, label in views:
-            btn = RailButton(vid, char, label)
+        # Conditionally add Refine view based on config
+        refinement_enabled = ConfigManager.get_config_value("refinement", "enabled")
+        if refinement_enabled:
+            views.append((VIEW_REFINE, "rail_icon-refine_view", "Refine"))
+        
+        for vid, icon_name, label in views:
+            btn = RailButton(vid, icon_name, label)
             self._layout.addWidget(btn)
             self._button_group.addButton(btn)
 
     def _build_footer(self) -> None:
-        """Add global affordances to the bottom of the rail."""
+        """Add global affordances to the bottom of the rail (User and Settings)."""
+        # Visual separator before bottom cluster
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.HLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        separator.setObjectName("rail_separator")
+        separator.setFixedHeight(1)
+        self._layout.addWidget(separator)
+        
+        # User (above Settings)
+        user_btn = RailButton(VIEW_USER, "rail_icon-profile_view", "User")
+        self._layout.addWidget(user_btn)
+        self._button_group.addButton(user_btn)
+        
         # Settings
-        # Using a gear unicode or simple text
-        btn = RailButton(VIEW_SETTINGS, "⚙", "Settings")
-        self._layout.addWidget(btn)
-        self._button_group.addButton(btn)
+        settings_btn = RailButton(VIEW_SETTINGS, "rail_icon-settings_view", "Settings")
+        self._layout.addWidget(settings_btn)
+        self._button_group.addButton(settings_btn)
 
     def set_active_view(self, view_id: str) -> None:
         """
@@ -153,6 +182,13 @@ class IconRail(QWidget):
             for btn in self._button_group.buttons():
                 btn.setChecked(False)
             self._button_group.setExclusive(temp)
+
+    def get_active_view_id(self) -> str | None:
+        """Retrieve the currently active view ID, or None if no rail item is active."""
+        btn = self._button_group.checkedButton()
+        if isinstance(btn, RailButton):
+            return btn.view_id
+        return None
 
     def _on_button_clicked(self, button: QAbstractButton) -> None:
         """Propagate intent."""

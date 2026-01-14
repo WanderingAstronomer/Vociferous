@@ -1,7 +1,7 @@
 """
-RecentView - Flat list of recent history items.
+HistoryView - Read-only navigation of past transcripts.
 """
-# Force update: 2026-01-12
+# Force update: 2026-01-14
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ from PyQt6.QtWidgets import (
     QVBoxLayout
 )
 
-from ui.components.transcript_list import TranscriptList
-from ui.components.transcript_inspector import TranscriptInspector
+from ui.components.history_list import HistoryList
+from ui.components.content_panel import ContentPanel
 from ui.constants import Colors
-from ui.constants.view_ids import VIEW_RECENT
+from ui.constants.view_ids import VIEW_HISTORY
 from ui.contracts.capabilities import Capabilities, SelectionState, ActionId
 from ui.views.base_view import BaseView
 from ui.models import TranscriptionModel, ProjectProxyModel
@@ -26,12 +26,12 @@ from ui.models import TranscriptionModel, ProjectProxyModel
 if TYPE_CHECKING:
     from history_manager import HistoryManager
 
-class RecentView(BaseView):
+class HistoryView(BaseView):
     """
-    View for browsing recent transcripts.
+    View for browsing transcript history.
     
     Layout:
-        [ List of Transcripts ] | [ Inspector ]
+        [ History List ] | [ Content Panel ]
     """
 
     editRequested = pyqtSignal(int)
@@ -61,43 +61,43 @@ class RecentView(BaseView):
             f"border: 1px solid {Colors.BORDER_DEFAULT};"
         )
 
-        # Left Pane: Transcript List
+        # Left Pane: History List
         self._list_container = QFrame()
         self._list_container.setStyleSheet(pane_style)
         list_layout = QVBoxLayout(self._list_container)
         list_layout.setContentsMargins(0, 0, 0, 0)
         
-        self.transcript_list = TranscriptList()
+        self.history_list = HistoryList()
         # Signals: selectionChangedSignal emits tuple[int, ...]
-        self.transcript_list.selectionChangedSignal.connect(self._on_selection_changed)
-        list_layout.addWidget(self.transcript_list)
+        self.history_list.selectionChangedSignal.connect(self._on_selection_changed)
+        list_layout.addWidget(self.history_list)
 
-        # Right Pane: Inspector
-        self._inspector_container = QFrame()
-        self._inspector_container.setStyleSheet(pane_style)
+        # Right Pane: Content Panel
+        self._content_container = QFrame()
+        self._content_container.setStyleSheet(pane_style)
         
-        self._setup_inspector()
+        self._setup_content_panel()
 
         # Add to main layout (no splitter)
         layout.addWidget(self._list_container, 4)
-        layout.addWidget(self._inspector_container, 6)
+        layout.addWidget(self._content_container, 6)
         
-    def _setup_inspector(self) -> None:
-        """Build the detail inspector pane."""
-        layout = QVBoxLayout(self._inspector_container)
-        layout.setContentsMargins(0, 0, 0, 0) # No margins for container
+    def _setup_content_panel(self) -> None:
+        """Build the detail display surface."""
+        layout = QVBoxLayout(self._content_container)
+        layout.setContentsMargins(0, 0, 0, 0)
         
-        self.inspector = TranscriptInspector()
-        layout.addWidget(self.inspector)
+        self.content_panel = ContentPanel()
+        layout.addWidget(self.content_panel)
 
     @pyqtSlot(tuple)
     def _on_selection_changed(self, selected_ids: tuple[int, ...]) -> None:
         """Handle selection update from list."""
-        # Notify BaseView -> ActionGrid
+        # Notify BaseView -> ActionDock
         self.capabilitiesChanged.emit()
 
         if not selected_ids:
-            self.inspector.clear()
+            self.content_panel.clear()
             return
 
         # Single selection support for now
@@ -113,10 +113,10 @@ class RecentView(BaseView):
             return
             
         entry = self._history_manager.get_entry(entry_id)
-        self.inspector.set_entry(entry)
+        self.content_panel.set_entry(entry)
 
     def dispatch_action(self, action_id: ActionId) -> None:
-        """Handle actions from ActionGrid."""
+        """Handle actions from ActionDock."""
         selection = self.get_selection()
         if not selection.has_selection or selection.primary_id is None:
             return
@@ -136,7 +136,7 @@ class RecentView(BaseView):
                 copy_text(entry.text)
 
     def get_view_id(self) -> str:
-        return VIEW_RECENT
+        return VIEW_HISTORY
 
     def get_capabilities(self) -> Capabilities:
         """Return capabilities based on current selection."""
@@ -148,13 +148,12 @@ class RecentView(BaseView):
             can_delete=has_selection,
             can_refine=has_selection,
             can_copy=has_selection,
-            # Export not yet supported directly in Capabilities dataclass
             can_move_to_project=has_selection
         )
 
     def get_selection(self) -> SelectionState:
         """Return current selection from the list."""
-        ids = self.transcript_list.get_selected_ids()
+        ids = self.history_list.get_selected_ids()
         primary = ids[0] if ids else None
         return SelectionState(selected_ids=ids, primary_id=primary)
 
@@ -163,10 +162,7 @@ class RecentView(BaseView):
         self._history_manager = manager
         
         # Create models
-        # For RecentView, we might want to show EVERYTHING or just recent.
-        # Ideally, we share the model instance if possible, or create a new one.
-        # Since TranscriptionModel wraps manager, we can create one here.
         self._model = TranscriptionModel(manager)
         
-        self.transcript_list.setModel(self._model)
-        self.transcript_list.set_history_manager(manager)
+        self.history_list.setModel(self._model)
+        self.history_list.set_history_manager(manager)

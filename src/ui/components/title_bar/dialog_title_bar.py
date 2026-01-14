@@ -58,7 +58,7 @@ class DialogTitleBar(QWidget):
         # Close button
         icons_dir = Path(__file__).parents[4] / "icons"
         self.close_btn = QToolButton(self)
-        self.close_btn.setIcon(QIcon(str(icons_dir / "close.svg")))
+        self.close_btn.setIcon(QIcon(str(icons_dir / "title_bar-close.svg")))
         self.close_btn.setIconSize(QSize(16, 16))
         self.close_btn.setObjectName("titleBarClose")
         self.close_btn.setFixedSize(QSize(36, 28))

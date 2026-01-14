@@ -2,6 +2,73 @@
 
 ---
 
+# v2.6.0 - Navigation & Settings Architecture Overhaul
+
+**Date:** January 14, 2026
+**Status:** Major Feature Release
+
+---
+
+## Summary
+
+This major update removes the traditional menu bar system and introduces a modern, icon-based navigation paradigm with dedicated Settings and User views. All configuration and user information functionality has been migrated to full-featured view surfaces, replacing the previous dialog-based approach.
+
+## Added
+- **Icon Rail Bottom Cluster**: Added User and Settings navigation icons with visual separator
+- **SettingsView**: Complete settings management surface with:
+  - Form-based configuration editing with inline validation
+  - Hotkey configuration via `HotkeyWidget`
+  - Export history functionality
+  - Clear all history (with confirmation)
+  - Application restart and exit controls
+  - Real-time config synchronization
+- **UserView**: Comprehensive user information surface with:
+  - Lifetime metrics display (total transcriptions, words, time saved)
+  - About section with version, architecture, and license information
+  - Help section with keyboard shortcuts and documentation links
+  - Metrics refresh on view activation
+- **Refinement View Gating**: Icon Rail now checks `ConfigManager` for `refinement.enabled` to conditionally show refinement view
+
+## Changed
+- **Navigation Model**: Removed title bar menu system entirely, migrating all functionality to views
+- **Settings Access**: Configuration is now managed exclusively through SettingsView (no more modal dialogs)
+- **User Information**: Metrics and about information now accessed via dedicated UserView
+- **ViewHost Behavior**: Now always emits `viewChanged` signal on view switches (including redundant switches) to ensure proper observer synchronization on boot
+- **TitleBar**: Simplified to remove menu bar dependency, now uses symmetric layout slots
+- **MainWindow**: Removed `MenuBuilder` integration, wired SettingsView signals directly to handlers
+
+## Removed
+- **Menu Bar System**: Complete removal of title bar menus (File, Edit, View, etc.)
+- **SettingsDialog**: Replaced by SettingsView
+- **Menu-based Actions**: All menu actions migrated to Icon Rail navigation or SettingsView controls
+
+## Fixed
+- **ActionDock Boot Sync**: ViewHost now emits `viewChanged` on all switches to ensure ActionDock synchronizes properly during initial application load
+- **Title Bar Layout**: Fixed centering logic after menu bar removal
+- **Test Suite**: Updated all tests to reflect new menu-less architecture:
+  - Removed `QMenuBar` instantiation in TitleBar tests
+  - Updated ViewHost routing tests to expect signals on redundant switches
+
+## Technical Details
+
+### Architecture Impact
+- **Intent Propagation**: All user actions still follow strict intent-driven pattern (leaf → parent → controller)
+- **Signal-Based Communication**: Settings changes propagate via Qt signals (no direct coupling)
+- **Data Access**: UserView reads from HistoryManager using standard repository pattern
+- **Config Isolation**: SettingsView uses ConfigManager singleton (single source of truth)
+
+### Metrics Calculation
+- **Hybrid Approach**: MetricsStrip shows current session metrics, UserView shows lifetime aggregates
+- **Efficiency**: Time saved calculations use realistic typing (40 WPM) and speaking (150 WPM) speeds
+- **Precision**: Duration formatting includes hours, minutes, and seconds
+
+### Code Quality
+- All tests passing: 271 passed, 4 skipped, 1 xfailed
+- Ruff linting: All checks passed
+- Mypy type checking: Success, no issues found
+
+---
+
 # v2.5.5 - UI State & Interaction Fixes
 
 **Date:** January 13, 2026

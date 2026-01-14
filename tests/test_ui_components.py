@@ -17,8 +17,8 @@ from history_manager import HistoryManager
 from input_handler import KeyListener
 from ui.components.settings import SettingsDialog
 from ui.models import TranscriptionModel
-from ui.widgets.dialogs import CreateGroupDialog
-from ui.widgets.project import ProjectContainer, ProjectTreeWidget
+from ui.widgets.dialogs import CreateProjectDialog
+from ui.widgets.project import ProjectTreeWidget
 from ui.widgets.history_tree import HistoryTreeView
 from ui.widgets.hotkey_widget import HotkeyWidget
 
@@ -53,52 +53,67 @@ def key_listener():
 # ============================================================================
 
 
-class TestCreateGroupDialog:
+class TestCreateProjectDialog:
     """Tests for the Create Project dialog."""
 
     def test_dialog_creation(self, qapp):
         """Test that dialog can be created."""
-        dialog = CreateGroupDialog()
+        dialog = CreateProjectDialog()
         assert dialog is not None
         assert dialog.windowTitle() == ""  # Custom title bar
 
     def test_default_color_selected(self, qapp):
         """Test that Ocean Blue color is selected by default."""
-        dialog = CreateGroupDialog()
-        # Default color is the first in the list (Ocean Blue)
-        assert dialog._selected_color == "#3a5f7f"
+        from ui.constants import ProjectColors
+        dialog = CreateProjectDialog()
+        # Default color is the first in the list (Ocean Blue) by token
+        name, color = dialog.get_result()
+        assert color == ProjectColors.PALETTE[0]
 
     def test_color_selection(self, qapp):
         """Test changing color selection."""
-        dialog = CreateGroupDialog()
+        from ui.constants import ProjectColors
+        from ui.widgets.dialogs.create_project_dialog import ColorSwatch
+        
+        dialog = CreateProjectDialog()
 
-        # Select third color (Goldenrod)
-        new_color = "#b8860b"
-        dialog._on_color_selected(new_color)
+        # Find swatches
+        swatches = dialog.findChildren(ColorSwatch)
+        assert len(swatches) >= 3
+        
+        # Select third color
+        target_swatch = swatches[2]
+        new_color = target_swatch.color
+        
+        # Simulate click
+        target_swatch.click()
 
-        assert dialog._selected_color == new_color
+        name, color = dialog.get_result()
+        assert color == new_color
 
-        # Verify only one swatch is selected
-        selected_count = sum(1 for s in dialog._color_swatches if s._selected)
+        # Verify only one swatch is selected (checked)
+        # ColorSwatch sets checkable=True
+        selected_count = sum(1 for s in swatches if s.isChecked())
         assert selected_count == 1
+        assert target_swatch.isChecked()
 
     def test_name_input_enables_create_button(self, qapp):
         """Test that entering a name enables the Create button."""
-        dialog = CreateGroupDialog()
+        dialog = CreateProjectDialog()
 
         # Initially disabled
         assert not dialog.create_btn.isEnabled()
 
         # Enter name
         dialog.name_input.setText("My Group")
-        dialog._on_name_changed("My Group")
-
+        # setText should trigger textChanged signal implicitly if connected
+        
         # Now enabled
         assert dialog.create_btn.isEnabled()
 
     def test_empty_name_disables_create_button(self, qapp):
         """Test that empty name keeps Create button disabled."""
-        dialog = CreateGroupDialog()
+        dialog = CreateProjectDialog()
 
         dialog.name_input.setText("Something")
         dialog._on_name_changed("Something")
@@ -112,10 +127,12 @@ class TestCreateGroupDialog:
 
     def test_get_result(self, qapp):
         """Test getting the dialog result."""
-        dialog = CreateGroupDialog()
+        dialog = CreateProjectDialog()
 
         dialog.name_input.setText("Test Group")
         dialog._on_name_changed("Test Group")
+        # Just use a string for testing if not validating palette here strictly,
+        # but better to use palette too if we want token purity.
         dialog._on_color_selected("#5a3e4f")
 
         name, color = dialog.get_result()
@@ -140,31 +157,31 @@ class TestProjectWidget:
     def test_load_empty_groups(self, qapp, temp_history_manager):
         """Test loading when no groups exist."""
         tree = ProjectTreeWidget(temp_history_manager)
-        tree.load_groups()
+        tree.load_projects()
         assert tree.topLevelItemCount() == 0
 
-    def test_create_group(self, qapp, temp_history_manager):
+    def test_create_project(self, qapp, temp_history_manager):
         """Test creating a Project."""
         tree = ProjectTreeWidget(temp_history_manager)
 
-        group_id = tree.create_group("Test Group", "#3a4f5c")
+        project_id = tree.create_project("Test Group", "#3a4f5c")
 
-        assert group_id is not None
+        assert project_id is not None
         assert tree.topLevelItemCount() == 1
 
         # Verify group data (single column layout, text is in column 0)
         item = tree.topLevelItem(0)
         assert "Test Group" in item.text(0)
-        assert item.data(0, tree.ROLE_GROUP_ID) == group_id
+        assert item.data(0, tree.ROLE_PROJECT_ID) == project_id
         assert item.data(0, tree.ROLE_COLOR) == "#3a4f5c"
 
     def test_multiple_groups(self, qapp, temp_history_manager):
         """Test creating multiple Projects."""
         tree = ProjectTreeWidget(temp_history_manager)
 
-        tree.create_group("Group 1", "#3a4f5c")
-        tree.create_group("Group 2", "#5a7a6d")
-        tree.create_group("Group 3", "#6b5237")
+        tree.create_project("Group 1", "#3a4f5c")
+        tree.create_project("Group 2", "#5a7a6d")
+        tree.create_project("Group 3", "#6b5237")
 
         assert tree.topLevelItemCount() == 3
 
@@ -173,33 +190,16 @@ class TestProjectWidget:
         tree = ProjectTreeWidget(temp_history_manager)
 
         # Create group and add transcript
-        group_id = tree.create_group("My Group", "#3a4f5c")
+        project_id = tree.create_project("My Group", "#3a4f5c")
         entry = temp_history_manager.add_entry("Test transcription")
-        temp_history_manager.assign_transcript_to_project(entry.timestamp, group_id)
+        temp_history_manager.assign_transcript_to_project(entry.timestamp, project_id)
 
         # Reload to see changes
-        tree.load_groups()
+        tree.load_projects()
 
         item = tree.topLevelItem(0)
         # Text is in column 0 - single column layout
         assert "My Group" in item.text(0)
-
-    def test_container_signals(self, qapp, temp_history_manager):
-        """Test that container emits correct signals."""
-        container = ProjectContainer(temp_history_manager)
-
-        created_signals = []
-        container.groupCreated.connect(
-            lambda gid, name: created_signals.append((gid, name))
-        )
-
-        # Create a group via the tree
-        group_id = container.tree.create_group("Signal Test", "#3a4f5c")
-
-        # Signal should have been emitted
-        assert len(created_signals) == 1
-        assert created_signals[0][0] == group_id
-        assert created_signals[0][1] == "Signal Test"
 
 
 # ============================================================================
@@ -322,7 +322,7 @@ class TestHotkeyWidgetValidation:
         """Test validation rejects empty hotkey."""
         widget = HotkeyWidget(key_listener)
 
-        valid, error = widget._validate_hotkey("")
+        valid, error = widget.validate_hotkey("")
 
         assert not valid
         assert "No keys" in error
@@ -335,7 +335,7 @@ class TestHotkeyWidgetValidation:
         dangerous = ["alt+f4", "ctrl+alt+delete", "ctrl+c", "ctrl+v"]
 
         for combo in dangerous:
-            valid, error = widget._validate_hotkey(combo)
+            valid, error = widget.validate_hotkey(combo)
             assert not valid, f"{combo} should be rejected"
             assert "Reserved" in error
 
@@ -343,7 +343,7 @@ class TestHotkeyWidgetValidation:
         """Test validation accepts normal shortcuts."""
         widget = HotkeyWidget(key_listener)
 
-        valid, error = widget._validate_hotkey("ctrl+shift+space")
+        valid, error = widget.validate_hotkey("ctrl+shift+space")
 
         assert valid
         assert error == ""

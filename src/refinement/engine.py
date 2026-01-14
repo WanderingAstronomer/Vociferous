@@ -10,7 +10,7 @@ try:
 except ImportError:
     ctranslate2 = None
     Tokenizer = None
-    ConfigManager = None  # type: ignore[misc]
+    ConfigManager = None
 
 logger = logging.getLogger(__name__)
 

@@ -14,12 +14,10 @@ from PyQt6.QtCore import (
     QSettings,
     Qt,
     QTimer,
-    QUrl,
     pyqtSignal,
     pyqtSlot,
 )
 from PyQt6.QtGui import (
-    QDesktopServices,
     QGuiApplication,
 )
 from PyQt6.QtWidgets import (
@@ -27,15 +25,12 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QMenuBar,
-    QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
 from ui.components.main_window.intent_feedback import IntentFeedbackHandler
-from ui.components.main_window.menu_builder import MenuBuilder
 from ui.components.main_window.main_window_styles import get_combined_stylesheet
 from ui.components.title_bar import TitleBar
 from ui.constants import (
@@ -48,11 +43,11 @@ from ui.widgets.metrics_strip.metrics_strip import MetricsStrip
 # New shell components
 from ui.components.icon_rail import IconRail
 from ui.components.view_host import ViewHost
-from ui.components.action_grid import ActionGrid
+from ui.components.action_dock import ActionDock
 
 # Views
 from ui.views.transcribe_view import TranscribeView
-from ui.views.recent_view import RecentView
+from ui.views.history_view import HistoryView
 from ui.views.projects_view import ProjectsView
 from ui.views.search_view import SearchView
 from ui.views.refine_view import RefineView
@@ -60,7 +55,7 @@ from ui.views.edit_view import EditView
 from ui.views.settings_view import SettingsView
 from ui.views.user_view import UserView
 from ui.constants.view_ids import (
-    VIEW_TRANSCRIBE, VIEW_RECENT, VIEW_PROJECTS, VIEW_SEARCH, VIEW_REFINE, VIEW_EDIT,
+    VIEW_TRANSCRIBE, VIEW_HISTORY, VIEW_PROJECTS, VIEW_SEARCH, VIEW_REFINE, VIEW_EDIT,
     VIEW_SETTINGS, VIEW_USER
 )
 from ui.interaction.intents import InteractionIntent, NavigateIntent, ViewTranscriptIntent
@@ -98,18 +93,16 @@ class MainWindow(QMainWindow):
     startRecordingRequested = pyqtSignal()
     stopRecordingRequested = pyqtSignal()
 
-    def __init__(self, history_manager: HistoryManager | None = None) -> None:
+    def __init__(self, history_manager: HistoryManager | None = None, key_listener=None) -> None:
         super().__init__()
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
 
         self.settings = QSettings("Vociferous", "MainWindow")
         self.history_manager = history_manager
+        self.key_listener = key_listener
 
-        # Menu bar (created before title bar)
-        self._menu_bar = QMenuBar(self)
-
-        # Custom title bar
-        self.title_bar = TitleBar(self, self._menu_bar)
+        # Custom title bar (no menu bar needed)
+        self.title_bar = TitleBar(self)
 
         # Debounce timer for metrics refresh (avoid blocking on rapid transcripts)
         self._metrics_refresh_timer = QTimer()
@@ -117,15 +110,20 @@ class MainWindow(QMainWindow):
         self._metrics_refresh_timer.setInterval(1000)  # 1s debounce
 
         self._init_ui()
-        self._create_menu_bar()
         self._restore_state()
+
+    def set_history_manager(self, manager: HistoryManager) -> None:
+        """Inject history manager (used for testing or delayed initialization)."""
+        self.history_manager = manager
+        # Propagate to views if necessary - logic could be added here
+        # For now, tests mainly rely on the accessible property
 
     def _init_ui(self) -> None:
         """Initialize the main UI layout."""
         self.setWindowTitle("Vociferous")
         self.setMinimumSize(WindowSize.MIN_WIDTH, WindowSize.MIN_HEIGHT)
 
-        # Title bar as menu widget
+        # Title bar as menu widget (no menu bar anymore)
         self.setMenuWidget(self.title_bar)
 
         # Central widget container
@@ -148,7 +146,7 @@ class MainWindow(QMainWindow):
         self.icon_rail.intent_emitted.connect(self._on_interaction_intent)
         container_layout.addWidget(self.icon_rail, 0)
 
-        # 2. Content Column (Views + ActionGrid + Metrics)
+        # 2. Content Column (Views + ActionDock + Metrics)
         content_column = QVBoxLayout()
         content_column.setContentsMargins(0, 0, 0, 0)
         content_column.setSpacing(0)
@@ -157,8 +155,8 @@ class MainWindow(QMainWindow):
         self.view_host = ViewHost()
         self.view_host.viewChanged.connect(self._on_view_changed)
         
-        # 2.2 Action Grid (Contextual Actions)
-        self.action_grid = ActionGrid()
+        # 2.2 Action Dock (Contextual Actions)
+        self.action_dock = ActionDock()
 
         # 2.3 Metrics Strip
         self.metrics_strip = MetricsStrip()
@@ -167,7 +165,7 @@ class MainWindow(QMainWindow):
 
         # Build Layout
         content_column.addWidget(self.view_host, 1) # Expanding
-        content_column.addWidget(self.action_grid, 0) # Fixed height
+        content_column.addWidget(self.action_dock, 0) # Fixed height
         content_column.addWidget(self.metrics_strip, 0) # Fixed height
 
         container_layout.addLayout(content_column, 1)
@@ -192,7 +190,7 @@ class MainWindow(QMainWindow):
         # Intent feedback handler
         self._intent_feedback = IntentFeedbackHandler(self._status_bar, self)
         
-        # Initialize views (Must be after ActionGrid and ViewHost)
+        # Initialize views (Must be after ActionDock and ViewHost)
         self._init_views()
 
     def _init_views(self) -> None:
@@ -207,16 +205,16 @@ class MainWindow(QMainWindow):
         self.view_transcribe.workspace.stopRequested.connect(self.stopRecordingRequested.emit)
         self.view_transcribe.workspace.cancelRequested.connect(self.cancelRecordingRequested.emit)
         
-        self.view_recent = RecentView() 
+        self.view_history = HistoryView() 
         if self.history_manager:
-            self.view_recent.set_history_manager(self.history_manager)
+            self.view_history.set_history_manager(self.history_manager)
             
-        self.view_recent.editRequested.connect(self._on_edit_view_requested)
-        self.view_recent.refineRequested.connect(self._on_refine_view_requested)
+        self.view_history.editRequested.connect(self._on_edit_view_requested)
+        self.view_history.refineRequested.connect(self._on_refine_view_requested)
         # Refine requested via View -> passes to validation -> Orchestrator?
         # Typically Refine needs "Text" + "Profile". 
         # For now, let's just use the Orchestrator signal if possible, or a local handler.
-        # But RecentView emits (id). We need to show the refinement dialog first? 
+        # But HistoryView emits (id). We need to show the refinement dialog first? 
         # Or does "Refine" action jump to a specific flow?
         # The Orchestrator has `_on_refine_requested`.
         # Let's direct connect for now to a stub handler or MainWindow handler.
@@ -228,14 +226,21 @@ class MainWindow(QMainWindow):
         self.view_search = SearchView()
         self.view_refine = RefineView()
         self.view_edit = EditView()
-        self.view_settings = SettingsView()
+        self.view_settings = SettingsView(self.key_listener)
         self.view_user = UserView()
         if self.history_manager:
             self.view_edit.set_history_manager(self.history_manager)
+            self.view_user.set_history_manager(self.history_manager)
+        
+        # Connect SettingsView signals
+        self.view_settings.exportHistoryRequested.connect(self._export_history)
+        self.view_settings.clearAllHistoryRequested.connect(self._clear_all_history)
+        self.view_settings.restartRequested.connect(self._restart_application)
+        self.view_settings.exitRequested.connect(self.close)
         
         # Register
         self.view_host.register_view(self.view_transcribe, VIEW_TRANSCRIBE)
-        self.view_host.register_view(self.view_recent, VIEW_RECENT)
+        self.view_host.register_view(self.view_history, VIEW_HISTORY)
         self.view_host.register_view(self.view_projects, VIEW_PROJECTS)
         self.view_host.register_view(self.view_search, VIEW_SEARCH)
         self.view_host.register_view(self.view_refine, VIEW_REFINE)
@@ -246,7 +251,7 @@ class MainWindow(QMainWindow):
         # Map for ActionGrid lookup
         self._view_map = {
             VIEW_TRANSCRIBE: self.view_transcribe,
-            VIEW_RECENT: self.view_recent,
+            VIEW_HISTORY: self.view_history,
             VIEW_PROJECTS: self.view_projects,
             VIEW_SEARCH: self.view_search,
             VIEW_REFINE: self.view_refine,
@@ -289,27 +294,10 @@ class MainWindow(QMainWindow):
         # Update Icon Rail visual state
         self.icon_rail.set_active_view(view_id)
         
-        # Update Action Grid capability context
+        # Update Action Dock capability context
         current_view = self._view_map.get(view_id)
         if current_view:
-            self.action_grid.set_active_view(current_view)
-
-    def _create_menu_bar(self) -> None:
-        """Create menu bar with all menus."""
-        self._menu_builder = MenuBuilder(self._menu_bar, self)
-        self._menu_builder.build(
-            on_exit=lambda: (self.close(), None)[1],
-            on_restart=self._restart_application,
-            on_export=self._export_history,
-            on_clear=self._clear_all_history,
-            on_toggle_metrics=self._toggle_metrics,
-            on_focus_history=self._switch_to_history, # Modified
-            on_about=self._show_about_dialog,
-            on_metrics_explanation=self._show_metrics_explanation,
-        )
-
-        # Connect metrics strip collapse signal
-        # self.metrics_strip.collapsedChanged.connect(self._on_metrics_collapsed_changed)
+            self.action_dock.set_active_view(current_view)
 
     # Slot handlers
 
@@ -321,7 +309,7 @@ class MainWindow(QMainWindow):
         
         try:
             self.history_manager.update_text(transcript_id, new_text)
-            self.view_recent.refresh()
+            self.view_history.refresh()
             if hasattr(self, "view_projects"):
                 self.view_projects.refresh()
         except Exception as e:
@@ -396,23 +384,7 @@ class MainWindow(QMainWindow):
         if hasattr(self.view_refine, "set_comparison"):
             self.view_refine.set_comparison(transcript_id, original, refined)
 
-
-
-    def _toggle_metrics(self, checked: bool) -> None:
-        try:
-            self.metrics_dock.setVisible(checked)
-        except Exception:
-            logger.exception("Error toggling metrics")
-
-    @pyqtSlot(bool)
-    def _on_metrics_collapsed_changed(self, collapsed: bool) -> None:
-        try:
-            if self._menu_builder.metrics_action:
-                self._menu_builder.metrics_action.setChecked(not collapsed)
-        except Exception:
-            logger.exception("Error in _on_metrics_collapsed_changed")
-
-    def _restart_application(self) -> None:
+    def _show_about_dialog(self) -> None:
         """Restart the application by launching a new process and exiting."""
         import os
         import subprocess
@@ -456,111 +428,17 @@ class MainWindow(QMainWindow):
             )
 
     def _show_about_dialog(self) -> None:
-        """Show the About Vociferous dialog."""
-        from ui.components.title_bar import DialogTitleBar
+        """Show the About Vociferous info (now in User View)."""
+        # Navigate to User View instead of showing dialog
+        self.view_host.switch_to_view(VIEW_USER)
 
-        dialog = QDialog(self)
-        dialog.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
-        dialog.setModal(True)
-
-        main_layout = QVBoxLayout(dialog)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-
-        # Add draggable title bar
-        title_bar = DialogTitleBar("About Vociferous", dialog)
-        title_bar.closeRequested.connect(dialog.reject)
-        main_layout.addWidget(title_bar)
-
-        # Content container
-        content = QWidget()
-        content.setObjectName("dialogContent")
-        layout = QVBoxLayout(content)
-        layout.setSpacing(8)
-        layout.setContentsMargins(20, 16, 20, 16)
-        main_layout.addWidget(content)
-
-        # App title
-        title = QLabel("Vociferous")
-        title.setObjectName("aboutTitle")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
-
-        # Version/subtitle
-        subtitle = QLabel("Modern Speech-to-Text for Linux")
-        subtitle.setObjectName("aboutSubtitle")
-        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(subtitle)
-
-        # Description
-        description = QLabel(
-            "Vociferous was created to bring seamless, privacy-focused speech-to-text "
-            "to the Linux desktop. Built with OpenAI's Whisper model, it runs entirely "
-            "locally—no cloud services, no data collection, just fast and accurate "
-            "transcription on your own machine."
-        )
-        description.setWordWrap(True)
-        description.setObjectName("aboutDescription")
-        layout.addWidget(description)
-
-        # Creator info
-        creator_label = QLabel("Created by Andrew Brown")
-        creator_label.setObjectName("aboutCreator")
-        creator_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(creator_label)
-
-        # Links
-        links_layout = QHBoxLayout()
-        links_layout.setSpacing(8)
-        links_layout.setContentsMargins(0, 0, 0, 0)
-
-        linkedin_btn = QPushButton("LinkedIn Profile")
-        linkedin_btn.setObjectName("secondaryButton")
-        linkedin_btn.clicked.connect(
-            lambda: QDesktopServices.openUrl(
-                QUrl("https://www.linkedin.com/in/abrown7521/")
-            )
-        )
-        links_layout.addWidget(linkedin_btn)
-
-        github_btn = QPushButton("GitHub Repository")
-        github_btn.setObjectName("secondaryButton")
-        github_btn.clicked.connect(
-            lambda: QDesktopServices.openUrl(
-                QUrl("https://github.com/WanderingAstronomer/Vociferous")
-            )
-        )
-        links_layout.addWidget(github_btn)
-
-        layout.addLayout(links_layout)
-
-        # Close button
-        close_btn = QPushButton("Close")
-        close_btn.setObjectName("primaryButton")
-        close_btn.clicked.connect(dialog.accept)
-        close_btn.setMinimumHeight(40)
-        layout.addWidget(close_btn)
-
-        # Auto-size the dialog
-        dialog.setMinimumWidth(420)
-        dialog.adjustSize()
-        dialog.exec()
-
-    def _show_metrics_explanation(self) -> None:
-        """Show the Metrics Calculations explanation dialog."""
-        from ui.widgets.dialogs.metrics_explanation_dialog import (
-            MetricsExplanationDialog,
-        )
-
-        dialog = MetricsExplanationDialog(self)
-        dialog.exec()
+    def _restart_application(self) -> None:
+        """Show the Metrics Calculations explanation dialog (now in User View)."""
+        # Navigate to User View instead of showing dialog
+        self.view_host.switch_to_view(VIEW_USER)
 
     # Public API
-
-    def on_settings_requested(self, handler) -> None:
-        if self._menu_builder.settings_action:
-            self._menu_builder.settings_action.triggered.connect(handler)
-
+    
     def sync_recording_status_from_engine(self, status: str) -> None:
         """Sync workspace state with background transcription engine status.
 
@@ -675,8 +553,8 @@ class MainWindow(QMainWindow):
                 if self.history_manager:
                     self.history_manager.clear()
                 self.metrics_strip.refresh()
-                if hasattr(self, "view_recent"):
-                     # RecentView should refresh itself via history signals usually
+                if hasattr(self, "view_history"):
+                     # HistoryView should refresh itself via history signals usually
                      pass
         except Exception:
             logger.exception("Error clearing history")
@@ -687,8 +565,8 @@ class MainWindow(QMainWindow):
 
 
     def _switch_to_history(self) -> None:
-        """Switch to Recent View (History)."""
-        self.view_host.switch_to_view(VIEW_RECENT)
+        """Switch to History View."""
+        self.view_host.switch_to_view(VIEW_HISTORY)
 
     # State persistence
 

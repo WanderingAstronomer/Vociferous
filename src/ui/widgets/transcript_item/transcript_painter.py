@@ -49,7 +49,7 @@ def paint_transcript_entry(
     Paint a complete transcript entry row.
 
     This is the SINGLE SOURCE OF TRUTH for transcript entry rendering.
-    Both Projects and Ungrouped Transcripts use this function.
+    Both Projects and Unassigned Transcripts use this function.
 
     Layout:
         [Preview text (left-aligned)]  ...gap...  [Time (right-aligned, blue)]

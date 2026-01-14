@@ -161,9 +161,9 @@ class HistoryManager:
         return self.projects.update_color(project_id, color)
 
     def delete_project(
-        self, project_id: int, move_to_ungrouped: bool = True
+        self, project_id: int, move_to_unassigned: bool = True
     ) -> bool:
-        return self.projects.delete(project_id, move_to_ungrouped)
+        return self.projects.delete(project_id, move_to_unassigned)
 
     def assign_transcript_to_project(
         self, timestamp: str, project_id: int | None

@@ -18,10 +18,11 @@ from ui.components.workspace.workspace import MainWorkspace
 from ui.constants import WorkspaceState
 from ui.constants.view_ids import VIEW_TRANSCRIBE
 from ui.contracts.capabilities import ActionId, Capabilities
+from ui.interaction.intents import BeginRecordingIntent, StopRecordingIntent, IntentSource
 from ui.interaction import (
     EditTranscriptIntent, DeleteTranscriptIntent,
     DiscardEditsIntent, CancelRecordingIntent,
-    CommitEditsIntent, IntentSource
+    CommitEditsIntent
 )
 from ui.views.base_view import BaseView
 
@@ -107,17 +108,27 @@ class TranscribeView(BaseView):
             can_copy=has_text,
             can_edit=has_text and not is_recording and not is_editing,
             can_delete=has_text and not is_recording and not is_editing,
-            can_refine=False, # Refine handled internally by workspace currently
+            can_refine=has_text and not is_recording and not is_editing,  # Refine available in VIEWING state
             can_move_to_project=False,
             can_preview=False,
             can_export=False,
             can_save=is_editing,
             can_discard=is_editing or is_recording,
+            can_start_recording=not is_recording and not is_editing,
+            can_stop_recording=is_recording,
         )
     
     def dispatch_action(self, action_id: ActionId) -> None:
         """Dispatch external actions to the workspace."""
-        if action_id == ActionId.COPY:
+        if action_id == ActionId.START_RECORDING:
+            self.workspace.handle_intent(
+                BeginRecordingIntent(source=IntentSource.CONTROLS)
+            )
+        elif action_id == ActionId.STOP_RECORDING:
+            self.workspace.handle_intent(
+                StopRecordingIntent(source=IntentSource.CONTROLS)
+            )
+        elif action_id == ActionId.COPY:
             self.workspace.copy_current()
         elif action_id == ActionId.DELETE:
             self.workspace.handle_intent(

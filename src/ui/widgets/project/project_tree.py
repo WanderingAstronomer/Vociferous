@@ -1,7 +1,7 @@
 """
-ProjectTreeWidget - Tree widget for Project navigation.
+ProjectTreeWidget - Tree widget for project navigation.
 
-Displays Projects as expandable items with nested transcripts.
+Displays projects as expandable items with nested transcripts.
 Handles selection, context menus, and CRUD operations.
 """
 
@@ -31,7 +31,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.constants import Colors, Dimensions, ProjectColors, Typography
-from ui.widgets.dialogs import ConfirmationDialog, CreateGroupDialog, InputDialog
+from ui.widgets.dialogs import ConfirmationDialog, CreateProjectDialog, InputDialog
 from ui.widgets.dialogs.error_dialog import show_error_dialog
 from ui.widgets.project.project_delegate import ProjectDelegate
 from ui.widgets.transcript_item import (
@@ -49,33 +49,33 @@ logger = logging.getLogger(__name__)
 
 class ProjectTreeWidget(QTreeWidget):
     """
-    Tree widget for Project navigation with nested transcripts.
+    Tree widget for project navigation with nested transcripts.
 
     Structure:
-    - Group 1
+    - Project 1
       - Transcript A
       - Transcript B
-    - Group 2
+    - Project 2
 
     Signals:
         entrySelected(str, str): Emitted when a transcript child is clicked
-        groupCreated(int, str): Emitted when a new group is created
-        groupRenamed(int, str): Emitted when a group is renamed
-        groupDeleted(int): Emitted when a group is deleted
-        groupColorChanged(int, str): Emitted when a group color changes
+        projectCreated(int, str): Emitted when a new project is created
+        projectRenamed(int, str): Emitted when a project is renamed
+        projectDeleted(int): Emitted when a project is deleted
+        projectColorChanged(int, str): Emitted when a project color changes
     """
 
     # Signals
     entrySelected = pyqtSignal(str, str)  # text, timestamp
     entryAssignmentChanged = pyqtSignal()  # Emitted when entries are moved/assigned
-    groupCreated = pyqtSignal(int, str)
-    groupRenamed = pyqtSignal(int, str)
-    groupDeleted = pyqtSignal(int)
-    groupColorChanged = pyqtSignal(int, str)
+    projectCreated = pyqtSignal(int, str)
+    projectRenamed = pyqtSignal(int, str)
+    projectDeleted = pyqtSignal(int)
+    projectColorChanged = pyqtSignal(int, str)
 
     # Custom roles for item data
-    ROLE_IS_GROUP = Qt.ItemDataRole.UserRole + 10
-    ROLE_GROUP_ID = Qt.ItemDataRole.UserRole + 11
+    ROLE_IS_PROJECT = Qt.ItemDataRole.UserRole + 10
+    ROLE_PROJECT_ID = Qt.ItemDataRole.UserRole + 11
     ROLE_COLOR = Qt.ItemDataRole.UserRole + 12
     ROLE_COUNT = Qt.ItemDataRole.UserRole + 13
 
@@ -94,7 +94,7 @@ class ProjectTreeWidget(QTreeWidget):
         self.setAccessibleDescription("List of Projects and their transcripts")
 
         if self._history_manager:
-            self.load_groups()
+            self.load_projects()
 
     def _setup_ui(self) -> None:
         """Configure tree widget appearance."""
@@ -133,15 +133,15 @@ class ProjectTreeWidget(QTreeWidget):
         self.setItemDelegate(ProjectDelegate(self))
 
         # Use central stylesheet via object name
-        self.setObjectName("projectGroupTree")
+        self.setObjectName("projectTree")
 
     @property
     def selected_ids(self) -> tuple[int, ...]:
         """Return the IDs of selected transcripts."""
         ids = []
         for item in self.selectedItems():
-            # Skip groups
-            if item.data(0, self.ROLE_IS_GROUP):
+            # Skip projects
+            if item.data(0, self.ROLE_IS_PROJECT):
                 continue
             
             entry_id = item.data(0, ROLE_ENTRY_ID)
@@ -160,9 +160,9 @@ class ProjectTreeWidget(QTreeWidget):
         if not item:
             return
 
-        # Only allow dragging transcripts (items that are NOT groups)
-        is_group = item.data(0, self.ROLE_IS_GROUP)
-        if is_group:
+        # Only allow dragging transcripts (items that are NOT projects)
+        is_project = item.data(0, self.ROLE_IS_PROJECT)
+        if is_project:
             return
 
         super().startDrag(supportedActions)
@@ -192,19 +192,19 @@ class ProjectTreeWidget(QTreeWidget):
         if not target_item:
             return
 
-        # 1. Identify Target Group
-        target_group_id = None
-        is_group = target_item.data(0, self.ROLE_IS_GROUP)
+        # 1. Identify Target Project
+        target_project_id = None
+        is_project = target_item.data(0, self.ROLE_IS_PROJECT)
 
-        if is_group:
-            target_group_id = target_item.data(0, self.ROLE_GROUP_ID)
+        if is_project:
+            target_project_id = target_item.data(0, self.ROLE_PROJECT_ID)
         else:
-            # Dropped on a transcript -> move to that transcript's parent group
+            # Dropped on a transcript -> move to that transcript's parent project
             parent = target_item.parent()
             if parent:
-                target_group_id = parent.data(0, self.ROLE_GROUP_ID)
+                target_project_id = parent.data(0, self.ROLE_PROJECT_ID)
 
-        if target_group_id is None:
+        if target_project_id is None:
             return
 
         # 2. Identify Dragged Item
@@ -212,11 +212,11 @@ class ProjectTreeWidget(QTreeWidget):
         if not dragged_item:
             return
 
-        # Ensure we aren't dropping onto the same group
+        # Ensure we aren't dropping onto the same project
         parent = dragged_item.parent()
-        current_group_id = parent.data(0, self.ROLE_GROUP_ID) if parent else None
+        current_project_id = parent.data(0, self.ROLE_PROJECT_ID) if parent else None
 
-        if current_group_id == target_group_id:
+        if current_project_id == target_project_id:
             event.ignore()
             return
 
@@ -227,30 +227,30 @@ class ProjectTreeWidget(QTreeWidget):
         # 3. Execute Move
         if self._history_manager:
             # Perform DB update
-            self._move_to_group(timestamp, target_group_id)
+            self._move_to_project(timestamp, target_project_id)
 
             # NOTE: We do NOT call super().dropEvent(event)
             # calling super would try to physically move the QTreeWidgetItem,
-            # but _move_to_group triggers a reload via singleShot(0, load_groups),
+            # but _move_to_project triggers a reload via singleShot(0, load_projects),
             # so we'd have a race condition or double-move visual glitch.
             # By consuming the event here, we let the DB update drive the UI refresh.
             event.accept()
 
     def set_history_manager(self, manager: HistoryManager) -> None:
-        """Set the history manager and reload groups."""
+        """Set the history manager and reload projects."""
         self._history_manager = manager
-        self.load_groups()
+        self.load_projects()
 
-    def load_groups(self) -> None:
+    def load_projects(self) -> None:
         """Load Projects and their transcripts from history manager."""
         # Save expanded state recursively
-        expanded_group_ids = set()
+        expanded_project_ids = set()
 
         def collect_expanded(item: QTreeWidgetItem) -> None:
             if item.isExpanded():
-                group_id = item.data(0, self.ROLE_GROUP_ID)
-                if group_id is not None:
-                    expanded_group_ids.add(group_id)
+                project_id = item.data(0, self.ROLE_PROJECT_ID)
+                if project_id is not None:
+                    expanded_project_ids.add(project_id)
             for i in range(item.childCount()):
                 collect_expanded(item.child(i))
 
@@ -262,85 +262,85 @@ class ProjectTreeWidget(QTreeWidget):
         if not self._history_manager:
             return
 
-        groups = self._history_manager.get_projects()
+        projects = self._history_manager.get_projects()
 
         # Maps for hierarchy building
-        group_items: dict[int, QTreeWidgetItem] = {}
-        group_data: dict[int, tuple] = {}
+        project_items: dict[int, QTreeWidgetItem] = {}
+        project_data: dict[int, tuple] = {}
 
-        # 1. Create all group items
-        for row in groups:
+        # 1. Create all project items
+        for row in projects:
             # Handle both 3-tuple (old) and 4-tuple (new) for safety during migration
             if len(row) == 4:
-                group_id, name, color, parent_id = row
+                project_id, name, color, parent_id = row
             else:
-                group_id, name, color = row
+                project_id, name, color = row
                 parent_id = None
 
-            item = self._create_group_item(group_id, name, color)
-            group_items[group_id] = item
-            group_data[group_id] = (name, color, parent_id)
+            item = self._create_project_item(project_id, name, color)
+            project_items[project_id] = item
+            project_data[project_id] = (name, color, parent_id)
 
         # 2. Build Tree Hierarchy
-        for group_id, item in group_items.items():
-            parent_id = group_data[group_id][2]
+        for project_id, item in project_items.items():
+            parent_id = project_data[project_id][2]
 
-            if parent_id is not None and parent_id in group_items:
-                group_items[parent_id].addChild(item)
+            if parent_id is not None and parent_id in project_items:
+                project_items[parent_id].addChild(item)
             else:
                 self.addTopLevelItem(item)
 
             # Restore expansion
-            if group_id in expanded_group_ids:
+            if project_id in expanded_project_ids:
                 item.setExpanded(True)
 
             # 3. Add Transcripts
-            transcripts = self._history_manager.get_transcripts_by_project(group_id)
+            transcripts = self._history_manager.get_transcripts_by_project(project_id)
             for entry in transcripts:
                 child_item = create_transcript_item(entry)
                 # Transcripts are always leaf nodes in a group
                 item.addChild(child_item)
 
             # Update label count
-            self._update_group_label(item, group_data[group_id][0], len(transcripts))
+            self._update_project_label(item, project_data[project_id][0], len(transcripts))
 
-    def _create_group_item(
-        self, group_id: int, name: str, color: str | None
+    def _create_project_item(
+        self, project_id: int, name: str, color: str | None
     ) -> QTreeWidgetItem:
         """Create a Project parent item."""
         item = QTreeWidgetItem([name])
-        # Groups: enabled, expandable, not selectable
+        # Projects: enabled, expandable, not selectable
         item.setFlags(Qt.ItemFlag.ItemIsEnabled)
 
-        item.setData(0, self.ROLE_IS_GROUP, True)
-        item.setData(0, self.ROLE_GROUP_ID, group_id)
+        item.setData(0, self.ROLE_IS_PROJECT, True)
+        item.setData(0, self.ROLE_PROJECT_ID, project_id)
         item.setData(0, self.ROLE_COLOR, color)
         item.setData(0, self.ROLE_COUNT, 0)
 
-        item.setSizeHint(0, QSize(-1, Dimensions.FOCUS_GROUP_ROW_HEIGHT))
+        item.setSizeHint(0, QSize(-1, Dimensions.PROJECT_ROW_HEIGHT))
 
-        # Styling - group headers are larger than transcript rows
+        # Styling - project headers are larger than transcript rows
         font = QFont()
-        font.setPointSize(Typography.FOCUS_GROUP_NAME_SIZE)
+        font.setPointSize(Typography.PROJECT_NAME_SIZE)
         font.setWeight(QFont.Weight.DemiBold)
         item.setFont(0, font)
-        # Use group color for text if available, otherwise primary color
+        # Use project color for text if available, otherwise primary color
         text_color = QColor(color) if color else QColor(Colors.TEXT_PRIMARY)
         item.setForeground(0, text_color)
 
         return item
 
-    def _update_group_label(self, item: QTreeWidgetItem, name: str, count: int) -> None:
-        """Update group label (count stored but not displayed)."""
+    def _update_project_label(self, item: QTreeWidgetItem, name: str, count: int) -> None:
+        """Update project label (count stored but not displayed)."""
         item.setText(0, name)
         item.setData(0, self.ROLE_COUNT, count)
 
     def _on_item_clicked(self, item: QTreeWidgetItem, _column: int) -> None:
         """Handle item clicks: toggle expansion or select transcript."""
         try:
-            is_group = item.data(0, self.ROLE_IS_GROUP)
+            is_project = item.data(0, self.ROLE_IS_PROJECT)
 
-            if is_group:
+            if is_project:
                 item.setExpanded(not item.isExpanded())
             else:
                 # It's a transcript
@@ -352,47 +352,39 @@ class ProjectTreeWidget(QTreeWidget):
             logger.exception("Error handling item click")
 
     def _show_context_menu(self, position) -> None:
-        """Show context menu for group management."""
+        """Show context menu for project management."""
         try:
             item = self.itemAt(position)
             if not item:
                 return
 
-            is_group = item.data(0, self.ROLE_IS_GROUP)
-            if is_group:
-                self._show_group_context_menu(item, position)
+            is_project = item.data(0, self.ROLE_IS_PROJECT)
+            if is_project:
+                self._show_project_context_menu(item, position)
             else:
                 self._show_transcript_context_menu(item, position)
         except Exception:
             logger.exception("Error showing context menu")
 
-    def _show_group_context_menu(self, item: QTreeWidgetItem, position) -> None:
-        """Show context menu for group items."""
-        group_id = item.data(0, self.ROLE_GROUP_ID)
-        group_name = item.text(
-            0
-        )  # Moved from column 1 to 0 in _create_group_item? No, _create_group_item sets text on 0.
-        # Check _create_group_item: item = QTreeWidgetItem([name]). So it's col 0.
-        # But wait, original code was: group_name = item.text(1).split("  (")[0]
-        # Let's verify _create_group_item implementation.
-        # I read it earlier: item = QTreeWidgetItem([name]). It uses one column?
-        # Let's re-read _create_group_item to be sure.
-
+    def _show_project_context_menu(self, item: QTreeWidgetItem, position) -> None:
+        """Show context menu for project items."""
+        project_id = item.data(0, self.ROLE_PROJECT_ID)
+        project_name = item.text(0)
         current_color = item.data(0, self.ROLE_COLOR)
 
         menu = QMenu(self)
 
         rename_action = menu.addAction("Rename…")
         rename_action.triggered.connect(
-            lambda checked: self._rename_group(group_id, group_name)
+            lambda checked: self._rename_project(project_id, project_name)
         )
 
-        # New: Create Subgroup
-        # Limit nesting to 1 level (only top-level groups can have subgroups)
+        # New: Create Sub-Project
+        # Limit nesting to 1 level (only top-level projects can have sub-projects)
         if item.parent() is None:
-            create_sub_action = menu.addAction("Create Subgroup…")
+            create_sub_action = menu.addAction("Create Sub-Project…")
             create_sub_action.triggered.connect(
-                lambda checked: self._create_subgroup_dialog(group_id)
+                lambda checked: self._create_sub_project_dialog(project_id)
             )
 
         color_menu = menu.addMenu("Change color")
@@ -404,21 +396,21 @@ class ProjectTreeWidget(QTreeWidget):
             color_action.setCheckable(True)
             color_action.setChecked(color == current_color)
             color_action.triggered.connect(
-                lambda checked, c=color: self._change_color(group_id, c)
+                lambda checked, c=color: self._change_color(project_id, c)
             )
 
         menu.addSeparator()
 
-        delete_action = menu.addAction("Delete group…")
+        delete_action = menu.addAction("Delete Project…")
         delete_action.triggered.connect(
-            lambda checked: self._delete_group(group_id, group_name)
+            lambda checked: self._delete_project(project_id, project_name)
         )
 
         menu.exec(self.viewport().mapToGlobal(position))
 
     def _show_transcript_context_menu(self, item: QTreeWidgetItem, position) -> None:
-        """Show context menu for transcript items within a group."""
-        # Get all selected transcript items (filter out groups)
+        """Show context menu for transcript items within a project."""
+        # Get all selected transcript items (filter out projects)
         selected_items = self._get_selected_transcript_items()
         if not selected_items:
             return
@@ -430,45 +422,45 @@ class ProjectTreeWidget(QTreeWidget):
         count = len(selected_items)
         menu = QMenu(self)
 
-        # Move to another group submenu
+        # Move to another project submenu
         if self._history_manager:
-            groups = self._history_manager.get_projects()
-            if groups:
+            projects = self._history_manager.get_projects()
+            if projects:
                 menu_label = (
-                    "Move to group" if count == 1 else f"Move {count} items to group"
+                    "Move to project" if count == 1 else f"Move {count} items to project"
                 )
                 move_menu = menu.addMenu(menu_label)
 
-                # Get current group(s) to exclude from menu
-                current_groups = {
-                    item.parent().data(0, self.ROLE_GROUP_ID)
+                # Get current project(s) to exclude from menu
+                current_project_ids = {
+                    item.parent().data(0, self.ROLE_PROJECT_ID)
                     for item in selected_items
                     if item.parent()
                 }
 
-                for row in groups:
+                for row in projects:
                     # Unpack safely to handle 3 or 4 elements
                     if len(row) == 4:
-                        gid, gname, gcolor, _ = row
+                        pid, pname, pcolor, _ = row
                     else:
-                        gid, gname, gcolor = row
+                        pid, pname, pcolor = row
 
-                    if gid not in current_groups:
+                    if pid not in current_project_ids:
                         action = move_menu.addAction(
-                            self._create_color_icon(gcolor) if gcolor else QIcon(),
-                            gname,
+                            self._create_color_icon(pcolor) if pcolor else QIcon(),
+                            pname,
                         )
-                        # Store items and group_id for bulk move
-                        action.setData((selected_items, gid))
-                        action.triggered.connect(self._handle_bulk_move_to_group)
+                        # Store items and project_id for bulk move
+                        action.setData((selected_items, pid))
+                        action.triggered.connect(self._handle_bulk_move_to_project)
 
-        # Remove from group
+        # Remove from project
         remove_label = (
-            "Remove from group" if count == 1 else f"Remove {count} items from group"
+            "Remove from project" if count == 1 else f"Remove {count} items from project"
         )
         remove_action = menu.addAction(remove_label)
         remove_action.triggered.connect(
-            lambda checked, items=selected_items: self._remove_items_from_group(items)
+            lambda checked, items=selected_items: self._remove_items_from_project(items)
         )
 
         menu.addSeparator()
@@ -485,17 +477,17 @@ class ProjectTreeWidget(QTreeWidget):
         menu.exec(self.viewport().mapToGlobal(position))
 
     def _get_selected_transcript_items(self) -> list[QTreeWidgetItem]:
-        """Get all selected transcript items, filtering out group headers."""
+        """Get all selected transcript items, filtering out project headers."""
         selected = self.selectedItems()
         transcripts = []
         for item in selected:
-            is_group = item.data(0, self.ROLE_IS_GROUP)
-            if not is_group and item.data(0, ROLE_TIMESTAMP_ISO):
+            is_project = item.data(0, self.ROLE_IS_PROJECT)
+            if not is_project and item.data(0, ROLE_TIMESTAMP_ISO):
                 transcripts.append(item)
         return transcripts
 
-    def _handle_bulk_move_to_group(self) -> None:
-        """Handle bulk move to group action triggered from context menu."""
+    def _handle_bulk_move_to_project(self) -> None:
+        """Handle bulk move to project action triggered from context menu."""
         from PyQt6.QtGui import QAction
 
         action = self.sender()
@@ -506,14 +498,14 @@ class ProjectTreeWidget(QTreeWidget):
         if not data or not isinstance(data, tuple) or len(data) != 2:
             return
 
-        items, group_id = data
+        items, project_id = data
         for item in items:
             timestamp = item.data(0, ROLE_TIMESTAMP_ISO)
             if timestamp:
-                self._move_to_group(timestamp, group_id)
+                self._move_to_project(timestamp, project_id)
 
-    def _handle_move_to_group(self) -> None:
-        """Handle move to group action triggered from context menu."""
+    def _handle_move_to_project(self) -> None:
+        """Handle move to project action triggered from context menu."""
         from PyQt6.QtGui import QAction
 
         action = self.sender()
@@ -524,28 +516,28 @@ class ProjectTreeWidget(QTreeWidget):
         if not data or not isinstance(data, tuple) or len(data) != 2:
             return
 
-        timestamp, group_id = data
-        self._move_to_group(timestamp, group_id)
+        timestamp, project_id = data
+        self._move_to_project(timestamp, project_id)
 
-    def _move_to_group(self, timestamp: str, group_id: int) -> None:
+    def _move_to_project(self, timestamp: str, project_id: int) -> None:
         """Move a transcript to another Project."""
         try:
             if self._history_manager:
                 self._history_manager.assign_transcript_to_project(
-                    timestamp, group_id
+                    timestamp, project_id
                 )
-                QTimer.singleShot(0, self.load_groups)
+                QTimer.singleShot(0, self.load_projects)
                 # Notify assignment changed
                 self.entryAssignmentChanged.emit()
         except Exception as e:
-            logger.exception("Error moving transcript to group")
+            logger.exception("Error moving transcript to project")
             show_error_dialog(
                 title="Move Error",
                 message=f"Failed to move transcript: {e}",
                 parent=self,
             )
 
-    def _remove_items_from_group(self, items: list[QTreeWidgetItem]) -> None:
+    def _remove_items_from_project(self, items: list[QTreeWidgetItem]) -> None:
         """Remove multiple transcripts from their current Projects."""
         try:
             if self._history_manager:
@@ -555,25 +547,25 @@ class ProjectTreeWidget(QTreeWidget):
                         self._history_manager.assign_transcript_to_project(
                             timestamp, None
                         )
-                QTimer.singleShot(0, self.load_groups)
-                # Notify assignment changed (moved to ungrouped)
+                QTimer.singleShot(0, self.load_projects)
+                # Notify assignment changed (moved to unassigned)
                 self.entryAssignmentChanged.emit()
         except Exception:
-            logger.exception("Error removing items from group")
+            logger.exception("Error removing items from project")
 
-    def _remove_from_group(self, timestamp: str) -> None:
+    def _remove_from_project(self, timestamp: str) -> None:
         """Remove a transcript from its Project (set to None)."""
         try:
             if self._history_manager:
                 self._history_manager.assign_transcript_to_project(timestamp, None)
-                QTimer.singleShot(0, self.load_groups)
-                # Notify that an assignment changed (item moved to ungrouped)
+                QTimer.singleShot(0, self.load_projects)
+                # Notify that an assignment changed (item moved to unassigned)
                 self.entryAssignmentChanged.emit()
         except Exception as e:
-            logger.exception("Error removing transcript from group")
+            logger.exception("Error removing transcript from project")
             show_error_dialog(
                 title="Remove Error",
-                message=f"Failed to remove transcript from group: {e}",
+                message=f"Failed to remove transcript from project: {e}",
                 parent=self,
             )
 
@@ -602,7 +594,7 @@ class ProjectTreeWidget(QTreeWidget):
                         timestamp = item.data(0, ROLE_TIMESTAMP_ISO)
                         if timestamp:
                             self._history_manager.delete_entry(timestamp)
-                    QTimer.singleShot(0, self.load_groups)
+                    QTimer.singleShot(0, self.load_projects)
                     # Notify deletions
                     self.entryAssignmentChanged.emit()
         except Exception:
@@ -622,7 +614,7 @@ class ProjectTreeWidget(QTreeWidget):
             if dialog.exec():
                 if self._history_manager:
                     self._history_manager.delete_entry(timestamp)
-                    QTimer.singleShot(0, self.load_groups)
+                    QTimer.singleShot(0, self.load_projects)
                     # Notify deletion
                     self.entryAssignmentChanged.emit()
         except Exception as e:
@@ -639,8 +631,8 @@ class ProjectTreeWidget(QTreeWidget):
         pixmap.fill(QColor(color))
         return QIcon(pixmap)
 
-    def _rename_group(self, group_id: int, current_name: str) -> None:
-        """Show dialog to rename group."""
+    def _rename_project(self, project_id: int, current_name: str) -> None:
+        """Show dialog to rename project."""
         try:
             dialog = InputDialog(
                 self, "Rename Project", "Enter new name:", current_name
@@ -650,55 +642,55 @@ class ProjectTreeWidget(QTreeWidget):
                 if new_name and new_name != current_name:
                     if (
                         self._history_manager
-                        and self._history_manager.rename_project(group_id, new_name)
+                        and self._history_manager.rename_project(project_id, new_name)
                     ):
-                        self.load_groups()
-                        self.groupRenamed.emit(group_id, new_name)
+                        self.load_projects()
+                        self.projectRenamed.emit(project_id, new_name)
         except Exception as e:
-            logger.exception("Error renaming group")
+            logger.exception("Error renaming project")
             show_error_dialog(
                 title="Rename Error",
-                message=f"Failed to rename group: {e}",
+                message=f"Failed to rename project: {e}",
                 parent=self,
             )
 
-    def _change_color(self, group_id: int, color: str) -> None:
-        """Update group color in history manager."""
+    def _change_color(self, project_id: int, color: str) -> None:
+        """Update project color in history manager."""
         try:
             if self._history_manager and self._history_manager.update_project_color(
-                group_id, color
+                project_id, color
             ):
-                self.load_groups()
-                self.groupColorChanged.emit(group_id, color)
+                self.load_projects()
+                self.projectColorChanged.emit(project_id, color)
         except Exception:
-            logger.exception("Error changing group color")
+            logger.exception("Error changing project color")
 
-    def _delete_group(self, group_id: int, group_name: str) -> None:
-        """Show confirmation dialog and delete group."""
+    def _delete_project(self, project_id: int, project_name: str) -> None:
+        """Show confirmation dialog and delete project."""
         try:
             dialog = ConfirmationDialog(
                 self,
                 "Delete Project",
-                f"Are you sure you want to delete '{group_name}'?\n\n"
-                "Transcripts within this group will be moved to Ungrouped.",
+                f"Are you sure you want to delete '{project_name}'?\n\n"
+                "Transcripts within this project will be moved to Unassigned.",
                 confirm_text="Delete",
                 is_destructive=True,
             )
             if dialog.exec():
                 if self._history_manager and self._history_manager.delete_project(
-                    group_id
+                    project_id
                 ):
-                    self.load_groups()
-                    self.groupDeleted.emit(group_id)
+                    self.load_projects()
+                    self.projectDeleted.emit(project_id)
         except Exception as e:
-            logger.exception("Error deleting group")
+            logger.exception("Error deleting project")
             show_error_dialog(
                 title="Delete Error",
-                message=f"Failed to delete group: {e}",
+                message=f"Failed to delete project: {e}",
                 parent=self,
             )
 
-    def create_group(
+    def create_project(
         self, name: str, color: str | None = None, parent_id: int | None = None
     ) -> int | None:
         """Create a new Project via manager."""
@@ -707,49 +699,48 @@ class ProjectTreeWidget(QTreeWidget):
                 return None
 
             if color is None:
-                groups = self._history_manager.get_projects()
+                projects = self._history_manager.get_projects()
                 existing_colors = []
-                for g in groups:
-                    if len(g) >= 3:
-                        existing_colors.append(g[2])
+                for p in projects:
+                    if len(p) >= 3:
+                        existing_colors.append(p[2])
                 color = ProjectColors.get_next_color(existing_colors)
 
-            group_id = self._history_manager.create_project(
+            project_id = self._history_manager.create_project(
                 name, color, parent_id=parent_id
             )
-            if group_id:
-                self.load_groups()
+            if project_id:
+                self.load_projects()
 
                 if parent_id:
                     iterator = QTreeWidgetItemIterator(self)
                     while iterator.value():
                         item = iterator.value()
-                        if item.data(0, self.ROLE_GROUP_ID) == parent_id:
+                        if item.data(0, self.ROLE_PROJECT_ID) == parent_id:
                             item.setExpanded(True)
                             break
                         iterator += 1
 
-                self.groupCreated.emit(group_id, name)
+                self.projectCreated.emit(project_id, name)
 
-            return group_id
+            return project_id
         except Exception as e:
-            logger.exception("Error creating group")
+            logger.exception("Error creating project")
             show_error_dialog(
                 title="Create Error",
-                message=f"Failed to create group: {e}",
+                message=f"Failed to create project: {e}",
                 parent=self,
             )
             return None
 
-    def _create_subgroup_dialog(self, parent_id: int) -> None:
-        """Show dialog to create a subgroup."""
-        dialog = CreateGroupDialog(self, title="Create Subgroup")
-        # dialog.setWindowTitle("Create Subgroup")  # Handled by constructor
+    def _create_sub_project_dialog(self, parent_id: int) -> None:
+        """Show dialog to create a sub-project."""
+        dialog = CreateProjectDialog(self, title="Create Sub-Project")
         if dialog.exec():
             name, color = dialog.get_result()
             if name:
-                self.create_group(name, color, parent_id=parent_id)
+                self.create_project(name, color, parent_id=parent_id)
 
     def refresh_counts(self) -> None:
         """Refresh content."""
-        self.load_groups()
+        self.load_projects()

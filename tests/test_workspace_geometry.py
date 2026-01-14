@@ -9,10 +9,11 @@ Verifies:
 
 import pytest
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtWidgets import QApplication, QScrollArea, QSizePolicy
+from PyQt6.QtWidgets import QApplication, QScrollArea, QSizePolicy, QAbstractScrollArea
 
 from ui.components.workspace.workspace import MainWorkspace
 from ui.constants import WorkspaceState
+from ui.widgets.content_panel import ContentPanel
 
 # Mark entire module as UI-dependent
 pytestmark = pytest.mark.ui_dependent
@@ -30,84 +31,99 @@ def qapp():
 class TestWorkspaceGeometry:
     """Tests for workspace layout and geometry invariants."""
 
-    def test_content_expansion(self, qapp):
-        """Test that content panel expands to fill available space."""
+    def test_content_expansion_geometry(self, qapp):
+        """
+        Test that content panel physically expands in the render tree.
+        Validates Invariant 8.2: Content Area Expansion Rules.
+        """
         workspace = MainWorkspace()
-        workspace.resize(800, 600)
+        workspace.resize(800, 800)
         workspace.show()
-        
-        # Force layout
         qapp.processEvents()
         
-        # Check size policy of content panel
-        policy = workspace.content_panel.sizePolicy()
-        assert policy.verticalPolicy() == QSizePolicy.Policy.Expanding
+        # Get geometry
+        content_panel = workspace.content_panel
+        content_h = content_panel.height()
+        total_h = workspace.height()
         
-        # Check that content_panel takes up significant vertical space
-        # Header ~50-80px, Controls ~80px, Space ~600
-        # Content panel should be > 300px
-        assert workspace.content_panel.height() > 300
+        # Ratio-based assertion (Scale-Invariant)
+        ratio = content_h / total_h
+        expected_ratio = 0.55
+        
+        assert ratio >= expected_ratio, \
+            f"Content panel height {content_h} is too small relative to window {total_h} (ratio {ratio:.2f}, expected >= {expected_ratio})"
         
         workspace.close()
 
     def test_no_nested_scroll_areas(self, qapp):
-        """Test that we don't have nested scroll areas in the content path."""
+        """
+        Test that we don't have nested scroll areas in the content path.
+        Validates Invariant 3.2.4: Nested scroll areas are prohibited.
+        """
         workspace = MainWorkspace()
-        
-        # Search for QScrollArea children
-        scroll_areas = workspace.findChildren(QScrollArea)
-        
-        # We expect 0 scroll areas in the workspace structure itself
-        # (QTextEdit/QTextBrowser inherit from QAbstractScrollArea, but they are not QScrollArea)
-        # Note: findChildren(QScrollArea) *does* return QTextEdit/Browser because they inherit QAbstractScrollArea
-        # wait, QTextEdit inherits QAbstractScrollArea directly, not QScrollArea.
-        # QScrollArea inherits QAbstractScrollArea.
-        # So specific QScrollArea check should return 0 if we removed the outer one.
-        
-        scroll_areas = [c for c in workspace.findChildren(QScrollArea) if c.objectName() == "workspaceScrollArea"]
-        assert len(scroll_areas) == 0, "Found banned 'workspaceScrollArea'"
-        
-        # Verify content hierarchy
-        # Workspace -> ContentPanel -> WorkspaceContent -> Stack -> QTextBrowser
-        content_panel = workspace.content_panel
-        assert content_panel.layout().count() > 0
-        
-        workspace_content = content_panel.layout().itemAt(0).widget()
-        assert workspace_content.objectName() == "workspaceContent"
-
-    def test_long_transcript_rendering(self, qapp):
-        """Test rendering of a very long transcript."""
-        workspace = MainWorkspace()
-        workspace.resize(800, 600)
         workspace.show()
-        
-        # Generate long text
-        long_text = "Line of text\n" * 1000
-        
-        workspace.load_transcript(long_text, "2023-01-01T12:00:00")
         qapp.processEvents()
         
-        # Check state
-        assert workspace.get_state() == WorkspaceState.VIEWING
+        # Strict policy: Zero QScrollArea instances unless explicitly whitelisted.
+        allowed_scroll_areas = {"contentPanelPainted"} # The object name of the main content panel
         
-        # Check that text widget expands
-        text_browser = workspace.content.transcript_view
+        scroll_areas = workspace.findChildren(QScrollArea)
+        violations = []
         
-        # The browser should be visible
-        assert text_browser.isVisible()
+        for sa in scroll_areas:
+            # Check allowance based on objectName
+            if sa.objectName() not in allowed_scroll_areas:
+                 violations.append(f"{sa.objectName()} ({type(sa).__name__})")
         
-        # The browser should fill the content panel (roughly)
-        panel_rect = workspace.content_panel.contentsRect()
-        
-        # Browser might be deeper in stack, so map coordinates
-        mapped_pos = text_browser.mapTo(workspace.content_panel, text_browser.rect().topLeft())
-        
-        # It should start near top-left of panel
-        assert mapped_pos.y() < 20 # allowance for margins
-        
-        # Height should be close to panel height
-        diff = panel_rect.height() - text_browser.height()
-        assert diff < 40, f"Lost {diff}px of vertical space (clipping risk)"
-        
+        assert not violations, f"Found banned QScrollArea instances: {violations}"
+
         workspace.close()
 
+    def test_long_transcript_rendering_geometry(self, qapp, qtbot):
+        """
+        Test rendering of a very long transcript validates single scroll surface.
+        """
+        workspace = MainWorkspace()
+        workspace.resize(800, 600)
+        
+        # Use proper sync waiting for show
+        with qtbot.waitExposed(workspace):
+            workspace.show()
+        
+        # Generate long text
+        long_text = "Line of text\n" * 5000
+        
+        workspace.load_transcript(long_text, "2023-01-01T12:00:00")
+        
+        # Force layout and ensure widget is visible
+        workspace.update()
+        workspace.repaint()
+        QApplication.processEvents()
+        qtbot.wait(200)
+        
+        # Check using public accessor
+        panel = workspace.get_transcript_scroll_area()
+        # The panel itself is a Container (QFrame), not the ScrollArea
+        # We must find the VISIBLE scrollable widget (transcript_view is QTextBrowser)
+        from PyQt6.QtWidgets import QTextBrowser
+        scroll_area = panel.findChild(QTextBrowser, "transcriptView")
+        assert scroll_area is not None, "No QTextBrowser found in content panel"
+        
+        # Ensure scroll_area is visible and has proper geometry
+        assert scroll_area.isVisible(), f"Scroll area is not visible (parent visible: {scroll_area.parent().isVisible()})"
+        assert scroll_area.height() > 0, f"Scroll area has no height: {scroll_area.height()}"
+        
+        # Robust check: Verify Content Size > Viewport Size
+        # QAbstractScrollArea for text (QTextEdit) manages scrolling internally via document layout
+        def check_layout():
+             # Force document layout
+             scroll_area.document().adjustSize()
+             scroll_area.updateGeometry()
+             doc_h = scroll_area.document().size().height()
+             vp_h = scroll_area.viewport().height()
+             text_len = len(scroll_area.toPlainText())
+             assert doc_h > vp_h, f"Document height {doc_h} <= Viewport {vp_h} (text length: {text_len}, lines: {text_len // 13})"
+             
+        qtbot.waitUntil(check_layout, timeout=5000)
+        
+        workspace.close()

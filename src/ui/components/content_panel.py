@@ -1,8 +1,8 @@
 """
-Transcript Inspector Component.
+Content Panel Component.
 
 A shared detail view for displaying transcript content and metadata.
-Used in RecentView and ProjectsView.
+Used in HistoryView and ProjectsView.
 """
 
 from __future__ import annotations
@@ -23,9 +23,9 @@ if TYPE_CHECKING:
     from history_manager import HistoryEntry
 
 
-class TranscriptInspector(QWidget):
+class ContentPanel(QWidget):
     """
-    Read-only inspector for a single transcript entry.
+    Read-only display surface for a single transcript entry.
     Displays timestamp, duration, and full text content.
     """
 

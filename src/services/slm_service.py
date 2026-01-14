@@ -16,7 +16,7 @@ try:
     from utils import get_model_cache_dir
 except ImportError:
     snapshot_download = None
-    RefinementEngine = None  # type: ignore[misc]
+    RefinementEngine = None
     get_model_cache_dir = None
 
 logger = logging.getLogger(__name__)

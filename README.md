@@ -1,6 +1,6 @@
 # Vociferous
 
-**Version 2.4.1** — Documentation Polish
+**Version 2.6.0** — Navigation & Settings Architecture Overhaul
 
 Vociferous is a fast, local speech-to-text dictation application for Linux. It transcribes your voice using OpenAI's Whisper model (via faster-whisper) and copies the result directly to your clipboard. No cloud services, no account required—just press a hotkey, speak, and paste.
 
@@ -273,15 +273,36 @@ See `requirements.txt` for the full list. Key dependencies:
 
 ## Configuration
 
-Settings are managed through the Settings dialog (accessible via the menu).
+Settings are managed through the dedicated **Settings view**, accessible via the gear icon in the Icon Rail.
 
 Key options include:
 - **Device**: `auto`, `cuda`, or `cpu`
 - **Compute type**: `float16`, `float32`, or `int8`
 - **Language**: Transcription language (default: English)
-- **Activation key**: Hotkey to start/stop recording
+- **Activation key**: Hotkey to start/stop recording (configured via inline widget)
+- **Refinement**: Enable/disable AI-powered grammar refinement
+- **Refinement Profile**: Choose between Minimal, Balanced, or Strong editing intensity
 
-All settings take effect immediately.
+All settings take effect immediately and are persisted to `~/.config/vociferous/config.yaml`.
+
+### Navigation
+
+The **Icon Rail** on the left side provides quick access to all major views:
+
+- **Transcribe** (microphone icon) — Main recording interface
+- **History** (clock icon) — Browse all past transcriptions
+- **Projects** (folder icon) — Organize transcripts by topic
+- **Refinement** (sparkles icon) — Edit and refine transcripts (requires refinement enabled in settings)
+- **User** (person icon) — View lifetime metrics, version info, and keyboard shortcuts
+- **Settings** (gear icon) — Configure all application options
+
+### Additional Features
+
+From the Settings view, you can also:
+- **Export History** — Save all transcriptions to a file
+- **Clear All History** — Delete all stored transcripts (with confirmation)
+- **Restart Application** — Reload the app (useful after config changes)
+- **Exit** — Quit Vociferous
 
 ---
 
@@ -293,6 +314,7 @@ All settings take effect immediately.
 - [Recording](docs/wiki/Recording.md) — How recording and transcription work
 - [Hotkey System](docs/wiki/Hotkey-System.md) — evdev/pynput backends
 - [Troubleshooting](docs/wiki/Troubleshooting.md) — Common issues and solutions
+- [UI Architecture](docs/wiki/UI-Architecture.md) — Icon Rail navigation and view system
 
 ### Developer Documentation
 

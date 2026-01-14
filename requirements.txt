@@ -50,4 +50,5 @@ onnxruntime>=1.14.0  # Required for VAD filtering
 # Development & Testing
 pytest>=9.0.0
 pytest-timeout>=2.4.0
+pytest-qt>=4.4.0
 ruff>=0.14.0  # Linter and formatter

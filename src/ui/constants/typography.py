@@ -53,7 +53,7 @@ class Typography:
     SECTION_HEADER_SIZE = FONT_SIZE_LG  # 24px - "History", "Projects"
     DAY_HEADER_SIZE = FONT_SIZE_XS  # 11px - "Today", "Yesterday"
     TRANSCRIPT_ITEM_SIZE = FONT_SIZE_SM  # 13px - transcript previews
-    FOCUS_GROUP_NAME_SIZE = FONT_SIZE_BASE  # 16px - group names
+    PROJECT_NAME_SIZE = FONT_SIZE_BASE  # 16px - project names
 
     # Legacy aliases (deprecated - use scale names instead)
     FONT_SIZE_BODY = FONT_SIZE_BASE  # Use FONT_SIZE_BASE

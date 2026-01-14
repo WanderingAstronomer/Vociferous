@@ -34,17 +34,17 @@ class ProjectProxyModel(QSortFilterProxyModel):
     Usage:
         proxy = ProjectProxyModel()
         proxy.setSourceModel(transcription_model)
-        proxy.set_group_id(42)  # Only show entries in group 42
+        proxy.set_project_id(42)  # Only show entries in project 42
         tree_view.setModel(proxy)
     """
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._group_id: int | None = None
+        self._project_id: int | None = None
         self.setRecursiveFilteringEnabled(True)
         self.setDynamicSortFilter(
             True
-        )  # Ensure updates to group_id trigger re-filtering
+        )  # Ensure updates to project_id trigger re-filtering
 
         # Defer filter invalidation to avoid segfaults during context menu callbacks
         self._invalidate_timer = QTimer()
@@ -52,15 +52,15 @@ class ProjectProxyModel(QSortFilterProxyModel):
         self._invalidate_timer.setInterval(0)
         self._invalidate_timer.timeout.connect(self.invalidateFilter)
 
-    def set_group_id(self, group_id: int | None) -> None:
-        """Set the Project ID to filter by."""
-        if self._group_id != group_id:
-            self._group_id = group_id
+    def set_project_id(self, project_id: int | None) -> None:
+        """Set the active project ID to filter by. None shows all."""
+        if self._project_id != project_id:
+            self._project_id = project_id
             self.invalidateFilter()
 
-    def get_group_id(self) -> int | None:
-        """Get the current Project ID."""
-        return self._group_id
+    def get_project_id(self) -> int | None:
+        """Return the current project ID filter."""
+        return self._project_id
 
     def setSourceModel(self, sourceModel: QAbstractItemModel | None) -> None:
         """Set the source model and connect signals."""
@@ -72,9 +72,9 @@ class ProjectProxyModel(QSortFilterProxyModel):
         self, topLeft: QModelIndex, bottomRight: QModelIndex, roles: list[int] = []
     ) -> None:
         """Handle source data changes to trigger re-filtering if needed."""
-        # If the GroupIDRole changed, we MUST re-filter regardless of automatic dynamic sorting
-        # This ensures that assigning a group immediately removes it from the view if needed
-        if not roles or TranscriptionModel.GroupIDRole in roles:
+        # If the ProjectIDRole changed, we MUST re-filter regardless of automatic dynamic sorting
+        # This ensures that assigning a project immediately removes it from the view if needed
+        if not roles or TranscriptionModel.ProjectIDRole in roles:
             self.invalidateFilter()
 
     def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex) -> bool:
@@ -100,8 +100,8 @@ class ProjectProxyModel(QSortFilterProxyModel):
                 # Rely on setRecursiveFilteringEnabled(True) to show header if children match
                 return False
 
-            entry_group_id = source_index.data(TranscriptionModel.GroupIDRole)
-            return entry_group_id == self._group_id
+            entry_project_id = source_index.data(TranscriptionModel.ProjectIDRole)
+            return entry_project_id == self._project_id
         except Exception:
             logger.exception("Error in filterAcceptsRow")
             return True  # Default to showing row on error

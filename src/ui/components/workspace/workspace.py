@@ -2,10 +2,10 @@
 MainWorkspace - State-driven main workspace canvas.
 
 States:
-- IDLE: Welcome greeting, start button, description
-- RECORDING: Recording indicator, stop button
-- VIEWING: Transcript display, edit button
-- EDITING: Editable transcript, save button
+- IDLE: Welcome greeting
+- RECORDING: Active recording state
+- VIEWING: Transcript display
+- EDITING: Editable transcript
 """
 
 from __future__ import annotations
@@ -24,7 +24,6 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.components.workspace.content import WorkspaceContent
-from ui.components.workspace.controls import WorkspaceControls
 from ui.components.workspace.header import WorkspaceHeader
 from ui.constants import Spacing, Typography, WorkspaceState
 from ui.interaction import (
@@ -140,13 +139,6 @@ class MainWorkspace(QWidget):
         self.hotkey_hint.setFont(hint_font)
         layout.addWidget(self.hotkey_hint, 0)
 
-        layout.addSpacing(Spacing.CONTROLS_CONTENT_GAP)
-
-        # Controls component (fixed height, no stretch)
-        # REMOVED: Duplicates ActionGrid functionality
-        # self.controls = WorkspaceControls()
-        # layout.addWidget(self.controls, 0)
-
         outer_layout.addWidget(self.content_column, 1)
 
     def _setup_content_panel(self, parent_layout: QVBoxLayout) -> None:
@@ -177,8 +169,6 @@ class MainWorkspace(QWidget):
 
     def _connect_signals(self) -> None:
         """Wire up component signals to workspace handlers."""
-        # Removed controls connections (delegated to ActionGrid)
-
         self.content.textChanged.connect(self._on_text_changed)
         self.content.editRequested.connect(self._on_edit_save_click)
         self.content.deleteRequested.connect(self._on_destructive_click)
@@ -247,6 +237,10 @@ class MainWorkspace(QWidget):
                 # Metrics visibility preserved from VIEWING state
 
     # Public API
+
+    def get_transcript_scroll_area(self) -> ContentPanel:
+        """Public accessor for the transcript scroll area."""
+        return self.content_panel
 
     def set_history_manager(self, manager) -> None:
         """Set history manager for fetching transcript metadata."""

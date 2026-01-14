@@ -8,16 +8,13 @@ Tests are classified into tiers for selective execution:
 1. UI-Independent (Tier 1):
    - Pure logic, no display required
    - Can run in CI without virtual display
-   - Files: test_config.py, test_key_listener.py, test_transcription.py,
-            test_interaction_intents.py, test_history_utils.py, test_single_instance.py,
-            test_wayland_compat.py
+   - Includes config, input logic, service backends (mocked), and utilities.
 
 2. UI-Dependent (Tier 2):
    - Require Qt widget instantiation
    - Need QApplication or virtual display (xvfb)
    - May fail with SIGABRT in headless environments
-   - Files: test_ui_components.py, test_ui_integration.py, test_settings.py,
-            test_error_handling.py, test_history_manager.py
+   - includes component tests, view scaffolding, style enforcement, and geometry.
 
 Run Tier 1 only: pytest -m "not ui_dependent"
 Run Tier 2 only: pytest -m "ui_dependent"
@@ -27,10 +24,13 @@ import os
 import sys
 from contextlib import suppress
 
+from pathlib import Path
+
 import pytest
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+# Use resolve() for determinism across working directories
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 # Set Qt to use offscreen platform for headless testing
 # This prevents SIGABRT when no display server is available
@@ -62,9 +62,8 @@ def config_manager(init_config):
     """Provide ConfigManager instance."""
     return init_config
 
-
 @pytest.fixture
-def key_listener():
+def key_listener(qapp_session):
     """Create and yield a KeyListener, stopping it after test."""
     from input_handler import KeyListener
 
@@ -72,3 +71,6 @@ def key_listener():
     yield kl
     with suppress(Exception):
         kl.stop()
+        # Drain events to prevent late signal delivery
+        qapp_session.processEvents()
+

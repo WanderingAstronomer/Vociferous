@@ -85,7 +85,7 @@ class ProjectRepository:
             return False
 
     def delete(
-        self, project_id: int, move_to_ungrouped: bool = True
+        self, project_id: int, move_to_unassigned: bool = True
     ) -> bool:
         """Delete a Project."""
         try:
@@ -96,14 +96,14 @@ class ProjectRepository:
                 )
                 count = session.execute(stmt_count).scalar() or 0
 
-                if count > 0 and not move_to_ungrouped:
+                if count > 0 and not move_to_unassigned:
                     logger.warning(
                         f"Cannot delete Project {project_id}: "
                         f"contains {count} transcripts"
                     )
                     return False
 
-                if count > 0 and move_to_ungrouped:
+                if count > 0 and move_to_unassigned:
                     update_stmt = (
                         update(Transcript)
                         .where(Transcript.project_id == project_id)

@@ -1,21 +1,21 @@
 """
-Action Grid Component.
+Action Dock Component.
 
-A context-aware button grid that adapts its available actions
-based on the active View's capabilities.
+A context-aware control surface that adapts its available actions
+based on the active view's capabilities.
 """
 
 from __future__ import annotations
 
 
-from PyQt6.QtWidgets import QWidget, QGridLayout, QPushButton
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QPushButton
 
 from ui.contracts.capabilities import ViewInterface, ActionId
 
 
-class ActionGrid(QWidget):
+class ActionDock(QWidget):
     """
-    Grid of action buttons driven by the active View's capabilities.
+    Control surface driven by the active View's capabilities.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -23,7 +23,8 @@ class ActionGrid(QWidget):
         self._current_view: ViewInterface | None = None
         self._buttons: dict[ActionId, QPushButton] = {}
         
-        self._layout = QGridLayout(self)
+        # Changed from QGridLayout to QVBoxLayout for "rail" semantics
+        self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(4, 4, 4, 4)
         self._layout.setSpacing(4)
         
@@ -31,19 +32,21 @@ class ActionGrid(QWidget):
 
     def _init_buttons(self) -> None:
         """Initialize all possible action buttons (hidden by default)."""
-        # Definition order determines grid placement
         actions = [
-            (ActionId.EDIT, "Edit", 0, 0),
-            (ActionId.DELETE, "Delete", 0, 1),
-            (ActionId.REFINE, "Refine", 0, 2),
-            (ActionId.COPY, "Copy", 1, 0),
-            (ActionId.EXPORT, "Export", 1, 1),
-            (ActionId.DISCARD, "Discard", 1, 2),
-            (ActionId.SAVE, "Save", 2, 0),
-            (ActionId.CANCEL, "Cancel", 2, 1),
+            (ActionId.START_RECORDING, "Start Recording"),
+            (ActionId.STOP_RECORDING, "Stop Recording"),
+            (ActionId.CREATE_PROJECT, "Create Project"),
+            (ActionId.EDIT, "Edit"),
+            (ActionId.DELETE, "Delete"),
+            (ActionId.REFINE, "Refine"),
+            (ActionId.COPY, "Copy"),
+            (ActionId.EXPORT, "Export"),
+            (ActionId.DISCARD, "Discard"),
+            (ActionId.SAVE, "Save"),
+            (ActionId.CANCEL, "Cancel"),
         ]
 
-        for action_id, label, row, col in actions:
+        for action_id, label in actions:
             btn = QPushButton(label)
             btn.setObjectName(f"btn_{action_id.value}")
             btn.setVisible(False) # Hidden by default
@@ -51,12 +54,14 @@ class ActionGrid(QWidget):
             # Use lambda with default arg to capture loop variable
             btn.clicked.connect(lambda checked, a=action_id: self._on_button_click(a))
             
-            self._layout.addWidget(btn, row, col)
+            self._layout.addWidget(btn)
             self._buttons[action_id] = btn
+        
+        self._layout.addStretch()
 
     def set_active_view(self, view: ViewInterface | None) -> None:
         """
-        Update the grid to reflect the capabilities of the new view.
+        Update the dock to reflect the capabilities of the new view.
         If view is None, all actions are disabled/hidden.
         """
         # Disconnect from previous view if it had the signal
@@ -88,7 +93,9 @@ class ActionGrid(QWidget):
         caps = self._current_view.get_capabilities()
         
         # Update visibility/state based on capabilities
-        # Note: This is a direct mapping. Complex logic might go here later.
+        self._update_button(ActionId.START_RECORDING, caps.can_start_recording)
+        self._update_button(ActionId.STOP_RECORDING, caps.can_stop_recording)
+        self._update_button(ActionId.CREATE_PROJECT, caps.can_create_project)
         self._update_button(ActionId.EDIT, caps.can_edit)
         self._update_button(ActionId.DELETE, caps.can_delete)
         self._update_button(ActionId.REFINE, caps.can_refine)
@@ -100,6 +107,23 @@ class ActionGrid(QWidget):
         self._update_button(ActionId.DISCARD, caps.can_discard)
         self._update_button(ActionId.CANCEL, caps.can_discard) # CANCEL maps to DISCARD logic usually
 
+    def get_button(self, action_id: ActionId | str) -> QPushButton | None:
+        """
+        Get a button by ActionId for testing purposes.
+        
+        Args:
+            action_id: ActionId enum or string value of action
+            
+        Returns:
+            QPushButton if found, None otherwise
+        """
+        if isinstance(action_id, str):
+            # Convert string to ActionId
+            try:
+                action_id = ActionId(action_id)
+            except ValueError:
+                return None
+        return self._buttons.get(action_id)
 
     def _update_button(self, action_id: ActionId, visible: bool) -> None:
         if action_id in self._buttons:

@@ -20,7 +20,7 @@ import datetime
 import functools
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Tuple, Type
+from typing import TYPE_CHECKING, Any, Callable, Tuple
 
 from PyQt6.QtCore import QObject, pyqtSignal
 

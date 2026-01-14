@@ -60,10 +60,20 @@ class ViewHost(QStackedWidget):
             return
 
         index = self._views[view_id]
-        if self.currentIndex() != index:
+        changed = self.currentIndex() != index
+        
+        if changed:
             self.setCurrentIndex(index)
-            self.viewChanged.emit(view_id)
+        
+        # CRITICAL FIX: Always emit viewChanged, even if index didn't change.
+        # This ensures ActionDock syncs on initial boot when QStackedWidget
+        # auto-sets currentIndex to 0 for the first registered view.
+        self.viewChanged.emit(view_id)
+        
+        if changed:
             logger.debug(f"Switched to view '{view_id}'")
+        else:
+            logger.debug(f"Activated current view '{view_id}' (emitted signal for observers)")
     
     def get_current_view_id(self) -> str | None:
         """Return the ID of the currently active view."""
@@ -74,4 +84,14 @@ class ViewHost(QStackedWidget):
         for vid, idx in self._views.items():
             if idx == current_index:
                 return vid
+        return None
+
+    def get_view(self, view_id: str) -> QWidget | None:
+        """
+        Retrieve the view widget for a given ID.
+        Useful for testing or specific child access.
+        """
+        idx = self._views.get(view_id)
+        if idx is not None:
+            return self.widget(idx)
         return None

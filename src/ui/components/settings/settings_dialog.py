@@ -382,7 +382,7 @@ class SettingsDialog(QDialog):
 
         if section == "recording_options" and key == "activation_key":
             widget: QWidget = HotkeyWidget(self.key_listener, self)
-            widget.set_hotkey(str(value))  # type: ignore[attr-defined]
+            widget.set_hotkey(str(value))
             return widget
 
         if value_type == "bool":
@@ -577,13 +577,13 @@ class SettingsDialog(QDialog):
 
     def _apply_and_accept(self) -> None:
         """Apply changes and close dialog."""
-        if self._apply_changes():
+        if self.apply_changes():
             self._cleanup_widgets()
             self.accept()
 
     def _apply_only(self) -> None:
         """Apply changes without closing."""
-        self._apply_changes()
+        self.apply_changes()
 
     def _on_reject(self) -> None:
         """Handle cancel button with cleanup."""
@@ -601,7 +601,7 @@ class SettingsDialog(QDialog):
         self._cleanup_widgets()
         super().closeEvent(event)
 
-    def _apply_changes(self) -> bool:
+    def apply_changes(self) -> bool:
         """Write widget values back to ConfigManager.
 
         Returns True if changes were applied successfully.

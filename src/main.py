@@ -70,6 +70,15 @@ class _HotkeyDispatcher(QObject):
     deactivated = pyqtSignal()
 
 
+def _get_lock_file_path() -> str:
+    """Get the lock file path, respecting environment override."""
+    override = os.environ.get("VOCIFEROUS_LOCK_PATH")
+    if override:
+        return override
+    import tempfile
+    return os.path.join(tempfile.gettempdir(), "vociferous.lock")
+
+
 class VociferousApp(QObject):
     """Main application orchestrator coordinating all components."""
 
@@ -84,10 +93,9 @@ class VociferousApp(QObject):
 
         _install_qt_message_handler()
         # Check for existing instance BEFORE creating QApplication
-        import tempfile
 
-        lock_file = os.path.join(tempfile.gettempdir(), "vociferous.lock")
-        self.lock = QLockFile(lock_file)
+        lock_file_path = _get_lock_file_path()
+        self.lock = QLockFile(lock_file_path)
         # Allow recovery from crashes: if a prior instance dies without releasing
         # the lock, we still want users to be able to start the app.
         self.lock.setStaleLockTime(10_000)  # ms
@@ -216,9 +224,8 @@ class VociferousApp(QObject):
             self.history_manager = HistoryManager()
 
             # Main window (shows recording/transcribing state)
-            self.main_window = MainWindow(self.history_manager)
+            self.main_window = MainWindow(self.history_manager, self.key_listener)
             self.main_window.setWindowIcon(SystemTrayManager.build_icon(self.app))
-            self.main_window.on_settings_requested(self.show_settings)
 
             # Cancel recording without transcribing
             self.main_window.cancelRecordingRequested.connect(self._cancel_recording)

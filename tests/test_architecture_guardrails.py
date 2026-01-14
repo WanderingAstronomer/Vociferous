@@ -78,8 +78,19 @@ class TestSetStateGuardrails:
 
         # Parse into AST to find function locations
         tree = ast.parse(content)
+        
+        # Visitor to find method calls to .set_state
+        class SetStateVisitor(ast.NodeVisitor):
+            def __init__(self):
+                self.calls = [] # List of (lineno, func_name_context)
 
-        # Find all method definitions and their line ranges
+            def visit_Call(self, node):
+                # Check for .set_state()
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "set_state":
+                    self.calls.append(node.lineno)
+                self.generic_visit(node)
+        
+        # Visitor to map lines to function names
         class MethodFinder(ast.NodeVisitor):
             def __init__(self):
                 self.methods: dict[str, tuple[int, int]] = {}
@@ -89,34 +100,35 @@ class TestSetStateGuardrails:
                 self.methods[node.name] = (node.lineno, end_line)
                 self.generic_visit(node)
 
-        finder = MethodFinder()
-        finder.visit(tree)
+        method_finder = MethodFinder()
+        method_finder.visit(tree)
+        
+        call_visitor = SetStateVisitor()
+        call_visitor.visit(tree)
 
-        # Find all set_state calls
-        pattern = r"\.set_state\s*\("
         violations: list[str] = []
 
-        for match in re.finditer(pattern, content):
-            line_num = content[: match.start()].count("\n") + 1
-
-            # Check if this line is within the orchestration method
-            method_range = finder.methods.get("sync_recording_status_from_engine")
-            if method_range:
-                start, end = method_range
+        for line_num in call_visitor.calls:
+            # Check which function owns this line
+            owner_func = "module_level"
+            for func_name, (start, end) in method_finder.methods.items():
                 if start <= line_num <= end:
-                    continue  # Authorized
+                    owner_func = func_name
+                    break
 
-            violations.append(
-                f"  Line {line_num}: set_state outside orchestration method"
-            )
+            # Authorized methods in MainWindow that can call set_state
+            # Currently only one: sync_recording_status_from_engine
+            if owner_func not in ("sync_recording_status_from_engine",):
+                 violations.append(f"  Line {line_num} in '{owner_func}' calls set_state()")
 
         if violations:
             msg = (
-                "ARCHITECTURE VIOLATION: MainWindow calls set_state outside orchestration.\n"
-                "Only sync_recording_status_from_engine may call set_state.\n"
-                "All other state changes must go through intents.\n\n"
+                "ARCHITECTURE VIOLATION: set_state() called in unauthorized MainWindow method.\n"
+                "Only 'sync_recording_status_from_engine' (the orchestration boundary)\n"
+                "may push state changes to the UI.\n\n"
                 "Violations:\n" + "\n".join(violations)
             )
+            pytest.fail(msg)
             pytest.fail(msg)
 
 
@@ -347,16 +359,37 @@ class TestOrchestrationPrivilege:
         main_window_path = SRC_ROOT / "ui/components/main_window/main_window.py"
         content = main_window_path.read_text(encoding="utf-8")
 
-        # Find the orchestration method
-        # Look for the pattern where it checks get_state() before set_state()
-        has_idle_check = "get_state() == WorkspaceState.IDLE" in content
-        has_recording_check = "get_state() == WorkspaceState.RECORDING" in content
+        tree = ast.parse(content)
+        
+        class OrchestrationGuardVisitor(ast.NodeVisitor):
+            def __init__(self):
+                self.in_orchestration = False
+                self.checks_state = False
+            
+            def visit_FunctionDef(self, node):
+                if node.name == "sync_recording_status_from_engine":
+                    self.in_orchestration = True
+                    self.generic_visit(node)
+                    self.in_orchestration = False
+                # Do not recurse into other functions
+            
+            def visit_Compare(self, node):
+                if self.in_orchestration:
+                    # Look for comparisons involving WorkspaceState.IDLE or RECORDING
+                    for comparator in node.comparators + [node.left]:
+                        if isinstance(comparator, ast.Attribute) and comparator.attr in ("IDLE", "RECORDING"):
+                            # Assuming it comes from WorkspaceState.IDLE
+                            if isinstance(comparator.value, ast.Name) and "WorkspaceState" in comparator.value.id:
+                                self.checks_state = True
+                self.generic_visit(node)
 
-        if not (has_idle_check and has_recording_check):
+        visitor = OrchestrationGuardVisitor()
+        visitor.visit(tree)
+
+        if not visitor.checks_state:
             pytest.fail(
                 "ARCHITECTURE VIOLATION: Orchestration lacks edit-safety guards.\n"
-                "The orchestration method must check current state before transitioning:\n"
-                "  - Only IDLE → RECORDING (not from EDITING/VIEWING)\n"
-                "  - Only RECORDING → IDLE (not from EDITING/VIEWING)\n\n"
+                "The orchestration method must check current state (against WorkspaceState.IDLE/RECORDING)\n"
+                "before transitioning.\n\n"
                 "This protects users from losing edits when the engine sends status updates."
             )

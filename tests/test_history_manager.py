@@ -337,21 +337,24 @@ class TestRotation:
 
     def test_rotation_removes_oldest_entries(self, temp_db):
         """When exceeding limit, oldest entries should be removed."""
-        # Create fresh manager and set max_entries to 3
-        from utils import ConfigManager
+        from unittest.mock import patch
+        
+        # Patch ConfigManager.get_config_value to return 3 for max_history_entries
+        with patch("utils.ConfigManager.get_config_value") as mock_config:
+            # We need to handle the call signature. get_config_value(section, key)
+            def side_effect(section, key, default=None):
+                if section == "output_options" and key == "max_history_entries":
+                    return 3
+                return default
+            
+            mock_config.side_effect = side_effect
 
-        try:
-            ConfigManager.set_config_value(3, "output_options", "max_history_entries")
-        except RuntimeError:
-            # ConfigManager QObject may be deleted if test runs after QApplication cleanup
-            pytest.skip("ConfigManager unavailable (QObject deleted)")
+            # Create new history manager with clean database
+            hm = HistoryManager(history_file=temp_db)
 
-        # Create new history manager with clean database
-        hm = HistoryManager(history_file=temp_db)
-
-        # Add 5 entries
-        for i in range(5):
-            hm.add_entry(f"Entry {i}")
+            # Add 5 entries
+            for i in range(5):
+                hm.add_entry(f"Entry {i}")
 
         # Should have only 3 newest entries
         with sqlite3.connect(temp_db) as conn:
@@ -498,10 +501,10 @@ class TestProjects:
         groups = history_manager.get_projects()
         assert len(groups) == 0
 
-    def test_delete_project_moves_transcripts_to_ungrouped(
+    def test_delete_project_moves_transcripts_to_unassigned(
         self, history_manager, temp_db
     ):
-        """Deleting a group should move its transcripts to ungrouped (NULL)."""
+        """Deleting a group should move its transcripts to unassigned (NULL)."""
         # Create group and add transcript
         focus_id = history_manager.create_project("Test Group")
         entry = history_manager.add_entry("Test text")
@@ -517,29 +520,29 @@ class TestProjects:
             before_delete = cursor.fetchone()[0]
         assert before_delete == focus_id
 
-        # Delete group (default: move to ungrouped via ON DELETE SET NULL)
-        success = history_manager.delete_project(focus_id, move_to_ungrouped=True)
+        # Delete group (default: move to unassigned via ON DELETE SET NULL)
+        success = history_manager.delete_project(focus_id, move_to_unassigned=True)
         assert success is True
 
-        # Verify transcript now ungrouped
+        # Verify transcript now unassigned
         with sqlite3.connect(temp_db) as conn:
             conn.execute("PRAGMA foreign_keys = ON")  # Ensure FK enabled
             cursor = conn.execute(
                 "SELECT project_id FROM transcripts WHERE timestamp = ?",
                 (entry.timestamp,),
             )
-            group_id = cursor.fetchone()[0]
+            project_id = cursor.fetchone()[0]
 
-        assert group_id is None  # Ungrouped
+        assert project_id is None  # Unassigned
 
     def test_delete_project_blocked_when_has_transcripts(self, history_manager):
-        """Should block deletion if group has transcripts and move_to_ungrouped=False."""
+        """Should block deletion if group has transcripts and move_to_unassigned=False."""
         focus_id = history_manager.create_project("Test Group")
         entry = history_manager.add_entry("Test text")
         history_manager.assign_transcript_to_project(entry.timestamp, focus_id)
 
         # Try to delete without moving transcripts
-        success = history_manager.delete_project(focus_id, move_to_ungrouped=False)
+        success = history_manager.delete_project(focus_id, move_to_unassigned=False)
 
         assert success is False
 
@@ -567,27 +570,27 @@ class TestProjects:
 
         assert assigned_id == focus_id
 
-    def test_assign_transcript_to_ungrouped(self, history_manager, temp_db):
-        """Should move a transcript to ungrouped (NULL) when passed None."""
+    def test_assign_transcript_to_unassigned(self, history_manager, temp_db):
+        """Should move a transcript to unassigned (NULL) when passed None."""
         focus_id = history_manager.create_project("Work")
         entry = history_manager.add_entry("Test")
         history_manager.assign_transcript_to_project(entry.timestamp, focus_id)
 
-        # Move back to ungrouped
+        # Move back to unassigned
         success = history_manager.assign_transcript_to_project(
             entry.timestamp, None
         )
         assert success is True
 
-        # Verify ungrouped
+        # Verify unassigned
         with sqlite3.connect(temp_db) as conn:
             cursor = conn.execute(
                 "SELECT project_id FROM transcripts WHERE timestamp = ?",
                 (entry.timestamp,),
             )
-            group_id = cursor.fetchone()[0]
+            project_id = cursor.fetchone()[0]
 
-        assert group_id is None
+        assert project_id is None
 
     def test_assign_nonexistent_transcript(self, history_manager):
         """Should return False when assigning non-existent transcript."""
@@ -620,23 +623,23 @@ class TestProjects:
         assert work_entries[0].text == "Work task 2"  # Newest first
         assert work_entries[1].text == "Work task 1"
 
-    def test_get_ungrouped_transcripts(self, history_manager):
-        """Should return only ungrouped transcripts when passed None."""
+    def test_get_unassigned_transcripts(self, history_manager):
+        """Should return only unassigned transcripts when passed None."""
         focus_id = history_manager.create_project("Work")
 
         # Add mixed transcripts
-        history_manager.add_entry("Ungrouped 1")
+        history_manager.add_entry("Unassigned 1")
         grouped = history_manager.add_entry("Grouped")
-        history_manager.add_entry("Ungrouped 2")
+        history_manager.add_entry("Unassigned 2")
 
         history_manager.assign_transcript_to_project(grouped.timestamp, focus_id)
 
-        # Get ungrouped
+        # Get unassigned
         entries = history_manager.get_transcripts_by_project(None)
 
         assert len(entries) == 2
-        assert entries[0].text == "Ungrouped 2"
-        assert entries[1].text == "Ungrouped 1"
+        assert entries[0].text == "Unassigned 2"
+        assert entries[1].text == "Unassigned 1"
 
     def test_get_transcripts_by_project_respects_limit(self, history_manager):
         """Should respect the limit parameter."""

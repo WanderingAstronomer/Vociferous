@@ -18,7 +18,7 @@ from ui.components.icon_rail import IconRail
 from ui.components.workspace import MainWorkspace
 from ui.widgets.metrics_strip import MetricsStrip
 from ui.components.view_host import ViewHost
-from ui.constants.view_ids import VIEW_TRANSCRIBE, VIEW_RECENT
+from ui.constants.view_ids import VIEW_TRANSCRIBE, VIEW_HISTORY
 
 # Mark entire module as UI-dependent
 pytestmark = pytest.mark.ui_dependent
@@ -62,16 +62,19 @@ class TestStaticInvariants:
         Fails if hard-coded hex colors appear in production widgets (src/ui).
         Excludes: src/ui/constants/*, src/ui/styles/*
         """
-        hex_pattern = re.compile(r'["\']#[0-9a-fA-F]{3,6}["\']')
+        import ast
+        import re
+        
+        # Regex to find hex colors within string literals
+        # Matches #RGB or #RRGGBB, followed by non-word char or end of string
+        # to avoid matching #123456789 (random IDs)
+        hex_pattern = re.compile(r'#[0-9a-fA-F]{3,6}\b')
         violations = []
 
         excluded_dirs = [
             os.path.join(self.UI_DIR, "constants"),
             os.path.join(self.UI_DIR, "styles"),
         ]
-
-        # Explicitly excluded files (e.g., if any legacy files are temporarily allowed)
-        excluded_files = []
 
         for root, _, files in os.walk(self.UI_DIR):
             # Skip excluded directories
@@ -87,18 +90,25 @@ class TestStaticInvariants:
                     continue
                 
                 filepath = os.path.join(root, filename)
-                if filepath in excluded_files:
-                    continue
 
                 try:
                     with open(filepath, "r", encoding="utf-8") as f:
-                        content = f.read()
-                        matches = hex_pattern.findall(content)
-                        if matches:
-                            rel_path = os.path.relpath(filepath, self.ROOT_DIR)
-                            violations.append(f"{rel_path}: {len(matches)} hex colors found {matches[:3]}...")
-                except UnicodeDecodeError:
-                    continue  # Skip binary files if any accidentally checked
+                        tree = ast.parse(f.read(), filename=filepath)
+                except (SyntaxError, UnicodeDecodeError):
+                    continue
+                
+                class StringVisitor(ast.NodeVisitor):
+                    def visit_Constant(self, node):
+                        if isinstance(node.value, str):
+                            matches = hex_pattern.findall(node.value)
+                            if matches:
+                                # Filter out likely non-colors (e.g. #1 issue ref) if needed
+                                # But for now, any look-alike is suspect in UI code
+                                rel_path = os.path.relpath(filepath, TestStaticInvariants.ROOT_DIR)
+                                violations.append(f"{rel_path}:{node.lineno} hex colors found {matches[:3]}...")
+                        self.generic_visit(node)
+                
+                StringVisitor().visit(tree)
 
         assert not violations, (
             "Invariant 2.1 Violation: Hard-coded hex colors found in UI code.\n"
@@ -159,7 +169,7 @@ class TestRuntimeInvariants:
         view2 = QLabel("View 2")
         
         host.register_view(view1, VIEW_TRANSCRIBE)
-        host.register_view(view2, VIEW_RECENT)
+        host.register_view(view2, VIEW_HISTORY)
         
         # Activate view 1
         host.switch_to_view(VIEW_TRANSCRIBE)
@@ -168,7 +178,7 @@ class TestRuntimeInvariants:
         assert host.count() == 2
         
         # Activate view 2
-        host.switch_to_view(VIEW_RECENT)
+        host.switch_to_view(VIEW_HISTORY)
         assert host.currentWidget() == view2
 
     def test_no_nested_scroll_areas(self, qapp):

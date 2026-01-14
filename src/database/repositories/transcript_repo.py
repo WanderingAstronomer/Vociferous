@@ -362,10 +362,10 @@ class TranscriptRepository:
                 session.commit()
 
                 if result.rowcount > 0:
-                    group_str = (
-                        f"group {project_id}" if project_id else "ungrouped"
+                    project_str = (
+                        f"project {project_id}" if project_id else "unassigned"
                     )
-                    logger.info(f"Assigned transcript {timestamp} to {group_str}")
+                    logger.info(f"Assigned transcript {timestamp} to {project_str}")
                     return True
                 else:
                     logger.warning(f"Transcript {timestamp} not found")
@@ -394,7 +394,7 @@ class TranscriptRepository:
             return []
 
     def get_project_counts(self) -> dict[int | None, int]:
-        """Get transcript counts for all Projects including ungrouped."""
+        """Get transcript counts for all Projects including unassigned."""
         try:
             with self.db.get_session() as session:
                 stmt = select(

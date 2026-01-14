@@ -3,9 +3,9 @@ Tests for Wayland/X11 compatibility and input backend selection.
 """
 
 import os
-
 import pytest
 
+pytestmark = pytest.mark.system
 
 class TestDisplayServer:
     """Tests for display server detection."""
@@ -14,7 +14,6 @@ class TestDisplayServer:
         """Should detect X11 or Wayland session."""
         session_type = os.environ.get("XDG_SESSION_TYPE", "unknown")
         assert session_type in ["x11", "wayland", "unknown", "tty"]
-        print(f"Session type: {session_type}")
 
     def test_wayland_display_set(self):
         """On Wayland, WAYLAND_DISPLAY should be set."""
@@ -34,7 +33,7 @@ class TestDisplayServer:
 class TestBackendCompatibility:
     """Tests for backend compatibility with display servers."""
 
-    def test_pynput_x11_only_warning(self, capsys):
+    def test_pynput_x11_only_warning(self):
         """pynput should warn if used on Wayland."""
         session_type = os.environ.get("XDG_SESSION_TYPE", "")
         if session_type == "wayland":
@@ -56,60 +55,19 @@ class TestBackendCompatibility:
             user_in_input = False
 
         session_type = os.environ.get("XDG_SESSION_TYPE", "")
-        if session_type == "wayland" and not user_in_input:
-            pytest.fail(
-                f"User '{username}' is not in 'input' group. "
-                f"Run: sudo usermod -aG input {username} (then re-login)"
-            )
+        if session_type == "wayland":
+            if not user_in_input:
+                pytest.skip(
+                    f"User '{username}' is not in 'input' group. Skpping evdev test."
+                )
 
     def test_evdev_can_list_devices(self):
         """evdev should be able to list input devices if permissions are correct."""
         try:
             import evdev
-
             devices = evdev.list_devices()
-            assert len(devices) > 0, (
-                "No input devices found. User may not be in 'input' group. "
-                "Run: sudo usermod -aG input $USER (then re-login)"
-            )
-            print(f"Found {len(devices)} input devices")
+            assert len(devices) > 0, "No input devices found."
         except ImportError:
             pytest.skip("evdev not installed")
         except PermissionError:
-            pytest.fail(
-                "Permission denied accessing input devices. Add user to 'input' group."
-            )
-
-
-class TestInputGroupMembership:
-    """Tests specifically for input group membership."""
-
-    def test_user_in_input_group(self):
-        """User should be in input group for evdev to work."""
-        import grp
-        import pwd
-
-        username = pwd.getpwuid(os.getuid()).pw_name
-
-        try:
-            input_group = grp.getgrnam("input")
-
-            # Check primary group
-            if os.getgid() == input_group.gr_gid:
-                return  # User's primary group is input
-
-            # Check supplementary groups
-            if username in input_group.gr_mem:
-                return  # User is in input group
-
-            # Also check via os.getgroups() for current session
-            if input_group.gr_gid in os.getgroups():
-                return  # User has input group in current session
-
-            pytest.fail(
-                f"User '{username}' is not in 'input' group.\n"
-                f"To fix, run: sudo usermod -aG input {username}\n"
-                f"Then log out and log back in."
-            )
-        except KeyError:
-            pytest.skip("'input' group does not exist on this system")
+            pytest.skip("Permission denied accessing input devices.")

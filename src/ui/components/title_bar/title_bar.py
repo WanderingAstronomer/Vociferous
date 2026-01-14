@@ -1,7 +1,7 @@
 """
 TitleBar - Custom title bar widget for main window.
 
-Provides window controls, drag-to-move, and centered title with menu bar.
+Provides window controls, drag-to-move, and centered title.
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
-    QMenuBar,
     QSizePolicy,
     QToolButton,
     QWidget,
@@ -24,23 +23,18 @@ from ui.constants import defer_call
 
 
 class TitleBar(QWidget):
-    """Custom title bar with menu, drag, and window controls."""
+    """Custom title bar with drag and window controls."""
 
-    def __init__(self, window: QMainWindow, menu_bar: QMenuBar) -> None:
+    def __init__(self, window: QMainWindow) -> None:
         super().__init__(window)
         self._window = window
         self._drag_pos: QPoint | None = None
-        self._menu_bar = menu_bar
 
         self.setObjectName("titleBar")
         self.setFixedHeight(44)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(8)
-
-        self._menu_bar.setSizePolicy(
-            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
-        )
 
         self.title_label = QLabel("Vociferous", self)
         self.title_label.setObjectName("titleBarLabel")
@@ -65,15 +59,15 @@ class TitleBar(QWidget):
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(6)
 
-        self.min_btn = make_btn("minimize", "titleBarControl", "Minimize")
+        self.min_btn = make_btn("title_bar-minimize", "titleBarControl", "Minimize")
         self.min_btn.clicked.connect(self._window.showMinimized)
         button_layout.addWidget(self.min_btn)
 
-        self.max_btn = make_btn("maximize", "titleBarControl", "Maximize")
+        self.max_btn = make_btn("title_bar-maximize", "titleBarControl", "Maximize")
         self.max_btn.clicked.connect(self._toggle_maximize)
         button_layout.addWidget(self.max_btn)
 
-        self.close_btn = make_btn("close", "titleBarClose", "Close")
+        self.close_btn = make_btn("title_bar-close", "titleBarClose", "Close")
         self.close_btn.clicked.connect(self._window.close)
         button_layout.addWidget(self.close_btn)
 
@@ -85,13 +79,14 @@ class TitleBar(QWidget):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
 
+        # Left slot (empty spacer for symmetry)
         self._left_slot = QWidget(self)
         left_l = QHBoxLayout(self._left_slot)
         left_l.setContentsMargins(0, 0, 0, 0)
         left_l.setSpacing(0)
-        left_l.addWidget(self._menu_bar)
         left_l.addStretch(1)
 
+        # Right slot (window controls)
         self._right_slot = QWidget(self)
         right_l = QHBoxLayout(self._right_slot)
         right_l.setContentsMargins(0, 0, 0, 0)
@@ -196,8 +191,8 @@ class TitleBar(QWidget):
 
     def _sync_side_slots(self) -> None:
         """Match left/right slot widths so the title stays centered."""
-        menu_w = self._menu_bar.sizeHint().width()
+        # With no menu bar, we only need to match the control width
         ctrl_w = self._controls.sizeHint().width()
-        width = max(menu_w, ctrl_w)
-        self._left_slot.setFixedWidth(width)
-        self._right_slot.setFixedWidth(width)
+        self._left_slot.setFixedWidth(ctrl_w)
+        self._right_slot.setFixedWidth(ctrl_w)
+

@@ -185,3 +185,7 @@ class KeyListener:
     def update_activation_keys(self) -> None:
         """Update activation keys from the current configuration."""
         self.load_activation_keys()
+
+    def trigger_callbacks_for_tests(self, event_name: str) -> None:
+        """Expose trigger mechanism for testing."""
+        self._trigger_callbacks(event_name)

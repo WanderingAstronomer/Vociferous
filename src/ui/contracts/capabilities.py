@@ -15,6 +15,10 @@ class ActionId(StrEnum):
     DISCARD = "DISCARD"
     SAVE = "SAVE"
     CANCEL = "CANCEL"
+    # Invariant-required actions
+    START_RECORDING = "START_RECORDING"
+    STOP_RECORDING = "STOP_RECORDING"
+    CREATE_PROJECT = "CREATE_PROJECT"
 
 
 @dataclass(slots=True, frozen=True)
@@ -44,6 +48,9 @@ class Capabilities:
     can_export: bool = False
     can_save: bool = False
     can_discard: bool = False
+    can_start_recording: bool = False
+    can_stop_recording: bool = False
+    can_create_project: bool = False
 
 
 

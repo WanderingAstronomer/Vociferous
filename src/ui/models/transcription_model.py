@@ -49,7 +49,7 @@ class TranscriptionModel(QAbstractItemModel):
     - IsHeaderRole: True for day headers, False for entries
     - TimestampRole: ISO timestamp for entries
     - FullTextRole: Complete transcription text
-    - GroupIDRole: Project ID (or None)
+    - ProjectIDRole: Project ID (or None)
     - ColorRole: Project color (or None)
     """
 
@@ -58,7 +58,7 @@ class TranscriptionModel(QAbstractItemModel):
     IsHeaderRole = Qt.ItemDataRole.UserRole + 2
     TimestampRole = Qt.ItemDataRole.UserRole + 3
     FullTextRole = Qt.ItemDataRole.UserRole + 4
-    GroupIDRole = Qt.ItemDataRole.UserRole + 5
+    ProjectIDRole = Qt.ItemDataRole.UserRole + 5
     ColorRole = Qt.ItemDataRole.UserRole + 6
     IdRole = Qt.ItemDataRole.UserRole + 7
 
@@ -73,13 +73,13 @@ class TranscriptionModel(QAbstractItemModel):
         super().__init__(parent)
         self._history_manager = history_manager
         self._days: list[tuple[str, datetime, list[HistoryEntry]]] = []
-        self._group_colors: dict[int, str | None] = {}
+        self._project_colors: dict[int, str | None] = {}
         try:
             self._refresh_data()
         except Exception as e:
             print(f"Error initializing TranscriptionModel: {e}", file=sys.stderr)
             self._days = []
-            self._group_colors = {}
+            self._project_colors = {}
 
     def _make_index_data(
         self, is_day_header: bool, day_idx: int, entry_idx: int = 0
@@ -110,7 +110,7 @@ class TranscriptionModel(QAbstractItemModel):
         """Reload data from HistoryManager."""
         entries = self._history_manager.get_recent(limit=1000)
         self._days = group_entries_by_day(entries)
-        self._group_colors = self._history_manager.get_project_colors()
+        self._project_colors = self._history_manager.get_project_colors()
 
     def refresh_from_manager(self) -> None:
         """Public API for external refresh."""
@@ -118,12 +118,12 @@ class TranscriptionModel(QAbstractItemModel):
         self._refresh_data()
         self.endResetModel()
 
-    def refresh_group_colors(self) -> None:
+    def refresh_project_colors(self) -> None:
         """Refresh Project colors and notify views."""
         if not self._history_manager:
             return
 
-        self._group_colors = self._history_manager.get_project_colors()
+        self._project_colors = self._history_manager.get_project_colors()
 
         for day_idx, (_day_key, _day_dt, entries) in enumerate(self._days):
             if not entries:
@@ -198,7 +198,7 @@ class TranscriptionModel(QAbstractItemModel):
                     self.dataChanged.emit(
                         entry_model_index,
                         entry_model_index,
-                        [self.GroupIDRole, self.ColorRole],
+                        [self.ProjectIDRole, self.ColorRole],
                     )
                     self.entryUpdated.emit(timestamp)
                     return
@@ -258,7 +258,7 @@ class TranscriptionModel(QAbstractItemModel):
             print(f"Exception in index(): {e}", file=sys.stderr)
             return QModelIndex()
 
-    def parent(self, index: QModelIndex | None = None) -> QModelIndex:  # type: ignore[override]
+    def parent(self, index: QModelIndex | None = None) -> QModelIndex:
         """Get the parent of an index."""
         try:
             if index is None:
@@ -411,11 +411,11 @@ class TranscriptionModel(QAbstractItemModel):
                 return entry.text
             case self.IsHeaderRole:
                 return False
-            case self.GroupIDRole:
+            case self.ProjectIDRole:
                 return entry.project_id
             case self.ColorRole:
                 if entry.project_id is not None:
-                    return self._group_colors.get(entry.project_id)
+                    return self._project_colors.get(entry.project_id)
                 return None
             case self.IdRole:
                 return entry.id

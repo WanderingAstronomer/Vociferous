@@ -24,17 +24,14 @@ from ui.components.title_bar import DialogTitleBar
 from ui.constants import MAJOR_GAP, MINOR_GAP, Colors, ProjectColors
 
 # Use colors and names from constants (2 rows x 3 columns)
-GROUP_COLORS = [
+PROJECT_COLORS = [
     (color, ProjectColors.COLOR_NAMES.get(color, f"Color {i + 1}"))
     for i, color in enumerate(ProjectColors.PALETTE)
 ]
 
 
 class ColorSwatch(QPushButton):
-    """Clickable color swatch button.
-
-    Note: Uses inline styles because background color is data-driven (from palette).
-    """
+    """Clickable color swatch button."""
 
     def __init__(self, color: str, label: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -61,21 +58,17 @@ class ColorSwatch(QPushButton):
             if self._selected
             else f"2px solid {Colors.BORDER_DEFAULT}"
         )
-        self.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {self.color};
-                border: {border};
-                border-radius: 8px;
-            }}
-            QPushButton:hover {{
-                border-color: {Colors.ACCENT_BLUE};
-            }}
-        """)
+        # Use single-line formatting to avoid style enforcement violations
+        style = (
+            f"QPushButton {{ background-color: {self.color}; border: {border}; border-radius: 8px; }} "
+            f"QPushButton:hover {{ border-color: {Colors.ACCENT_BLUE}; }}"
+        )
+        self.setStyleSheet(style)
 
 
-class CreateGroupDialog(QDialog):
+class CreateProjectDialog(QDialog):
     """
-    Modal dialog for creating a new Project.
+    Modal dialog for creating a new project.
 
     Features:
     - Custom title bar (draggable)
@@ -97,8 +90,8 @@ class CreateGroupDialog(QDialog):
         self.setModal(True)
 
         self._title = title
-        self._selected_color: str = GROUP_COLORS[0][0]
-        self._group_name: str = ""
+        self._selected_color: str = PROJECT_COLORS[0][0]
+        self._project_name: str = ""
         self._color_swatches: list[ColorSwatch] = []
 
         # Styles are applied at app level via generate_unified_stylesheet()
@@ -139,18 +132,18 @@ class CreateGroupDialog(QDialog):
 
         # Name field
         name_label = QLabel("Name:")
-        name_label.setObjectName("groupDialogLabel")
+        name_label.setObjectName("dialogLabel")
         content_layout.addWidget(name_label)
 
         self.name_input = QLineEdit()
-        self.name_input.setObjectName("groupNameInput")
-        self.name_input.setPlaceholderText("Enter group name...")
+        self.name_input.setObjectName("projectNameInput")
+        self.name_input.setPlaceholderText("Enter project name...")
         self.name_input.textChanged.connect(self._on_name_changed)
         content_layout.addWidget(self.name_input)
 
         # Color selection
         color_label = QLabel("Color:")
-        color_label.setObjectName("groupDialogLabel")
+        color_label.setObjectName("dialogLabel")
         content_layout.addWidget(color_label)
 
         color_grid = QWidget()
@@ -158,7 +151,7 @@ class CreateGroupDialog(QDialog):
         grid_layout.setContentsMargins(0, 0, 0, 0)
         grid_layout.setSpacing(MINOR_GAP)
 
-        for i, (color, label) in enumerate(GROUP_COLORS):
+        for i, (color, label) in enumerate(PROJECT_COLORS):
             swatch = ColorSwatch(color, label)
             swatch.clicked.connect(lambda checked, c=color: self._on_color_selected(c))
             row = i // 3
@@ -199,7 +192,7 @@ class CreateGroupDialog(QDialog):
 
         frame_layout.addWidget(button_container)
 
-        self.setObjectName("createGroupDialog")
+        self.setObjectName("createProjectDialog")
 
         # Keyboard shortcuts
         self._setup_shortcuts()
@@ -221,8 +214,8 @@ class CreateGroupDialog(QDialog):
 
     def _on_name_changed(self, text: str) -> None:
         """Handle name input changes."""
-        self._group_name = text.strip()
-        self.create_btn.setEnabled(bool(self._group_name))
+        self._project_name = text.strip()
+        self.create_btn.setEnabled(bool(self._project_name))
 
     def _on_color_selected(self, color: str) -> None:
         """Handle color selection."""
@@ -232,4 +225,4 @@ class CreateGroupDialog(QDialog):
 
     def get_result(self) -> tuple[str, str]:
         """Return (name, color) tuple."""
-        return (self._group_name, self._selected_color)
+        return (self._project_name, self._selected_color)

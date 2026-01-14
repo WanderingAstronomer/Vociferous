@@ -90,7 +90,7 @@ class ProjectDelegate(QStyledItemDelegate):
         """Paint a group header with color marker."""
         text = index.data(0) or ""  # Column 0 has name now
         font = QFont(option.font)
-        font.setPointSize(Typography.FOCUS_GROUP_NAME_SIZE)
+        font.setPointSize(Typography.PROJECT_NAME_SIZE)
         font.setWeight(QFont.Weight.DemiBold)
 
         painter.save()

@@ -1,5 +1,5 @@
 """
-TranscriptList - Reusable component for listing transcripts.
+HistoryList - Reusable component for listing history.
 
 Wraps/Inherits HistoryTreeView to provide consistent behavior across views.
 """
@@ -18,9 +18,9 @@ if TYPE_CHECKING:
     pass
 
 
-class TranscriptList(HistoryTreeView):
+class HistoryList(HistoryTreeView):
     """
-    Reusable list of transcripts.
+    Reusable list of history entries.
     
     Inherits from HistoryTreeView to leverage existing drawing/model logic.
     Adds consistent selection API for Views.
@@ -30,7 +30,7 @@ class TranscriptList(HistoryTreeView):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent=parent)
-        self.setObjectName("transcriptList")
+        self.setObjectName("historyList")
         
         # Connection moved to setModel to ensure selectionModel exists
 
@@ -63,14 +63,14 @@ class TranscriptList(HistoryTreeView):
                     ids.append(t_id)
         return tuple(ids)
 
-    def set_filter_group(self, group_id: int | None) -> None:
-        """Filter the list by group ID. None means ungrouped (or all?)."""
+    def set_filter_project(self, project_id: int | None) -> None:
+        """Filter the list by project ID. None means unassigned (or all?)."""
         # If we are using a proxy, update it.
         # HistoryTreeView allows setting a model. 
         # We usually want a ProjectProxyModel here.
         model = self.model()
         if isinstance(model, ProjectProxyModel):
-            model.set_group_id(group_id)
+            model.set_project_id(project_id)
         elif isinstance(model, TranscriptionModel):
             # If we are on raw model, we might need to wrap it?
             # Ideally the caller sets up the proxy, but we can helper here.
@@ -78,7 +78,7 @@ class TranscriptList(HistoryTreeView):
 
     def set_show_all(self, show: bool = True) -> None:
         """Configure to show all items vs filtered."""
-        # For RecentView, we might want 'All' or 'Ungrouped'
+        # For HistoryView, we might want 'All' or 'Unassigned'
         model = self.model()
         if isinstance(model, ProjectProxyModel):
             if show:

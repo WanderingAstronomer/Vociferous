@@ -274,13 +274,13 @@ QTreeView::branch {{
 }}
 
 /* Project tree - transparent over background */
-QTreeWidget#projectGroupTree {{
+QTreeWidget#projectTree {{
     background-color: transparent;
     border: none;
     outline: none;
 }}
 
-QTreeWidget#projectGroupTree::item {{
+QTreeWidget#projectTree::item {{
     min-height: {Dimensions.TREE_ITEM_HEIGHT}px;
     padding: 4px 8px;
     border: none;
@@ -288,11 +288,11 @@ QTreeWidget#projectGroupTree::item {{
 
 /* Hover and selection handled by ProjectDelegate */
 
-QTreeWidget#projectGroupTree::item:selected {{
+QTreeWidget#projectTree::item:selected {{
     background-color: {c.HOVER_BG_SECTION};
 }}
 
-QTreeWidget#projectGroupTree::branch {{
+QTreeWidget#projectTree::branch {{
     background-color: transparent;
 }}
 
@@ -1027,21 +1027,21 @@ QFileDialog QToolButton:pressed {{
 }}
 
 /* Navigation (places/shortcuts) */
-QFileDialog QSidebar {{
+QFileDialog QListView {{
     background-color: {c.BG_SECONDARY};
     border: 1px solid {c.BORDER_DEFAULT};
 }}
 
-QFileDialog QSidebar::item {{
+QFileDialog QListView::item {{
     color: {c.TEXT_PRIMARY};
     padding: 6px;
 }}
 
-QFileDialog QSidebar::item:hover {{
+QFileDialog QListView::item:hover {{
     background-color: {c.HOVER_BG_ITEM};
 }}
 
-QFileDialog QSidebar::item:selected {{
+QFileDialog QListView::item:selected {{
     background-color: {c.ACCENT_PRIMARY};
     color: {c.TEXT_ON_ACCENT};
 }}
@@ -1067,7 +1067,7 @@ QFileDialog QPushButton:pressed {{
 }}
 
 /* =================================================================
-   SHELL COMPONENTS (IconRail, ActionGrid)
+   SHELL COMPONENTS (IconRail, ActionDock)
    ================================================================= */
 
 /* IconRail Container */
@@ -1100,15 +1100,15 @@ IconRail QPushButton:checked {{
     border-left: 3px solid {c.ACCENT_BLUE};
 }}
 
-/* ActionGrid */
-ActionGrid {{
+/* ActionDock */
+ActionDock {{
     background-color: {c.BG_SECONDARY};
     border-top: 1px solid {c.BORDER_DEFAULT};
     border-bottom: 1px solid {c.BORDER_DEFAULT};
     /* border-radius: 8px; */ 
 }}
 
-ActionGrid QPushButton {{
+ActionDock QPushButton {{
     background-color: {c.BG_TERTIARY};
     border: 1px solid {c.BORDER_DEFAULT};
     border-radius: 4px;
@@ -1116,12 +1116,12 @@ ActionGrid QPushButton {{
     color: {c.TEXT_PRIMARY};
 }}
 
-ActionGrid QPushButton:hover {{
+ActionDock QPushButton:hover {{
     background-color: {c.HOVER_BG_ITEM};
     border-color: {c.ACCENT_BLUE};
 }}
 
-ActionGrid QPushButton:disabled {{
+ActionDock QPushButton:disabled {{
     color: {c.TEXT_TERTIARY};
     background-color: {c.BG_PRIMARY};
     border-color: {c.BORDER_DEFAULT};
@@ -1163,19 +1163,19 @@ QFrame#previewOverlay QTextBrowser {{
 }}
 
 /* =================================================================
-   TRANSCRIPT INSPECTOR
+   CONTENT PANEL
    ================================================================= */
-TranscriptInspector #timestampLabel {{
+ContentPanel #timestampLabel {{
     font-size: 16px;
     font-weight: bold;
     color: {c.TEXT_PRIMARY};
 }}
 
-TranscriptInspector #durationLabel {{
+ContentPanel #durationLabel {{
     color: {c.TEXT_SECONDARY};
 }}
 
-TranscriptInspector QTextEdit {{
+ContentPanel QTextEdit {{
     background: {c.SURFACE};
     color: {c.TEXT_PRIMARY};
     font-size: 14px;

@@ -10,3 +10,10 @@ WAVEFORM_VISUALIZER_STYLESHEET = """
         background-color: transparent;
     }
 """
+
+MORPHING_BLOB_VISUALIZER_STYLESHEET = """
+    /* Morphing blob visualizer container */
+    QWidget#morphingBlobVisualizer {
+        background-color: transparent;
+    }
+"""

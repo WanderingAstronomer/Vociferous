@@ -2,7 +2,7 @@ from typing import Final
 
 # Standard View IDs
 VIEW_TRANSCRIBE: Final = "transcribe"
-VIEW_RECENT: Final = "recent"
+VIEW_HISTORY: Final = "history"
 VIEW_PROJECTS: Final = "projects"
 VIEW_SEARCH: Final = "search"
 VIEW_REFINE: Final = "refine"

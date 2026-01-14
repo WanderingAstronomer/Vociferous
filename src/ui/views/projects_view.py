@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QFrame, QVBoxLayout
 
-from ui.components.transcript_inspector import TranscriptInspector
+from ui.components.content_panel import ContentPanel
 from ui.constants import Colors
 from ui.constants.view_ids import VIEW_PROJECTS
 from ui.contracts.capabilities import ActionId, Capabilities, SelectionState
@@ -23,10 +23,10 @@ if TYPE_CHECKING:
 
 class ProjectsView(BaseView):
     """
-    View for managing projects and Projects.
+    View for managing projects.
 
     Layout:
-        [ Group Tree ] | [ Transcript List ] | [ Preview / Detail ]
+        [ Project Tree ] | [ Content Panel ]
     """
 
     editRequested = pyqtSignal(int)
@@ -43,11 +43,11 @@ class ProjectsView(BaseView):
 
     def refresh(self) -> None:
         """Reload the view data."""
-        if hasattr(self, "group_tree") and hasattr(self.group_tree, "load_groups"):
-            self.group_tree.load_groups()
+        if hasattr(self, "project_tree") and hasattr(self.project_tree, "load_projects"):
+            self.project_tree.load_projects()
 
     def _setup_ui(self) -> None:
-        """Initialize the master-detail layout."""
+        """Initialize the layout."""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -58,31 +58,31 @@ class ProjectsView(BaseView):
         )
 
         # Pane 1: Project Tree (Master)
-        self._groups_container = QFrame()
-        self._groups_container.setStyleSheet(pane_style)
-        groups_layout = QVBoxLayout(self._groups_container)
-        groups_layout.setContentsMargins(0, 0, 0, 0)
+        self._projects_container = QFrame()
+        self._projects_container.setStyleSheet(pane_style)
+        projects_layout = QVBoxLayout(self._projects_container)
+        projects_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.group_tree = ProjectTreeWidget()
-        groups_layout.addWidget(self.group_tree)
+        self.project_tree = ProjectTreeWidget()
+        projects_layout.addWidget(self.project_tree)
 
-        # Pane 2: Inspector (Detail)
-        self._inspector_container = QFrame()
-        self._inspector_container.setStyleSheet(pane_style)
-        inspector_layout = QVBoxLayout(self._inspector_container)
-        inspector_layout.setContentsMargins(0, 0, 0, 0)
+        # Pane 2: Content Panel (Detail)
+        self._content_container = QFrame()
+        self._content_container.setStyleSheet(pane_style)
+        content_layout = QVBoxLayout(self._content_container)
+        content_layout.setContentsMargins(0, 0, 0, 0)
 
-        self.inspector = TranscriptInspector()
-        inspector_layout.addWidget(self.inspector)
+        self.content_panel = ContentPanel()
+        content_layout.addWidget(self.content_panel)
 
         # Add to layout
-        layout.addWidget(self._groups_container, 4)
-        layout.addWidget(self._inspector_container, 6)
+        layout.addWidget(self._projects_container, 4)
+        layout.addWidget(self._content_container, 6)
 
     def _connect_signals(self) -> None:
         """Connect internal signals."""
-        self.group_tree.entrySelected.connect(self._on_entry_selected)
-        self.group_tree.itemSelectionChanged.connect(self._on_selection_changed)
+        self.project_tree.entrySelected.connect(self._on_entry_selected)
+        self.project_tree.itemSelectionChanged.connect(self._on_selection_changed)
 
     def get_view_id(self) -> str:
         return VIEW_PROJECTS
@@ -97,13 +97,14 @@ class ProjectsView(BaseView):
             can_refine=has_selection,
             can_copy=has_selection,
             can_move_to_project=has_selection,
+            can_create_project=True,
         )
 
     def get_selection(self) -> SelectionState:
-        if not hasattr(self, "group_tree") or not self.group_tree:
+        if not hasattr(self, "project_tree") or not self.project_tree:
             return SelectionState()
 
-        ids = self.group_tree.selected_ids
+        ids = self.project_tree.selected_ids
         if not ids:
             return SelectionState()
 
@@ -112,37 +113,42 @@ class ProjectsView(BaseView):
     def set_history_manager(self, manager: HistoryManager) -> None:
         """Inject history manager."""
         self._history_manager = manager
-        if hasattr(self.group_tree, "set_history_manager"):
-            self.group_tree.set_history_manager(manager)
-        if hasattr(self.group_tree, "load_groups"):
-            self.group_tree.load_groups()
+        if hasattr(self.project_tree, "set_history_manager"):
+            self.project_tree.set_history_manager(manager)
+        if hasattr(self.project_tree, "load_projects"):
+            self.project_tree.load_projects()
 
     def _on_entry_selected(self, text: str, timestamp: str) -> None:
         """Handle execution of a transcript selection from tree signal."""
-        # Update inspector
+        # Update content panel
         if self._history_manager and timestamp:
             t_id = self._history_manager.get_id_by_timestamp(timestamp)
             if t_id:
                 entry = self._history_manager.get_entry(t_id)
-                self.inspector.set_entry(entry)
+                self.content_panel.set_entry(entry)
 
         self.capabilitiesChanged.emit()
 
     def _on_selection_changed(self) -> None:
-        """Handle generic selection change (e.g. clicking a group or transcript)."""
+        """Handle generic selection change (e.g. clicking a project or transcript)."""
         # Start by notifying change
         self.capabilitiesChanged.emit()
 
-        # Inspector update logic
+        # Content update logic
         sel = self.get_selection()
         if sel.primary_id:
             if self._history_manager:
                 entry = self._history_manager.get_entry(sel.primary_id)
-                self.inspector.set_entry(entry)
+                self.content_panel.set_entry(entry)
         else:
-            self.inspector.clear()
+            self.content_panel.clear()
 
     def dispatch_action(self, action_id: ActionId) -> None:
+        if action_id == ActionId.CREATE_PROJECT:
+            if hasattr(self.project_tree, "create_new_project"):
+                self.project_tree.create_new_project()
+            return
+
         selection = self.get_selection()
         if not selection.has_selection or not selection.primary_id:
             return

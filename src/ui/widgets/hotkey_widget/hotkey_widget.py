@@ -106,7 +106,7 @@ class HotkeyWidget(QWidget):
         display, config = keycodes_to_strings(self.pressed_keys)
         normalized = normalize_hotkey_string(config)
 
-        valid, error = self._validate_hotkey(normalized)
+        valid, error = self.validate_hotkey(normalized)
         if not valid:
             self.display.setProperty("invalid", True)
             self.display.style().unpolish(self.display)
@@ -122,8 +122,12 @@ class HotkeyWidget(QWidget):
         self.display.setText(display)
         self.hotkeyChanged.emit(normalized)
 
-    def _validate_hotkey(self, hotkey: str) -> tuple[bool, str]:
-        """Validate the hotkey - allow single keys, reject only dangerous combos."""
+    @staticmethod
+    def validate_hotkey(hotkey: str) -> tuple[bool, str]:
+        """
+        Validate the hotkey - allow single keys, reject only dangerous combos.
+        Public static method to allow logic testing.
+        """
         parts = [p for p in hotkey.split("+") if p]
         if not parts:
             return False, "No keys captured"

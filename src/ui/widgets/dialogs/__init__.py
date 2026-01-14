@@ -1,6 +1,6 @@
 """Dialog widgets."""
 
-from .create_group_dialog import ColorSwatch, CreateGroupDialog
+from .create_project_dialog import ColorSwatch, CreateProjectDialog
 from .custom_dialog import (
     ConfirmationDialog,
     InputDialog,
@@ -14,7 +14,7 @@ from .metrics_explanation_dialog import MetricsExplanationDialog
 __all__ = [
     "ColorSwatch",
     "ConfirmationDialog",
-    "CreateGroupDialog",
+    "CreateProjectDialog",
     "ErrorDialog",
     "ExportDialog",
     "InputDialog",

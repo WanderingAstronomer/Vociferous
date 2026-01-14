@@ -6,14 +6,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
-from PyQt6.QtCore import Qt, pyqtSlot
+from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QTextEdit, QPushButton, QLabel, QHBoxLayout, QMessageBox
+    QWidget, QVBoxLayout, QTextEdit, QLabel, QMessageBox
 )
 
 from ui.constants import Colors, Typography
 from ui.constants.view_ids import VIEW_EDIT
+from ui.contracts.capabilities import ActionId, Capabilities
 from ui.views.base_view import BaseView
 
 if TYPE_CHECKING:
@@ -33,6 +34,20 @@ class EditView(BaseView):
 
     def get_view_id(self) -> str:
         return VIEW_EDIT
+    
+    def get_capabilities(self) -> Capabilities:
+        return Capabilities(
+            can_save=True,
+            can_discard=True
+        ) # All other False
+
+    def dispatch_action(self, action_id: ActionId) -> None:
+        if action_id == ActionId.SAVE:
+            self._save_changes()
+        elif action_id == ActionId.DISCARD or action_id == ActionId.CANCEL:
+            # Revert or close? Usually Cancel -> Back to View.
+            # Ideally navigate back.
+            pass
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -49,19 +64,7 @@ class EditView(BaseView):
         self._editor = QTextEdit()
         # Styling in unified_stylesheet.py (EditView QTextEdit)
         layout.addWidget(self._editor)
-        
-        # Actions
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
-        
-        self._btn_save = QPushButton("Save Changes")
-        self._btn_save.setObjectName("saveButton")
-        self._btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._btn_save.clicked.connect(self._save_changes)
-        
-        btn_layout.addWidget(self._btn_save)
-        layout.addLayout(btn_layout)
-
+    
     def load_transcript_by_id(self, transcript_id: int) -> None:
         self._current_id = transcript_id
         if self._history_manager:

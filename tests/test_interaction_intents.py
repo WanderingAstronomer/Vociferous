@@ -276,9 +276,12 @@ class TestEditIntentStateAssertions:
     def test_edit_rejected_in_recording(self, workspace):
         """EditTranscriptIntent must be rejected in RECORDING state."""
         from ui.constants import WorkspaceState
-
-        # Enter recording state
-        workspace.set_state(WorkspaceState.RECORDING)
+        
+        # Enter valid recording state
+        workspace.handle_intent(BeginRecordingIntent())
+        
+        # Ensure we are actually recording to validate test setup
+        assert workspace.get_state() == WorkspaceState.RECORDING
 
         intent = EditTranscriptIntent(transcript_id="test_id")
         result = workspace.handle_intent(intent)
@@ -306,7 +309,10 @@ class TestEditIntentStateAssertions:
 
         # Load transcript and enter editing
         workspace.load_transcript("Test transcript", "2026-01-11T12:00:00")
-        workspace.set_state(WorkspaceState.EDITING)
+        workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
+        
+        # Verify setup
+        assert workspace.get_state() == WorkspaceState.EDITING
 
         intent = BeginRecordingIntent()
         result = workspace.handle_intent(intent)
@@ -321,7 +327,7 @@ class TestEditIntentStateAssertions:
 
         # Load transcript and enter editing
         workspace.load_transcript("Test transcript", "2026-01-11T12:00:00")
-        workspace.set_state(WorkspaceState.EDITING)
+        workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
 
         intent = EditTranscriptIntent(transcript_id="test_id")
         result = workspace.handle_intent(intent)

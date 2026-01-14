@@ -120,6 +120,12 @@ class ConfigManager(QObject):
             leaf_key = keys[-1]
             cls._instance.configChanged.emit(section, leaf_key, value)
 
+    @classmethod
+    def console_print(cls, message: str) -> None:
+        """Print a message to the console if printing is enabled."""
+        if cls._instance and cls._instance._print_enabled:
+            print(message)
+
     @staticmethod
     def load_config_schema(schema_path: Path | str | None = None) -> dict[str, Any]:
         """Load the configuration schema from a YAML file."""
@@ -188,15 +194,14 @@ class ConfigManager(QObject):
         return _DEFAULT_CONFIG_PATH.is_file()
 
     @classmethod
-    def console_print(cls, message: str) -> None:
-        """Log a message if console output is enabled."""
-        if not cls._instance:
-            return
-        print_enabled = cls._instance.config.get("output_options", {}).get(
-            "print_to_terminal", True
-        )
-        if print_enabled:
-            logger.info(message)
+    def reset_for_tests(cls) -> None:
+        """
+        Public API to reset the singleton state for testing purposes only.
+
+        This method allows tests to clean up the singleton state without accessing private attributes directly.
+        """
+        with cls._lock:
+            cls._instance = None
 
 
 def get_model_cache_dir() -> Path:

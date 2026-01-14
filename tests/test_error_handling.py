@@ -178,6 +178,7 @@ class TestErrorDialog:
     def test_error_dialog_displays_message(self, qapp):
         """ErrorDialog should display the provided message."""
         from ui.widgets.dialogs import ErrorDialog
+        from PyQt6.QtWidgets import QLabel
 
         dialog = ErrorDialog(
             parent=None,
@@ -186,13 +187,14 @@ class TestErrorDialog:
         )
 
         # Find the message label (it has objectName "errorDialogMessage")
-        dialog.findChild(type(dialog), "")
-        # Just verify dialog was created successfully
-        assert dialog._message == "Custom error message"
+        message_label = dialog.findChild(QLabel, "errorDialogMessage")
+        assert message_label is not None
+        assert message_label.text() == "Custom error message"
 
     def test_error_dialog_toggle_details(self, qapp):
         """ErrorDialog details section should toggle visibility."""
         from ui.widgets.dialogs import ErrorDialog
+        from PyQt6.QtWidgets import QPushButton
 
         dialog = ErrorDialog(
             parent=None,
@@ -200,21 +202,25 @@ class TestErrorDialog:
             message="Error",
             details="Detailed stack trace",
         )
+        dialog.show() # Ensure widget is considered visible for child visibility checks
 
         # Initially hidden
-        assert not dialog._details_visible
+        assert not dialog.details_container.isVisible()
 
-        # Toggle
-        dialog._toggle_details()
-        assert dialog._details_visible
+        # Toggle via button click
+        toggle_btn = dialog.findChild(QPushButton, "errorDialogToggle")
+        assert toggle_btn is not None
+        toggle_btn.click()
+        assert dialog.details_container.isVisible()
 
         # Toggle again
-        dialog._toggle_details()
-        assert not dialog._details_visible
+        toggle_btn.click()
+        assert not dialog.details_container.isVisible()
 
     def test_error_dialog_copy_to_clipboard(self, qapp):
         """ErrorDialog should copy details to clipboard."""
         from ui.widgets.dialogs import ErrorDialog
+        from PyQt6.QtWidgets import QPushButton
 
         dialog = ErrorDialog(
             parent=None,
@@ -223,8 +229,13 @@ class TestErrorDialog:
             details="Stack trace details",
         )
 
-        # Should not crash
-        dialog._copy_to_clipboard()
+        # Should not crash when clicked
+        copy_btn = dialog.findChild(QPushButton, "errorDialogCopy")
+        if copy_btn: # might be None if no details? But we provided details.
+            copy_btn.click()
+        else:
+             # If details present, button should be there
+             assert False, "Copy button not found"
 
     def test_show_error_dialog_function(self, qapp):
         """show_error_dialog convenience function should work."""
@@ -375,7 +386,7 @@ class TestErrorPathIntegration:
         from ui.models.project_proxy import ProjectProxyModel
 
         proxy = ProjectProxyModel()
-        proxy.set_group_id(None)
+        proxy.set_project_id(None)
 
         # Should not crash with no source model
         result = proxy.filterAcceptsRow(0, QModelIndex())
