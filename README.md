@@ -29,7 +29,7 @@ This release introduces **Refinement Profiles** and **Dynamic VRAM Management**.
 
 ### User Interface
 - Modern PyQt6 frameless window with dark theme
-- Collapsible sidebar with focus groups, recent transcripts, and search
+- Icon Rail for persistent navigation between views
 - Real-time waveform visualization during recording
 - Metrics showing recording time, words/minute, and time saved
 

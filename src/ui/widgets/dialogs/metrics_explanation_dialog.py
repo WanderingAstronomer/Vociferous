@@ -64,15 +64,7 @@ class MetricsExplanationDialog(QDialog):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setObjectName("dialogContent")
-        scroll.setStyleSheet(f"""
-            QScrollArea {{
-                background: {Colors.SURFACE};
-                border: none;
-            }}
-            QScrollArea > QWidget > QWidget {{
-                background: {Colors.SURFACE};
-            }}
-        """)
+        # Styling handled in unified_stylesheet.py (MetricsExplanationDialog QScrollArea)
 
         content = QWidget()
         layout = QVBoxLayout(content)
@@ -250,12 +242,7 @@ class MetricsExplanationDialog(QDialog):
     def _create_section_header(self, text: str) -> QLabel:
         """Create a section header label."""
         label = QLabel(text)
-        label.setStyleSheet(f"""
-            color: {Colors.TEXT_PRIMARY};
-            font-size: {Typography.FONT_SIZE_BASE}px;
-            font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
-            padding-top: 8px;
-        """)
+        label.setProperty("styleClass", "sectionHeader")
         label.setWordWrap(True)
         return label
 
@@ -272,44 +259,14 @@ class MetricsExplanationDialog(QDialog):
         label.setTextFormat(Qt.TextFormat.RichText)
 
         if is_intro:
-            style = f"""
-                color: {Colors.TEXT_PRIMARY};
-                font-size: {Typography.FONT_SIZE_SM}px;
-                line-height: 1.5;
-                background: {Colors.SURFACE_ALT};
-                padding: 12px;
-                border-radius: {Dimensions.BORDER_RADIUS_SM}px;
-            """
+            label.setProperty("styleClass", "intro")
         elif is_example:
-            style = f"""
-                color: {Colors.TEXT_SECONDARY};
-                font-size: {Typography.FONT_SIZE_SM}px;
-                line-height: 1.6;
-                background: {Colors.BACKGROUND};
-                padding: 10px;
-                border-left: 3px solid {Colors.PRIMARY};
-                font-family: monospace;
-            """
+            label.setProperty("styleClass", "example")
         elif is_philosophy:
-            style = f"""
-                color: {Colors.TEXT_PRIMARY};
-                font-size: {Typography.FONT_SIZE_SM}px;
-                line-height: 1.5;
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 rgba(90, 159, 212, 0.2),
-                    stop:1 {Colors.SURFACE});
-                padding: 12px;
-                border-radius: {Dimensions.BORDER_RADIUS_SM}px;
-                border-left: 3px solid {Colors.PRIMARY};
-            """
+            label.setProperty("styleClass", "philosophy")
         else:
-            style = f"""
-                color: {Colors.TEXT_SECONDARY};
-                font-size: {Typography.FONT_SIZE_SM}px;
-                line-height: 1.5;
-            """
+            label.setProperty("styleClass", "body")
 
-        label.setStyleSheet(style)
         return label
 
     def _create_formula(self, formula: str) -> QLabel:
@@ -317,13 +274,5 @@ class MetricsExplanationDialog(QDialog):
         label = QLabel(formula)
         label.setWordWrap(True)
         label.setTextFormat(Qt.TextFormat.RichText)
-        label.setStyleSheet(f"""
-            color: {Colors.PRIMARY};
-            font-size: {Typography.FONT_SIZE_SM}px;
-            font-family: 'Courier New', monospace;
-            background: {Colors.BACKGROUND};
-            padding: 10px 16px;
-            border-radius: {Dimensions.BORDER_RADIUS_SM}px;
-            border: 1px solid rgba(90, 159, 212, 0.33);
-        """)
+        label.setProperty("styleClass", "formula")
         return label

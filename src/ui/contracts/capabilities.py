@@ -20,8 +20,8 @@ class ActionId(StrEnum):
 @dataclass(slots=True, frozen=True)
 class SelectionState:
     """Represents the current selection within a view."""
-    selected_ids: tuple[str, ...] = field(default_factory=tuple)
-    primary_id: str | None = None
+    selected_ids: tuple[int, ...] = field(default_factory=tuple)
+    primary_id: int | None = None
 
     @property
     def has_selection(self) -> bool:

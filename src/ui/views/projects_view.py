@@ -6,9 +6,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Tuple
 
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QFrame, QSplitter, QVBoxLayout
+from PyQt6.QtWidgets import QHBoxLayout, QFrame, QSplitter, QVBoxLayout
 
 from ui.components.transcript_list import TranscriptList
+from ui.components.transcript_inspector import TranscriptInspector
+from ui.constants import Colors
 from ui.constants.view_ids import VIEW_PROJECTS
 from ui.contracts.capabilities import Capabilities, SelectionState
 from ui.views.base_view import BaseView
@@ -35,55 +37,39 @@ class ProjectsView(BaseView):
         self._setup_ui()
 
     def _setup_ui(self) -> None:
-        """Initialize the three-pane layout."""
+        """Initialize the master-detail layout."""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._splitter = QSplitter()
-        self._splitter.setHandleWidth(1)
+        pane_style = (
+            f"background-color: {Colors.SURFACE}; "
+            f"border: 1px solid {Colors.BORDER_DEFAULT};"
+        )
 
-        # Pane 1: Focus Group Tree
+        # Pane 1: Focus Group Tree (Master)
         self._groups_container = QFrame()
+        self._groups_container.setStyleSheet(pane_style)
         groups_layout = QVBoxLayout(self._groups_container)
         groups_layout.setContentsMargins(0, 0, 0, 0)
         
         self.group_tree = FocusGroupTreeWidget()
-        # Connect signal to filter the list
-        # FocusGroupTreeWidget usually emits signals when items are clicked.
-        # It has 'itemSelectionChanged' signal from QTreeWidget
-        self.group_tree.itemSelectionChanged.connect(self._on_group_selection_changed)
+        self.group_tree.entrySelected.connect(self._on_entry_selected)
+        self.group_tree.itemSelectionChanged.connect(self._on_selection_changed)
         groups_layout.addWidget(self.group_tree)
 
-        # Pane 2: Transcript List
-        self._list_container = QFrame()
-        list_layout = QVBoxLayout(self._list_container)
-        list_layout.setContentsMargins(0, 0, 0, 0)
-        
-        self.transcript_list = TranscriptList()
-        # Connect selection
-        self.transcript_list.selectionChangedSignal.connect(self._on_list_selection_changed)
-        list_layout.addWidget(self.transcript_list)
-
-        # Pane 3: Inspector Placeholder
+        # Pane 2: Inspector (Detail)
         self._inspector_container = QFrame()
-        self._inspector_container.setStyleSheet("background-color: #FAFAFA;")
+        self._inspector_container.setStyleSheet(pane_style)
         inspector_layout = QVBoxLayout(self._inspector_container)
+        inspector_layout.setContentsMargins(0, 0, 0, 0)
         
-        self._placeholder = QLabel("Select a transcript to preview")
-        self._placeholder.setStyleSheet("color: #888;")
-        inspector_layout.addWidget(self._placeholder)
+        self.inspector = TranscriptInspector()
+        inspector_layout.addWidget(self.inspector)
 
-        self._splitter.addWidget(self._groups_container)
-        self._splitter.addWidget(self._list_container)
-        self._splitter.addWidget(self._inspector_container)
-        
-        # Initial stretch factors
-        self._splitter.setStretchFactor(0, 2)
-        self._splitter.setStretchFactor(1, 4)
-        self._splitter.setStretchFactor(2, 4)
-
-        layout.addWidget(self._splitter)
+        # Add to layout
+        layout.addWidget(self._groups_container, 4)
+        layout.addWidget(self._inspector_container, 6)
 
     def get_view_id(self) -> str:
         return VIEW_PROJECTS
@@ -101,82 +87,77 @@ class ProjectsView(BaseView):
         )
 
     def get_selection(self) -> SelectionState:
-        ids = self.transcript_list.get_selected_ids()
-        primary = ids[0] if ids else None
-        return SelectionState(selected_ids=ids, primary_id=primary)
+        if not hasattr(self, 'group_tree') or not self.group_tree:
+             return SelectionState()
+             
+        items = self.group_tree.selectedItems()
+        if not items:
+            return SelectionState()
+            
+        item = items[0]
+        # Check if it is a transcript item (not a group)
+        is_group = item.data(0, FocusGroupTreeWidget.ROLE_IS_GROUP)
+        if is_group:
+            return SelectionState()
+            
+        # Get timestamp
+        from ui.widgets.transcript_item import ROLE_TIMESTAMP_ISO
+        timestamp = item.data(0, ROLE_TIMESTAMP_ISO)
+        
+        if timestamp and self._history_manager:
+            t_id = self._history_manager.get_id_by_timestamp(timestamp)
+            if t_id is not None:
+                return SelectionState(selected_ids=(t_id,), primary_id=t_id)
+        
+        return SelectionState()
 
     def set_history_manager(self, manager: HistoryManager) -> None:
         """Inject history manager."""
         self._history_manager = manager
-        
-        # Setup models
-        self._model = TranscriptionModel(manager)
-        
-        # Setup Proxy for List - filtering by group
-        self._proxy = FocusGroupProxyModel()
-        self._proxy.setSourceModel(self._model)
-        
-        # Initially show nothing or all? Usually select first group.
-        # Let's default to no filter (or ALL) until a group is selected.
-        # Or better yet, we rely on the tree selection.
-        
-        self.transcript_list.setModel(self._proxy)
-        self.transcript_list.set_history_manager(manager)
-        
-        # Setup Groups Tree
-        # FocusGroupTreeWidget loads directly from manager usually
-        # but we should confirm if it uses a model or manual load.
-        # From reading the code earlier, it calls self.load_groups().
-        # We need to give it the history manager.
-        # It expects history_manager in constructor or set later?
-        # The constructor takes it. We initialized without it.
-        # Let's check provided context... it doesn't seem to have a setter.
-        # But it does inherit QTreeWidget.
-        # Wait, I checked FocusGroupTreeWidget code, it has `if self._history_manager: load_groups()`.
-        # I should probably access `_history_manager` or verify if I can set it.
-        # Actually creating a `set_history_manager` on the widget would be cleaner if it doesn't exist.
-        # But looking at prior context, I didn't see a `set_history_manager` in `FocusGroupTreeWidget`.
-        # I check `focus_group_tree.py` again.
-        
-        # It has `if self._history_manager: self.load_groups()`.
-        # I can just set `self.group_tree._history_manager = manager` and call `load_groups()`.
-        # This is a bit hacky (private access).
-        # Let's re-read `FocusGroupTreeWidget` file content provided earlier.
-        
-        # Ah, it doesn't show a setter method in the snippet I saw (first 100 lines).
-        # But `FocusGroupContainer` had `self.tree.set_history_manager(manager)`.
-        # Let's assume the method exists or I add it.
-        # Re-reading `FocusGroupContainer` read_file output...
-        # `self.tree.set_history_manager(manager)` is called. So `FocusGroupTreeWidget` MUST have it.
-        
         if hasattr(self.group_tree, 'set_history_manager'):
             self.group_tree.set_history_manager(manager)
+        if hasattr(self.group_tree, 'load_groups'):
             self.group_tree.load_groups()
 
-    def _on_group_selection_changed(self) -> None:
-        """Filter transcript list based on selected group."""
-        selected_items = self.group_tree.selectedItems()
-        if not selected_items:
-            # Maybe show all or nothing?
-            return
-            
-        item = selected_items[0]
-        # FocusGroupTreeWidget uses UserRoles to store ID.
-        # ROLE_GROUP_ID = Qt.ItemDataRole.UserRole + 11
-        # I need to import ROLE_GROUP_ID from somewhere or use the class constant.
+    def _on_entry_selected(self, text: str, timestamp: str) -> None:
+        """Handle execution of a transcript selection from tree signal."""
+        # Update inspector
+        if self._history_manager and timestamp:
+             t_id = self._history_manager.get_id_by_timestamp(timestamp)
+             if t_id:
+                 entry = self._history_manager.get_entry(t_id)
+                 self.inspector.set_entry(entry)
         
-        group_id = item.data(0, FocusGroupTreeWidget.ROLE_GROUP_ID)
-        
-        if self._proxy:
-            # FocusGroupProxyModel expects group_id (int) or None.
-            # If group_id is None, it means "Ungrouped" usually.
-            # Does FocusGroupProxyModel support filtering by specific ID? Yes.
-            self._proxy.set_group_id(group_id)
+        self.capabilitiesChanged.emit()
 
-    def _on_list_selection_changed(self, ids: Tuple[str, ...]) -> None:
-        """Handle internal selection changes."""
-        if ids:
-            self._placeholder.setText(f"Selected: {len(ids)} items\\nPrimary: {ids[0]}")
+    def _on_selection_changed(self) -> None:
+        """Handle generic selection change (e.g. clicking a group or transcript)."""
+        # Start by notifying change
+        self.capabilitiesChanged.emit()
+        
+        # Inspector update logic
+        sel = self.get_selection()
+        if sel.primary_id:
+            if self._history_manager:
+                 entry = self._history_manager.get_entry(sel.primary_id)
+                 self.inspector.set_entry(entry)
         else:
-            self._placeholder.setText("Select a transcript to preview")
+            self.inspector.clear()
 
+    def dispatch_action(self, action_id: ActionId) -> None:
+        selection = self.get_selection()
+        if not selection.has_selection or not selection.primary_id:
+            return
+
+        transcript_id = selection.primary_id
+
+        if action_id == ActionId.EDIT:
+            self.editRequested.emit(transcript_id)
+        elif action_id == ActionId.REFINE:
+            self.refineRequested.emit(transcript_id)
+        elif action_id == ActionId.COPY:
+             if self._history_manager:
+                entry = self._history_manager.get_entry(transcript_id)
+                if entry:
+                    from ui.utils.clipboard_utils import copy_text
+                    copy_text(entry.text)

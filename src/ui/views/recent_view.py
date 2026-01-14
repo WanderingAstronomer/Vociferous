@@ -5,36 +5,33 @@ RecentView - Flat list of recent history items.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING
 
 
-from PyQt6.QtCore import Qt, pyqtSlot, pyqtSignal
+from PyQt6.QtCore import pyqtSlot, pyqtSignal
 from PyQt6.QtWidgets import (
     QHBoxLayout, 
-    QLabel, 
     QFrame, 
-    QSplitter, 
-    QVBoxLayout, 
-    QTextEdit,
-    QWidget
+    QVBoxLayout
 )
 
 from ui.components.transcript_list import TranscriptList
+from ui.components.transcript_inspector import TranscriptInspector
+from ui.constants import Colors
 from ui.constants.view_ids import VIEW_RECENT
-from ui.contracts.capabilities import Capabilities, SelectionState
+from ui.contracts.capabilities import Capabilities, SelectionState, ActionId
 from ui.views.base_view import BaseView
 from ui.models import TranscriptionModel, FocusGroupProxyModel
-from ui.constants import Colors, Typography
 
 if TYPE_CHECKING:
-    from history_manager import HistoryManager, HistoryEntry
+    from history_manager import HistoryManager
 
 class RecentView(BaseView):
     """
     View for browsing recent transcripts.
     
     Layout:
-        [ List of Transcripts ] | [ Preview / Detail ]
+        [ List of Transcripts ] | [ Inspector ]
     """
 
     editRequested = pyqtSignal(int)
@@ -50,85 +47,58 @@ class RecentView(BaseView):
         self._setup_ui()
 
     def _setup_ui(self) -> None:
-        """Initialize the two-pane layout."""
+        """Initialize the master-detail layout."""
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self._splitter = QSplitter()
-        self._splitter.setHandleWidth(1)
+        pane_style = (
+            f"background-color: {Colors.SURFACE}; "
+            f"border: 1px solid {Colors.BORDER_DEFAULT};"
+        )
 
         # Left Pane: Transcript List
         self._list_container = QFrame()
+        self._list_container.setStyleSheet(pane_style)
         list_layout = QVBoxLayout(self._list_container)
         list_layout.setContentsMargins(0, 0, 0, 0)
         
         self.transcript_list = TranscriptList()
+        # Signals: selectionChangedSignal emits tuple[int, ...]
         self.transcript_list.selectionChangedSignal.connect(self._on_selection_changed)
         list_layout.addWidget(self.transcript_list)
 
         # Right Pane: Inspector
         self._inspector_container = QFrame()
-        # Removed hardcoded background style
+        self._inspector_container.setStyleSheet(pane_style)
         
         self._setup_inspector()
 
-        self._splitter.addWidget(self._list_container)
-        self._splitter.addWidget(self._inspector_container)
-        
-        # Set initial sizes (List=40%, Detail=60%)
-        self._splitter.setStretchFactor(0, 4)
-        self._splitter.setStretchFactor(1, 6)
-
-        layout.addWidget(self._splitter)
+        # Add to main layout (no splitter)
+        layout.addWidget(self._list_container, 4)
+        layout.addWidget(self._inspector_container, 6)
         
     def _setup_inspector(self) -> None:
         """Build the detail inspector pane."""
         layout = QVBoxLayout(self._inspector_container)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(0, 0, 0, 0) # No margins for container
         
-        # Header (Timestamp)
-        self._lbl_timestamp = QLabel("Select a transcript")
-        self._lbl_timestamp.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {Colors.TEXT_PRIMARY};")
-        layout.addWidget(self._lbl_timestamp)
-        
-        # Metadata Row
-        meta_layout = QHBoxLayout()
-        self._lbl_duration = QLabel("-")
-        self._lbl_duration.setStyleSheet(f"color: {Colors.TEXT_SECONDARY};")
-        meta_layout.addWidget(self._lbl_duration)
-        meta_layout.addStretch()
-        layout.addLayout(meta_layout)
-        
-        # Content
-        self._txt_content = QTextEdit()
-        self._txt_content.setReadOnly(True)
-        self._txt_content.setFrameShape(QFrame.Shape.NoFrame)
-        # Use transparent background for read-only look
-        self._txt_content.setStyleSheet(f"""
-            QTextEdit {{
-                background: transparent;
-                color: {Colors.TEXT_PRIMARY};
-                font-size: 14px;
-                line-height: 1.5;
-            }}
-        """)
-        layout.addWidget(self._txt_content)
+        self.inspector = TranscriptInspector()
+        layout.addWidget(self.inspector)
 
     @pyqtSlot(tuple)
-    def _on_selection_changed(self, selected_ids: tuple[str, ...]) -> None:
+    def _on_selection_changed(self, selected_ids: tuple[int, ...]) -> None:
         """Handle selection update from list."""
+        # Notify BaseView -> ActionGrid
+        self.capabilitiesChanged.emit()
+
         if not selected_ids:
-            self._lbl_timestamp.setText("Select a transcript")
-            self._lbl_duration.setText("-")
-            self._txt_content.clear()
+            self.inspector.clear()
             return
 
         # Single selection support for now
-        # Note: selected_ids are strings from proxy model, generally stringified ints
         try:
-            primary_id = int(selected_ids[0])
+            primary_id = selected_ids[0]
             self._display_entry(primary_id)
         except (ValueError, IndexError):
             pass
@@ -139,35 +109,15 @@ class RecentView(BaseView):
             return
             
         entry = self._history_manager.get_entry(entry_id)
-        if not entry:
-            return
-            
-        # Format Timestamp
-        # Assuming ISO format "YYYY-MM-DDTHH:MM:SS..."
-        try:
-            ts = entry.timestamp.split("T")
-            date_part = ts[0]
-            time_part = ts[1][:8]
-            display_ts = f"{date_part} {time_part}"
-        except Exception:
-            display_ts = entry.timestamp
-
-        self._lbl_timestamp.setText(display_ts)
-        self._lbl_duration.setText(f"Duration: {entry.duration_ms / 1000:.1f}s")
-        self._txt_content.setText(entry.text)
+        self.inspector.set_entry(entry)
 
     def dispatch_action(self, action_id: ActionId) -> None:
         """Handle actions from ActionGrid."""
         selection = self.get_selection()
-        if not selection.has_selection:
+        if not selection.has_selection or selection.primary_id is None:
             return
-            
-        # Parse ID
-        try:
-            # selection.selected_ids are strings, we need int
-            transcript_id = int(selection.selected_ids[0])
-        except (ValueError, IndexError):
-            return
+        
+        transcript_id = selection.primary_id
 
         if action_id == ActionId.EDIT:
             self.editRequested.emit(transcript_id)

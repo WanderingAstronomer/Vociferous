@@ -59,7 +59,7 @@ class WaveformVisualizer(QWidget):
         self.timer.setInterval(33)  # ~30 FPS
 
         # Widget setup - fixed height horizontal waveform
-        self.setFixedHeight(130)  # Fixed height optimized for sidebar
+        self.setFixedHeight(130)  # Fixed height optimized for view
         self.setMinimumWidth(200)  # Minimum width to show bars
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)

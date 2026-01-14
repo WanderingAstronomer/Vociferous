@@ -4,22 +4,6 @@ Stylesheet definitions for MainWindow component.
 
 from ui.constants import Colors, Dimensions, Spacing, Typography
 
-# Sidebar toggle button
-TOGGLE_BUTTON_STYLE = f"""
-    QPushButton#sidebarToggleBtn {{
-        background-color: {Colors.TRANSPARENT};
-        border: none;
-        border-radius: {Dimensions.BORDER_RADIUS_MD}px;
-        padding: {Spacing.BUTTON_PAD_V}px {Spacing.BUTTON_PAD_H}px;
-    }}
-    QPushButton#sidebarToggleBtn:hover {{
-        background-color: {Colors.HOVER_OVERLAY};
-    }}
-    QPushButton#sidebarToggleBtn:pressed {{
-        background-color: {Colors.PRESSED_OVERLAY};
-    }}
-"""
-
 # About dialog styles
 ABOUT_DIALOG_STYLE = f"""
     QDialog {{
@@ -129,4 +113,4 @@ def get_combined_stylesheet() -> str:
     """
     Return combined stylesheet for main window.
     """
-    return MAIN_WINDOW_STYLE + TOGGLE_BUTTON_STYLE
+    return MAIN_WINDOW_STYLE

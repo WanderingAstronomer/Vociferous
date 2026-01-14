@@ -12,10 +12,9 @@ from PyQt6.QtWidgets import (
     QLabel, 
     QWidget,
     QPushButton,
-    QSplitter,
-    QFrame
+    QSplitter
 )
-from PyQt6.QtCore import Qt, pyqtSlot
+from PyQt6.QtCore import Qt
 
 from ui.constants.view_ids import VIEW_REFINE
 from ui.views.base_view import BaseView
@@ -40,7 +39,7 @@ class RefineView(BaseView):
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(16)
         
         # Title
@@ -60,7 +59,7 @@ class RefineView(BaseView):
         lbl_orig.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; font-weight: bold;")
         self._txt_original = QTextEdit()
         self._txt_original.setReadOnly(True)
-        self._txt_original.setStyleSheet("background: #2D2D2D; border: 1px solid #444;")
+        self._txt_original.setStyleSheet(f"background: {Colors.BACKGROUND}; border: 1px solid {Colors.BORDER_DEFAULT};")
         left_layout.addWidget(lbl_orig)
         left_layout.addWidget(self._txt_original)
         
@@ -72,7 +71,8 @@ class RefineView(BaseView):
         lbl_new.setStyleSheet(f"color: {Colors.ACCENT_BLUE}; font-weight: bold;")
         self._txt_refined = QTextEdit()
         self._txt_refined.setReadOnly(True) # User reviews first
-        self._txt_refined.setStyleSheet("background: #25303B; border: 1px solid #3A4A5B;")
+        # Use a slightly different background for refined to distinguish
+        self._txt_refined.setStyleSheet(f"background: {Colors.SURFACE_ALT}; border: 1px solid {Colors.PRIMARY_PRESSED};")
         right_layout.addWidget(lbl_new)
         right_layout.addWidget(self._txt_refined)
         
@@ -86,7 +86,7 @@ class RefineView(BaseView):
         
         self._btn_discard = QPushButton("Discard")
         self._btn_discard.clicked.connect(self._on_discard)
-        self._btn_discard.setStyleSheet("background: #444; color: white; padding: 8px 16px;")
+        self._btn_discard.setStyleSheet(f"background: {Colors.SURFACE_ALT}; color: white; padding: 8px 16px;")
         
         self._btn_accept = QPushButton("Accept Changes")
         self._btn_accept.clicked.connect(self._on_accept)
@@ -128,4 +128,3 @@ class RefineView(BaseView):
             can_edit=False, # It's a review view
             can_delete=False
         )
-

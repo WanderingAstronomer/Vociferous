@@ -72,7 +72,7 @@ __pypackages__/
 # =========================
 
 # Agent-generated reports (keep design docs, ignore analysis artifacts)
-docs/agent_resources/agent_reports/
+docs/agent_resources/
 
 # Scraped or mirrored documentation
 docs/agent_resources/books/

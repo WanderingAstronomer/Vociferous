@@ -1,7 +1,7 @@
 """
 MainWindow - Primary application window for Vociferous.
 
-Integrates sidebar, main workspace, and metrics strip in a responsive layout.
+Integrates Icon Rail, main workspace, and metrics strip in a responsive layout.
 """
 
 from __future__ import annotations
@@ -36,14 +36,13 @@ from PyQt6.QtWidgets import (
 
 from ui.components.main_window.intent_feedback import IntentFeedbackHandler
 from ui.components.main_window.menu_builder import MenuBuilder
+from ui.components.main_window.main_window_styles import get_combined_stylesheet
 from ui.components.title_bar import TitleBar
 from ui.constants import (
-    Colors,
-    Spacing,
     WindowSize,
 )
 from ui.widgets.dialogs import ConfirmationDialog, MessageDialog, show_error_dialog
-from ui.widgets.metrics_strip import MetricsStrip
+from ui.widgets.metrics_dock import MetricsDock
 
 # New shell components
 from ui.components.icon_rail import IconRail
@@ -57,9 +56,13 @@ from ui.views.projects_view import ProjectsView
 from ui.views.search_view import SearchView
 from ui.views.refine_view import RefineView
 from ui.views.edit_view import EditView
+from ui.views.settings_view import SettingsView
+from ui.views.user_view import UserView
 from ui.constants.view_ids import (
-    VIEW_TRANSCRIBE, VIEW_RECENT, VIEW_PROJECTS, VIEW_SEARCH, VIEW_REFINE, VIEW_EDIT
+    VIEW_TRANSCRIBE, VIEW_RECENT, VIEW_PROJECTS, VIEW_SEARCH, VIEW_REFINE, VIEW_EDIT,
+    VIEW_SETTINGS, VIEW_USER
 )
+from ui.interaction.intents import InteractionIntent, NavigateIntent
 
 if TYPE_CHECKING:
     from history_manager import HistoryEntry, HistoryManager
@@ -69,14 +72,14 @@ logger = logging.getLogger(__name__)
 
 class MainWindow(QMainWindow):
     """
-    Primary application window with sidebar, workspace, and metrics strip.
+    Primary application window with Icon Rail, workspace, and metrics strip.
 
     Layout:
     ┌─────────────────────────────────────────┐
     │              Title Bar                  │
     ├─────────┬───────────────────────────────┤
-    │         │                               │
-    │ Sidebar │     Main Workspace            │
+    │  Icon   │                               │
+    │  Rail   │     Main Workspace            │
     │         │                               │
     ├─────────┴───────────────────────────────┤
     │           Metrics Strip                 │
@@ -124,71 +127,63 @@ class MainWindow(QMainWindow):
         # Title bar as menu widget
         self.setMenuWidget(self.title_bar)
 
-        # Central widget with outer padding
+        # Central widget container
         central = QWidget(self)
+        central.setObjectName("centralWidget")
         main_layout = QVBoxLayout(central)
-        main_layout.setContentsMargins(
-            Spacing.APP_OUTER, Spacing.APP_OUTER, Spacing.APP_OUTER, Spacing.APP_OUTER
-        )
-        main_layout.setSpacing(Spacing.MAJOR_GAP)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
         # Main horizontal container (Rail | Content)
         container_layout = QHBoxLayout()
-        container_layout.setSpacing(Spacing.MAJOR_GAP)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
         
         # 1. Icon Rail (Navigation)
         self.icon_rail = IconRail()
         self.icon_rail.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
         )
-        self.icon_rail.view_changed.connect(self._on_view_changed)
+        self.icon_rail.intent_emitted.connect(self._on_interaction_intent)
         container_layout.addWidget(self.icon_rail, 0)
 
         # 2. Content Column (Views + ActionGrid + Metrics)
         content_column = QVBoxLayout()
-        content_column.setSpacing(Spacing.MAJOR_GAP)
+        content_column.setContentsMargins(0, 0, 0, 0)
+        content_column.setSpacing(0)
 
         # 2.1 View Host (The stack of screens)
         self.view_host = ViewHost()
+        self.view_host.viewChanged.connect(self._on_view_changed)
         
         # 2.2 Action Grid (Contextual Actions)
         self.action_grid = ActionGrid()
 
-        # 2.3 Metrics Strip
-        self.metrics_strip = MetricsStrip(self.history_manager)
+        # 2.3 Metrics Dock
+        self.metrics_dock = MetricsDock()
+        if self.history_manager:
+            self.metrics_dock.set_history_manager(self.history_manager)
 
         # Build Layout
         content_column.addWidget(self.view_host, 1) # Expanding
         content_column.addWidget(self.action_grid, 0) # Fixed height
-        content_column.addWidget(self.metrics_strip, 0) # Fixed height
+        content_column.addWidget(self.metrics_dock, 0) # Fixed height
 
         container_layout.addLayout(content_column, 1)
         main_layout.addLayout(container_layout)
 
-        # Connect debounce timer now that metrics_strip exists
-        self._metrics_refresh_timer.timeout.connect(self.metrics_strip.refresh)
+        # Connect debounce timer
+        self._metrics_refresh_timer.timeout.connect(self.metrics_dock.refresh)
 
         central.setLayout(main_layout)
         self.setCentralWidget(central)
+        self.setStyleSheet(get_combined_stylesheet())
 
         # Status bar for intent feedback
         self._status_bar = self.statusBar()
         self._status_bar.setSizeGripEnabled(True)
         self._status_bar.hide()
         
-        self._status_bar.setStyleSheet(f"""
-            QStatusBar {{
-                background: {Colors.BACKGROUND};
-                color: {Colors.TEXT_SECONDARY};
-                border-top: 1px solid {Colors.BORDER_DEFAULT};
-                padding: 4px 8px;
-            }}
-            QStatusBar::item {{
-                border: none;
-            }}
-        """)
-        
-        from PyQt6.QtWidgets import QLabel
         self._status_label = QLabel()
         self._status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._status_bar.addWidget(self._status_label, 1)
@@ -203,6 +198,8 @@ class MainWindow(QMainWindow):
         """Instantiate and register all application views."""
         # Instantiate
         self.view_transcribe = TranscribeView()
+        self.view_transcribe.editNormalizedText.connect(self._on_transcribe_view_text_edited)
+        
         self.view_recent = RecentView() 
         if self.history_manager:
             self.view_recent.set_history_manager(self.history_manager)
@@ -218,9 +215,16 @@ class MainWindow(QMainWindow):
         # Let's direct connect for now to a stub handler or MainWindow handler.
             
         self.view_projects = ProjectsView()
+        if self.history_manager:
+            self.view_projects.set_history_manager(self.history_manager)
+
         self.view_search = SearchView()
         self.view_refine = RefineView()
         self.view_edit = EditView()
+        self.view_settings = SettingsView()
+        self.view_user = UserView()
+        if self.history_manager:
+            self.view_edit.set_history_manager(self.history_manager)
         
         # Register
         self.view_host.register_view(self.view_transcribe, VIEW_TRANSCRIBE)
@@ -229,6 +233,8 @@ class MainWindow(QMainWindow):
         self.view_host.register_view(self.view_search, VIEW_SEARCH)
         self.view_host.register_view(self.view_refine, VIEW_REFINE)
         self.view_host.register_view(self.view_edit, VIEW_EDIT)
+        self.view_host.register_view(self.view_settings, VIEW_SETTINGS)
+        self.view_host.register_view(self.view_user, VIEW_USER)
         
         # Map for ActionGrid lookup
         self._view_map = {
@@ -238,18 +244,33 @@ class MainWindow(QMainWindow):
             VIEW_SEARCH: self.view_search,
             VIEW_REFINE: self.view_refine,
             VIEW_EDIT: self.view_edit,
+            VIEW_SETTINGS: self.view_settings,
+            VIEW_USER: self.view_user,
         }
 
         # Set default view
+        # Triggering switch_to_view will emit signal and run _on_view_changed
         self.icon_rail.set_active_view(VIEW_TRANSCRIBE)
-        self._on_view_changed(VIEW_TRANSCRIBE)
+        self.view_host.switch_to_view(VIEW_TRANSCRIBE)
+
+    @pyqtSlot(InteractionIntent)
+    def _on_interaction_intent(self, intent: InteractionIntent) -> None:
+        """Dispatcher for all intents bubbling up from UI components."""
+        if isinstance(intent, NavigateIntent):
+            self._on_navigation_requested(intent.target_view_id)
+
+    @pyqtSlot(str)
+    def _on_navigation_requested(self, view_id: str) -> None:
+        """Handle navigation request from IconRail or other sources."""
+        self.view_host.switch_to_view(view_id)
 
     @pyqtSlot(str)
     def _on_view_changed(self, view_id: str) -> None:
-        """Handle view switching logic."""
-        self.view_host.switch_to_view(view_id)
+        """Handle authoritative view change event."""
+        # Update Icon Rail visual state
         self.icon_rail.set_active_view(view_id)
         
+        # Update Action Grid capability context
         current_view = self._view_map.get(view_id)
         if current_view:
             self.action_grid.set_active_view(current_view)
@@ -266,27 +287,55 @@ class MainWindow(QMainWindow):
             on_focus_history=self._switch_to_history, # Modified
             on_about=self._show_about_dialog,
             on_metrics_explanation=self._show_metrics_explanation,
-            on_toggle_sidebar=lambda: None, # Deprecated
         )
 
         # Connect metrics strip collapse signal
-        self.metrics_strip.collapsedChanged.connect(self._on_metrics_collapsed_changed)
+        # self.metrics_strip.collapsedChanged.connect(self._on_metrics_collapsed_changed)
 
     # Slot handlers
+
+    @pyqtSlot(int, str)
+    def _on_transcribe_view_text_edited(self, transcript_id: int, new_text: str) -> None:
+        """Handle text edits from the live transcription view."""
+        if not self.history_manager:
+            return
+        
+        try:
+            self.history_manager.update_text(transcript_id, new_text)
+            self.view_recent.refresh()
+            if hasattr(self, "view_projects"):
+                self.view_projects.refresh()
+        except Exception as e:
+            logger.exception("Failed to update transcript text from live view")
+            show_error_dialog("Update Failed", f"Could not save changes: {e}", self)
 
     @pyqtSlot(int)
     def _on_edit_view_requested(self, transcript_id: int) -> None:
         """Switch to EditView for a specific transcript."""
-        self._on_view_changed(VIEW_EDIT)
+        self.view_host.switch_to_view(VIEW_EDIT)
         if hasattr(self.view_edit, "load_transcript_by_id"):
              self.view_edit.load_transcript_by_id(transcript_id)
+
+
+    def load_entry_for_edit(self, text: str, timestamp: str) -> None:
+        """Load an entry into the edit view by timestamp."""
+        if not self.history_manager:
+            return
+            
+        # Find ID by timestamp
+        transcript_id = self.history_manager.get_id_by_timestamp(timestamp)
+        if transcript_id is not None:
+            self._on_edit_view_requested(transcript_id)
+        else:
+            logger.warning(f"Could not find transcript for timestamp {timestamp}")
 
     @pyqtSlot(int)
     def _on_refine_view_requested(self, transcript_id: int) -> None:
         """Switch to RefineView for a specific transcript."""
-        self._on_view_changed(VIEW_REFINE)
+        self.view_host.switch_to_view(VIEW_REFINE)
         if hasattr(self.view_refine, "load_transcript_by_id"):
              self.view_refine.load_transcript_by_id(transcript_id)
+
 
     @pyqtSlot()
     def _on_start_requested(self) -> None:
@@ -324,15 +373,15 @@ class MainWindow(QMainWindow):
         
     def show_refinement(self, transcript_id: int, original: str, refined: str) -> None:
         """Switch to RefineView and show comparison."""
-        self._on_view_changed(VIEW_REFINE)
+        self.view_host.switch_to_view(VIEW_REFINE)
         if hasattr(self.view_refine, "set_comparison"):
             self.view_refine.set_comparison(transcript_id, original, refined)
 
 
+
     def _toggle_metrics(self, checked: bool) -> None:
         try:
-            if self.metrics_strip.is_collapsed() == checked:
-                self.metrics_strip.toggle_collapse()
+            self.metrics_dock.setVisible(checked)
         except Exception:
             logger.exception("Error toggling metrics")
 
@@ -507,11 +556,12 @@ class MainWindow(QMainWindow):
         """
         match status:
             case "recording":
-                self._on_view_changed(VIEW_TRANSCRIBE)
+                self.view_host.switch_to_view(VIEW_TRANSCRIBE)
             case "transcribing":
                 pass
             case "idle" | "error" | _:
                 pass
+
 
     def update_audio_level(self, level: float) -> None:
         """Route audio levels to the transcribe view if active."""
@@ -521,8 +571,10 @@ class MainWindow(QMainWindow):
     def display_transcription(self, entry: HistoryEntry) -> None:
         # Debounce metrics refresh to avoid blocking on every transcript
         self._metrics_refresh_timer.start()
-        # Optionally switch to edit view to show result
-        # self._on_view_changed(VIEW_EDIT) # Disabled for now to prevent jarring switches
+        
+        # Show in TranscribeView for immediate editing
+        if hasattr(self, "view_transcribe"):
+             self.view_transcribe.set_transcript(entry.id, entry.text)
 
     def show_and_raise(self) -> None:
         self.show()
@@ -599,7 +651,7 @@ class MainWindow(QMainWindow):
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 if self.history_manager:
                     self.history_manager.clear()
-                self.metrics_strip.refresh()
+                self.metrics_dock.refresh()
                 if hasattr(self, "view_recent"):
                      # RecentView should refresh itself via history signals usually
                      pass
@@ -617,7 +669,7 @@ class MainWindow(QMainWindow):
 
     def _switch_to_history(self) -> None:
         """Switch to Recent View (History)."""
-        self._on_view_changed(VIEW_RECENT)
+        self.view_host.switch_to_view(VIEW_RECENT)
 
     # Note: Sidebar logic removed.
     def _toggle_sidebar(self) -> None:
@@ -634,13 +686,13 @@ class MainWindow(QMainWindow):
             self.resize(WindowSize.BASE, WindowSize.BASE)
             self._center_on_screen()
 
-        metrics_collapsed = self.settings.value("metrics_collapsed", False)
-        if metrics_collapsed == "true" or metrics_collapsed is True:
-            self.metrics_strip.set_collapsed(True)
+        metrics_visible = self.settings.value("metrics_visible", True)
+        if str(metrics_visible).lower() == "false":
+            self.metrics_dock.hide()
 
     def _save_state(self) -> None:
         self.settings.setValue("geometry", self.saveGeometry())
-        self.settings.setValue("metrics_collapsed", self.metrics_strip.is_collapsed())
+        self.settings.setValue("metrics_visible", self.metrics_dock.isVisible())
 
     def _center_on_screen(self) -> None:
         screen = self.screen().availableGeometry()

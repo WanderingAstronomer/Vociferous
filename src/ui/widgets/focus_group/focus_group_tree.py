@@ -126,21 +126,7 @@ class FocusGroupTreeWidget(QTreeWidget):
 
         # Explicitly disable default selection painting to prevent "blue rectangle"
         # The delegate handles all background painting.
-        self.setStyleSheet("""
-            QTreeView {
-                outline: 0;
-                background-color: transparent;
-                selection-background-color: transparent;
-            }
-            QTreeView::item:focus {
-                border: none;
-                outline: none;
-            }
-            QTreeView::item:selected {
-                background-color: transparent;
-                border: none;
-            }
-        """)
+        # Styling moved to unified_stylesheet.py (QTreeView#focusGroupTree)
 
         # Custom delegate for accent bar rendering
         self.setItemDelegate(FocusGroupDelegate(self))

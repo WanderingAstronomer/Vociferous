@@ -1181,4 +1181,335 @@ ActionGrid QPushButton:disabled {{
     border-color: {c.BORDER_DEFAULT};
 }}
 
+/* =================================================================
+   STATUS BAR
+   ================================================================= */
+QStatusBar {{
+    background: {c.BACKGROUND};
+    color: {c.TEXT_SECONDARY};
+    border-top: 1px solid {c.BORDER_DEFAULT};
+    padding: 4px 8px;
+}}
+
+QStatusBar::item {{
+    border: none;
+}}
+
+/* =================================================================
+   OVERLAYS
+   ================================================================= */
+QFrame#previewOverlay {{
+    background-color: {c.SURFACE};
+    border: 1px solid {c.BORDER_LIGHT};
+    border-radius: 6px;
+}}
+
+QFrame#previewOverlay QLabel {{
+    color: {c.TEXT_PRIMARY};
+    font-weight: bold;
+}}
+
+QFrame#previewOverlay QTextBrowser {{
+    background-color: {c.BACKGROUND};
+    border: none;
+    color: {c.TEXT_PRIMARY};
+    font-family: "Monospace";
+}}
+
+/* =================================================================
+   TRANSCRIPT INSPECTOR
+   ================================================================= */
+TranscriptInspector #timestampLabel {{
+    font-size: 16px;
+    font-weight: bold;
+    color: {c.TEXT_PRIMARY};
+}}
+
+TranscriptInspector #durationLabel {{
+    color: {c.TEXT_SECONDARY};
+}}
+
+TranscriptInspector QTextEdit {{
+    background: {c.SURFACE};
+    color: {c.TEXT_PRIMARY};
+    font-size: 14px;
+}}
+
+/* =================================================================
+   EDIT VIEW
+   ================================================================= */
+EditView QTextEdit {{
+    background-color: {c.SURFACE};
+    color: {c.TEXT_PRIMARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 14px;
+    line-height: 1.5;
+}}
+
+EditView #saveButton {{
+    background-color: {c.PRIMARY};
+    color: {c.TEXT_ON_ACCENT};
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-weight: bold;
+    border: none;
+}}
+
+EditView #saveButton:hover {{
+    background-color: {c.PRIMARY_HOVER};
+}}
+
+/* =================================================================
+   TRANSCRIBE VIEW
+   ================================================================= */
+TranscribeView #headerPanel {{
+    background-color: {c.SURFACE};
+    border-bottom: 1px solid {c.BORDER_DEFAULT};
+}}
+
+TranscribeView #welcomeLabel {{
+    color: {c.TEXT_PRIMARY};
+    font-weight: bold;
+}}
+
+TranscribeView #motdLabel {{
+    color: {c.TEXT_SECONDARY};
+    font-style: italic;
+}}
+
+/* =================================================================
+   SEARCH VIEW
+   ================================================================= */
+SearchView QLineEdit {{
+    background-color: {c.SURFACE};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: 4px;
+    padding: 0 8px;
+    font-size: 14px;
+    color: {c.TEXT_PRIMARY};
+}}
+
+SearchView QLineEdit:focus {{
+    border: 1px solid {c.ACCENT_PRIMARY};
+}}
+
+SearchView QTableView {{
+    background-color: {c.BACKGROUND};
+    border: none;
+    gridline-color: {c.BORDER_DEFAULT};
+}}
+
+SearchView QTableView::item:selected {{
+    background-color: {c.ACCENT_PRIMARY}40;
+    color: {c.TEXT_PRIMARY};
+}}
+
+TranscribeView QTextEdit {{
+    background-color: {c.SURFACE};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: 8px;
+    padding: 16px;
+    color: {c.TEXT_PRIMARY};
+    font-size: 16px;
+}}
+
+/* =================================================================
+   METRICS DOCK
+   ================================================================= */
+#metricsDock {{
+    background-color: {c.SURFACE};
+    border-top: 1px solid {c.BORDER_DEFAULT};
+}}
+
+#metricsDock QLabel {{
+    color: {c.TEXT_SECONDARY};
+    font-family: "Segoe UI";
+    font-size: 13px;
+}}
+
+#metricsDock #MetricValue {{
+    color: {c.TEXT_PRIMARY};
+    font-weight: bold;
+    margin-left: 4px;
+}}
+
+/* =================================================================
+   FOCUS GROUP TREE
+   ================================================================= */
+QTreeView#focusGroupTree {{
+    outline: 0;
+    border: none;
+    background-color: transparent;
+    selection-background-color: transparent;
+}}
+
+QTreeView#focusGroupTree::item:focus {{
+    border: none;
+    outline: none;
+}}
+
+QTreeView#focusGroupTree::item:selected {{
+    background-color: transparent;
+    border: none;
+}}
+
+/* =================================================================
+   WORKSPACE CONTENT (CAROUSEL)
+   ================================================================= */
+QWidget#carouselContainer {{
+    background-color: {c.BACKGROUND};
+    border-bottom: 1px solid {c.BORDER_DEFAULT};
+}}
+
+QWidget#carouselContainer QPushButton {{
+    background: transparent;
+    border: none;
+    font-weight: bold;
+    color: {c.TEXT_PRIMARY};
+    border-radius: 4px;
+}}
+
+QWidget#carouselContainer QPushButton:hover {{
+    background: {c.SURFACE_ALT};
+}}
+
+QWidget#carouselContainer QPushButton:disabled {{
+    color: {c.TEXT_TERTIARY};
+}}
+
+QWidget#carouselContainer QLabel {{
+    color: {c.TEXT_SECONDARY};
+}}
+
+/* =================================================================
+   DIALOGS
+   ================================================================= */
+/* Metrics Explanation */
+MetricsExplanationDialog QScrollArea {{
+    background: {c.SURFACE};
+    border: none;
+}}
+
+MetricsExplanationDialog QScrollArea > QWidget > QWidget {{
+    background: {c.SURFACE};
+}}
+
+MetricsExplanationDialog QLabel[styleClass="sectionHeader"] {{
+    color: {c.TEXT_PRIMARY};
+    font-size: 14px;
+    font-weight: bold;
+    padding-top: 8px;
+}}
+
+MetricsExplanationDialog QLabel[styleClass="intro"] {{
+    color: {c.TEXT_PRIMARY};
+    font-size: 13px;
+    line-height: 1.5;
+    background: {c.SURFACE_ALT};
+    padding: 12px;
+    border-radius: 4px;
+}}
+
+MetricsExplanationDialog QLabel[styleClass="example"] {{
+    color: {c.TEXT_SECONDARY};
+    font-size: 13px;
+    line-height: 1.6;
+    background: {c.BACKGROUND};
+    padding: 10px;
+    border-left: 3px solid {c.PRIMARY};
+    font-family: monospace;
+}}
+
+MetricsExplanationDialog QLabel[styleClass="philosophy"] {{
+    color: {c.TEXT_PRIMARY};
+    font-size: 13px;
+    line-height: 1.5;
+    background: {c.SURFACE_ALT}; /* Simplified gradient */
+    padding: 12px;
+    border-radius: 4px;
+    border-left: 3px solid {c.PRIMARY};
+}}
+
+MetricsExplanationDialog QLabel[styleClass="body"] {{
+    color: {c.TEXT_SECONDARY};
+    font-size: 13px;
+    line-height: 1.5;
+}}
+
+MetricsExplanationDialog QLabel[styleClass="formula"] {{
+    color: {c.PRIMARY};
+    font-size: 13px;
+    font-family: 'Courier New', monospace;
+    background: {c.BACKGROUND};
+    padding: 10px 16px;
+    border-radius: 4px;
+    border: 1px solid rgba(90, 159, 212, 0.33);
+}}
+
+/* Error Dialog */
+QLabel#errorDialogIcon {{
+    color: {c.DESTRUCTIVE};
+    padding: 0;
+    margin: 0;
+    font-size: {Typography.FONT_SIZE_XL}px;
+    font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
+}}
+
+QPlainTextEdit#errorDialogDetails {{
+    color: {c.TEXT_PRIMARY};
+    background-color: {c.SURFACE_ALT};
+}}
+
+QPushButton#errorDialogToggle {{
+    background-color: transparent;
+    color: {c.TEXT_SECONDARY};
+    border: none;
+    text-align: left;
+    padding: 4px 8px;
+}}
+
+QPushButton#errorDialogToggle:hover {{
+    color: {c.TEXT_PRIMARY};
+}}
+
+QPushButton#errorDialogCopy, QPushButton#errorDialogViewLogs {{
+    color: white;
+}}
+
+/* Dialog Buttons (General) */
+/* Targeted at QDialogButtonBox buttons styled as primary/secondary */
+QPushButton[role="accept"] {{
+    background-color: {c.PRIMARY};
+    color: {c.TEXT_ON_ACCENT};
+    border: none;
+    border-radius: 6px; /* Dimensions.BORDER_RADIUS */
+    padding: 12px 24px;
+    font-weight: bold;
+    min-width: 100px;
+}}
+
+QPushButton[role="accept"]:hover {{
+    background-color: {c.PRIMARY_HOVER};
+}}
+
+QPushButton[role="accept"]:pressed {{
+    background-color: {c.PRIMARY_PRESSED};
+}}
+
+QPushButton[role="reject"] {{
+    background-color: {c.BG_TERTIARY};
+    color: {c.TEXT_PRIMARY};
+    border: 1px solid {c.BORDER_DEFAULT};
+    border-radius: 6px;
+    padding: 12px 24px;
+    font-weight: bold;
+    min-width: 100px;
+}}
+
+QPushButton[role="reject"]:hover {{
+    background-color: {c.HOVER_BG_ITEM};
+}}
+
 """

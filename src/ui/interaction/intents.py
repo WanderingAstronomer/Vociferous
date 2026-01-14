@@ -19,7 +19,7 @@ class IntentSource(Enum):
     """Origin of an intent (for observability, not routing)."""
 
     CONTROLS = auto()  # Workspace control buttons
-    SIDEBAR = auto()  # Sidebar transcript list
+    ICON_RAIL = auto()  # Icon Rail navigation
     HOTKEY = auto()  # Global hotkey
     CONTEXT_MENU = auto()  # Right-click menu
     INTERNAL = auto()  # System-initiated (e.g., post-transcription)
@@ -35,6 +35,13 @@ class InteractionIntent:
     """
 
     source: IntentSource = IntentSource.CONTROLS
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NavigateIntent(InteractionIntent):
+    """User desires to switch the active view."""
+
+    target_view_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,16 +76,8 @@ class ViewTranscriptIntent(InteractionIntent):
         ""  # Transcript identifier (required but has default for inheritance)
     )
     text: str = ""  # Transcript content (required but has default for inheritance)
-    source: IntentSource = field(default=IntentSource.SIDEBAR)
+    source: IntentSource = field(default=IntentSource.ICON_RAIL)
     variants: list = field(default_factory=list)
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class SwitchViewIntent(InteractionIntent):
-    """User desires to switch the main view."""
-
-    view_id: str
-    context: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

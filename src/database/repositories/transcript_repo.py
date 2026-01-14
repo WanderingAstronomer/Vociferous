@@ -22,6 +22,7 @@ class TranscriptRepository:
             duration_ms=transcript.duration_ms,
             speech_duration_ms=transcript.speech_duration_ms,
             focus_group_id=transcript.focus_group_id,
+            id=transcript.id,
         )
 
     def add_entry(

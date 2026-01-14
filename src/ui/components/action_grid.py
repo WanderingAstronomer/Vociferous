@@ -7,10 +7,8 @@ based on the active View's capabilities.
 
 from __future__ import annotations
 
-from typing import cast
 
-from PyQt6.QtWidgets import QWidget, QGridLayout, QPushButton, QSizePolicy
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QWidget, QGridLayout, QPushButton
 
 from ui.contracts.capabilities import ViewInterface, ActionId
 
@@ -61,6 +59,13 @@ class ActionGrid(QWidget):
         Update the grid to reflect the capabilities of the new view.
         If view is None, all actions are disabled/hidden.
         """
+        # Disconnect from previous view if it had the signal
+        if self._current_view and hasattr(self._current_view, "capabilitiesChanged"):
+            try:
+                self._current_view.capabilitiesChanged.disconnect(self._refresh_capabilities)
+            except Exception:
+                pass
+
         self._current_view = view
         
         if view is None:
@@ -68,8 +73,19 @@ class ActionGrid(QWidget):
             self.setEnabled(False)
             return
 
+        # Connect to new view
+        if hasattr(view, "capabilitiesChanged"):
+             view.capabilitiesChanged.connect(self._refresh_capabilities)
+
         self.setEnabled(True)
-        caps = view.get_capabilities()
+        self._refresh_capabilities()
+
+    def _refresh_capabilities(self) -> None:
+        """Fetch capabilities from current view and update buttons."""
+        if not self._current_view:
+            return
+
+        caps = self._current_view.get_capabilities()
         
         # Update visibility/state based on capabilities
         # Note: This is a direct mapping. Complex logic might go here later.

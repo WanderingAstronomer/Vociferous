@@ -15,6 +15,7 @@ from enum import IntEnum
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QCursor, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMenu,
@@ -79,26 +80,7 @@ class WorkspaceContent(QWidget):
         self.carousel_container.setObjectName("carouselContainer")
         self.carousel_container.hide()
 
-        # Carousel Styling
-        self.carousel_container.setStyleSheet(f"""
-            QWidget#carouselContainer {{
-                background-color: {Colors.BACKGROUND};
-                border-bottom: 1px solid {Colors.BORDER_DEFAULT};
-            }}
-            QPushButton {{
-                background: transparent;
-                border: none;
-                font-weight: bold;
-                color: {Colors.TEXT_PRIMARY};
-                border-radius: 4px;
-            }}
-            QPushButton:hover {{
-                background: {Colors.SURFACE_ALT};
-            }}
-            QPushButton:disabled {{
-                color: {Colors.TEXT_TERTIARY};
-            }}
-        """)
+        # Carousel Styling handled in unified_stylesheet.py (QWidget#carouselContainer)
 
         carousel_layout = QHBoxLayout(self.carousel_container)
         carousel_layout.setContentsMargins(12, 4, 12, 4)
@@ -112,12 +94,13 @@ class WorkspaceContent(QWidget):
         self.btn_prev_variant.clicked.connect(self.prev_variant)
 
         self.lbl_variant_info = QLabel("Raw")
+        self.lbl_variant_info.setObjectName("variantInfoLabel")
         self.lbl_variant_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         info_font = self.lbl_variant_info.font()
         info_font.setPointSize(Typography.SMALL_SIZE)
         info_font.setBold(True)
         self.lbl_variant_info.setFont(info_font)
-        self.lbl_variant_info.setStyleSheet(f"color: {Colors.TEXT_SECONDARY};")
+        # self.lbl_variant_info.setStyleSheet(f"color: {Colors.TEXT_SECONDARY};") # Handled by parent selector or object name
 
         self.btn_next_variant = QPushButton(">")
         self.btn_next_variant.setFixedSize(24, 24)
@@ -156,17 +139,36 @@ class WorkspaceContent(QWidget):
         self.status_label.setContentsMargins(16, 0, 16, 0)
         self.stack.addWidget(self.status_label)  # Index 0
 
-        # Page 1: RECORDING - Waveform visualizer
+        # Page 1: RECORDING - Waveform visualizer + Live Text
+        self.recording_container = QWidget()
+        recording_layout = QVBoxLayout(self.recording_container)
+        recording_layout.setContentsMargins(0, 0, 0, 0)
+        recording_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
         self.waveform = WaveformVisualizer()
         self.waveform.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         self.waveform.setFixedHeight(130)
-        self.stack.addWidget(self.waveform)  # Index 1
+        recording_layout.addWidget(self.waveform)
+
+        self.live_text_label = QLabel()
+        self.live_text_label.setObjectName("liveTextLabel")
+        self.live_text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.live_text_label.setWordWrap(True)
+        live_font = QFont()
+        live_font.setPointSize(Typography.FONT_SIZE_LG)
+        self.live_text_label.setFont(live_font)
+        # Style can be handled in stylesheet, or here for now
+        self.live_text_label.setStyleSheet(f"color: {Colors.TEXT_PRIMARY};")
+        recording_layout.addWidget(self.live_text_label)
+        
+        self.stack.addWidget(self.recording_container)  # Index 1
 
         # Page 2: VIEWING - Transcript viewer (QTextBrowser for better text selection)
         self.transcript_view = QTextBrowser()
         self.transcript_view.setObjectName("transcriptView")
+        self.transcript_view.setFrameShape(QFrame.Shape.NoFrame)
         self.transcript_view.setReadOnly(True)
         self.transcript_view.setOpenExternalLinks(False)
         self.transcript_view.setSizePolicy(
@@ -182,6 +184,7 @@ class WorkspaceContent(QWidget):
         # Page 3: EDITING - Transcript editor
         self.transcript_editor = QTextEdit()
         self.transcript_editor.setObjectName("transcriptEditor")
+        self.transcript_editor.setFrameShape(QFrame.Shape.NoFrame)
         self.transcript_editor.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -197,6 +200,21 @@ class WorkspaceContent(QWidget):
         self.stack.addWidget(self.transcript_editor)  # Index 3
 
         layout.addWidget(self.stack)
+
+    def scroll_to_top(self) -> None:
+        """Scroll current content to top."""
+        if self.stack.currentIndex() == ContentPage.VIEWING:
+            self.transcript_view.verticalScrollBar().setValue(0)
+        elif self.stack.currentIndex() == ContentPage.EDITING:
+            self.transcript_editor.verticalScrollBar().setValue(0)
+
+    def set_audio_level(self, level: float) -> None:
+        """Update waveform audio level."""
+        self.waveform.current_level = level
+
+    def set_live_text(self, text: str) -> None:
+        """Update live transcription text."""
+        self.live_text_label.setText(text)
 
     def update_for_idle(self) -> None:
         """Show welcome message."""

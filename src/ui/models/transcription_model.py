@@ -60,6 +60,7 @@ class TranscriptionModel(QAbstractItemModel):
     FullTextRole = Qt.ItemDataRole.UserRole + 4
     GroupIDRole = Qt.ItemDataRole.UserRole + 5
     ColorRole = Qt.ItemDataRole.UserRole + 6
+    IdRole = Qt.ItemDataRole.UserRole + 7
 
     # Signals for UI updates
     entryAdded = pyqtSignal(str)  # timestamp
@@ -416,6 +417,8 @@ class TranscriptionModel(QAbstractItemModel):
                 if entry.focus_group_id is not None:
                     return self._group_colors.get(entry.focus_group_id)
                 return None
+            case self.IdRole:
+                return entry.id
             case _:
                 return None
 

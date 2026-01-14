@@ -11,7 +11,9 @@ from ui.constants.view_ids import (
     VIEW_RECENT,
     VIEW_REFINE,
     VIEW_SEARCH,
+    VIEW_SETTINGS,
     VIEW_TRANSCRIBE,
+    VIEW_USER,
 )
 from ui.contracts.capabilities import ViewInterface
 from ui.views.edit_view import EditView
@@ -19,7 +21,9 @@ from ui.views.projects_view import ProjectsView
 from ui.views.recent_view import RecentView
 from ui.views.refine_view import RefineView
 from ui.views.search_view import SearchView
+from ui.views.settings_view import SettingsView
 from ui.views.transcribe_view import TranscribeView
+from ui.views.user_view import UserView
 
 
 @pytest.fixture
@@ -33,6 +37,8 @@ def views(qapp_session):
         SearchView(),
         RefineView(),
         EditView(),
+        SettingsView(),
+        UserView(),
     ]
 
 
@@ -65,6 +71,8 @@ def test_view_ids(views):
         SearchView: VIEW_SEARCH,
         RefineView: VIEW_REFINE,
         EditView: VIEW_EDIT,
+        SettingsView: VIEW_SETTINGS,
+        UserView: VIEW_USER,
     }
 
     for view in views:

@@ -51,7 +51,7 @@ def get_title_bar_styles() -> str:
         }}
 
         QToolButton#titleBarClose:pressed {{
-            background-color: #c0392b;
+            background-color: {Colors.DESTRUCTIVE_PRESSED};
         }}
 
         /* Dialog title bar */

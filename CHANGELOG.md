@@ -2,6 +2,36 @@
 
 ---
 
+# v2.5.3 - UI Convergence & Stabilization
+
+**Date:** January 13, 2026
+**Status:** Feature Release
+
+---
+
+## Summary
+
+This monumental release converges the entire UI implementation with the Target Specification. It enforces strict invariants for signal architecture, master-detail layouts, and selection identity, while resolving critical startup crashes and replacing legacy components.
+
+## Added
+- **FocusGroupColors**: Added correct color palette logic for projects.
+- **MetricsDock**: New unified statistics dock replacing the legacy MetricsStrip.
+- **EditView**: Full implementation of the standalone transcript editor.
+- **TranscribeView Editing**: Added live editing capability to the transcription preview.
+
+## Changed
+- **Typography Fixes**: Resolved `AttributeError` crashes by replacing non-existent `Typography` helper methods with explicit `QFont` instantiation across all views.
+- **Layout Architecture**: Enforced strict Master-Detail layouts (Fixed List | Fluid Inspector) for `RecentView` and `ProjectsView`, removing splitters.
+- **Selection Identity**: Migrated all selection logic from unreliable timestamps to robust integer `IdRole`.
+- **Reactivity**: Implemented `capabilitiesChanged` signal for deterministic ActionGrid updates.
+- **Metrics**: Replaced `MetricsStrip` with `MetricsDock`, simplifying the bottom bar architecture.
+
+## Fixed
+- **Startup Crash**: Fixed `AttributeError: type object 'Colors' has no attribute 'ACCENT_DANGER'` and others.
+- **Font API**: Fixed crashes caused by `Typography.h2_font()` calls.
+
+---
+
 # v2.5.2 - Agentic Self-Healing Logging
 
 **Date:** January 13, 2026

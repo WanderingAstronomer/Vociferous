@@ -87,15 +87,7 @@ class ErrorDialog(StyledDialog):
         # Error indicator (colored label instead of icon)
         error_indicator = QLabel("⚠")
         error_indicator.setObjectName("errorDialogIcon")
-        error_indicator.setStyleSheet(f"""
-            QLabel#errorDialogIcon {{
-                color: {Colors.DESTRUCTIVE};
-                font-size: {Typography.FONT_SIZE_XL}px;
-                font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
-                padding: 0;
-                margin: 0;
-            }}
-        """)
+        # Base styling in unified_stylesheet.py (QLabel#errorDialogIcon)
         error_indicator.setFixedWidth(40)
         error_indicator.setAlignment(
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter
@@ -134,19 +126,7 @@ class ErrorDialog(StyledDialog):
         self.details_toggle = StyledButton("▶ Show Details", ButtonStyle.SECONDARY)
         self.details_toggle.setObjectName("errorDialogToggle")
         self.details_toggle.clicked.connect(self._toggle_details)
-        self.details_toggle.setStyleSheet(f"""
-            QPushButton#errorDialogToggle {{
-                background-color: transparent;
-                color: {Colors.TEXT_SECONDARY};
-                border: none;
-                text-align: left;
-                padding: 4px 8px;
-                font-size: {Typography.SMALL_SIZE}pt;
-            }}
-            QPushButton#errorDialogToggle:hover {{
-                color: {Colors.TEXT_PRIMARY};
-            }}
-        """)
+        # Styling in unified_stylesheet.py (QPushButton#errorDialogToggle)
         self.content_layout.addWidget(self.details_toggle)
 
         # Details container (hidden by default)
@@ -163,10 +143,7 @@ class ErrorDialog(StyledDialog):
         self.details_text.setPlainText(self._details)
         self.details_text.setMinimumHeight(120)
 
-        # Use black text color for visibility
-        self.details_text.setStyleSheet(
-            f"color: {Colors.TEXT_PRIMARY}; background-color: {Colors.SURFACE_ALT};"
-        )
+        # Styling in unified_stylesheet.py (QPlainTextEdit#errorDialogDetails)
 
         # Monospace font for stack traces
         mono_font = QFont("monospace")
@@ -189,7 +166,7 @@ class ErrorDialog(StyledDialog):
             copy_btn.setObjectName("errorDialogCopy")
             copy_btn.clicked.connect(self._copy_to_clipboard)
             copy_btn.setMinimumHeight(32)
-            copy_btn.setStyleSheet("color: white;")  # Force text color
+            # Styling in unified_stylesheet.py (QPushButton#errorDialogCopy)
             action_row.addWidget(copy_btn)
 
         # View logs button
@@ -198,7 +175,7 @@ class ErrorDialog(StyledDialog):
             view_logs_btn.setObjectName("errorDialogViewLogs")
             view_logs_btn.clicked.connect(self._view_logs)
             view_logs_btn.setMinimumHeight(32)
-            view_logs_btn.setStyleSheet("color: white;")  # Force text color
+            # Styling in unified_stylesheet.py (QPushButton#errorDialogViewLogs)
             action_row.addWidget(view_logs_btn)
 
         action_row.addStretch()

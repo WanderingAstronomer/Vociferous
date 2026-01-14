@@ -408,7 +408,7 @@ def safe_slot_silent(context: str = "") -> Callable:
     return safe_slot(context)
 
 
-def safe_callback(func: Callable) -> Callable:
+def safe_callback(func: Callable, context: str = "") -> Callable:
     """
     Decorator to wrap standard callbacks with exception handling.
     """
@@ -417,6 +417,6 @@ def safe_callback(func: Callable) -> Callable:
             return func(*args, **kwargs)
         except Exception:
             exc_info = sys.exc_info()
-            get_error_logger().log_exception(exc_info[0], exc_info[1], exc_info[2], context="Callback")
+            get_error_logger().log_exception(exc_info[0], exc_info[1], exc_info[2], context=context or "Callback")
             return None
     return wrapper

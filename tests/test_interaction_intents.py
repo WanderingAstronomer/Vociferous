@@ -66,7 +66,7 @@ class TestIntentConstruction:
 
     def test_edit_transcript_intent_construction(self):
         """EditTranscriptIntent can be constructed."""
-        intent = EditTranscriptIntent()
+        intent = EditTranscriptIntent(transcript_id="test_id")
         assert isinstance(intent, InteractionIntent)
 
     def test_commit_edits_intent_construction(self):
@@ -88,7 +88,7 @@ class TestIntentConstruction:
         """Intents are frozen and cannot be mutated."""
         intent = BeginRecordingIntent()
         with pytest.raises(FrozenInstanceError):
-            intent.source = IntentSource.SIDEBAR
+            intent.source = IntentSource.ICON_RAIL
 
 
 class TestIntentResultConstruction:
@@ -115,7 +115,7 @@ class TestIntentResultConstruction:
 
     def test_deferred_result_construction(self):
         """IntentResult with DEFERRED outcome."""
-        intent = EditTranscriptIntent()
+        intent = EditTranscriptIntent(transcript_id="123")
         result = IntentResult(
             outcome=IntentOutcome.DEFERRED,
             intent=intent,
@@ -126,7 +126,7 @@ class TestIntentResultConstruction:
 
     def test_no_op_result_construction(self):
         """IntentResult with NO_OP outcome."""
-        intent = EditTranscriptIntent()
+        intent = EditTranscriptIntent(transcript_id="123")
         result = IntentResult(
             outcome=IntentOutcome.NO_OP,
             intent=intent,
@@ -167,7 +167,7 @@ class TestIntentSourceEnum:
     def test_all_sources_defined(self):
         """All expected intent sources are defined."""
         assert IntentSource.CONTROLS
-        assert IntentSource.SIDEBAR
+        assert IntentSource.ICON_RAIL
         assert IntentSource.HOTKEY
         assert IntentSource.CONTEXT_MENU
         assert IntentSource.INTERNAL
@@ -204,7 +204,7 @@ class TestHandleIntentPassthrough:
 
     def test_handle_edit_returns_result(self, workspace):
         """handle_intent(EditTranscriptIntent) returns IntentResult."""
-        intent = EditTranscriptIntent()
+        intent = EditTranscriptIntent(transcript_id="test_id")
         result = workspace.handle_intent(intent)
         assert isinstance(result, IntentResult)
 
@@ -267,7 +267,7 @@ class TestEditIntentStateAssertions:
 
         assert workspace.get_state() == WorkspaceState.IDLE
 
-        intent = EditTranscriptIntent()
+        intent = EditTranscriptIntent(transcript_id="test_id")
         result = workspace.handle_intent(intent)
 
         assert result.outcome == IntentOutcome.REJECTED
@@ -280,7 +280,7 @@ class TestEditIntentStateAssertions:
         # Enter recording state
         workspace.set_state(WorkspaceState.RECORDING)
 
-        intent = EditTranscriptIntent()
+        intent = EditTranscriptIntent(transcript_id="test_id")
         result = workspace.handle_intent(intent)
 
         assert result.outcome == IntentOutcome.REJECTED
@@ -294,7 +294,7 @@ class TestEditIntentStateAssertions:
         workspace.load_transcript("Test transcript", "2026-01-11T12:00:00")
         assert workspace.get_state() == WorkspaceState.VIEWING
 
-        intent = EditTranscriptIntent()
+        intent = EditTranscriptIntent(transcript_id="test_id")
         result = workspace.handle_intent(intent)
 
         assert result.outcome == IntentOutcome.ACCEPTED
@@ -323,7 +323,7 @@ class TestEditIntentStateAssertions:
         workspace.load_transcript("Test transcript", "2026-01-11T12:00:00")
         workspace.set_state(WorkspaceState.EDITING)
 
-        intent = EditTranscriptIntent()
+        intent = EditTranscriptIntent(transcript_id="test_id")
         result = workspace.handle_intent(intent)
 
         assert result.outcome == IntentOutcome.NO_OP
@@ -347,7 +347,7 @@ class TestCommitIntentStateAssertions:
 
         # Load transcript and enter editing
         workspace.load_transcript("Original text", "2026-01-11T12:00:00")
-        edit_result = workspace.handle_intent(EditTranscriptIntent())
+        edit_result = workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
         assert edit_result.outcome == IntentOutcome.ACCEPTED
         assert workspace.get_state() == WorkspaceState.EDITING
 
@@ -392,7 +392,7 @@ class TestCommitIntentStateAssertions:
 
         # Load transcript and enter editing
         workspace.load_transcript("Original", "2026-01-11T12:00:00")
-        workspace.handle_intent(EditTranscriptIntent())
+        workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
 
         # Track signal
         saved_content = []
@@ -424,7 +424,7 @@ class TestDiscardIntentStateAssertions:
 
         # Load transcript and enter editing
         workspace.load_transcript("Original text", "2026-01-11T12:00:00")
-        edit_result = workspace.handle_intent(EditTranscriptIntent())
+        edit_result = workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
         assert edit_result.outcome == IntentOutcome.ACCEPTED
         assert workspace.get_state() == WorkspaceState.EDITING
 
@@ -469,7 +469,7 @@ class TestDiscardIntentStateAssertions:
 
         # Load transcript and enter editing
         workspace.load_transcript("Original", "2026-01-11T12:00:00")
-        workspace.handle_intent(EditTranscriptIntent())
+        workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
 
         # Track signal - should not be called
         saved_content = []
@@ -544,7 +544,7 @@ class TestViewIntentStateAssertions:
 
         # Load transcript and enter editing
         workspace.load_transcript("Original", "2026-01-11T12:00:00")
-        workspace.handle_intent(EditTranscriptIntent())
+        workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
         assert workspace.get_state() == WorkspaceState.EDITING
         # Qt textChanged fires, so has_unsaved_changes is True
 
@@ -634,7 +634,7 @@ class TestDeleteIntentStateAssertions:
         from ui.constants import WorkspaceState
 
         workspace.load_transcript("Test", "2026-01-11T12:00:00")
-        workspace.handle_intent(EditTranscriptIntent())
+        workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
         assert workspace.get_state() == WorkspaceState.EDITING
 
         intent = DeleteTranscriptIntent(timestamp="2026-01-11T12:00:00")
@@ -682,7 +682,7 @@ class TestPhase4StoppingCondition:
 
         # Setup: enter editing
         workspace.load_transcript("Test text", "2026-01-11T12:00:00")
-        workspace.handle_intent(EditTranscriptIntent())
+        workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
         assert workspace.get_state() == WorkspaceState.EDITING
 
         # Try BeginRecordingIntent - should be REJECTED
@@ -698,7 +698,7 @@ class TestPhase4StoppingCondition:
         assert workspace.get_state() == WorkspaceState.EDITING
 
         # Try EditTranscriptIntent - should be NO_OP
-        result = workspace.handle_intent(EditTranscriptIntent())
+        result = workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
         assert result.outcome == IntentOutcome.NO_OP
         assert workspace.get_state() == WorkspaceState.EDITING
 
@@ -708,7 +708,7 @@ class TestPhase4StoppingCondition:
         assert workspace.get_state() == WorkspaceState.VIEWING
 
         # Re-enter editing and test discard
-        workspace.handle_intent(EditTranscriptIntent())
+        workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
         assert workspace.get_state() == WorkspaceState.EDITING
 
         # DiscardEditsIntent exits to VIEWING
@@ -722,7 +722,7 @@ class TestPhase4StoppingCondition:
 
         # Setup: enter editing and simulate text change
         workspace.load_transcript("Original", "2026-01-11T12:00:00")
-        workspace.handle_intent(EditTranscriptIntent())
+        workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
         # Qt textChanged fires on edit mode entry, so unsaved is True
 
         # Commit should clear it
@@ -730,7 +730,7 @@ class TestPhase4StoppingCondition:
         assert not workspace.has_unsaved_changes()
 
         # Re-enter and test discard
-        workspace.handle_intent(EditTranscriptIntent())
+        workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
         # Discard should also clear it
         workspace.handle_intent(DiscardEditsIntent())
         assert not workspace.has_unsaved_changes()

@@ -265,46 +265,13 @@ class ExportDialog(QDialog):
 
                     # Style Choose/Open button (AcceptRole)
                     if role == QDialogButtonBox.ButtonRole.AcceptRole:
-                        button.setStyleSheet(f"""
-                            QPushButton {{
-                                background-color: {Colors.PRIMARY};
-                                color: {Colors.TEXT_ON_ACCENT};
-                                border: none;
-                                border-radius: {Dimensions.BORDER_RADIUS}px;
-                                padding: 12px 24px;
-                                font-size: {Typography.BODY_SIZE}pt;
-                                font-weight: {Typography.FONT_WEIGHT_MEDIUM};
-                                min-width: 100px;
-                            }}
-                            QPushButton:hover {{
-                                background-color: {Colors.PRIMARY_HOVER};
-                            }}
-                            QPushButton:pressed {{
-                                background-color: {Colors.PRIMARY_PRESSED};
-                            }}
-                        """)
+                        button.setProperty("role", "accept")
+                        button.style().polish(button)
 
                     # Style Cancel button (RejectRole)
                     elif role == QDialogButtonBox.ButtonRole.RejectRole:
-                        button.setStyleSheet(f"""
-                            QPushButton {{
-                                background-color: {Colors.BG_TERTIARY};
-                                color: {Colors.TEXT_PRIMARY};
-                                border: 1px solid {Colors.BORDER_DEFAULT};
-                                border-radius: {Dimensions.BORDER_RADIUS}px;
-                                padding: 12px 24px;
-                                font-size: {Typography.BODY_SIZE}pt;
-                                font-weight: {Typography.FONT_WEIGHT_MEDIUM};
-                                min-width: 100px;
-                            }}
-                            QPushButton:hover {{
-                                background-color: {Colors.HOVER_BG_ITEM};
-                                border-color: {Colors.ACCENT_PRIMARY};
-                            }}
-                            QPushButton:pressed {{
-                                background-color: {Colors.BG_SECONDARY};
-                            }}
-                        """)
+                        button.setProperty("role", "reject")
+                        button.style().polish(button)
 
         # Apply configuration after dialog is shown
         QTimer.singleShot(0, configure_dialog)

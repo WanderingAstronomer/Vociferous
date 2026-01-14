@@ -16,10 +16,8 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QFrame,
     QHBoxLayout,
     QLabel,
-    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -167,21 +165,10 @@ class MainWorkspace(QWidget):
         )
         panel_layout.setSpacing(0)
 
-        # Scroll area for content
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setObjectName("workspaceScrollArea")
-        scroll.setViewportMargins(0, 0, 0, 4)
-        self.content_scroll = scroll
-
         # Content component
         self.content = WorkspaceContent()
-        scroll.setWidget(self.content)
+        panel_layout.addWidget(self.content)
 
-        panel_layout.addWidget(scroll)
         parent_layout.addWidget(
             self.content_panel, 1
         )  # Stretch=1: claim all vertical space
@@ -235,9 +222,6 @@ class MainWorkspace(QWidget):
                 self.content.update_for_idle()
                 self.hotkey_hint.setText("Press Alt to start recording")
                 self.metrics.hide()
-                self.content_scroll.setVerticalScrollBarPolicy(
-                    Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-                )
 
             case WorkspaceState.RECORDING:
                 self.header.set_state(self._state)
@@ -246,12 +230,6 @@ class MainWorkspace(QWidget):
                 self.content.update_for_recording()
                 self.hotkey_hint.setText("Press Alt to stop recording")
                 self.metrics.hide()
-                self.content_scroll.setVerticalScrollBarPolicy(
-                    Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-                )
-                # Ensure the waveform is fully visible even if the scroll area was
-                # previously scrolled in VIEWING/EDITING.
-                self.content_scroll.verticalScrollBar().setValue(0)
 
             case WorkspaceState.VIEWING:
                 self.header.set_state(self._state)
@@ -260,9 +238,6 @@ class MainWorkspace(QWidget):
                 self.content.update_for_viewing()
                 self.hotkey_hint.setText("Press Alt to start recording")
                 # Metrics visibility is handled in load_transcript/display_new_transcript
-                self.content_scroll.setVerticalScrollBarPolicy(
-                    Qt.ScrollBarPolicy.ScrollBarAsNeeded
-                )
 
             case WorkspaceState.EDITING:
                 self.header.set_state(self._state)
@@ -271,15 +246,20 @@ class MainWorkspace(QWidget):
                 self.content.update_for_editing()
                 self.hotkey_hint.setText("Press Alt to start recording")
                 # Metrics visibility preserved from VIEWING state
-                self.content_scroll.setVerticalScrollBarPolicy(
-                    Qt.ScrollBarPolicy.ScrollBarAsNeeded
-                )
 
     # Public API
 
     def set_history_manager(self, manager) -> None:
         """Set history manager for fetching transcript metadata."""
         self._history_manager = manager
+
+    def set_audio_level(self, level: float) -> None:
+        """Update waveform audio level."""
+        self.content.set_audio_level(level)
+
+    def set_live_text(self, text: str) -> None:
+        """Update live transcription text."""
+        self.content.set_live_text(text)
 
     def set_state(self, state: WorkspaceState) -> None:
         """Change workspace state."""
@@ -419,8 +399,19 @@ class MainWorkspace(QWidget):
             match self._state:
                 case WorkspaceState.VIEWING:
                     # Phase 4: Route through intent layer
+                    timestamp = self.get_current_timestamp()
+                    transcript_id = 0
+                    if self._history_manager and timestamp:
+                         # Resolve ID securely
+                         res = self._history_manager.get_id_by_timestamp(timestamp)
+                         if res is not None:
+                             transcript_id = res
+
                     self.handle_intent(
-                        EditTranscriptIntent(source=IntentSource.CONTROLS)
+                        EditTranscriptIntent(
+                            source=IntentSource.CONTROLS,
+                            transcript_id=str(transcript_id)
+                        )
                     )
                 case WorkspaceState.EDITING:
                     # Phase 4: Route through intent layer

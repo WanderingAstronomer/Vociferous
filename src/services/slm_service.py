@@ -253,7 +253,6 @@ class SLMService(QObject):
             snapshot_download(
                 repo_id=self.SOURCE_REPO_ID,
                 local_dir=source_dir,
-                local_dir_use_symlinks=False,
                 revision=self.SOURCE_REVISION,
             )
 

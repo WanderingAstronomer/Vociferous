@@ -8,9 +8,9 @@ It maintains a registry of views and their identifiers.
 from __future__ import annotations
 
 import logging
-from typing import cast
 
 from PyQt6.QtWidgets import QStackedWidget, QWidget
+from PyQt6.QtCore import pyqtSignal
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,8 @@ class ViewHost(QStackedWidget):
     """
     Main content area switching between different functional views.
     """
+
+    viewChanged = pyqtSignal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -58,8 +60,10 @@ class ViewHost(QStackedWidget):
             return
 
         index = self._views[view_id]
-        self.setCurrentIndex(index)
-        logger.debug(f"Switched to view '{view_id}'")
+        if self.currentIndex() != index:
+            self.setCurrentIndex(index)
+            self.viewChanged.emit(view_id)
+            logger.debug(f"Switched to view '{view_id}'")
     
     def get_current_view_id(self) -> str | None:
         """Return the ID of the currently active view."""

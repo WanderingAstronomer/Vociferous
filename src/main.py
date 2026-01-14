@@ -267,6 +267,9 @@ class VociferousApp(QObject):
             )
             ConfigManager.console_print(f"Ready! Press '{activation_key}' to start.")
 
+            # Show the window explicitly on startup
+            self.main_window.show()
+
             # NOW apply stylesheet after all widgets are initialized
             # (applying stylesheet during widget tree creation causes Qt crashes)
             from ui.styles.unified_stylesheet import generate_unified_stylesheet

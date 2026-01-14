@@ -5,15 +5,16 @@ Base class for all specific views in the main application area.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING
 
 from PyQt6.QtWidgets import QWidget
 
-from ui.contracts.capabilities import ActionId, Capabilities, ViewInterface
+from ui.contracts.capabilities import ActionId, Capabilities
 
 if TYPE_CHECKING:
     from ui.contracts.capabilities import SelectionState
 
+from PyQt6.QtCore import pyqtSignal
 from ui.contracts.capabilities import SelectionState
 
 
@@ -23,6 +24,10 @@ class BaseView(QWidget):
     
     Implements the ViewInterface protocol.
     """
+    
+    # Signal emitted when internal state changes (selection, mode)
+    # prompting ActionGrid to re-query capabilities.
+    capabilitiesChanged = pyqtSignal()
     
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)

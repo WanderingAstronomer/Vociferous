@@ -9,13 +9,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Tuple
 
 from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtWidgets import QVBoxLayout, QWidget, QAbstractItemView
+from PyQt6.QtWidgets import QWidget
 
 from ui.models import FocusGroupProxyModel, TranscriptionModel
 from ui.widgets.history_tree.history_tree_view import HistoryTreeView
 
 if TYPE_CHECKING:
-    from history_manager import HistoryManager
+    pass
 
 
 class TranscriptList(HistoryTreeView):
@@ -26,7 +26,7 @@ class TranscriptList(HistoryTreeView):
     Adds consistent selection API for Views.
     """
     
-    selectionChangedSignal = pyqtSignal(tuple) # Tuple[str, ...] (selected IDs)
+    selectionChangedSignal = pyqtSignal(tuple) # Tuple[int, ...] (selected IDs)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent=parent)
@@ -48,8 +48,8 @@ class TranscriptList(HistoryTreeView):
         ids = self.get_selected_ids()
         self.selectionChangedSignal.emit(ids)
 
-    def get_selected_ids(self) -> Tuple[str, ...]:
-        """Return list of selected transcript IDs (timestamps)."""
+    def get_selected_ids(self) -> Tuple[int, ...]:
+        """Return list of selected transcript IDs (database IDs)."""
         if not self.selectionModel():
             return ()
         indexes = self.selectionModel().selectedRows()
@@ -58,9 +58,9 @@ class TranscriptList(HistoryTreeView):
             # Check if it's a valid entry (not a header)
             is_header = index.data(TranscriptionModel.IsHeaderRole)
             if not is_header:
-                timestamp = index.data(TranscriptionModel.TimestampRole)
-                if timestamp:
-                    ids.append(timestamp)
+                t_id = index.data(TranscriptionModel.IdRole)
+                if t_id is not None:
+                    ids.append(t_id)
         return tuple(ids)
 
     def set_filter_group(self, group_id: int | None) -> None:
