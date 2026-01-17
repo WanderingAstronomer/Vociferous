@@ -3,6 +3,13 @@
 ## [Unreleased]
 
 ### Added
+- **Accessibility & keyboard navigation (Phase 3 TDD)**: Implemented comprehensive accessibility support for keyboard users and screen readers:
+  - Added `:focus` pseudo-state styling for all button types (`primaryButton`, `secondaryButton`, `destructiveButton`, `purpleButton`) with 2px outline and offset
+  - `RailButton`: Set `accessibleName` to "Navigate to {view}" and `accessibleDescription` for screen reader support
+  - `ToggleSwitch`: Supports setting `accessibleName` from parent context
+  - All interactive widgets now support keyboard focus and tab navigation
+  - Addresses audit findings P2-03, P4-04, P4-05 from UI Architecture Audit Report
+- **Accessibility test suite**: Created comprehensive `test_accessibility.py` with 14 tests validating focus states, tab navigation, accessible names, and keyboard shortcuts
 - **Widget cleanup protocol (Phase 2 TDD)**: Implemented `cleanup()` methods for all stateful widgets to prevent resource leaks:
   - `ToggleSwitch`: Stops QPropertyAnimation to prevent animation leaks
   - `RailButton`: Resets blink state (QTimer.singleShot auto-cleans, but consistency enforced)

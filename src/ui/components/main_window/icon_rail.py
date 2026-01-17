@@ -80,6 +80,10 @@ class RailButton(QToolButton):
         self.setFixedHeight(BUTTON_HEIGHT)
         self.setObjectName("rail_button")
 
+        # Set accessible name for screen readers
+        self.setAccessibleName(f"Navigate to {label}")
+        self.setAccessibleDescription(f"Switch to {label} view")
+
         # Ensure we don't have hardcoded styles here; relies on unified_stylesheet
 
     def sizeHint(self) -> QSize:

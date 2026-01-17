@@ -1,50 +1,47 @@
-"""
-Unified Stylesheet Generator.
-
-Consolidates ALL application styles into a single stylesheet applied at app startup.
-This follows PyQt6 best practices: apply styles once at app level, not per-widget.
-
-Widget-specific styles are still organized in *_styles.py files but are collected
-and applied together here instead of per-widget setStyleSheet() calls.
-"""
-
 from ui.constants import (
-    CONTENT_PANEL_RADIUS,
-    SECTION_HEADER_RADIUS,
-    SPLITTER_HANDLE_WIDTH,
-    Colors,
-    Dimensions,
     Spacing,
     Typography,
+    CONTENT_PANEL_RADIUS,
 )
+import ui.constants.colors as c
+from ui.constants.dimensions import BORDER_RADIUS_LG, BORDER_RADIUS_SMALL
 
 
-def generate_unified_stylesheet() -> str:
-    """
-    Generate the complete application stylesheet.
-
-    All styles are consolidated here and applied once at app startup.
-    No per-widget setStyleSheet() calls needed.
-
-    Returns:
-        Complete QSS stylesheet string.
-    """
-    c = Colors
+def get_unified_stylesheet() -> str:
     return f"""
 /* =================================================================
-   GLOBAL / BASE STYLES
+   TABLE OF CONTENTS
+   =================================================================
+   1.  GLOBAL DEFAULTS
+   2.  SCROLLBARS
+   3.  CONTAINERS & PANELS
+   4.  BUTTONS
+   5.  DIALOGS
+   6.  TITLE BAR
+   7.  SHELL COMPONENTS
+   8.  VIEWS
+   9.  HOTKEY WIDGET
+   10. ONBOARDING
+   11. TREE & TABLE VIEWS
    ================================================================= */
 
-/* Main window */
+/* =================================================================
+   GLOBAL DEFAULTS
+   ================================================================= */
+
 QMainWindow {{
-    background-color: {c.BG_PRIMARY};
-    border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: 6px;
+    background-color: {c.GRAY_7};
+    border: none;
 }}
 
-/* Default text color for all widgets */
 QWidget {{
-    color: {c.TEXT_PRIMARY};
+    background-color: transparent;
+    color: {c.GRAY_0};
+}}
+
+#centralWidget {{
+    background-color: transparent;
+    border-radius: 6px;
 }}
 
 /* =================================================================
@@ -52,392 +49,75 @@ QWidget {{
    ================================================================= */
 
 QScrollBar:vertical {{
-    background-color: {c.BG_PRIMARY};
+    background-color: transparent;
     width: 10px;
-    border: none;
+    margin: 0px;
 }}
 
 QScrollBar::handle:vertical {{
-    background-color: {c.BORDER_DEFAULT};
+    background-color: {c.BLUE_4};
     border-radius: 5px;
-    min-height: 30px;
+    min-height: 20px;
+    margin: 2px;
 }}
 
 QScrollBar::handle:vertical:hover {{
-    background-color: {c.ACCENT_BLUE};
+    background-color: {c.BLUE_3};
+}}
+
+QScrollBar::handle:vertical:pressed {{
+    background-color: {c.BLUE_6};
 }}
 
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0px;
+    background: none;
+}}
+
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+    background: none;
 }}
 
 QScrollBar:horizontal {{
-    background-color: {c.BG_PRIMARY};
+    background-color: transparent;
     height: 10px;
-    border: none;
+    margin: 0px;
 }}
 
 QScrollBar::handle:horizontal {{
-    background-color: {c.BORDER_DEFAULT};
+    background-color: {c.BLUE_4};
     border-radius: 5px;
-    min-width: 30px;
+    min-width: 20px;
+    margin: 2px;
 }}
 
 QScrollBar::handle:horizontal:hover {{
-    background-color: {c.ACCENT_BLUE};
+    background-color: {c.BLUE_3};
+}}
+
+QScrollBar::handle:horizontal:pressed {{
+    background-color: {c.BLUE_6};
 }}
 
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
     width: 0px;
+    background: none;
 }}
 
-/* Scroll areas */
-QScrollArea {{
-    background: transparent;
-    border: none;
-}}
-
-/* =================================================================
-   SPLITTER
-   ================================================================= */
-
-QSplitter::handle:horizontal {{
-    background-color: {c.BORDER_DEFAULT};
-    width: {SPLITTER_HANDLE_WIDTH}px;
-}}
-
-QSplitter::handle:horizontal:hover {{
-    background-color: {c.BORDER_ACCENT};
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
+    background: none;
 }}
 
 /* =================================================================
-   MENU BAR
+   CONTAINERS & PANELS
    ================================================================= */
 
-QMenuBar {{
-    background-color: {c.BG_PRIMARY};
-    color: {c.TEXT_PRIMARY};
-    font-size: 14px;
-    border: none;
+/* Search/Transcript Preview Overlay */
+QFrame#previewOverlay {{
+    background-color: {c.GRAY_7};
+    border: 2px solid {c.BLUE_4};
+    border-radius: {BORDER_RADIUS_LG}px;
 }}
-
-QMenuBar::item {{
-    padding: 4px 8px;
-}}
-
-QMenuBar::item:selected {{
-    background-color: {c.ACCENT_BLUE_HOVER};
-    color: {c.TEXT_ACCENT};
-}}
-
-QMenu {{
-    background-color: {c.BG_SECONDARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_ACCENT};
-    font-size: 12px;
-}}
-
-QMenu::item {{
-    padding: 6px 24px;
-}}
-
-QMenu::item:selected {{
-    background-color: {c.ACCENT_BLUE};
-    color: {c.TEXT_ON_ACCENT};
-}}
-
-/* =================================================================
-   RADIO BUTTONS (Styled)
-   ================================================================= */
-
-QRadioButton[class="styledRadio"] {{
-    color: {c.TEXT_PRIMARY};
-    spacing: 8px;
-    padding: 4px 0px;
-}}
-
-QRadioButton[class="styledRadio"]::indicator {{
-    width: 16px;
-    height: 16px;
-    border: 2px solid {c.BORDER_DEFAULT};
-    border-radius: 8px;
-    background-color: {c.BG_TERTIARY};
-}}
-
-QRadioButton[class="styledRadio"]::indicator:checked {{
-    background-color: {c.ACCENT_PRIMARY};
-    border-color: {c.ACCENT_PRIMARY};
-}}
-
-QRadioButton[class="styledRadio"]::indicator:hover {{
-    border-color: {c.ACCENT_PRIMARY};
-}}
-
-/* =================================================================
-   TOOLTIPS
-   ================================================================= */
-
-QToolTip {{
-    background-color: {c.BG_SECONDARY};
-    color: {c.TEXT_ACCENT};
-    border: 1px solid {c.BORDER_ACCENT};
-    border-radius: 4px;
-    padding: 4px 8px;
-    font-size: 11px;
-}}
-
-/* =================================================================
-   TITLE BAR
-   ================================================================= */
-
-QWidget#titleBar {{
-    background-color: {c.BG_HEADER};
-    border-bottom: 1px solid {c.BORDER_COLOR};
-}}
-
-QLabel#titleBarLabel {{
-    color: {c.TEXT_PRIMARY};
-    font-weight: 600;
-}}
-
-QToolButton#titleBarControl {{
-    background-color: transparent;
-    border: none;
-    border-radius: {Dimensions.BORDER_RADIUS_SMALL}px;
-}}
-
-QToolButton#titleBarControl:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-}}
-
-QToolButton#titleBarControl:pressed {{
-    background-color: {c.HOVER_BG_SECTION};
-}}
-
-QToolButton#titleBarClose {{
-    background-color: transparent;
-    border: none;
-    border-radius: {Dimensions.BORDER_RADIUS_SM}px;
-}}
-
-QToolButton#titleBarClose:hover {{
-    background-color: {c.DESTRUCTIVE};
-}}
-
-QToolButton#titleBarClose:pressed {{
-    background-color: {c.DESTRUCTIVE_PRESSED};
-}}
-
-QWidget#dialogTitleBar {{
-    background-color: {c.BG_HEADER};
-}}
-
-QLabel#dialogTitleLabel {{
-    color: {c.TEXT_PRIMARY};
-    font-weight: 600;
-}}
-
-QFrame#sectionDivider {{
-    background-color: {c.BORDER_COLOR};
-}}
-
-QWidget#bottomSpacer {{
-    background-color: transparent;
-}}
-
-/* =================================================================
-   TREE VIEWS (History, Projects)
-   ================================================================= */
-
-QTreeView {{
-    background-color: {c.BG_TERTIARY};
-    border: none;
-    outline: none;
-}}
-
-QTreeView::item {{
-    min-height: {Dimensions.TREE_ITEM_HEIGHT}px;
-    padding: 4px 8px;
-    border: none;
-}}
-
-QTreeView::item:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-}}
-
-QTreeView::item:selected {{
-    background-color: {c.HOVER_BG_SECTION};
-}}
-
-QTreeView::branch {{
-    background-color: transparent;
-}}
-
-/* Project tree - transparent over background */
-QTreeWidget#projectTree {{
-    background-color: transparent;
-    border: none;
-    outline: none;
-}}
-
-QTreeWidget#projectTree::item {{
-    min-height: {Dimensions.TREE_ITEM_HEIGHT}px;
-    padding: 4px 8px;
-    border: none;
-}}
-
-/* Hover and selection handled by ProjectDelegate */
-
-QTreeWidget#projectTree::item:selected {{
-    background-color: {c.HOVER_BG_SECTION};
-}}
-
-QTreeWidget#projectTree::branch {{
-    background-color: transparent;
-}}
-
-/* =================================================================
-   COLLAPSIBLE SECTIONS
-   ================================================================= */
-
-QLabel#sectionHeaderLabel {{
-    font-weight: 600;
-    font-size: {Typography.SECTION_HEADER_SIZE}px;
-    background-color: transparent;
-    border: none;
-}}
-
-QLabel#sectionHeaderLabel:disabled {{
-    color: {c.TEXT_SECONDARY};
-}}
-
-QLabel#sectionHeaderLabel[sectionState="disabled"] {{
-    color: {c.TEXT_MUTED};
-}}
-
-QLabel#sectionHeaderLabel[sectionState="collapsed"] {{
-    color: {c.TEXT_SECONDARY};
-}}
-
-QLabel#sectionHeaderLabel[sectionState="expanded"] {{
-    color: {c.TEXT_PRIMARY};
-}}
-
-/* Section header - transparent over background */
-QWidget#sectionHeader {{
-    background-color: transparent;
-    border-radius: {SECTION_HEADER_RADIUS}px;
-    border: none;
-}}
-
-QWidget#sectionHeader:hover {{
-    background-color: rgba(255, 255, 255, 0.05);
-    border: none;
-}}
-
-QPushButton#sectionActionButton {{
-    background-color: transparent;
-    color: {c.ACCENT_BLUE};
-    border: none;
-    font-size: 18pt;
-    font-weight: bold;
-    padding: 0px;
-    margin: 0px;
-}}
-
-QPushButton#sectionActionButton:hover {{
-    color: {c.TEXT_PRIMARY};
-}}
-
-QToolButton#collapseButton {{
-    background-color: transparent;
-    border: none;
-    color: {c.TEXT_SECONDARY};
-    font-size: 12px;
-}}
-
-/* =================================================================
-   WORKSPACE
-   ================================================================= */
-
-QWidget#mainWorkspace {{
-    background-color: {c.BG_PRIMARY};
-}}
-
-QLabel#greetingLabel {{
-    color: {c.TEXT_PRIMARY};
-}}
-
-QLabel#greetingLabel[state="recording"] {{
-    color: {c.ACCENT_RECORDING};
-}}
-
-QLabel#greetingLabel[state="transcribing"] {{
-    color: {c.ACCENT_RECORDING};
-}}
-
-QLabel#subtextLabel {{
-    color: {c.TEXT_SECONDARY};
-}}
-
-QLabel#hotkeyHint {{
-    color: {c.TEXT_TERTIARY};
-    font-size: {Typography.SMALL_SIZE}pt;
-}}
-
-QTextEdit#transcriptEditor {{
-    background-color: {c.BG_TERTIARY};
-    color: {c.TEXT_PRIMARY};
-    font-size: {Typography.BODY_SIZE}pt;
-    border: none;
-    border-radius: 4px;
-}}
-
-QWidget#transcriptMetrics {{
-    background-color: {c.BG_SECONDARY};
-    border-bottom: 1px solid {c.BORDER_DEFAULT};
-}}
-
-QTextBrowser#transcriptView {{
-    background-color: transparent;
-    color: {c.TEXT_PRIMARY};
-    font-size: {Typography.BODY_SIZE}pt;
-    border: none;
-}}
-
-QScrollArea#workspaceScrollArea {{
-    background-color: transparent;
-    border: none;
-}}
-
-QScrollArea#workspaceScrollArea > QWidget {{
-    background-color: transparent;
-}}
-
-/* Workspace content container - transparent to show ContentPanel background */
-QWidget#workspaceContent {{
-    background-color: transparent;
-}}
-
-/* Stacked widget inside workspace content - transparent to show ContentPanel background */
-QWidget#workspaceContent QStackedWidget {{
-    background-color: transparent;
-}}
-
-/* All pages inside QStackedWidget must also be transparent */
-QWidget#workspaceContent QStackedWidget > QWidget {{
-    background-color: transparent;
-}}
-
-/* Content label (IDLE state) - transparent background */
-QLabel#contentLabel {{
-    background-color: transparent;
-    color: {c.TEXT_SECONDARY};
-}}
-
-/* =================================================================
-   CONTENT PANEL
-   ================================================================= */
 
 QFrame#contentPanelPainted {{
     background: transparent;
@@ -446,13 +126,13 @@ QFrame#contentPanelPainted {{
 
 QWidget#contentPanel,
 QFrame#contentPanel {{
-    background-color: {c.BG_TERTIARY};
-    border: 1px solid {c.ACCENT_BLUE};
+    background-color: {c.GRAY_8};
+    border: 1px solid {c.BLUE_4};
     border-radius: {CONTENT_PANEL_RADIUS}px;
 }}
 
 QFrame#contentPanel[editing="true"] {{
-    border: 3px solid {c.ACCENT_BLUE};
+    border: 3px solid {c.BLUE_4};
 }}
 
 QFrame#contentPanel[recording="true"] {{
@@ -461,182 +141,102 @@ QFrame#contentPanel[recording="true"] {{
 }}
 
 /* =================================================================
-   BUTTONS - Following Refactoring UI Hierarchy Principles
-   
-   Primary: Solid high-contrast bg - THE main action on the page
-   Secondary: Outline/low-contrast - clear but not prominent
-   Destructive: Styled like secondary, only bold-red in confirmation dialogs
-   
-   All buttons use consistent padding (12px 24px) and border radius (12px)
+   BUTTONS
    ================================================================= */
 
-/* --- Primary Buttons (solid, high-contrast) --- */
-QPushButton#primaryButton {{
-    background-color: {c.PRIMARY};
-    color: {c.TEXT_ON_ACCENT};
+QPushButton[styleClass="primaryButton"] {{
+    background-color: {c.BLUE_4};
+    color: {c.GRAY_0};
     border: none;
-    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
-    font-size: {Typography.FONT_SIZE_BASE}px;
+    border-radius: {BORDER_RADIUS_LG}px;
+    font-size: 18px;
     font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
-    padding: {Spacing.S2}px {Spacing.S4}px;
+    padding: 12px {Spacing.S4}px;
+    min-width: 80px;
 }}
 
-QPushButton#primaryButton:hover {{
-    background-color: {c.PRIMARY_HOVER};
+QPushButton[styleClass="primaryButton"]:hover {{
+    background-color: {c.BLUE_3};
 }}
 
-QPushButton#primaryButton:pressed {{
-    background-color: {c.PRIMARY_PRESSED};
+QPushButton[styleClass="primaryButton"]:pressed {{
+    background-color: {c.BLUE_6};
 }}
 
-QPushButton#primaryButton:disabled {{
-    background-color: {c.SURFACE_ALT};
-    color: {c.TEXT_TERTIARY};
+QPushButton[styleClass="primaryButton"]:focus {{
+    outline: 2px solid {c.BLUE_3};
+    outline-offset: 2px;
 }}
 
-/* --- Secondary Buttons (outline, subdued) --- */
-QPushButton#secondaryButton {{
+QPushButton[styleClass="primaryButton"]:disabled {{
+    background-color: {c.GRAY_7};
+    color: {c.GRAY_4};
+}}
+
+QPushButton[styleClass="secondaryButton"] {{
     background-color: transparent;
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
-    font-size: {Typography.FONT_SIZE_BASE}px;
+    color: {c.GRAY_0};
+    border: 1px solid {c.GRAY_6};
+    border-radius: {BORDER_RADIUS_LG}px;
+    font-size: 18px;
     font-weight: {Typography.FONT_WEIGHT_NORMAL};
-    padding: {Spacing.S2}px {Spacing.S4}px;
+    padding: 12px {Spacing.S4}px;
+    min-width: 80px;
 }}
 
-QPushButton#secondaryButton:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-    border-color: {c.PRIMARY};
-    color: {c.TEXT_ACCENT};
+QPushButton[styleClass="secondaryButton"]:hover {{
+    background-color: {c.GRAY_7};
+    border-color: {c.BLUE_4};
+    color: {c.BLUE_3};
 }}
 
-QPushButton#secondaryButton:disabled {{
-    color: {c.TEXT_TERTIARY};
-    border-color: {c.TEXT_TERTIARY};
+QPushButton[styleClass="secondaryButton"]:focus {{
+    outline: 2px solid {c.BLUE_3};
+    outline-offset: 2px;
 }}
 
-/* --- Destructive Buttons (outline, red accent on hover) --- */
-/* Per Refactoring UI: destructive actions look secondary until confirmation */
-QPushButton#destructiveButton {{
+QPushButton[styleClass="destructiveButton"] {{
     background-color: transparent;
-    color: {c.TEXT_SECONDARY};
-    border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
-    font-size: {Typography.FONT_SIZE_BASE}px;
+    color: {c.RED_5};
+    border: 1px solid {c.RED_5};
+    border-radius: {BORDER_RADIUS_LG}px;
+    font-size: 18px;
     font-weight: {Typography.FONT_WEIGHT_NORMAL};
-    padding: {Spacing.S2}px {Spacing.S4}px;
+    padding: 12px {Spacing.S4}px;
+    min-width: 80px;
 }}
 
-QPushButton#destructiveButton:hover {{
-    background-color: {c.DESTRUCTIVE_BG};
-    color: {c.DESTRUCTIVE};
-    border-color: {c.DESTRUCTIVE};
+QPushButton[styleClass="destructiveButton"]:hover {{
+    background-color: {c.RED_9};
+    color: {c.GRAY_0};
+    border-color: {c.RED_5};
 }}
 
-/* --- Styled Buttons (dialogs - same principles) --- */
-QPushButton#styledPrimary {{
-    background-color: {c.PRIMARY};
-    color: {c.TEXT_ON_ACCENT};
-    border: none;
-    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
-    font-size: {Typography.FONT_SIZE_BASE}px;
-    font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
-    padding: {Spacing.S2}px {Spacing.S4}px;
+QPushButton[styleClass="destructiveButton"]:focus {{
+    outline: 2px solid {c.RED_5};
+    outline-offset: 2px;
 }}
 
-QPushButton#styledPrimary:hover {{
-    background-color: {c.PRIMARY_HOVER};
-}}
-
-QPushButton#styledPrimary:disabled {{
-    background-color: {c.SURFACE_ALT};
-    color: {c.TEXT_TERTIARY};
-}}
-
-QPushButton#styledSecondary {{
+QPushButton[styleClass="purpleButton"] {{
     background-color: transparent;
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
-    font-size: {Typography.FONT_SIZE_BASE}px;
+    color: {c.PURPLE_5};
+    border: 1px solid {c.PURPLE_5};
+    border-radius: {BORDER_RADIUS_LG}px;
+    font-size: 18px;
     font-weight: {Typography.FONT_WEIGHT_NORMAL};
-    padding: {Spacing.S2}px {Spacing.S4}px;
+    padding: 12px {Spacing.S4}px;
+    min-width: 80px;
 }}
 
-QPushButton#styledSecondary:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-    border-color: {c.PRIMARY};
-    color: {c.TEXT_ACCENT};
+QPushButton[styleClass="purpleButton"]:hover {{
+    background-color: {c.PURPLE_9};
+    color: {c.GRAY_0};
+    border-color: {c.PURPLE_5};
 }}
 
-QPushButton#styledDestructive {{
-    background-color: transparent;
-    color: {c.TEXT_SECONDARY};
-    border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: {Dimensions.BORDER_RADIUS_LG}px;
-    font-size: {Typography.FONT_SIZE_BASE}px;
-    font-weight: {Typography.FONT_WEIGHT_NORMAL};
-    padding: {Spacing.S2}px {Spacing.S4}px;
-}}
-
-QPushButton#styledDestructive:hover {{
-    background-color: {c.DESTRUCTIVE_BG};
-    color: {c.DESTRUCTIVE};
-    border-color: {c.DESTRUCTIVE};
-}}
-
-/* =================================================================
-   METRICS STRIP
-   ================================================================= */
-
-QWidget#metricsStrip {{
-    background-color: {c.SURFACE};
-    border-radius: {Dimensions.BORDER_RADIUS_MD}px;
-}}
-
-QLabel#metricLabel {{
-    color: {c.TEXT_SECONDARY};
-    font-size: 11px;
-}}
-
-QLabel#metricValue {{
-    color: {c.TEXT_PRIMARY};
-    font-size: 13px;
-    font-weight: 500;
-}}
-
-QWidget#metricDivider {{
-    background-color: {c.BORDER_DEFAULT};
-}}
-
-QLabel#metricsCollapsed {{
-    color: {c.TEXT_SECONDARY};
-    font-size: 11px;
-}}
-
-/* =================================================================
-   HOTKEY WIDGET
-   ================================================================= */
-
-QLineEdit#hotkeyInput {{
-    background-color: {c.BG_SECONDARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: 6px;
-    padding: 8px 12px;
-}}
-
-QLineEdit#hotkeyInput:focus {{
-    border-color: {c.ACCENT_BLUE};
-}}
-
-QLineEdit#hotkeyInput[invalid="true"] {{
-    border: 1px solid {c.DESTRUCTIVE};
-}}
-
-QLabel#hotkeyValidation {{
-    color: {c.DESTRUCTIVE};
+QPushButton[styleClass="purpleButton"]:focus {{
+    outline: 2px solid {c.PURPLE_5};
+    outline-offset: 2px;
 }}
 
 /* =================================================================
@@ -649,813 +249,556 @@ QDialog {{
 }}
 
 QFrame#dialogFrame {{
-    background-color: {c.BG_PRIMARY};
-    border: 3px solid {c.BORDER_ACCENT};
+    background-color: {c.GRAY_9};
+    border: 3px solid {c.BLUE_4};
     border-radius: 0px;
 }}
 
-QWidget#dialogContent {{
-    background-color: {c.BG_PRIMARY};
-}}
-
+/* Dialog container - no border (border is on QFrame) */
 QWidget#dialogContainer {{
-    background-color: {c.BG_PRIMARY};
+    background-color: {c.GRAY_9};
 }}
 
+/* Dialog button container - bottom row with background */
 QWidget#dialogButtonContainer {{
-    background-color: {c.BG_SECONDARY};
-    border-top: 1px solid {c.BORDER_DEFAULT};
+    background-color: {c.GRAY_8};
+    border-top: 1px solid {c.GRAY_7};
     border-bottom-left-radius: 8px;
     border-bottom-right-radius: 8px;
 }}
 
+/* Dialog labels */
 QLabel#dialogLabel {{
-    color: {c.TEXT_PRIMARY};
+    color: {c.GRAY_4};
     font-size: {Typography.BODY_SIZE}pt;
     border: none;
 }}
 
+/* Muted dialog label (for hints/previews) */
+QLabel#dialogLabelMuted {{
+    color: {c.GRAY_4};
+    font-size: {Typography.SMALL_SIZE}pt;
+    font-style: italic;
+}}
+
+/* Dialog input fields */
 QLineEdit#dialogInput {{
-    background-color: {c.BG_SECONDARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_DEFAULT};
+    background-color: {c.GRAY_8};
+    color: {c.GRAY_4};
+    border: 1px solid {c.GRAY_7};
     border-radius: 6px;
     padding: 8px 12px;
     font-size: {Typography.BODY_SIZE}pt;
 }}
 
 QLineEdit#dialogInput:focus {{
-    border-color: {c.ACCENT_BLUE};
+    border-color: {c.BLUE_4};
 }}
 
-QLabel#groupDialogLabel {{
-    color: {c.TEXT_PRIMARY};
-    font-size: 14px;
-    font-weight: 500;
+/* Create project dialog */
+QDialog#createProjectDialog {{
+    background-color: {c.GRAY_9};
 }}
 
-QLineEdit#groupNameInput {{
-    background-color: {c.BG_SECONDARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_DEFAULT};
+QLabel#dialogLabel {{
+    color: {c.GRAY_4};
+    font-size: {Typography.FONT_SIZE_SM}px;
+    font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
+}}
+
+QLineEdit#projectNameInput {{
+    background-color: {c.GRAY_8};
+    color: {c.GRAY_4};
+    border: 1px solid {c.GRAY_7};
     border-radius: 6px;
     padding: 10px 12px;
-    font-size: 14px;
+    font-size: {Typography.FONT_SIZE_SM}px;
 }}
 
-QLineEdit#groupNameInput:focus {{
-    border-color: {c.ACCENT_BLUE};
+QLineEdit#projectNameInput:focus {{
+    border-color: {c.BLUE_4};
 }}
 
-/* =================================================================
-   SETTINGS DIALOG
-   ================================================================= */
-
-QScrollArea#settingsScrollArea {{
-    background-color: transparent;
-    border: none;
+/* Error dialog styles */
+QDialog#errorDialog {{
+    background-color: {c.GRAY_9};
 }}
 
-QLabel#settingsSectionHeader {{
-    color: {c.TEXT_SECONDARY};
-    font-size: {Typography.SECTION_HEADER_SIZE}pt;
-    font-weight: 600;
-    padding-top: {Spacing.MINOR_GAP}px;
-    padding-bottom: {Spacing.MINOR_GAP // 2}px;
-}}
-
-/* Settings input widgets */
-QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
-    background-color: {c.BG_TERTIARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_COLOR};
-    border-radius: {Dimensions.BORDER_RADIUS_SMALL}px;
-    padding: 6px 10px;
-    min-height: 24px;
-}}
-
-QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{
-    border-color: {c.ACCENT_PRIMARY};
-}}
-
-/* QComboBox dropdown styling */
-QComboBox::drop-down {{
-    border: none;
-    background: transparent;
-}}
-
-QComboBox::down-arrow {{
-    image: none;
-    border: none;
-    width: 0px;
-    height: 0px;
-}}
-
-QComboBox QAbstractItemView {{
-    background-color: {c.BG_TERTIARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_COLOR};
-    selection-background-color: {c.ACCENT_PRIMARY};
-    selection-color: {c.TEXT_PRIMARY};
-    font-size: {Typography.SMALL_SIZE}pt;
-    padding: 0px;
-    margin: 0px;
-    outline: 0;
-}}
-
-QComboBox QAbstractItemView::item {{
-    background-color: {c.BG_TERTIARY};
-    color: {c.TEXT_PRIMARY};
-    padding: 8px 12px;
-    min-height: 20px;
-    border: none;
-}}
-
-QComboBox QAbstractItemView::item:selected {{
-    background-color: {c.ACCENT_PRIMARY};
-    color: {c.TEXT_PRIMARY};
-}}
-
-QComboBox QAbstractItemView::item:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-}}
-
-QCheckBox {{
-    color: {c.TEXT_PRIMARY};
-    spacing: 8px;
-}}
-
-QCheckBox::indicator {{
-    width: 18px;
-    height: 18px;
-    border: 1px solid {c.BORDER_COLOR};
-    border-radius: 3px;
-    background-color: {c.BG_TERTIARY};
-}}
-
-QCheckBox::indicator:checked {{
-    background-color: {c.ACCENT_PRIMARY};
-    border-color: {c.ACCENT_PRIMARY};
-}}
-
-QWidget#settingsButtonContainer {{
-    background-color: {c.BG_SECONDARY};
-    border-top: 1px solid {c.BORDER_COLOR};
-}}
-
-QPushButton#settingsCancelBtn {{
-    background-color: {c.BG_TERTIARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_COLOR};
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-}}
-
-/* Hotkey widget Change button - primary blue style */
-QPushButton#hotkeyChangeBtn {{
-    background-color: {c.ACCENT_PRIMARY};
-    color: {c.TEXT_PRIMARY};
-    border: none;
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-    padding: 8px 16px;
-    font-weight: 600;
-    min-width: 80px;
-}}
-
-QPushButton#hotkeyChangeBtn:hover {{
-    background-color: {c.ACCENT_HOVER};
-}}
-
-QPushButton#hotkeyChangeBtn:pressed {{
-    background-color: {c.ACCENT_PRESSED};
-}}
-
-QPushButton#hotkeyChangeBtn:disabled {{
-    background-color: {c.BG_TERTIARY};
-    color: {c.TEXT_SECONDARY};
-}}
-
-QPushButton#settingsCancelBtn:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-}}
-
-QPushButton#settingsApplyBtn {{
-    background-color: {c.BG_TERTIARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_COLOR};
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-}}
-
-QPushButton#settingsApplyBtn:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-}}
-
-QPushButton#settingsOkBtn {{
-    background-color: {c.ACCENT_PRIMARY};
-    color: {c.TEXT_ON_ACCENT};
-    border: none;
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-}}
-
-QPushButton#settingsOkBtn:hover {{
-    background-color: {c.ACCENT_HOVER};
-}}
-
-/* =================================================================
-   ABOUT DIALOG
-   ================================================================= */
-
-QLabel#aboutTitle {{
-    font-size: {Typography.FONT_SIZE_HEADER}px;
-    font-weight: {Typography.FONT_WEIGHT_BOLD};
-    color: {c.TEXT_PRIMARY};
-    margin-bottom: {Spacing.MINOR_GAP}px;
-}}
-
-QLabel#aboutSubtitle {{
-    font-size: {Typography.FONT_SIZE_LARGE}px;
-    font-weight: {Typography.FONT_WEIGHT_MEDIUM};
-    color: {c.TEXT_SECONDARY};
-}}
-
-QLabel#aboutDescription {{
-    font-size: {Typography.FONT_SIZE_BODY}px;
-    color: {c.TEXT_SECONDARY};
-    line-height: 1.5;
-}}
-
-QLabel#aboutCreator {{
-    font-size: {Typography.FONT_SIZE_BODY}px;
-    font-weight: {Typography.FONT_WEIGHT_MEDIUM};
-    color: {c.TEXT_PRIMARY};
-}}
-
-/* =================================================================
-   WAVEFORM VISUALIZER
-   ================================================================= */
-
-QWidget#waveformVisualizer {{
-    background-color: transparent;
-}}
-
-/* =================================================================
-   FILE DIALOG (Qt-styled, non-native)
-   ================================================================= */
-
-QFileDialog {{
-    background-color: {c.BG_PRIMARY};
-    color: {c.TEXT_PRIMARY};
-}}
-
-QFileDialog QWidget {{
-    background-color: {c.BG_PRIMARY};
-    color: {c.TEXT_PRIMARY};
-}}
-
-QFileDialog QLabel {{
-    color: {c.TEXT_PRIMARY};
-    background: transparent;
-}}
-
-/* File/Directory list views */
-QFileDialog QListView,
-QFileDialog QTreeView {{
-    background-color: {c.BG_SECONDARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-    selection-background-color: {c.ACCENT_PRIMARY};
-    selection-color: {c.TEXT_ON_ACCENT};
-}}
-
-QFileDialog QListView::item,
-QFileDialog QTreeView::item {{
-    padding: 6px 8px;
-    color: {c.TEXT_PRIMARY};
-}}
-
-QFileDialog QListView::item:hover,
-QFileDialog QTreeView::item:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-}}
-
-QFileDialog QListView::item:selected,
-QFileDialog QTreeView::item:selected {{
-    background-color: {c.ACCENT_PRIMARY};
-    color: {c.TEXT_ON_ACCENT};
-}}
-
-/* Header columns */
-QFileDialog QHeaderView::section {{
-    background-color: {c.BG_TERTIARY};
-    color: {c.TEXT_SECONDARY};
-    border: none;
-    border-bottom: 1px solid {c.BORDER_DEFAULT};
-    padding: 8px;
-    font-weight: {Typography.FONT_WEIGHT_MEDIUM};
-}}
-
-/* Input fields */
-QFileDialog QLineEdit {{
-    background-color: {c.BG_SECONDARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-    padding: 8px 12px;
-    selection-background-color: {c.ACCENT_PRIMARY};
-    selection-color: {c.TEXT_ON_ACCENT};
-}}
-
-QFileDialog QLineEdit:focus {{
-    border: 1px solid {c.ACCENT_PRIMARY};
-}}
-
-/* Dropdown/Combobox */
-QFileDialog QComboBox {{
-    background-color: {c.BG_SECONDARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-    padding: 8px 12px;
-}}
-
-QFileDialog QComboBox:focus {{
-    border: 1px solid {c.ACCENT_PRIMARY};
-}}
-
-QFileDialog QComboBox::drop-down {{
-    border: none;
-    width: 24px;
-}}
-
-QFileDialog QComboBox QAbstractItemView {{
-    background-color: {c.BG_SECONDARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.ACCENT_PRIMARY};
-    selection-background-color: {c.ACCENT_PRIMARY};
-    selection-color: {c.TEXT_ON_ACCENT};
-}}
-
-/* Toolbar and view buttons */
-QFileDialog QToolBar {{
-    background-color: {c.BG_PRIMARY};
-    border: none;
-    spacing: 4px;
-}}
-
-QFileDialog QToolButton {{
-    background-color: {c.BG_SECONDARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-    padding: 6px;
-    margin: 2px;
-}}
-
-QFileDialog QToolButton:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-    border-color: {c.ACCENT_PRIMARY};
-}}
-
-QFileDialog QToolButton:checked {{
-    background-color: {c.ACCENT_PRIMARY};
-    border-color: {c.ACCENT_PRIMARY};
-    color: {c.TEXT_ON_ACCENT};
-}}
-
-QFileDialog QToolButton:pressed {{
-    background-color: {c.ACCENT_PRESSED};
-}}
-
-/* Navigation (places/shortcuts) */
-QFileDialog QListView {{
-    background-color: {c.BG_SECONDARY};
-    border: 1px solid {c.BORDER_DEFAULT};
-}}
-
-QFileDialog QListView::item {{
-    color: {c.TEXT_PRIMARY};
-    padding: 6px;
-}}
-
-QFileDialog QListView::item:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-}}
-
-QFileDialog QListView::item:selected {{
-    background-color: {c.ACCENT_PRIMARY};
-    color: {c.TEXT_ON_ACCENT};
-}}
-
-/* Buttons - will be overridden programmatically for Choose/Cancel */
-QFileDialog QPushButton {{
-    background-color: {c.BG_TERTIARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: {Dimensions.BORDER_RADIUS}px;
-    padding: 10px 20px;
-    min-width: 80px;
+QLabel#errorDialogMessage {{
+    color: {c.GRAY_4};
     font-size: {Typography.BODY_SIZE}pt;
+    padding: 0px 4px;
 }}
 
-QFileDialog QPushButton:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-    border-color: {c.ACCENT_PRIMARY};
+QLabel#errorDialogIcon {{
+    color: {c.RED_5};
 }}
 
-QFileDialog QPushButton:pressed {{
-    background-color: {c.ACCENT_PRESSED};
+QPushButton#errorDialogToggle {{
+    background: transparent;
+    color: {c.BLUE_4};
+    border: none;
+    font-size: {Typography.SMALL_SIZE}pt;
+    padding: 4px 0px;
+    text-align: left;
+}}
+
+QPushButton#errorDialogToggle:hover {{
+    text-decoration: underline;
+}}
+
+QPlainTextEdit#errorDialogDetails {{
+    background-color: {c.GRAY_8};
+    color: {c.GRAY_4};
+    border: 1px solid {c.GRAY_7};
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: {Typography.SMALL_SIZE}pt;
+    padding: 8px;
+}}
+
+QPushButton#errorDialogCopy {{
+    background-color: {c.GRAY_8};
+    color: {c.GRAY_4};
+    border: 1px solid {c.GRAY_7};
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: {Typography.SMALL_SIZE}pt;
+}}
+
+QPushButton#errorDialogCopy:hover {{
+    background-color: {c.GRAY_7};
+}}
+
+QPushButton#errorDialogViewLogs {{
+    background-color: transparent;
+    color: {c.BLUE_4};
+    border: none;
+    font-size: {Typography.SMALL_SIZE}pt;
+    padding: 4px 0px;
+}}
+
+QPushButton#errorDialogViewLogs:hover {{
+    text-decoration: underline;
 }}
 
 /* =================================================================
-   SHELL COMPONENTS (IconRail, ActionDock)
+   TITLE BAR
    ================================================================= */
 
-/* IconRail Container */
-IconRail {{
-    background-color: {c.BG_SECONDARY};
-    border-right: 1px solid {c.BORDER_DEFAULT};
-    min-width: 60px;
+QWidget#titleBar {{
+    background-color: {c.GRAY_8};
+    border-bottom: 3px solid {c.GRAY_6};
 }}
 
-/* IconRail Buttons */
-IconRail QPushButton {{
+QLabel#titleBarLabel {{
+    color: {c.GRAY_0};
+    font-size: {Typography.TITLE_BAR_SIZE}px;
+    font-weight: 600;
+}}
+
+QToolButton#titleBarControl {{
     background-color: transparent;
     border: none;
-    border-radius: 6px;
-    padding: 10px;
-    margin: 4px;
-    color: {c.TEXT_SECONDARY};
-    font-weight: bold;
-    font-size: 16px; /* Icon placeholder size */
+    border-radius: {BORDER_RADIUS_SMALL}px;
 }}
 
-IconRail QPushButton:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-    color: {c.TEXT_PRIMARY};
+QToolButton#titleBarControl:hover {{
+    background-color: {c.GRAY_5};
 }}
 
-IconRail QPushButton:checked {{
-    background-color: {c.ACCENT_TRANSPARENT};
-    color: {c.ACCENT_BLUE};
-    border-left: 3px solid {c.ACCENT_BLUE};
+QToolButton#titleBarControl:pressed {{
+    background-color: {c.GRAY_4};
 }}
 
-/* ActionDock */
+QToolButton#titleBarClose {{
+    background-color: transparent;
+    border: none;
+    border-radius: {BORDER_RADIUS_SMALL}px;
+}}
+
+QToolButton#titleBarClose:hover {{
+    background-color: {c.RED_5};
+}}
+
+QToolButton#titleBarClose:pressed {{
+    background-color: {c.RED_7};
+}}
+
+QWidget#dialogTitleBar {{
+    background-color: {c.GRAY_8};
+    border-bottom: 1px solid {c.GRAY_6};
+}}
+
+QLabel#dialogTitleLabel {{
+    color: {c.GRAY_0};
+    font-weight: 600;
+}}
+
+/* =================================================================
+   SHELL COMPONENTS
+   ================================================================= */
+
+IconRail {{
+    background-color: {c.GRAY_8};
+    border: 2px solid {c.GRAY_7};
+    border-radius: 12px;
+    min-width: 110px;
+    max-width: 110px;
+    margin: 20px 10px;
+}}
+
+IconRail QToolButton {{
+    background-color: transparent;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 6px;
+    margin: 0px;
+    color: {c.GRAY_2};
+    font-size: 13px;
+    font-weight: 600;
+}}
+
+IconRail QToolButton:hover {{
+    background-color: {c.GRAY_7};
+    color: {c.GRAY_0};
+}}
+
+IconRail QToolButton:checked {{
+    background-color: {c.GRAY_8};
+    border-left: 6px solid {c.BLUE_4};
+    border-radius: 8px;
+    color: {c.BLUE_4};
+}}
+
+IconRail QToolButton[blink="active"] {{
+    background-color: {c.GRAY_7};
+    border-left: 6px solid {c.BLUE_3};
+}}
+
 ActionDock {{
-    background-color: {c.BG_SECONDARY};
-    border-top: 1px solid {c.BORDER_DEFAULT};
-    border-bottom: 1px solid {c.BORDER_DEFAULT};
-    /* border-radius: 8px; */ 
+    background-color: transparent;
+    border-bottom: 1px solid {c.GRAY_6};
+}}
+
+QFrame#actionDockSeparator {{
+    background-color: {c.GRAY_6};
+    border: none;
+    max-height: 1px;
 }}
 
 ActionDock QPushButton {{
-    background-color: {c.BG_TERTIARY};
-    border: 1px solid {c.BORDER_DEFAULT};
+    background-color: transparent;
+    color: {c.GRAY_0};
+    border: 1px solid {c.GRAY_6};
     border-radius: 4px;
-    padding: 8px;
-    color: {c.TEXT_PRIMARY};
+    padding: 12px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    margin: 2px 4px;
+    min-height: 48px;
 }}
 
 ActionDock QPushButton:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-    border-color: {c.ACCENT_BLUE};
+    background-color: {c.GRAY_7};
+    border-color: {c.BLUE_4};
 }}
 
-ActionDock QPushButton:disabled {{
-    color: {c.TEXT_TERTIARY};
-    background-color: {c.BG_PRIMARY};
-    border-color: {c.BORDER_DEFAULT};
+ActionDock QPushButton:pressed {{
+    background-color: {c.BLUE_6};
 }}
 
-/* =================================================================
-   STATUS BAR
-   ================================================================= */
+ActionDock QPushButton#btn_START_RECORDING {{
+    color: {c.GRAY_9};
+}}
+
+ActionDock QPushButton#btn_STOP_RECORDING {{
+    color: {c.RED_5};
+}}
+
+ActionDock QPushButton#btn_CANCEL:hover {{
+    background-color: {c.RED_5};
+    color: {c.GRAY_0};
+    border-color: {c.RED_5};
+}}
+
 QStatusBar {{
-    background: {c.BACKGROUND};
-    color: {c.TEXT_SECONDARY};
-    border-top: 1px solid {c.BORDER_DEFAULT};
+    background: {c.GRAY_9};
+    color: {c.GRAY_2};
+    border-top: 1px solid {c.GRAY_6};
     padding: 4px 8px;
 }}
 
-QStatusBar::item {{
-    border: none;
+/* Metrics Strip */
+QWidget#metricsStrip {{
+    background-color: transparent;
+}}
+
+QLabel#metricsToggle {{
+    color: {c.GRAY_4};
+    font-size: {Typography.FONT_SIZE_SM}px;
+    font-weight: {Typography.FONT_WEIGHT_MEDIUM};
+    qproperty-alignment: 'AlignCenter';
+}}
+
+QLabel#metricLabel {{
+    color: {c.GRAY_4};
+    font-size: {Typography.FONT_SIZE_SM}px;
+    qproperty-alignment: 'AlignLeft';
+}}
+
+QLabel#metricValue {{
+    color: {c.GRAY_0};
+    font-size: {Typography.FONT_SIZE_SM}px;
+    font-weight: bold;
+    qproperty-alignment: 'AlignLeft';
 }}
 
 /* =================================================================
-   OVERLAYS
+   VIEWS
    ================================================================= */
-QFrame#previewOverlay {{
-    background-color: {c.SURFACE};
-    border: 1px solid {c.BORDER_LIGHT};
-    border-radius: 6px;
-}}
 
-QFrame#previewOverlay QLabel {{
-    color: {c.TEXT_PRIMARY};
+/* Content Panel Styling */
+QLabel#contentPanelTitle {{
+    color: {c.GRAY_4};
+    font-size: {Typography.FONT_SIZE_LG}px;
     font-weight: bold;
 }}
 
-QFrame#previewOverlay QTextBrowser {{
-    background-color: {c.BACKGROUND};
+QFrame#contentPanelSeparator {{
+    background-color: {c.GRAY_7};
     border: none;
-    color: {c.TEXT_PRIMARY};
-    font-family: "Monospace";
+    max-height: 1px;
 }}
 
-/* =================================================================
-   CONTENT PANEL
-   ================================================================= */
-ContentPanel #timestampLabel {{
-    font-size: 16px;
-    font-weight: bold;
-    color: {c.TEXT_PRIMARY};
+QLabel#contentPanelFooter {{
+    color: {c.GRAY_4};
+    font-size: {Typography.FONT_SIZE_BASE}px;
+    border: none;
 }}
 
-ContentPanel #durationLabel {{
-    color: {c.TEXT_SECONDARY};
-}}
-
-ContentPanel QTextEdit {{
-    background: {c.SURFACE};
-    color: {c.TEXT_PRIMARY};
-    font-size: 14px;
-}}
-
-/* =================================================================
-   EDIT VIEW
-   ================================================================= */
-EditView QTextEdit {{
-    background-color: {c.SURFACE};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: 6px;
-    padding: 12px;
-    font-size: 14px;
+/* Base styling for content panel text browser */
+QTextBrowser#contentPanelText {{
+    background-color: transparent;
+    color: {c.GRAY_4};
+    padding: 8px 0px;
     line-height: 1.5;
 }}
 
-EditView #saveButton {{
-    background-color: {c.PRIMARY};
-    color: {c.TEXT_ON_ACCENT};
-    border-radius: 6px;
-    padding: 8px 16px;
-    font-weight: bold;
-    border: none;
-}}
-
-EditView #saveButton:hover {{
-    background-color: {c.PRIMARY_HOVER};
-}}
-
-/* =================================================================
-   TRANSCRIBE VIEW
-   ================================================================= */
-TranscribeView #headerPanel {{
-    background-color: {c.SURFACE};
-    border-bottom: 1px solid {c.BORDER_DEFAULT};
-}}
-
-TranscribeView #welcomeLabel {{
-    color: {c.TEXT_PRIMARY};
-    font-weight: bold;
-}}
-
-TranscribeView #motdLabel {{
-    color: {c.TEXT_SECONDARY};
-    font-style: italic;
-}}
-
-/* =================================================================
-   SEARCH VIEW
-   ================================================================= */
-SearchView QLineEdit {{
-    background-color: {c.SURFACE};
-    border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: 4px;
-    padding: 0 8px;
-    font-size: 14px;
-    color: {c.TEXT_PRIMARY};
-}}
-
-SearchView QLineEdit:focus {{
-    border: 1px solid {c.ACCENT_PRIMARY};
-}}
-
-SearchView QTableView {{
-    background-color: {c.BACKGROUND};
-    border: none;
-    gridline-color: {c.BORDER_DEFAULT};
-}}
-
-SearchView QTableView::item:selected {{
-    background-color: {c.ACCENT_PRIMARY}40;
-    color: {c.TEXT_PRIMARY};
-}}
-
 TranscribeView QTextEdit {{
-    background-color: {c.SURFACE};
-    border: 1px solid {c.BORDER_DEFAULT};
+    background-color: {c.GRAY_8};
+    border: 1px solid {c.GRAY_6};
     border-radius: 8px;
     padding: 16px;
-    color: {c.TEXT_PRIMARY};
+    color: {c.GRAY_0};
     font-size: 16px;
 }}
 
-/* =================================================================
-   METRICS DOCK
-   ================================================================= */
-#metricsDock {{
-    background-color: {c.SURFACE};
-    border-top: 1px solid {c.BORDER_DEFAULT};
+EditView QTextEdit {{
+    background-color: {c.GRAY_8};
+    color: {c.GRAY_0};
+    border: 1px solid {c.GRAY_6};
+    border-radius: 6px;
+    padding: 12px;
 }}
 
-#metricsDock QLabel {{
-    color: {c.TEXT_SECONDARY};
-    font-family: "Segoe UI";
-    font-size: 13px;
-}}
-
-#metricsDock #MetricValue {{
-    color: {c.TEXT_PRIMARY};
+/* RefineView */
+QLabel#refineTitle {{
+    font-size: 18px;
     font-weight: bold;
-    margin-left: 4px;
+    color: {c.GRAY_0};
+    margin-bottom: 8px;
+}}
+
+QLabel#refineLabelOriginal {{
+    color: {c.GRAY_2};
+    font-weight: bold;
+    margin-bottom: 4px;
+}}
+
+QLabel#refineLabelRefined {{
+    color: {c.BLUE_4};
+    font-weight: bold;
+    margin-bottom: 4px;
+}}
+
+QTextEdit#refineTextOriginal {{
+    background-color: {c.GRAY_9};
+    border: 1px solid {c.GRAY_6};
+    border-radius: 8px;
+    padding: 16px;
+    color: {c.GRAY_0};
+    font-size: 14px;
+}}
+
+QTextEdit#refineTextRefined {{
+    background-color: {c.GRAY_7};
+    border: 1px solid {c.BLUE_4};
+    border-radius: 8px;
+    padding: 16px;
+    color: {c.GRAY_0};
+    font-size: 14px;
 }}
 
 /* =================================================================
-   Project TREE
+   HOTKEY WIDGET
    ================================================================= */
-QTreeView#projectGroupTree {{
-    outline: 0;
-    border: none;
-    background-color: transparent;
-    selection-background-color: transparent;
+
+/* Hotkey input field */
+QLineEdit#hotkeyInput {{
+    background-color: {c.GRAY_8};
+    color: {c.GRAY_4};
+    border: 1px solid {c.GRAY_7};
+    border-radius: 6px;
+    padding: 8px 12px;
 }}
 
-QTreeView#projectGroupTree::item:focus {{
+QLineEdit#hotkeyInput:focus {{
+    border-color: {c.BLUE_4};
+}}
+
+QLineEdit#hotkeyInput[invalid="true"] {{
+    border: 1px solid {c.RED_5};
+}}
+
+/* Validation error label */
+QLabel#hotkeyValidation {{
+    color: {c.RED_5};
+}}
+
+/* =================================================================
+   ONBOARDING
+   ================================================================= */
+
+QWidget#onboardingFooter {{
+    background-color: {c.GRAY_9};
+    border-top: 1px solid {c.GRAY_7};
+}}
+
+QLabel#onboardingTitle {{
+    color: {c.GRAY_0};
+    font-weight: bold;
+}}
+
+QLabel.onboardingTitleXL {{
+    font-size: {Typography.FONT_SIZE_XL}pt;
+}}
+
+QLabel.onboardingTitleLG {{
+    font-size: {Typography.FONT_SIZE_LG}pt;
+}}
+
+QLabel#onboardingDesc {{
+    color: {c.GRAY_2};
+}}
+
+QLabel#onboardingStatus {{
+    color: {c.GRAY_4};
+    font-size: {Typography.FONT_SIZE_MD}pt;
+    font-style: italic;
+}}
+
+QProgressBar {{
+    background-color: {c.GRAY_8};
+    border: 1px solid {c.GRAY_7};
+    border-radius: 4px;
+    height: 8px;
+}}
+
+QProgressBar::chunk {{
+    background-color: {c.BLUE_4};
+    border-radius: 4px;
+}}
+
+/* TogglePill */
+TogglePill {{
+    background-color: {c.GRAY_8};
+    color: {c.GRAY_2};
+    border: 2px solid {c.GRAY_6};
+    border-radius: {Spacing.RADIUS_XL}px;
+    padding: {Spacing.S1}px {Spacing.S3}px;
+    font-weight: 500;
+    font-size: 14px;
+}}
+
+TogglePill:hover {{
+    background-color: {c.GRAY_7};
+    border-color: {c.GRAY_5};
+    color: {c.GRAY_2};
+}}
+
+TogglePill:checked {{
+    background-color: {c.BLUE_7};
+    color: {c.GRAY_0};
+    border: 2px solid {c.BLUE_4};
+    font-weight: 600;
+}}
+
+TogglePill:checked:hover {{
+    background-color: {c.BLUE_4};
+    border-color: {c.BLUE_3};
+}}
+
+/* =================================================================
+   TREE & TABLE VIEWS
+   ================================================================= */
+
+QTreeView {{
+    background-color: transparent;
     border: none;
     outline: none;
 }}
 
-QTreeView#projectGroupTree::item:selected {{
+QTreeView::item {{
+    padding: 6px; /* Consistent padding for tree items */
+}}
+
+QTableView {{
     background-color: transparent;
     border: none;
+    color: {c.GRAY_2}; /* Softer text color */
+    outline: none;
+    gridline-color: {c.GRAY_7};
+    selection-background-color: {c.BLUE_4}; /* Match other selection styles */
+    selection-color: {c.GRAY_0};
 }}
 
-/* =================================================================
-   WORKSPACE CONTENT (CAROUSEL)
-   ================================================================= */
-QWidget#carouselContainer {{
-    background-color: {c.BACKGROUND};
-    border-bottom: 1px solid {c.BORDER_DEFAULT};
-}}
-
-QWidget#carouselContainer QPushButton {{
-    background: transparent;
-    border: none;
-    font-weight: bold;
-    color: {c.TEXT_PRIMARY};
-    border-radius: 4px;
-}}
-
-QWidget#carouselContainer QPushButton:hover {{
-    background: {c.SURFACE_ALT};
-}}
-
-QWidget#carouselContainer QPushButton:disabled {{
-    color: {c.TEXT_TERTIARY};
-}}
-
-QWidget#carouselContainer QLabel {{
-    color: {c.TEXT_SECONDARY};
-}}
-
-/* =================================================================
-   DIALOGS
-   ================================================================= */
-/* Metrics Explanation */
-MetricsExplanationDialog QScrollArea {{
-    background: {c.SURFACE};
+QTableView::item {{
+    padding: 8px 12px; /* Breathing room for table cells */
     border: none;
 }}
 
-MetricsExplanationDialog QScrollArea > QWidget > QWidget {{
-    background: {c.SURFACE};
+QTableView::item:selected {{
+    background-color: {c.BLUE_4};
+    color: {c.GRAY_0};
 }}
 
-MetricsExplanationDialog QLabel[styleClass="sectionHeader"] {{
-    color: {c.TEXT_PRIMARY};
-    font-size: 14px;
-    font-weight: bold;
-    padding-top: 8px;
-}}
-
-MetricsExplanationDialog QLabel[styleClass="intro"] {{
-    color: {c.TEXT_PRIMARY};
-    font-size: 13px;
-    line-height: 1.5;
-    background: {c.SURFACE_ALT};
-    padding: 12px;
-    border-radius: 4px;
-}}
-
-MetricsExplanationDialog QLabel[styleClass="example"] {{
-    color: {c.TEXT_SECONDARY};
-    font-size: 13px;
-    line-height: 1.6;
-    background: {c.BACKGROUND};
-    padding: 10px;
-    border-left: 3px solid {c.PRIMARY};
-    font-family: monospace;
-}}
-
-MetricsExplanationDialog QLabel[styleClass="philosophy"] {{
-    color: {c.TEXT_PRIMARY};
-    font-size: 13px;
-    line-height: 1.5;
-    background: {c.SURFACE_ALT}; /* Simplified gradient */
-    padding: 12px;
-    border-radius: 4px;
-    border-left: 3px solid {c.PRIMARY};
-}}
-
-MetricsExplanationDialog QLabel[styleClass="body"] {{
-    color: {c.TEXT_SECONDARY};
-    font-size: 13px;
-    line-height: 1.5;
-}}
-
-MetricsExplanationDialog QLabel[styleClass="formula"] {{
-    color: {c.PRIMARY};
-    font-size: 13px;
-    font-family: 'Courier New', monospace;
-    background: {c.BACKGROUND};
-    padding: 10px 16px;
-    border-radius: 4px;
-    border: 1px solid rgba(90, 159, 212, 0.33);
-}}
-
-/* Error Dialog */
-QLabel#errorDialogIcon {{
-    color: {c.DESTRUCTIVE};
-    padding: 0;
-    margin: 0;
-    font-size: {Typography.FONT_SIZE_XL}px;
-    font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
-}}
-
-QPlainTextEdit#errorDialogDetails {{
-    color: {c.TEXT_PRIMARY};
-    background-color: {c.SURFACE_ALT};
-}}
-
-QPushButton#errorDialogToggle {{
-    background-color: transparent;
-    color: {c.TEXT_SECONDARY};
+QHeaderView::section {{
+    background-color: {c.GRAY_8};
+    color: {c.GRAY_4};
+    padding: 6px 12px;
     border: none;
-    text-align: left;
-    padding: 4px 8px;
+    border-bottom: 2px solid {c.GRAY_6};
+    font-weight: 600;
 }}
 
-QPushButton#errorDialogToggle:hover {{
-    color: {c.TEXT_PRIMARY};
-}}
-
-QPushButton#errorDialogCopy, QPushButton#errorDialogViewLogs {{
-    color: white;
-}}
-
-/* Dialog Buttons (General) */
-/* Targeted at QDialogButtonBox buttons styled as primary/secondary */
-QPushButton[role="accept"] {{
-    background-color: {c.PRIMARY};
-    color: {c.TEXT_ON_ACCENT};
+QTreeView {{
+    alternate-background-color: {c.GRAY_6};
+    background-color: {c.GRAY_8};
     border: none;
-    border-radius: 6px; /* Dimensions.BORDER_RADIUS */
-    padding: 12px 24px;
-    font-weight: bold;
-    min-width: 100px;
 }}
 
-QPushButton[role="accept"]:hover {{
-    background-color: {c.PRIMARY_HOVER};
+QTreeView::item:hover {{
+    background-color: rgba(59, 130, 246, 0.08);
 }}
 
-QPushButton[role="accept"]:pressed {{
-    background-color: {c.PRIMARY_PRESSED};
+QTableView {{
+    alternate-background-color: {c.GRAY_6};
+    background-color: {c.GRAY_8};
+    border: none;
 }}
 
-QPushButton[role="reject"] {{
-    background-color: {c.BG_TERTIARY};
-    color: {c.TEXT_PRIMARY};
-    border: 1px solid {c.BORDER_DEFAULT};
-    border-radius: 6px;
-    padding: 12px 24px;
-    font-weight: bold;
-    min-width: 100px;
+QTableView::item:hover {{
+    background-color: rgba(59, 130, 246, 0.08);
 }}
-
-QPushButton[role="reject"]:hover {{
-    background-color: {c.HOVER_BG_ITEM};
-}}
-
 """
