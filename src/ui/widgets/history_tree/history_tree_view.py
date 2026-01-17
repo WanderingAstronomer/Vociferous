@@ -17,6 +17,7 @@ from PyQt6.QtCore import (
     QModelIndex,
     Qt,
     QTimer,
+    QSize,
     pyqtSignal,
 )
 from PyQt6.QtGui import QColor, QIcon, QPixmap
@@ -36,7 +37,7 @@ from ui.widgets.dialogs.error_dialog import show_error_dialog
 from ui.widgets.history_tree.history_tree_delegate import TreeHoverDelegate
 
 if TYPE_CHECKING:
-    from history_manager import HistoryManager
+    from database.history_manager import HistoryManager
 
 logger = logging.getLogger(__name__)
 
@@ -55,12 +56,14 @@ class HistoryTreeView(QTreeView):
         entryDoubleClicked(str): Emitted when entry is double-clicked (text)
         countChanged(int): Emitted when visible entry count changes
         entryGroupChanged(str, object): Emitted when Project changes
+        dataChanged(): Emitted when entries are modified (deleted, grouped, etc)
     """
 
     entrySelected = pyqtSignal(str, str)  # text, timestamp
     entryDoubleClicked = pyqtSignal(str)  # text (for copy)
     countChanged = pyqtSignal(int)
     entryGroupChanged = pyqtSignal(str, object)  # timestamp, group_id
+    historyContentChanged = pyqtSignal()
 
     def __init__(
         self,
@@ -91,6 +94,30 @@ class HistoryTreeView(QTreeView):
         self.setAccessibleDescription(
             "List of recent transcriptions grouped by day. Click headers to collapse."
         )
+
+    def sizeHint(self) -> QSize:
+        """
+        Return preferred size for the history tree view.
+        
+        Per Qt6 layout documentation, custom widgets must implement sizeHint()
+        to provide layout engines with sizing information.
+        
+        Returns:
+            QSize: Preferred size of 300x400 pixels (vertical preference)
+        
+        References:
+            - layout.html § "Custom Widgets in Layouts"
+        """
+        return QSize(300, 400)
+
+    def minimumSizeHint(self) -> QSize:
+        """
+        Return minimum acceptable size for the tree view.
+        
+        Returns:
+            QSize: Minimum size of 150x200 pixels
+        """
+        return QSize(150, 200)
 
     def _setup_ui(self) -> None:
         """Configure tree view appearance."""
@@ -231,11 +258,19 @@ class HistoryTreeView(QTreeView):
     def _show_context_menu(self, position) -> None:
         """Show context menu for entries."""
         index = self.indexAt(position)
-        if not index.isValid():
-            return
 
-        is_header = index.data(TranscriptionModel.IsHeaderRole)
-        if is_header:
+        # If clicking on empty space or a header, show tree-level actions only
+        if not index.isValid() or index.data(TranscriptionModel.IsHeaderRole):
+            menu = QMenu(self)
+
+            # Tree-level actions: Expand All / Collapse All
+            expand_action = menu.addAction("Expand All")
+            expand_action.triggered.connect(lambda: self.expandAll())
+
+            collapse_action = menu.addAction("Collapse All")
+            collapse_action.triggered.connect(lambda: self.collapseAll())
+
+            menu.exec(self.viewport().mapToGlobal(position))
             return
 
         # Get all selected entries (filter out headers)
@@ -265,9 +300,9 @@ class HistoryTreeView(QTreeView):
         if self._history_manager:
             menu.addSeparator()
 
-            # Get group IDs for selected items
+            # Get project IDs for selected items
             group_ids = {
-                idx.data(TranscriptionModel.GroupIDRole) for idx in selected_indices
+                idx.data(TranscriptionModel.ProjectIDRole) for idx in selected_indices
             }
             current_group_id = group_ids.pop() if len(group_ids) == 1 else None
             projects = self._history_manager.get_projects()
@@ -347,28 +382,27 @@ class HistoryTreeView(QTreeView):
                             )
 
                 assign_menu.addSeparator()
-                ungroup_label = (
-                    "Remove from Group"
-                    if count == 1
-                    else f"Remove {count} Items from Group"
-                )
-                ungroup_action = assign_menu.addAction(ungroup_label)
-                # Enable if any selected item has a group
-                ungroup_action.setEnabled(
-                    any(
-                        idx.data(TranscriptionModel.GroupIDRole) is not None
-                        for idx in selected_indices
+
+                # Only show if any selected item has a group
+                if any(
+                    idx.data(TranscriptionModel.ProjectIDRole) is not None
+                    for idx in selected_indices
+                ):
+                    ungroup_label = (
+                        "Remove from Group"
+                        if count == 1
+                        else f"Remove {count} Items from Group"
                     )
-                )
-                ungroup_action.triggered.connect(
-                    safe_callback(
-                        lambda checked,
-                        indices=selected_indices: self._assign_items_to_group(
-                            indices, None
-                        ),
-                        "ungroup",
+                    ungroup_action = assign_menu.addAction(ungroup_label)
+                    ungroup_action.triggered.connect(
+                        safe_callback(
+                            lambda checked,
+                            indices=selected_indices: self._assign_items_to_group(
+                                indices, None
+                            ),
+                            "ungroup",
+                        )
                     )
-                )
 
                 menu.addSeparator()
 
@@ -381,6 +415,14 @@ class HistoryTreeView(QTreeView):
                 "delete_entries",
             )
         )
+
+        # Tree-level actions
+        menu.addSeparator()
+        expand_action = menu.addAction("Expand All")
+        expand_action.triggered.connect(lambda: self.expandAll())
+
+        collapse_action = menu.addAction("Collapse All")
+        collapse_action.triggered.connect(lambda: self.collapseAll())
 
         menu.exec(self.viewport().mapToGlobal(position))
 
@@ -410,14 +452,13 @@ class HistoryTreeView(QTreeView):
             if not self._history_manager or not timestamp:
                 return
 
-            if self._history_manager.assign_transcript_to_project(
-                timestamp, group_id
-            ):
+            if self._history_manager.assign_transcript_to_project(timestamp, group_id):
                 source_model = self._get_source_model()
                 if source_model:
                     source_model.update_entry_group(timestamp, group_id)
 
                 self.entryGroupChanged.emit(timestamp, group_id)
+                self.historyContentChanged.emit()
                 self._emit_count()
 
                 # Force viewport update to ensure proper geometry (fixes ghost hits)
@@ -474,12 +515,17 @@ class HistoryTreeView(QTreeView):
 
             # Delete all selected entries
             source_model = self._get_source_model()
+            has_deleted = False
             for index in indices:
                 timestamp = index.data(TranscriptionModel.TimestampRole)
                 if timestamp and self._history_manager:
                     self._history_manager.delete_entry(timestamp)
                     if source_model:
                         source_model.delete_entry(timestamp)
+                    has_deleted = True
+
+            if has_deleted:
+                self.historyContentChanged.emit()
 
             self._emit_count()
             self.updateGeometry()

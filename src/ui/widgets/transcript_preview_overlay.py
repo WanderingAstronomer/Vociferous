@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtWidgets import (
     QFrame,
     QVBoxLayout,
@@ -9,25 +9,27 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QTextBrowser,
     QWidget,
-    QGraphicsDropShadowEffect
+    QGraphicsDropShadowEffect,
 )
 from PyQt6.QtGui import QColor, QFont
 
 from ui.constants import Typography
 
+
 class TranscriptPreviewOverlay(QFrame):
     """
     Non-modal overlay to preview transcript content.
     """
+
     closed = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("previewOverlay")
         self.setFrameShape(QFrame.Shape.StyledPanel)
-        
+
         # Styling handled by unified_stylesheet.py (QFrame#previewOverlay)
-        
+
         # Drop shadow
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(20)
@@ -46,24 +48,50 @@ class TranscriptPreviewOverlay(QFrame):
         # Header
         header_layout = QHBoxLayout()
         self._title_label = QLabel("Preview")
-        self._title_label.setFont(QFont("Segoe UI", Typography.FONT_SIZE_MD, Typography.FONT_WEIGHT_BOLD))
-        
+        self._title_label.setFont(
+            QFont("Segoe UI", Typography.FONT_SIZE_MD, Typography.FONT_WEIGHT_BOLD)
+        )
+
         self._close_btn = QPushButton("×")
         self._close_btn.setFixedSize(24, 24)
         self._close_btn.setFlat(True)
         self._close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._close_btn.clicked.connect(self.close)
-        
+
         header_layout.addWidget(self._title_label)
         header_layout.addStretch()
         header_layout.addWidget(self._close_btn)
-        
+
         layout.addLayout(header_layout)
 
         # Content
         self._viewer = QTextBrowser()
         self._viewer.setOpenExternalLinks(False)
         layout.addWidget(self._viewer)
+
+    def sizeHint(self) -> QSize:
+        """
+        Return preferred size for the transcript preview overlay.
+        
+        Per Qt6 layout documentation, custom widgets must implement sizeHint()
+        to provide layout engines with sizing information.
+        
+        Returns:
+            QSize: Preferred size of 400x300 pixels
+        
+        References:
+            - layout.html § "Custom Widgets in Layouts"
+        """
+        return QSize(400, 300)
+
+    def minimumSizeHint(self) -> QSize:
+        """
+        Return minimum acceptable size for the overlay.
+        
+        Returns:
+            QSize: Minimum size of 200x150 pixels
+        """
+        return QSize(200, 150)
 
     def show_transcript(self, text: str, title: str = "Transcript") -> None:
         self._title_label.setText(title)

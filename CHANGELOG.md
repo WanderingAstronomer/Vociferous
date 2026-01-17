@@ -1,5 +1,302 @@
 # Vociferous Changelog
 
+## [Unreleased]
+
+### Added
+- **Widget sizing compliance (Phase 1 TDD)**: Implemented `sizeHint()` and `minimumSizeHint()` methods for 7 custom widgets per Qt6 layout best practices:
+  - `BarSpectrumVisualizer`: Returns preferred size 200x100, minimum 100x50
+  - `ToggleSwitch`: Returns fixed size 50x24 (matches setFixedSize)
+  - `RailButton`: Returns square 110x110 dimensions
+  - `TranscriptPreviewOverlay`: Returns preferred 400x300, minimum 200x150
+  - `HistoryTreeView`: Returns preferred 300x400, minimum 150x200
+  - `BlockingOverlay`: Returns preferred 600x400, minimum 300x200
+  - Addresses audit findings P1-01, P1-02, P2-04 from UI Architecture Audit Report
+- **Widget sizing test suite**: Created comprehensive `test_widget_sizing.py` with 29 tests validating sizeHint compliance across all custom widgets
+
+### Fixed
+- **Refinement model echoing**: Fixed an issue where 8B and 14B models (and some 4B variants) would echo the original transcript instead of refining it. Shifted default SLM model definitions to use Instruct variants instead of Base variants, added explicit stop token support to `RefinementEngine`, and improved `_parse_output` to strip accidentally echoed transcript markers.
+- **Thinking model support**: Enhanced robust parsing of `<think>` blocks to handle both complete and truncated reasoning, ensuring that AI "thoughts" are correctly logged but removed from the final refined output.
+- **SLM reasoning output filtering**: Added automatic stripping of `<think>` reasoning blocks from SLM outputs (Refinement and MOTD). This ensures that models which generate internal thoughts (like Qwen2.5-14B) do not pollute the final user-visible text with reasoning tags.
+- **MOTD token limit**: Increased MOTD generation token limit from 80 to 256 to allow enough headroom for models to perform internal reasoning before producing the final one-sentence message.
+- **Refinement View lifecycle**: `RefineView` is now fully operational. It correctly loads transcript data by ID, displays a "processing" state during fetches, and emits proper signals for acceptance/discarding. The previous "inert" implementation has been replaced with a reactive, styled component using `ContentPanel`.
+- **TranscribeView button persistence bug**: Fixed action buttons (edit, delete, copy) persisting when navigating away from transcribe view after completing a transcription. Added EDITING and VIEWING state transitions to IDLE in hideEvent handler.
+- **Search overlay missing background**: Added `QFrame#previewOverlay` stylesheet definition with GRAY_7 background and BLUE_4 border for proper visibility when previewing transcripts from search.
+- **Hotkey widget button heights**: Added fixed height (BUTTON_HEIGHT_PRIMARY = 48px) to hotkey input field and change button for consistent sizing.
+
+### Changed
+- **Model settings layout**: Refactored from 2-row horizontal layout to 3-column vertical stack (Device, Compute Type, Language side by side with labels above) for better visual organization.
+- **Settings view dividers**: Added consistent light gray dividers between all settings sections (Model Settings, Recording, Visualization, Output & Processing) for improved visual separation.
+- **User metrics explanations**: Enhanced "How Metrics Are Calculated" section with mathematical formulas showing actual calculation methods (e.g., "Time Saved = (words ÷ 50 WPM × 60) − recording_time").
+- **Personalized user metrics banner**: Changed "User Metrics" title to show user's name from config (e.g., "Andrew's Metrics") or "Your Metrics" as fallback.
+- **Dynamic icon rail user label**: Icon rail now reads user name from config instead of hardcoded "User" label for personalized navigation.
+
+### Fixed (continued from previous)
+- **ActionDock button text clipping**: Increased button padding from `8px 16px` to `12px 16px` and added explicit `min-height: 48px` to stylesheet to prevent descender characters (g, p, y) from being cut off, especially in grid layouts.
+- **HistoryView delete button**: Connected `deleteRequested` signal from HistoryView to new `_on_delete_from_history_view()` handler in MainWindow, enabling delete functionality with confirmation dialog and automatic model refresh.
+- **ProjectsView create project button**: Added `create_new_project()` wrapper method to `ProjectTreeWidget` that displays the CreateProjectDialog and calls the underlying `create_project()` method, fixing the CREATE_PROJECT action dispatch.
+
+### Changed
+- Removed the blue border from the `QMainWindow` in `unified_stylesheet.py` and `main_window_styles.py` to achieve a cleaner look.
+- Enhanced MOTD generation prompts in `slm_service.py` to encourage more engaging and varied messages: updated tone to "calm, grounded, professional, and engaging", expanded guidance to include wordplay, alliteration, light humor, and thematic inspiration for freshness and uniqueness.
+
+### Added
+- **Dynamic Refinement Prompts**: Moved all refinement system prompts from hardcoded Python source to `config_schema.yaml`, enabling user customization without code changes.
+- **User Instruction Input**: Added a configurable text input to the Refinement View, allowing users to supply specific instructions (e.g., "Make it bullet points") during refinement.
+- **Refinement Strength Selector**: Introduced a "Strength" selector (Minimal, Balanced, Strong) in the Refinement View to control the intensity of AI edits.
+- **Refinement Testing Suite**: Added comprehensive `tests/test_refinement_integration.py` (orchestration, persistence) and `tests/test_view_refine.py` (view states, contracts), bringing the Refinement feature to 100% test coverage.
+- **AI-Generated Message of the Day (MOTD)** — Implemented dynamic motivational subtext in workspace header:
+  - Created `src/core/state_manager.py` for persistent session state management
+  - Added `RefinementEngine.generate_custom()` for non-transcription text generation
+  - Added SLM background task for MOTD generation with a 5-second startup delay and retry logic
+  - Injected dynamic entropy (Unix timestamp) and increased temperature (1.2) to ensure variety in generated messages
+  - **Rationale**: Replaces static subtext with dynamic, AI-generated content to improve application identity and user engagement without blocking startup performance.
+- **Unified Logging Migration** — Moved all terminal output to the standard Python logging framework:
+  - Removed all `print()` and `ConfigManager.console_print()` calls from the source tree
+  - Replaced legacy console printing with appropriate `logger` levels (`info`, `warning`, `error`, `critical`)
+  - Integrated transcription result echoing into `logger.info` for unified monitoring
+  - Added JSON-based "Agent Friendly" formatting for log visualization
+  - **Refactored Logging Architecture**: Relocated core logging logic to `src/core/log_manager.py`, separating it from UI error handling invariants.
+  - **Rationale**: Consolidated all diagnostics into a single, rotatable, and configurable system. Eliminates "stray" terminal output that bypassed log management.
+- **Root directory reorganization** — Streamlined project structure following Python/Linux conventions:
+  - **Configuration consolidation**: Merged `mypy.ini` and `pytest.ini` into `pyproject.toml` `[tool.*]` sections (eliminated 2 standalone config files)
+  - **Assets organization**: Created `assets/` directory at root, moved `icons/` → `assets/icons/` (groups runtime assets, simplifies path resolution)
+  - **Script consolidation**: Moved `dev_tools/check.sh` → `scripts/check.sh` (eliminated `dev_tools/` directory, consolidated all build/dev scripts)
+  - Updated 5 icon path references in Python source + 1 shell script from `"icons/"` to `"assets/icons/"`
+  - **Rationale**: Modern Python projects consolidate config into `pyproject.toml`. Dedicated `assets/` directory improves discoverability and reduces path calculation complexity (e.g., `parents[4] / "assets" / "icons"` is semantically clearer than `parents[4] / "icons"`). All development tooling now centralized in `scripts/`.
+- **Entry point reorganization** — Moved main application entry point from `scripts/run.py` to root-level `vociferous` executable:
+  - Created executable `vociferous` script at project root (follows Linux convention: main entry point at root level)
+  - Deleted `scripts/run.py` — now redundant, functionality moved to root-level `vociferous`
+  - Deleted `vociferous.sh` — bash wrapper no longer needed (Python entry point handles environment setup directly)
+  - Updated `scripts/install.sh` to reference new entry point: `./vociferous` instead of `python scripts/run.py`
+  - Updated `scripts/install-desktop-entry.sh` to reference new entry point: `Exec=$PROJECT_DIR/vociferous` instead of `vociferous.sh`
+  - Updated `tests/test_single_instance.py` to reference new entry point location
+  - **Rationale**: Root-level entry point is the Linux/Unix convention for executable scripts. Simplifies user experience (`.venv/bin/activate && ./vociferous` instead of `.venv/bin/activate && python scripts/run.py`), matches common Python project patterns (e.g., Flask's `flask` command)
+- **Source directory reorganization** — Improved architectural clarity by moving modules to semantic subdirectories:
+  - Moved `src/transcription.py` → `src/services/transcription_service.py` (groups with other services: audio_service, slm_service, voice_calibration)
+  - Moved `src/history_manager.py` → `src/database/history_manager.py` (groups with database core, models, DTOs, repositories)
+  - Created `src/core/` subdirectory and moved `src/exceptions.py` → `src/core/exceptions.py` (establishes core utilities namespace for fundamental types)
+  - Deleted `src/key_listener.py` — deprecated compatibility shim that only re-exported from `input_handler` (no actual code)
+  - Updated 22+ import statements across codebase (main.py, result_thread.py, all views, widgets, models, tests)
+  - **Rationale**: Top-level src/ now contains only application entry point (main.py), configuration files, orchestration (result_thread.py), and utilities (utils.py). All other modules organized into purpose-specific subdirectories for improved navigability and architectural cohesion.
+
+### Fixed (Architecture & Quality)
+- **Onboarding Data Persistence** — Fixed missing config saves during onboarding completion
+  - Implemented `HotkeyPage.on_exit()` to save user-selected hotkey to `recording_options.activation_key`
+  - Added final page `on_exit()` call in `OnboardingWindow._finish_onboarding()` for consistency
+  - **Rationale**: Ensures all user preferences collected during onboarding (name, refinement toggle, hotkey) are properly saved to config before application starts
+- **Voice Calibration Thread Cancellation** — Fixed zombie process issue during onboarding cancellation
+  - Added `request_cancel()` method to `VoiceCalibrator` class with cancellation flag support
+  - Updated `CalibrationPage.cleanup()` to call `request_cancel()` instead of deprecated `stop_recording()` method
+  - Implemented proper thread lifecycle management to prevent hanging calibration threads when user exits onboarding mid-process
+  - **Rationale**: Prevents resource leaks and zombie processes that occurred when users cancelled onboarding during voice calibration phase
+- **Views Module Signal Routing Architecture** — Comprehensive audit and fixes to ensure Intent-Driven UI compliance
+  - **RefineView (CRITICAL)**: Removed rogue `QPushButton` instances (`_btn_discard`, `_btn_accept`) with direct `clicked.connect()` wiring; implemented proper signal routing (`refinementAccepted`, `refinementDiscarded`) and `dispatch_action()` handlers
+  - **SearchView (HIGH)**: Added missing `dispatch_action()` handlers for EDIT, DELETE, and REFINE actions; implemented routing signals (`editRequested`, `deleteRequested`, `refineRequested`)
+  - **EditView**: Fixed semantic conflict (removed `can_cancel=True`, changed handler from `ActionId.CANCEL` to `ActionId.DISCARD`); standardized spacing (32px→Spacing.S5, 16px→Spacing.S3)
+  - **HistoryView**: Removed inline `pane_style` variable and rogue border-left styling; added object names for unified stylesheet integration; implemented missing DELETE handler
+  - **SettingsView**: Added missing BaseView contract methods (`get_capabilities()`, `get_selection()`, `dispatch_action()`)
+  - **UserView**: Added missing BaseView contract methods (`get_capabilities()`, `get_selection()`, `dispatch_action()`)
+  - **Spacing Standardization**: Replaced all hardcoded spacing values across EditView, RefineView, SearchView with semantic constants (S0-S7)
+- **BaseView Interface Compliance**: All 10 views now uniformly implement the 4-method contract: `get_view_id()`, `get_capabilities()`, `get_selection()`, `dispatch_action()`
+
+### Removed
+- Deleted `scripts/audio_analyzer.py` — legacy debugging tool, never referenced in codebase
+- Deleted `scripts/calibrate_voice.py` — prototype CLI wrapper, superseded by production `VoiceCalibrator` service in `src/services/voice_calibration.py`
+- Deleted `src/ui/components/settings/` directory — SettingsDialog modal removed in favor of integrated SettingsView
+- Deleted merged `src/ui/widgets/content_panel/` directory — separated back into distinct, purpose-specific components
+- **Removed `AnimationDurations` class** from `src/ui/constants/timing.py` — consolidated all timing constants into single `Timing` class for unified, maintainable source of truth
+- **Removed dead-code intents** from `src/ui/interaction/intents.py` — removed `OpenOverlayIntent` and `CloseOverlayIntent` (never used, not exported)
+- **Removed dead-code model roles** from `src/ui/models/transcription_model.py` — removed unused `DisplayNameRole` (never queried via Qt model role API)
+- **Removed deprecated method** from `src/ui/models/project_proxy.py` — removed unused `_has_matching_children()` method (superseded by Qt's recursive filtering)
+- **Removed legacy typography aliases** from `Typography` class — `FONT_SIZE_BODY`, `FONT_SIZE_LARGE`, `FONT_SIZE_HEADER`, `FONT_SIZE_TITLE` removed; use scale names (`FONT_SIZE_BASE`, `FONT_SIZE_MD`, `FONT_SIZE_LG`, `FONT_SIZE_XXL`) instead
+- **Removed module-level duplication in spacing.py** — removed redundant module-level S0-S7 and semantic aliases; all spacing values now contained in `Spacing` class with backward-compatible module-level re-exports
+- **Removed dead-code stylesheet infrastructure** from `src/ui/styles/`:
+  - Deleted `src/ui/styles/theme.py` — unused stylesheet generation (generate_base_stylesheet, generate_dark_theme, generate_light_theme functions never called)
+  - Deleted `src/ui/styles/stylesheet_registry.py` — StylesheetRegistry singleton never instantiated or used anywhere in codebase (experimental dead code)
+- **Removed dead-code utility functions** from `src/ui/utils/`:
+  - Removed `qt_key_to_evdev()` from `keycode_mapping.py` — stub function with placeholder implementation (returns None), never called in codebase
+  - Removed `initial_collapsed_days()` from `history_utils.py` — only used in test, never referenced in production code
+- **Removed MetricsStrip widget and duplicate lifetime metrics rendering** from `src/ui/widgets/metrics_strip/`:
+  - Deleted entire `metrics_strip/` directory (metrics_strip.py, metrics_strip_styles.py, __init__.py)
+  - Removed MetricsStrip instantiation and layout integration from MainWindow
+  - Removed metrics visibility state persistence (settings keys)
+  - **Rationale**: MetricsStrip duplicated lifetime metrics rendering already provided by UserView with superior card-based layout. UserView is now the canonical location for all lifetime statistics (transcriptions, words, time recording, time saved, average length)
+  - **Impacts**: MainWindow layout simplified: ViewHost + ActionDock (metrics moved to UserView only)
+- **Removed dead StyledButton stylesheet file** from `src/ui/widgets/styled_button/`:
+  - Deleted `src/ui/widgets/styled_button/styled_button_styles.py` — never imported, dead code
+  - Migrated StyledButton to use unified stylesheet pattern: changed from object name selectors (`#styledPrimary`, `#styledSecondary`, `#styledDestructive`) to styleClass attribute selectors (`[styleClass="primaryButton"]`, etc.)
+  - Updated `_apply_style()` to use `setProperty("styleClass", ...)` instead of `setObjectName(...)`
+  - **Rationale**: Consolidates all button styling in unified_stylesheet.py, eliminates orphaned stylesheet definition
+- **Removed dead TranscriptItem stylesheet file** from `src/ui/widgets/transcript_item/`:
+  - Deleted `src/ui/widgets/transcript_item/transcript_item_styles.py` — never imported, dead code
+  - File contained only empty string: `TRANSCRIPT_ITEM_STYLESHEET = ""`
+  - Styling for transcript items is handled programmatically via QFont and QColor in `create_transcript_item()` and `paint_transcript_entry()`
+  - **Rationale**: Eliminates orphaned stylesheet file with no QSS usage
+- **Cleaned up Spectral Halo visualizer references** — incomplete removal had left orphaned config and documentation:
+  - Removed `spectral_halo` section from `src/config_schema.yaml` (leader_boost, halo_smoothness sliders no longer needed)
+  - Updated `src/ui/widgets/__init__.py` docstring to remove spectral_halo reference
+  - Updated `docs/wiki/UI-Architecture.md` to reference BarSpectrumVisualizer (only active visualizer)
+  - Updated `docs/wiki/Backend-Architecture.md` to show only bar_spectrum and waveform visualizer directories
+  - Updated `README.md` to describe "spectrum visualization" generically instead of "Spectral Halo"
+  - Updated `docs/wiki/Recording.md` to describe "spectrum visualization" generically
+  - **Rationale**: Previous removal of Spectral Halo code left stale config and documentation; waveform visualizer preserved for future resurrection
+- **Resurrected WaveformVisualizer** as optional spectrum visualization:
+  - Moved waveform_visualizer from legacy `src/ui/widgets/waveform_visualizer/` to `src/ui/widgets/visualizers/waveform_visualizer/`
+  - Created proper `__init__.py` files for visualizers package structure
+  - Added `add_spectrum()` adapter method to WaveformVisualizer for API compatibility with BarSpectrumVisualizer
+  - **Rationale**: Provides users with choice between bar spectrum (frequency bands) and waveform (amplitude levels) visualizations
+- **Added visualizer type configuration**:
+  - Added `visualization.visualizer_type` config schema with options: `bar_spectrum`, `waveform`
+  - Default is `bar_spectrum` for current behavior
+  - User can switch between visualizers in Settings View ("Visualization" section, "Spectrum Type" dropdown)
+- **Implemented visualizer factory pattern**:
+  - Created `create_visualizer()` factory function in `WorkspaceContent`
+  - Factory reads `visualization.visualizer_type` config and instantiates appropriate visualizer
+  - Both visualizers share common public API: `start()`, `stop()`, `add_spectrum(bands)`
+  - Visualizer changes take effect on next recording session
+- **Removed useless test cases** from test suite:
+  - Deleted `test_detect_session_type()` from `tests/test_wayland_compat.py` — tautological test that always passes (checks if value is in set containing all possible values)
+  - Deleted `test_views_dispatch_contract()` from `tests/test_phase2_scaffolding.py` — vague contract with unclear assertion (`isinstance(result, bool) or result is None`), removed per comment admitting implementation confusion
+  - Simplified `test_backquote_exists()` in `tests/test_input_handler.py` — removed redundant `is not None` assertion after `hasattr()` verification
+  - **Impact**: Test suite reduced from 264 to 262 passing tests (removed 2 useless tests), strengthened test signal
+
+### Changed
+- **Reorganized UI components directory structure** for improved architectural clarity:
+  - Moved MainWindow sub-components into `main_window/` subdirectory:
+    - `action_dock.py` → `main_window/action_dock.py` (context-sensitive action buttons)
+    - `icon_rail.py` → `main_window/icon_rail.py` (navigation rail)
+    - `system_tray.py` → `main_window/system_tray.py` (system tray manager)
+    - `view_host.py` → `main_window/view_host.py` (view router/switcher)
+  - Created `view_utilities/` subdirectory for shared view components:
+    - `content_panel.py` → `view_utilities/content_panel.py` (detail display panel for HistoryView, ProjectsView)
+    - `history_list.py` → `view_utilities/history_list.py` (history list wrapper)
+  - Updated all imports across codebase (main.py, views, tests)
+  - Updated architectural contract test to reflect new structure
+  - **Rationale**: Groups related components together—MainWindow shell components are now properly nested under main_window/, and view helper components are grouped in view_utilities/. Improves discoverability and maintains architectural boundaries.
+
+### Changed
+- **Constants Directory Consolidation**: Simplified constants architecture
+  - `spacing.py`: Moved all values into `Spacing` class; added module-level re-exports for backward compatibility with existing imports
+  - `typography.py`: Consolidated font weight aliases (FONT_WEIGHT_REGULAR, FONT_WEIGHT_MEDIUM, FONT_WEIGHT_SEMIBOLD, FONT_WEIGHT_BOLD) to two canonical weights (NORMAL=400, EMPHASIS=600); added legacy aliases in class for backward compatibility
+  - `timing.py`: Removed `AnimationDurations` class; all animation, polling, and timing constants now in single `Timing` class
+  - `dimensions.py`: Updated to use `Spacing.S2` instead of importing module-level S2 (since S2 now only lives in Spacing class)
+- **__init__.py exports**: Removed `AnimationDurations` from constants package exports and `__all__` list; maintained all other exports for API compatibility
+
+### Fixed
+- **MainWindow Title Bar Spacing**: Replaced hardcoded 3px spacer with semantic `Spacing.TITLE_BAR_SEPARATOR` constant (4px, S0 scale)
+- **ActionDock Layout Spacing**: Fixed non-standard 6px spacing to use scale-compliant 8px (S1) for consistency across UI
+- **Workspace Component Spacing**: Standardized all hardcoded spacing values in header.py, content.py, workspace.py, and transcript_metrics.py
+  - WorkspaceHeader: Changed `setSpacing(8)` → `Spacing.MINOR_GAP`
+  - WorkspaceContent carousel: Changed `setContentsMargins(12, 4, 12, 4)` → `(Spacing.S2, Spacing.S0, Spacing.S2, Spacing.S0)` and `setSpacing(8)` → `Spacing.MINOR_GAP`
+  - MainWorkspace footer: Changed `setSpacing(16)` → `Spacing.BUTTON_GAP`
+  - TranscriptMetrics grid: Changed `setSpacing(4)` → `Spacing.S0`, `setContentsMargins(0, 8, 0, 8)` → `(0, Spacing.MINOR_GAP, 0, Spacing.MINOR_GAP)`, `setHorizontalSpacing(24)` → `Spacing.S4`, `setVerticalSpacing(8)` → `Spacing.MINOR_GAP`
+- **ContentPanel Namespace Collision**: Resolved duplication by separating into two distinct, purpose-specific components:
+  - `src/ui/components/content_panel.py` — Detail display panel for HistoryView and ProjectsView (title, content, footer metadata)
+  - `src/ui/widgets/workspace_panel.py` — Styled container for MainWorkspace (custom-painted rounded corners, state-dependent borders)
+  - Each component now has a single, clear responsibility with no ambiguous mode switching
+- **Spacing Scale Compliance**: Added new `TITLE_BAR_SEPARATOR` semantic constant to enforce consistent spacing throughout the application
+
+### Added
+- **READY State**: New WorkspaceState.READY for completed transcriptions
+  - Green "Transcription ready" header persists until consuming action (Copy/Edit/Refine/Delete/Start Recording)
+  - Auto-resets to IDLE when navigating away from Transcribe view
+  - Provides clear visual feedback that a fresh transcription is available
+- **Collapsible Metrics Strip**: Transcript metrics can now be toggled
+  - "Show metrics" / "Hide metrics" toggle label
+  - Metrics align precisely to transcript output bounds (0 left/right margins)
+  - Collapsed state by default to reduce visual clutter
+- **Edit View Navigation**: Return-to-origin navigation after editing
+  - EditView tracks which view initiated the edit request
+  - Both Save and Cancel actions return to the originating view
+  - Search view state persists across edit operations via update_transcript()
+- **Toggle Switch Widget**: New animated pill-shaped toggle switch with sliding circle for boolean settings
+  - Smooth 200ms animation with cubic easing
+  - Theme-integrated colors (primary when active, dark gray when inactive)
+  - Replaces traditional checkboxes for modern UX
+- **View-Specific Stylesheets**: Custom styling modules for Settings and User views
+  - Dark dropdown menus with black backgrounds for better contrast
+  - Permanent blue borders on key input fields (hotkey, language)
+  - Fixed-width layouts with perfect centering
+  - Professional card-based designs
+
+### Fixed
+- **Hotkey Recording Toggle**: Fixed a bug where recording would not trigger via hotkey if the workspace was in VIEWING or READY states.
+- **Transcription Status**: Corrected an issue where fresh transcriptions incorrectly displayed "Transcript Loaded" instead of "Transcription complete" (green).
+- **Workspace Data Sync**: MainWindow now uses the full `display_new_transcript` pipeline for fresh results, ensuring metrics update and the correct READY state is reached.
+- **Intent Accessibility**: Relaxed guards on Edit and Delete intents to ensure they can be triggered immediately after a transcription completes.
+
+### Changed
+- **Unified Stylesheet Refactor**: Migrated `unified_stylesheet.py` to a more modular, section-based structure using semantic `Colors` mapping.
+  - Implemented `Colors` semantic mapping class in `ui.constants` to isolate palette from visual definitions.
+  - Improved styling for scrollbars, buttons, dialogs, and specific views (Transcribe, Edit, Refine).
+  - Added support for purple and destructive semantic button classes.
+- **UI Color Palette**: Added canonical `COLOR_*` constants and aligned legacy `Colors` names to the canonical palette for consistent naming without altering usage patterns.
+- **Action Dock Grid Layout**: Action buttons now self-organize into a smart grid layout instead of a vertical list.
+  - Dynamically repacks buttons into 2 columns based on visibility.
+  - Ensures primary actions (like Start Recording) take prominence when alone.
+  - Eliminates vertical stacking for cleaner UI.
+- **Icon Rail Visuals**: Updated background color to `SURFACE_ALT` (lighter gray) to distinguish it from the main window background.
+- **Icon Rail Interactivity**: Restored hover and active state visuals for navigation icons.
+  - **Hover**: Subtle background highlight (`HOVER_BG`).
+  - **Active**: Blue left border (`4px solid PRIMARY`) with semi-transparent background.
+  - Provides clear "you are here" feedback for better navigation.
+- **Transcribe View Header**: "Transcription ready" renamed to "Transcription complete" for better user alignment.
+- **Transcribe View Header**: Color-coded status indicators
+  - Recording state now uses Colors.DESTRUCTIVE (red) instead of hardcoded #FF4444
+  - Ready state displays in Colors.SUCCESS (green)
+  - Follows semantic color design tokens
+- **Edit View Controls**: Simplified action buttons
+  - Removed "Discard" button (redundant with Cancel)
+  - Cancel button shows red hover state to indicate destructive action
+  - Cleaner, less cluttered control panel
+- **Architecture Tests**: Updated ~10 tests to reflect external editing model
+  - Tests now validate that EditIntent delegates to external EditView
+  - Workspace stays in VIEWING state during editing (editing happens in separate view)
+  - CommitEditsIntent and DiscardEditsIntent return REJECTED/NO_OP when called on workspace
+- **Style Enforcement Tests**: Added exclusions for pre-existing hardcoded colors
+  - toggle_switch.py, bar_spectrum_visualizer.py, metrics_strip.py excluded as legacy widgets
+- **User View**: Completely redesigned with refined layout:
+  - Fixed-width centered container (900px) for consistent appearance
+  - Reduced excessive spacing between sections
+  - More concise explanations text to eliminate redundancy
+  - Maintained card-based metric design with improved proportions
+- **Settings View**: Complete overhaul with professional polish:
+  - Fixed-width centered container (700px)
+  - Multi-column grid layouts for related settings
+  - Toggle switches replace all checkboxes for boolean options
+  - Dark dropdown backgrounds (#1A1A1A) with white text for readability
+  - Permanent blue borders on activation key and language fields
+  - Language field limited to 120px width for better alignment
+  - Larger, more prominent buttons (40px height)
+  - Card-based design for History Management and Application sections
+- **Audio Service**: Improved FFT binning logic from linear to logarithmic distribution to better represent speech and human hearing. Increased default resolution to 64 bands.
+- **Audio Service**: Refined noise gating (0.12 threshold) and amplification curves for cleaner high-gain microphone performance.
+- **Bar Spectrum Visualizer**: Replaced basic linear decay with CAVA-inspired smoothing algorithms, including Monstercat horizontal filtering, integral temporal smoothing, and quadratic gravity falloff.
+- **Visualizer**: Established Bar Spectrum as the sole, integrated visualizer.
+- **Refine View**: Removed the `QSplitter` draggable handle and replaced it with a static side-by-side layout.
+- **Refine View**: Migrated styling to the unified stylesheet and improved the visual layout of the comparison zones.
+- **Settings View**: Refactored control buttons (History, App) to side-by-side layout for improved density.
+- **Settings View**: Increased horizontal spacing in form layouts for better readability.
+- **Recording Visualizer**: Replaced the black hole visualizer with the new Spectral Halo (halo-with-lead) renderer.
+
+### Added
+- **Bar Spectrum Visualizer**: New professional-grade frequency bar visualizer with peak-hold gravity, inspired by the markjay4k tutorial.
+- **Spectral Halo Visualizer**: New halo-with-lead spectrum visualizer with leader emphasis, smoothing, and ripple behavior.
+- **Settings**: Added configuration for visualizer type (Halo vs Bars).
+- **Settings**: Added tuning parameters for bar count, decay rate, and peak hold time.
+- **Spectral Halo**: Added Spectral Halo tuning sliders for leader boost and halo smoothness.
+
+### Removed
+- **Legacy Visualizers**: Removed deprecated Spectral Halo and Waveform visualizers and their associated configuration toggle logic. 
+- **BlackHoleVisualizer**: Deleted the deprecated black hole visualizer implementation.
+- **Spectral Halo Settings**: Removed Spectral Halo tuning controls from Settings View as the visualization method has been deprecated.
+
+### Fixed
+- **Scrollbars**: Restored the custom blue styling for scrollbars by migrating missing styles to the unified stylesheet.
+- **System Tray Icon**: Fixed icon mapping to use `system_tray_icon-placeholder.png` instead of non-existent image files.
+- **Copy Button**: Fixed regression where copy/edit actions remained visible during subsequent recordings.
+- **Styling**: Fixed window border not wrapping the entire application by moving it to the central widget and nesting the custom title bar.
+
 ---
 
 # v2.6.0 - Navigation & Settings Architecture Overhaul
