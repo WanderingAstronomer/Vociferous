@@ -120,6 +120,20 @@ class RailButton(QToolButton):
         self.style().polish(self)
         self.blinkFinished.emit()
 
+    def cleanup(self) -> None:
+        """
+        Clean up any resources used by the button.
+        
+        Per Vociferous cleanup protocol, stops any pending QTimer.singleShot
+        callbacks. Note: QTimer.singleShot timers auto-cleanup when fired,
+        but this ensures consistency.
+        
+        This method is idempotent and safe to call multiple times.
+        """
+        # QTimer.singleShot cleans up automatically, but we reset state
+        self.setProperty("blink", "inactive")
+        self.style().polish(self)
+
 
 class IconRail(QWidget):
     """

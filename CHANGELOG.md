@@ -3,6 +3,17 @@
 ## [Unreleased]
 
 ### Added
+- **Widget cleanup protocol (Phase 2 TDD)**: Implemented `cleanup()` methods for all stateful widgets to prevent resource leaks:
+  - `ToggleSwitch`: Stops QPropertyAnimation to prevent animation leaks
+  - `RailButton`: Resets blink state (QTimer.singleShot auto-cleans, but consistency enforced)
+  - `BlockingOverlay`: Hides overlay if visible during cleanup
+  - `TranscriptPreviewOverlay`: Clears viewer content and hides during cleanup
+  - `ExportDialog`: Ensures dialog is closed during cleanup
+  - `DialogTitleBar`: Resets drag state during cleanup
+  - `MainWindow._cleanup_children()`: Recursive cleanup of all child views and components with graceful error handling
+  - `MainWindow.closeEvent()`: Now calls `_cleanup_children()` before window close
+  - Addresses audit findings P1-03, P1-04, P2-01, P2-02, P2-05 from UI Architecture Audit Report
+- **Widget cleanup test suite**: Created comprehensive `test_widget_cleanup.py` with 21 tests validating cleanup protocol compliance, idempotency, and resource release
 - **Widget sizing compliance (Phase 1 TDD)**: Implemented `sizeHint()` and `minimumSizeHint()` methods for 7 custom widgets per Qt6 layout best practices:
   - `BarSpectrumVisualizer`: Returns preferred size 200x100, minimum 100x50
   - `ToggleSwitch`: Returns fixed size 50x24 (matches setFixedSize)

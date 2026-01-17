@@ -297,3 +297,16 @@ class ExportDialog(QDialog):
         """Return (full_path, format) tuple."""
         full_path = self._save_directory / f"{self._filename}.{self._selected_format}"
         return (full_path, self._selected_format)
+
+    def cleanup(self) -> None:
+        """
+        Clean up export dialog resources.
+        
+        Per Vociferous cleanup protocol, all widgets should implement cleanup().
+        ExportDialog has no persistent file handles or threads.
+        
+        This method is idempotent and safe to call multiple times.
+        """
+        # Ensure dialog is closed
+        if self.isVisible():
+            self.reject()

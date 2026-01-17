@@ -110,3 +110,18 @@ class TranscriptPreviewOverlay(QFrame):
         self.hide()
         self.closed.emit()
         return super().close()
+
+    def cleanup(self) -> None:
+        """
+        Clean up overlay resources.
+        
+        Per Vociferous cleanup protocol, all widgets should implement cleanup().
+        TranscriptPreviewOverlay has no persistent timers or threads.
+        
+        This method is idempotent and safe to call multiple times.
+        """
+        # Clear any displayed text and hide
+        if hasattr(self, "_viewer"):
+            self._viewer.clear()
+        if self.isVisible():
+            self.hide()

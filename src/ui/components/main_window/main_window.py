@@ -32,18 +32,18 @@ from PyQt6.QtWidgets import (
 
 from ui.components.main_window.intent_feedback import IntentFeedbackHandler
 from ui.components.main_window.main_window_styles import get_combined_stylesheet
+from ui.widgets.dialogs.blocking_overlay import BlockingOverlay
 from ui.components.title_bar import TitleBar
 from ui.constants import (
-    WindowSize,
     WorkspaceState,
 )
+from ui.constants.dimensions import MIN_WIDTH, MIN_HEIGHT, BASE
 from ui.widgets.dialogs import ConfirmationDialog, MessageDialog, show_error_dialog
-from ui.widgets.metrics_strip.metrics_strip import MetricsStrip
 
 # New shell components
-from ui.components.icon_rail import IconRail
-from ui.components.view_host import ViewHost
-from ui.components.action_dock import ActionDock
+from ui.components.main_window.icon_rail import IconRail
+from ui.components.main_window.view_host import ViewHost
+from ui.components.main_window.action_dock import ActionDock
 
 # Views
 from ui.views.transcribe_view import TranscribeView
@@ -55,13 +55,26 @@ from ui.views.edit_view import EditView
 from ui.views.settings_view import SettingsView
 from ui.views.user_view import UserView
 from ui.constants.view_ids import (
-    VIEW_TRANSCRIBE, VIEW_HISTORY, VIEW_PROJECTS, VIEW_SEARCH, VIEW_REFINE, VIEW_EDIT,
-    VIEW_SETTINGS, VIEW_USER
+    VIEW_TRANSCRIBE,
+    VIEW_HISTORY,
+    VIEW_PROJECTS,
+    VIEW_SEARCH,
+    VIEW_REFINE,
+    VIEW_EDIT,
+    VIEW_SETTINGS,
+    VIEW_USER,
 )
-from ui.interaction.intents import InteractionIntent, NavigateIntent, ViewTranscriptIntent
+from ui.interaction.intents import (
+    InteractionIntent,
+    NavigateIntent,
+    ViewTranscriptIntent,
+    BeginRecordingIntent,
+    StopRecordingIntent,
+    CancelRecordingIntent,
+)
 
 if TYPE_CHECKING:
-    from history_manager import HistoryEntry, HistoryManager
+    from database.history_manager import HistoryEntry, HistoryManager
 
 logger = logging.getLogger(__name__)
 
@@ -82,18 +95,26 @@ class MainWindow(QMainWindow):
     └─────────────────────────────────────────┘
 
     Signals:
+        intent_dispatched(InteractionIntent): Core event bus
         windowCloseRequested(): Window is closing
-        cancelRecordingRequested(): Cancel recording
-        startRecordingRequested(): Start recording
-        stopRecordingRequested(): Stop recording
     """
 
+    intent_dispatched = pyqtSignal(object)
+
     windowCloseRequested = pyqtSignal()
+    # Legacy signals - deprecated
     cancelRecordingRequested = pyqtSignal()
     startRecordingRequested = pyqtSignal()
     stopRecordingRequested = pyqtSignal()
 
-    def __init__(self, history_manager: HistoryManager | None = None, key_listener=None) -> None:
+    motdRefreshRequested = pyqtSignal()
+    refinementRequested = pyqtSignal(
+        int, str, str, str
+    )  # id, text, profile, user_instruct
+
+    def __init__(
+        self, history_manager: HistoryManager | None = None, key_listener=None
+    ) -> None:
         super().__init__()
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
 
@@ -109,6 +130,7 @@ class MainWindow(QMainWindow):
         self._metrics_refresh_timer.setSingleShot(True)
         self._metrics_refresh_timer.setInterval(1000)  # 1s debounce
 
+        self._current_view_id = VIEW_TRANSCRIBE  # Default view
         self._init_ui()
         self._restore_state()
 
@@ -121,7 +143,7 @@ class MainWindow(QMainWindow):
     def _init_ui(self) -> None:
         """Initialize the main UI layout."""
         self.setWindowTitle("Vociferous")
-        self.setMinimumSize(WindowSize.MIN_WIDTH, WindowSize.MIN_HEIGHT)
+        self.setMinimumSize(MIN_WIDTH, MIN_HEIGHT)
 
         # Title bar as menu widget (no menu bar anymore)
         self.setMenuWidget(self.title_bar)
@@ -129,6 +151,7 @@ class MainWindow(QMainWindow):
         # Central widget container
         central = QWidget(self)
         central.setObjectName("centralWidget")
+        central.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         main_layout = QVBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
@@ -137,7 +160,7 @@ class MainWindow(QMainWindow):
         container_layout = QHBoxLayout()
         container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.setSpacing(0)
-        
+
         # 1. Icon Rail (Navigation)
         self.icon_rail = IconRail()
         self.icon_rail.setSizePolicy(
@@ -146,7 +169,7 @@ class MainWindow(QMainWindow):
         self.icon_rail.intent_emitted.connect(self._on_interaction_intent)
         container_layout.addWidget(self.icon_rail, 0)
 
-        # 2. Content Column (Views + ActionDock + Metrics)
+        # 2. Content Column (Views + ActionDock)
         content_column = QVBoxLayout()
         content_column.setContentsMargins(0, 0, 0, 0)
         content_column.setSpacing(0)
@@ -154,25 +177,16 @@ class MainWindow(QMainWindow):
         # 2.1 View Host (The stack of screens)
         self.view_host = ViewHost()
         self.view_host.viewChanged.connect(self._on_view_changed)
-        
+
         # 2.2 Action Dock (Contextual Actions)
         self.action_dock = ActionDock()
 
-        # 2.3 Metrics Strip
-        self.metrics_strip = MetricsStrip()
-        if self.history_manager:
-            self.metrics_strip.set_history_manager(self.history_manager)
-
         # Build Layout
-        content_column.addWidget(self.view_host, 1) # Expanding
-        content_column.addWidget(self.action_dock, 0) # Fixed height
-        content_column.addWidget(self.metrics_strip, 0) # Fixed height
+        content_column.addWidget(self.view_host, 1)  # Expanding
+        content_column.addWidget(self.action_dock, 0)  # Fixed height
 
         container_layout.addLayout(content_column, 1)
         main_layout.addLayout(container_layout)
-
-        # Connect debounce timer
-        self._metrics_refresh_timer.timeout.connect(self.metrics_strip.refresh)
 
         central.setLayout(main_layout)
         self.setCentralWidget(central)
@@ -182,62 +196,150 @@ class MainWindow(QMainWindow):
         self._status_bar = self.statusBar()
         self._status_bar.setSizeGripEnabled(True)
         self._status_bar.hide()
-        
+
         self._status_label = QLabel()
         self._status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._status_bar.addWidget(self._status_label, 1)
 
         # Intent feedback handler
         self._intent_feedback = IntentFeedbackHandler(self._status_bar, self)
-        
+
+        # Blocking Overlay (Initially hidden)
+        self._blocking_overlay = BlockingOverlay(self)
+        self._blocking_overlay.resize(self.size())
+
         # Initialize views (Must be after ActionDock and ViewHost)
         self._init_views()
+
+    def set_app_busy(self, is_busy: bool, message: str = ""):
+        """Block or unblock user interaction with the entire window."""
+        if is_busy:
+            self._blocking_overlay.show_message(message)
+            self.setCursor(Qt.CursorShape.WaitCursor)
+        else:
+            self._blocking_overlay.hide()
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def refresh_history(self) -> None:
+        """Force a refresh of the history view."""
+        if hasattr(self, "view_history") and self.view_history:
+            self.view_history.refresh()
+
+    def launch_onboarding(self) -> bool:
+        """
+        Launch the first-run onboarding wizard.
+        Returns: True if completed, False if cancelled.
+        """
+        try:
+            from ui.components.onboarding.onboarding_window import OnboardingWindow
+            from ui.constants import WorkspaceState
+
+            wizard = OnboardingWindow(key_listener=self.key_listener, parent=self)
+
+            # Track cancellation
+            cancelled = False
+
+            def on_cancel():
+                nonlocal cancelled
+                cancelled = True
+                wizard.close()
+
+            wizard.cancelled.connect(on_cancel)
+
+            result = wizard.exec() == QDialog.DialogCode.Accepted
+
+            # If cancelled via close button, result will be False and cancelled will be True
+            if cancelled:
+                return False
+
+            if result and hasattr(self, "view_transcribe"):
+                # Refresh greeting immediately if in IDLE state
+                workspace = self.view_transcribe.workspace
+                if workspace.get_state() == WorkspaceState.IDLE and hasattr(
+                    workspace, "header"
+                ):
+                    workspace.header.update_for_idle()
+
+            return result
+        except Exception:
+            logger.exception("Failed to launch onboarding")
+            return False
 
     def _init_views(self) -> None:
         """Instantiate and register all application views."""
         # Instantiate
         self.view_transcribe = TranscribeView(self.history_manager)
-        self.view_transcribe.editNormalizedText.connect(self._on_transcribe_view_text_edited)
-        
+        self.view_transcribe.editNormalizedText.connect(
+            self._on_transcribe_view_text_edited
+        )
+        self.view_transcribe.editRequested.connect(self._on_edit_view_requested)
+        self.view_transcribe.refineRequested.connect(self._on_refine_view_requested)
+        self.view_transcribe.deleteRequested.connect(
+            self._on_delete_transcript_requested
+        )
+        self.view_transcribe.motdRefreshRequested.connect(
+            self.motdRefreshRequested.emit
+        )
+
         # Connect workspace control signals directly to orchestrator signals
-        # This restores the link broken by previous TranscribeView implementation
-        self.view_transcribe.workspace.startRequested.connect(self.startRecordingRequested.emit)
-        self.view_transcribe.workspace.stopRequested.connect(self.stopRecordingRequested.emit)
-        self.view_transcribe.workspace.cancelRequested.connect(self.cancelRecordingRequested.emit)
-        
-        self.view_history = HistoryView() 
+        # Transition: Map to Intents
+        self.view_transcribe.workspace.startRequested.connect(
+            lambda: self.dispatch_intent(BeginRecordingIntent())
+        )
+        self.view_transcribe.workspace.stopRequested.connect(
+            lambda: self.dispatch_intent(StopRecordingIntent())
+        )
+        self.view_transcribe.workspace.cancelRequested.connect(
+            lambda: self.dispatch_intent(CancelRecordingIntent())
+        )
+
+        self.view_history = HistoryView()
         if self.history_manager:
             self.view_history.set_history_manager(self.history_manager)
-            
+
         self.view_history.editRequested.connect(self._on_edit_view_requested)
         self.view_history.refineRequested.connect(self._on_refine_view_requested)
-        # Refine requested via View -> passes to validation -> Orchestrator?
-        # Typically Refine needs "Text" + "Profile". 
-        # For now, let's just use the Orchestrator signal if possible, or a local handler.
-        # But HistoryView emits (id). We need to show the refinement dialog first? 
-        # Or does "Refine" action jump to a specific flow?
-        # The Orchestrator has `_on_refine_requested`.
-        # Let's direct connect for now to a stub handler or MainWindow handler.
-            
+        self.view_history.deleteRequested.connect(self._on_delete_from_history_view)
+        self.view_history.dataChanged.connect(self._on_data_changed)
+
         self.view_projects = ProjectsView()
         if self.history_manager:
             self.view_projects.set_history_manager(self.history_manager)
 
+        self.view_projects.editRequested.connect(self._on_edit_view_requested)
+        self.view_projects.refineRequested.connect(self._on_refine_view_requested)
+        self.view_projects.dataChanged.connect(self._on_data_changed)
+
         self.view_search = SearchView()
+        if self.history_manager:
+            self.view_search.set_history_manager(self.history_manager)
+
+        self.view_search.editRequested.connect(self._on_edit_view_requested)
+        self.view_search.refineRequested.connect(self._on_refine_view_requested)
+        self.view_search.deleteRequested.connect(self._on_delete_from_history_view)
+
         self.view_refine = RefineView()
+        self.view_refine.refinementAccepted.connect(self._on_refinement_accepted)
+        self.view_refine.refinementDiscarded.connect(self._on_refinement_discarded)
+        self.view_refine.refinementRerunRequested.connect(
+            self._on_refine_view_requested
+        )
+
         self.view_edit = EditView()
+        self.view_edit.navigateRequested.connect(self._on_navigation_requested)
+        self.view_edit.transcriptUpdated.connect(self._on_edit_transcript_updated)
         self.view_settings = SettingsView(self.key_listener)
         self.view_user = UserView()
         if self.history_manager:
             self.view_edit.set_history_manager(self.history_manager)
             self.view_user.set_history_manager(self.history_manager)
-        
+
         # Connect SettingsView signals
         self.view_settings.exportHistoryRequested.connect(self._export_history)
         self.view_settings.clearAllHistoryRequested.connect(self._clear_all_history)
         self.view_settings.restartRequested.connect(self._restart_application)
         self.view_settings.exitRequested.connect(self.close)
-        
+
         # Register
         self.view_host.register_view(self.view_transcribe, VIEW_TRANSCRIBE)
         self.view_host.register_view(self.view_history, VIEW_HISTORY)
@@ -247,7 +349,7 @@ class MainWindow(QMainWindow):
         self.view_host.register_view(self.view_edit, VIEW_EDIT)
         self.view_host.register_view(self.view_settings, VIEW_SETTINGS)
         self.view_host.register_view(self.view_user, VIEW_USER)
-        
+
         # Map for ActionGrid lookup
         self._view_map = {
             VIEW_TRANSCRIBE: self.view_transcribe,
@@ -260,24 +362,51 @@ class MainWindow(QMainWindow):
             VIEW_USER: self.view_user,
         }
 
-        # Set default view
-        # Triggering switch_to_view will emit signal and run _on_view_changed
-        self.icon_rail.set_active_view(VIEW_TRANSCRIBE)
-        self.view_host.switch_to_view(VIEW_TRANSCRIBE)
+        # Activate default view immediately.
+        # Note: We previously used QTimer.singleShot(0) to avoid layout issues,
+        # but this caused test timing issues. We now rely on ActionDock's
+        # improved repack logic and QGridLayout's stability.
+        self._activate_default_view()
 
-    @pyqtSlot(InteractionIntent)
+    def _activate_default_view(self) -> None:
+        """Activate the default view once the event loop starts and layouts are ready."""
+        try:
+            self.icon_rail.set_active_view(VIEW_TRANSCRIBE)
+            self.view_host.switch_to_view(VIEW_TRANSCRIBE)
+        except Exception:
+            logger.exception("Failed to activate default view")
+
+    def dispatch_intent(self, intent: InteractionIntent) -> None:
+        """Public entry point to inject an intent into the system."""
+        self._on_interaction_intent(intent)
+
+    @pyqtSlot(object)
     def _on_interaction_intent(self, intent: InteractionIntent) -> None:
         """Dispatcher for all intents bubbling up from UI components."""
+        # logger.debug(f"MainWindow received intent: {intent}")
+        # 1. Propagate valid intents to the coordinator / owner
+        self.intent_dispatched.emit(intent)
+
+        # 2. Handle View-Level Actions (Navigation) locally
         if isinstance(intent, NavigateIntent):
             self._on_navigation_requested(intent.target_view_id)
         elif isinstance(intent, ViewTranscriptIntent):
             self._handle_view_transcript(intent)
+        
+        # 3. Handle Legacy mapping (Backward Compatibility for older listeners)
+        # These will be removed once the Coordinator listens to intent_dispatched
+        if isinstance(intent, BeginRecordingIntent):
+            self.startRecordingRequested.emit()
+        elif isinstance(intent, StopRecordingIntent):
+            self.stopRecordingRequested.emit()
+        elif isinstance(intent, CancelRecordingIntent):
+            self.cancelRecordingRequested.emit()
 
     def _handle_view_transcript(self, intent: ViewTranscriptIntent) -> None:
         """Handle request to view a specific transcript."""
         # Switch to Transcribe view (View/Edit mode)
         self.view_host.switch_to_view(VIEW_TRANSCRIBE)
-        
+
         # Load the data into the view
         if hasattr(self, "view_transcribe"):
             # Ensure we're targeting the right view instance
@@ -291,22 +420,42 @@ class MainWindow(QMainWindow):
     @pyqtSlot(str)
     def _on_view_changed(self, view_id: str) -> None:
         """Handle authoritative view change event."""
+        # Update internal tracking
+        self._current_view_id = view_id
+
         # Update Icon Rail visual state
         self.icon_rail.set_active_view(view_id)
-        
+
         # Update Action Dock capability context
         current_view = self._view_map.get(view_id)
-        if current_view:
+
+        # Hide action dock completely for User and Settings views
+        if view_id in (VIEW_USER, VIEW_SETTINGS):
+            self.action_dock.hide()
+        elif current_view:
+            self.action_dock.show()
             self.action_dock.set_active_view(current_view)
+
+        # Transcribe View Reset Logic (Idle-State Reset Requirement)
+        # If we navigated AWAY from Transcribe View, and it's holding a result (VIEWING or READY),
+        # clear it so it's fresh when we return.
+        if view_id != VIEW_TRANSCRIBE and hasattr(self, "view_transcribe"):
+            workspace = self.view_transcribe.workspace
+            # Clear if in VIEWING or READY states (not recording)
+            if workspace.get_state() in (WorkspaceState.VIEWING, WorkspaceState.READY):
+                workspace.clear_transcript()  # Reset to IDLE implicitly via clear? OR explicit reset?
+                # TranscribeView.hideEvent handles some of this, but clearing content ensures IDLE.
 
     # Slot handlers
 
     @pyqtSlot(int, str)
-    def _on_transcribe_view_text_edited(self, transcript_id: int, new_text: str) -> None:
+    def _on_transcribe_view_text_edited(
+        self, transcript_id: int, new_text: str
+    ) -> None:
         """Handle text edits from the live transcription view."""
         if not self.history_manager:
             return
-        
+
         try:
             self.history_manager.update_text(transcript_id, new_text)
             self.view_history.refresh()
@@ -314,21 +463,47 @@ class MainWindow(QMainWindow):
                 self.view_projects.refresh()
         except Exception as e:
             logger.exception("Failed to update transcript text from live view")
-            show_error_dialog("Update Failed", f"Could not save changes: {e}", parent=self)
+            show_error_dialog(
+                "Update Failed", f"Could not save changes: {e}", parent=self
+            )
+
+    @pyqtSlot(int, str)
+    def _on_edit_transcript_updated(self, transcript_id: int, new_text: str) -> None:
+        """Handle transcript updates from EditView."""
+        if not self.history_manager:
+            return
+
+        try:
+            # Get timestamp for model updates
+            entry = self.history_manager.get_entry(transcript_id)
+            if entry:
+                # Update SearchView if it's using a model
+                if hasattr(self.view_search, "update_transcript"):
+                    self.view_search.update_transcript(entry.timestamp, new_text)
+
+                # Refresh history view
+                if hasattr(self, "view_history"):
+                    self.view_history.refresh()
+
+                # Refresh projects view if applicable
+                if hasattr(self, "view_projects"):
+                    self.view_projects.refresh()
+        except Exception:
+            logger.exception("Failed to propagate transcript update")
 
     @pyqtSlot(int)
     def _on_edit_view_requested(self, transcript_id: int) -> None:
         """Switch to EditView for a specific transcript."""
+        self.view_edit.set_origin_view(self._current_view_id)
         self.view_host.switch_to_view(VIEW_EDIT)
         if hasattr(self.view_edit, "load_transcript_by_id"):
-             self.view_edit.load_transcript_by_id(transcript_id)
-
+            self.view_edit.load_transcript_by_id(transcript_id)
 
     def load_entry_for_edit(self, text: str, timestamp: str) -> None:
         """Load an entry into the edit view by timestamp."""
         if not self.history_manager:
             return
-            
+
         # Find ID by timestamp
         transcript_id = self.history_manager.get_id_by_timestamp(timestamp)
         if transcript_id is not None:
@@ -337,12 +512,47 @@ class MainWindow(QMainWindow):
             logger.warning(f"Could not find transcript for timestamp {timestamp}")
 
     @pyqtSlot(int)
-    def _on_refine_view_requested(self, transcript_id: int) -> None:
+    @pyqtSlot(int, str, str)
+    def _on_refine_view_requested(
+        self,
+        transcript_id: int,
+        profile: str = "BALANCED",
+        user_instructions: str = "",
+    ) -> None:
         """Switch to RefineView for a specific transcript."""
-        self.view_host.switch_to_view(VIEW_REFINE)
-        if hasattr(self.view_refine, "load_transcript_by_id"):
-             self.view_refine.load_transcript_by_id(transcript_id)
+        if not self.history_manager:
+            return
 
+        entry = self.history_manager.get_entry(transcript_id)
+        if not entry:
+            logger.warning(f"Refine requested for missing ID {transcript_id}")
+            return
+
+        self.view_host.switch_to_view(VIEW_REFINE)
+
+        # Load data and show loading state
+        # Only reload text if it's the first load (to preserve manual edits if we had any?
+        # Actually refine re-run re-uses original text).
+        self.view_refine.load_transcript_by_id(transcript_id, entry.text)
+        self.view_refine.set_loading(True)
+
+        # Emit request to backend
+        self.refinementRequested.emit(
+            transcript_id, entry.text, profile, user_instructions
+        )
+
+    @pyqtSlot(int, str)
+    def _on_refinement_accepted(self, transcript_id: int, refined_text: str) -> None:
+        """Apply the refinement to the database."""
+        if self.history_manager:
+            self.history_manager.update_normalized_text(transcript_id, refined_text)
+
+        self.refresh_history()
+        self.view_host.switch_to_view(VIEW_HISTORY)
+
+    @pyqtSlot()
+    def _on_refinement_discarded(self) -> None:
+        self.view_host.switch_to_view(VIEW_HISTORY)
 
     @pyqtSlot()
     def _on_start_requested(self) -> None:
@@ -375,9 +585,94 @@ class MainWindow(QMainWindow):
         pass
 
     @pyqtSlot()
-    def _on_delete_requested(self) -> None:
-        pass
-        
+    def _on_delete_transcript_requested(self) -> None:
+        """Handle delete request from Transcribe View with confirmation."""
+        if not self.history_manager or not hasattr(self, "view_transcribe"):
+            return
+
+        timestamp = self.view_transcribe.workspace.get_current_timestamp()
+        if not timestamp:
+            return
+
+        dialog = ConfirmationDialog(
+            self,
+            title="Delete Transcript",
+            message="Are you sure you want to delete this transcript? This action cannot be undone.",
+            confirm_text="Delete",
+            cancel_text="Cancel",
+            is_destructive=True,
+        )
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            try:
+                self.history_manager.delete_entry(timestamp)
+                self.view_transcribe.workspace.clear()
+                self._refresh_transcription_views()
+                logger.info(f"Deleted transcript: {timestamp}")
+            except Exception as e:
+                logger.exception("Failed to delete transcript")
+                from ui.widgets.dialogs import show_error_dialog
+
+                show_error_dialog(
+                    "Delete Error",
+                    f"Failed to delete transcript: {e}",
+                    parent=self,
+                )
+
+    @pyqtSlot()
+    def _on_data_changed(self) -> None:
+        """Handle data changes from views by refreshing all valid targets."""
+        self._refresh_transcription_views()
+
+    def _refresh_transcription_views(self) -> None:
+        """Refresh all views that display transcription data."""
+        if hasattr(self, "view_history") and self.view_history._model:
+            self.view_history._model.refresh_from_manager()
+
+        if hasattr(self, "view_projects"):
+            self.view_projects.refresh()
+
+        if hasattr(self, "view_search"):
+            self.view_search.refresh()
+
+    @pyqtSlot(int)
+    def _on_delete_from_history_view(self, transcript_id: int) -> None:
+        """Handle delete request from HistoryView with confirmation."""
+        if not self.history_manager:
+            return
+
+        entry = self.history_manager.get_entry(transcript_id)
+        if not entry:
+            return
+
+        from ui.utils.history_utils import format_preview
+
+        preview = format_preview(entry.text, max_length=50)
+
+        dialog = ConfirmationDialog(
+            self,
+            title="Delete Transcript",
+            message=f'Are you sure you want to delete this transcript?\n\n"{preview}"\n\nThis action cannot be undone.',
+            confirm_text="Delete",
+            cancel_text="Cancel",
+            is_destructive=True,
+        )
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            try:
+                self.history_manager.delete_entry(entry.timestamp)
+                self._refresh_transcription_views()
+                logger.info(f"Deleted transcript ID: {transcript_id}")
+            except Exception as e:
+                logger.exception("Failed to delete transcript")
+                from ui.widgets.dialogs import show_error_dialog
+
+                show_error_dialog(
+                    "Delete Error",
+                    f"Failed to delete transcript: {e}",
+                    parent=self,
+                )
+
     def show_refinement(self, transcript_id: int, original: str, refined: str) -> None:
         """Switch to RefineView and show comparison."""
         self.view_host.switch_to_view(VIEW_REFINE)
@@ -385,33 +680,41 @@ class MainWindow(QMainWindow):
             self.view_refine.set_comparison(transcript_id, original, refined)
 
     def _show_about_dialog(self) -> None:
-        """Restart the application by launching a new process and exiting."""
+        """Show the About Vociferous info (now in User View)."""
+        # Navigate to User View instead of showing dialog
+        self.view_host.switch_to_view(VIEW_USER)
+
+    def _restart_application(self) -> None:
+        """Restart the application by launching the entry point script."""
         import os
         import subprocess
         import sys
 
         try:
-            # Use the run.py script for proper GPU library loading
-            scripts_dir = os.path.join(
-                os.path.dirname(
-                    os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-                ),
-                "scripts",
+            # Determine project root from src/ui/components/main_window/main_window.py
+            # file -> main_window -> components -> ui -> src -> root
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(  # root
+                os.path.dirname(  # src
+                    os.path.dirname(  # ui
+                        os.path.dirname(current_dir)  # components
+                    )
+                )
             )
-            run_script = os.path.join(scripts_dir, "run.py")
 
-            if os.path.exists(run_script):
-                # Launch via run.py for proper LD_LIBRARY_PATH setup
+            # Target the ./vociferous entry point wrapper
+            vociferous_script = os.path.join(project_root, "vociferous")
+
+            if os.path.exists(vociferous_script):
+                logger.info(f"Restarting via entry point: {vociferous_script}")
                 subprocess.Popen(
-                    [sys.executable, run_script],
+                    [sys.executable, vociferous_script],
                     start_new_session=True,
                 )
             else:
-                # Fallback: launch main.py directly
-                main_script = os.path.join(
-                    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-                    "main.py",
-                )
+                # Fallback: launch src/main.py directly
+                main_script = os.path.join(project_root, "src", "main.py")
+                logger.warning(f"Entry point not found, falling back to: {main_script}")
                 subprocess.Popen(
                     [sys.executable, main_script],
                     start_new_session=True,
@@ -427,18 +730,8 @@ class MainWindow(QMainWindow):
                 parent=self,
             )
 
-    def _show_about_dialog(self) -> None:
-        """Show the About Vociferous info (now in User View)."""
-        # Navigate to User View instead of showing dialog
-        self.view_host.switch_to_view(VIEW_USER)
-
-    def _restart_application(self) -> None:
-        """Show the Metrics Calculations explanation dialog (now in User View)."""
-        # Navigate to User View instead of showing dialog
-        self.view_host.switch_to_view(VIEW_USER)
-
     # Public API
-    
+
     def sync_recording_status_from_engine(self, status: str) -> None:
         """Sync workspace state with background transcription engine status.
 
@@ -446,36 +739,61 @@ class MainWindow(QMainWindow):
         This is the ONLY method in MainWindow allowed to push engine state to UI.
         """
         if not hasattr(self, "view_transcribe"):
-             return
-             
+            return
+
         current_state = self.view_transcribe.workspace.get_state()
-        
+
         match status:
             case "recording":
-                # Guard: Only IDLE -> RECORDING (Edit Safety)
-                if current_state == WorkspaceState.IDLE or self.view_transcribe.workspace.get_state() == WorkspaceState.IDLE:
+                # Guard: Allow transition to RECORDING from any non-editing state (Edit Safety)
+                if current_state in (
+                    WorkspaceState.IDLE,
+                    WorkspaceState.VIEWING,
+                    WorkspaceState.READY,
+                ):
                     self.view_host.switch_to_view(VIEW_TRANSCRIBE)
                     self.view_transcribe.update_for_recording_state(True)
             case "transcribing":
-                pass
+                # Stop visualizer to save resources for transcription engine
+                if current_state == WorkspaceState.RECORDING:
+                    self.view_transcribe.pause_visualization()
             case "idle" | "error" | _:
-                # Guard: Only RECORDING -> IDLE (Edit Safety)
-                if current_state == WorkspaceState.RECORDING or self.view_transcribe.workspace.get_state() == WorkspaceState.RECORDING:
+                # Allow transition out of recording
+                if current_state == WorkspaceState.RECORDING:
                     self.view_transcribe.update_for_recording_state(False)
-
 
     def update_audio_level(self, level: float) -> None:
         """Route audio levels to the transcribe view if active."""
-        if hasattr(self, "view_transcribe") and self.view_host.get_current_view_id() == VIEW_TRANSCRIBE:
-             self.view_transcribe.set_audio_level(level)
+        if (
+            hasattr(self, "view_transcribe")
+            and self.view_host.get_current_view_id() == VIEW_TRANSCRIBE
+        ):
+            self.view_transcribe.set_audio_level(level)
+
+    def update_audio_spectrum(self, bands: list[float]) -> None:
+        """Route FFT spectrum to the transcribe view if active."""
+        if (
+            hasattr(self, "view_transcribe")
+            and self.view_host.get_current_view_id() == VIEW_TRANSCRIBE
+        ):
+            self.view_transcribe.set_audio_spectrum(bands)
+
+    def set_motd(self, text: str) -> None:
+        """Set Message of the Day in workspace header."""
+        if (
+            hasattr(self, "view_transcribe")
+            and hasattr(self.view_transcribe, "workspace")
+            and hasattr(self.view_transcribe.workspace, "header")
+        ):
+            self.view_transcribe.workspace.header.set_motd(text)
 
     def display_transcription(self, entry: HistoryEntry) -> None:
         # Debounce metrics refresh to avoid blocking on every transcript
         self._metrics_refresh_timer.start()
-        
+
         # Show in TranscribeView for immediate editing
         if hasattr(self, "view_transcribe"):
-             self.view_transcribe.load_transcript(entry.text, entry.timestamp)
+            self.view_transcribe.display_new_transcript(entry)
 
     def show_and_raise(self) -> None:
         self.show()
@@ -552,17 +870,15 @@ class MainWindow(QMainWindow):
             if dialog.exec() == QDialog.DialogCode.Accepted:
                 if self.history_manager:
                     self.history_manager.clear()
-                self.metrics_strip.refresh()
                 if hasattr(self, "view_history"):
-                     # HistoryView should refresh itself via history signals usually
-                     pass
+                    # HistoryView should refresh itself via history signals usually
+                    pass
         except Exception:
             logger.exception("Error clearing history")
 
     # Resize slots removed.
 
     # Position logic removed
-
 
     def _switch_to_history(self) -> None:
         """Switch to History View."""
@@ -576,16 +892,62 @@ class MainWindow(QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
         else:
-            self.resize(WindowSize.BASE, WindowSize.BASE)
+            self.resize(BASE, BASE)
             self._center_on_screen()
-
-        metrics_visible = self.settings.value("metrics_visible", True)
-        if str(metrics_visible).lower() == "false":
-            self.metrics_strip.hide()
 
     def _save_state(self) -> None:
         self.settings.setValue("geometry", self.saveGeometry())
-        self.settings.setValue("metrics_visible", self.metrics_strip.isVisible())
+
+    def _cleanup_children(self) -> None:
+        """
+        Recursively clean up all child views and components.
+        
+        Per cleanup protocol, parent widgets are responsible for
+        triggering cleanup() on children that manage resources.
+        
+        This is called before window close to ensure:
+        - Timers are stopped
+        - Animations are halted
+        - Threads are joined
+        - External connections are closed
+        """
+        import logging
+
+        # Clean up all registered views
+        for view in [
+            self.view_transcribe,
+            self.view_history,
+            self.view_projects,
+            self.view_search,
+            self.view_refine,
+            self.view_edit,
+            self.view_settings,
+            self.view_user,
+        ]:
+            if hasattr(view, "cleanup") and callable(view.cleanup):
+                try:
+                    view.cleanup()
+                except Exception as e:
+                    logging.error(f"Error cleaning up view {view.__class__.__name__}: {e}")
+
+        # Clean up shell components
+        for component in [self.icon_rail, self.action_dock, self.title_bar]:
+            if hasattr(component, "cleanup") and callable(component.cleanup):
+                try:
+                    component.cleanup()
+                except Exception as e:
+                    logging.error(
+                        f"Error cleaning up component {component.__class__.__name__}: {e}"
+                    )
+
+        # Clean up blocking overlay
+        if hasattr(self, "_blocking_overlay") and hasattr(
+            self._blocking_overlay, "cleanup"
+        ):
+            try:
+                self._blocking_overlay.cleanup()
+            except Exception as e:
+                logging.error(f"Error cleaning up blocking overlay: {e}")
 
     def _center_on_screen(self) -> None:
         screen = self.screen().availableGeometry()
@@ -594,15 +956,27 @@ class MainWindow(QMainWindow):
         self.move(frame.topLeft())
 
     def closeEvent(self, event) -> None:
+        # Clean up all children before closing
+        self._cleanup_children()
+
         self._save_state()
         self.windowCloseRequested.emit()
         event.accept()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
+        if hasattr(self, "_blocking_overlay"):
+            self._blocking_overlay.resize(self.size())
 
     def changeEvent(self, event) -> None:
+        """Handle window state changes, including taskbar interactions."""
         if event.type() == QEvent.Type.WindowStateChange:
             if hasattr(self, "title_bar"):
                 self.title_bar.sync_state()
+        elif event.type() == QEvent.Type.ActivationChange:
+            # Handle taskbar clicks on frameless windows
+            if self.isActiveWindow() and self.isMinimized():
+                self.showNormal()
+                self.activateWindow()
+                self.raise_()
         super().changeEvent(event)

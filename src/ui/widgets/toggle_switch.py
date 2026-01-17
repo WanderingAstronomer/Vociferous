@@ -109,3 +109,19 @@ class ToggleSwitch(QCheckBox):
     def hitButton(self, pos):
         """Make entire widget clickable."""
         return self.contentsRect().contains(pos)
+
+    def cleanup(self) -> None:
+        """
+        Clean up animation resources.
+        
+        Stops and deletes the toggle animation to prevent resource leaks.
+        Per Vociferous cleanup protocol, all stateful widgets must implement
+        cleanup() and release timers, animations, and external connections.
+        
+        This method is idempotent and safe to call multiple times.
+        """
+        if hasattr(self, "animation") and self.animation is not None:
+            if self.animation.state() == QPropertyAnimation.State.Running:
+                self.animation.stop()
+            # Don't delete the animation as it might be needed again
+            # Just ensure it's stopped

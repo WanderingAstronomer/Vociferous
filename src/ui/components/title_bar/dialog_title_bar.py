@@ -44,6 +44,9 @@ class DialogTitleBar(QWidget):
         self.setObjectName("dialogTitleBar")
         self.setFixedHeight(44)
 
+        # Enforce painting of background-color from stylesheet
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 8, 10, 8)
         layout.setSpacing(8)
@@ -56,7 +59,7 @@ class DialogTitleBar(QWidget):
         )
 
         # Close button
-        icons_dir = Path(__file__).parents[4] / "icons"
+        icons_dir = Path(__file__).parents[4] / "assets" / "icons"
         self.close_btn = QToolButton(self)
         self.close_btn.setIcon(QIcon(str(icons_dir / "title_bar-close.svg")))
         self.close_btn.setIconSize(QSize(16, 16))
@@ -116,3 +119,15 @@ class DialogTitleBar(QWidget):
         if hasattr(window_handle, "startSystemMove"):
             return bool(window_handle.startSystemMove())
         return False
+
+    def cleanup(self) -> None:
+        """
+        Clean up title bar resources.
+        
+        Per Vociferous cleanup protocol, all widgets should implement cleanup().
+        DialogTitleBar has no persistent timers or threads.
+        
+        This method is idempotent and safe to call multiple times.
+        """
+        # Reset drag state
+        self._drag_pos = None

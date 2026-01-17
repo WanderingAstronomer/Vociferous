@@ -120,3 +120,17 @@ class BlockingOverlay(QWidget):
     def resizeEvent(self, event):
         self.resize(self.parent().size())
         super().resizeEvent(event)
+
+    def cleanup(self) -> None:
+        """
+        Clean up overlay resources.
+        
+        Per Vociferous cleanup protocol, all widgets should implement cleanup().
+        BlockingOverlay has no persistent timers or threads, but implements
+        this for protocol compliance.
+        
+        This method is idempotent and safe to call multiple times.
+        """
+        # No active resources to clean up, but hide if visible
+        if self.isVisible():
+            self.hide()
