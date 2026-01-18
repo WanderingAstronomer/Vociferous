@@ -3,6 +3,22 @@
 ## [Unreleased]
 
 ### Added
+- **Plugin Ecosystem (Epoch 3)**: Implemented pluggable input backend system:
+  - Added `PluginLoader` (`src/core/plugins/loader.py`) for dynamic discovery of input backends via `vociferous.plugins.input` entry points
+  - Refactored `KeyListener` to use `PluginLoader` for backend selection instead of hardcoded list
+  - Enabled extensibility for third-party input handlers (e.g., custom Wayland compositors)
+- **Micro-Kernel Architecture (Epoch 2)**: Separated transcription engine into isolated process:
+  - Implemented Client-Server IPC architecture using `src/core_runtime/protocol.py` (PacketTransport)
+  - Created `EngineServer` to host Whisper model, preventing UI freezes and reducing main process memory footprint
+  - Created `EngineClient` to manage subprocess lifecycle and communication
+  - Integrated `TranscriptionRuntime` with `EngineClient` transparently
+- **Threading pattern optimization (Phase 4 TDD)**: Refactored background workers from QThread subclass anti-pattern to Qt6-recommended moveToThread pattern:
+  - `SetupWorker`: Converted from `QThread` subclass to `QObject` with `do_work()` slot (no longer overrides `run()`)
+  - `SetupPage`: Implements moveToThread pattern with proper cleanup chain via `deleteLater()` on worker and thread
+  - Added `finished = pyqtSignal(bool, str)` for thread-safe result communication
+  - Thread cleanup automatically triggered via `thread.finished` signal
+  - Addresses audit finding P1-05 (Critical: QThread subclass anti-pattern) from UI Architecture Audit Report
+- **Threading pattern test suite**: Created `test_threading_patterns.py` with 8 tests validating QObject pattern compliance, moveToThread safety, and resource cleanup
 - **Accessibility & keyboard navigation (Phase 3 TDD)**: Implemented comprehensive accessibility support for keyboard users and screen readers:
   - Added `:focus` pseudo-state styling for all button types (`primaryButton`, `secondaryButton`, `destructiveButton`, `purpleButton`) with 2px outline and offset
   - `RailButton`: Set `accessibleName` to "Navigate to {view}" and `accessibleDescription` for screen reader support
