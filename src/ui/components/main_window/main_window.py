@@ -7,7 +7,7 @@ Integrates Icon Rail, main workspace, and metrics strip in a responsive layout.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Any
 
 from PyQt6.QtCore import (
     QEvent,
@@ -18,6 +18,8 @@ from PyQt6.QtCore import (
     pyqtSlot,
 )
 from PyQt6.QtGui import (
+    QCloseEvent,
+    QResizeEvent,
     QGuiApplication,
 )
 from PyQt6.QtWidgets import (
@@ -116,7 +118,7 @@ class MainWindow(QMainWindow):
     def __init__(
         self,
         history_manager: HistoryManager | None = None,
-        key_listener=None,
+        key_listener: Any | None = None,
         command_bus: CommandBus | None = None,
     ) -> None:
         super().__init__()
@@ -216,7 +218,7 @@ class MainWindow(QMainWindow):
         # Initialize views (Must be after ActionDock and ViewHost)
         self._init_views()
 
-    def set_app_busy(self, is_busy: bool, message: str = ""):
+    def set_app_busy(self, is_busy: bool, message: str = "") -> None:
         """Block or unblock user interaction with the entire window."""
         if is_busy:
             self._blocking_overlay.show_message(message)
@@ -244,7 +246,7 @@ class MainWindow(QMainWindow):
             # Track cancellation
             cancelled = False
 
-            def on_cancel():
+            def on_cancel() -> None:
                 nonlocal cancelled
                 cancelled = True
                 wizard.close()
@@ -967,7 +969,7 @@ class MainWindow(QMainWindow):
         frame.moveCenter(screen.center())
         self.move(frame.topLeft())
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, event: QCloseEvent) -> None:
         # Clean up all children before closing
         self._cleanup_children()
 
@@ -975,12 +977,12 @@ class MainWindow(QMainWindow):
         self.windowCloseRequested.emit()
         event.accept()
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         if hasattr(self, "_blocking_overlay"):
             self._blocking_overlay.resize(self.size())
 
-    def changeEvent(self, event) -> None:
+    def changeEvent(self, event: QEvent) -> None:
         """Handle window state changes, including taskbar interactions."""
         if event.type() == QEvent.Type.WindowStateChange:
             if hasattr(self, "title_bar"):
