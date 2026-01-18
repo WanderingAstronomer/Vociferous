@@ -424,7 +424,7 @@ class SetupPage(BasePage):
         
         # Connect signals BEFORE starting thread
         self._thread.started.connect(self._worker.do_work)
-        self._worker.progress_update.connect(self.status.setText)
+        self._worker.progressUpdate.connect(self.status.setText)
         self._worker.finished.connect(self._on_finished)
         self._worker.finished.connect(self._thread.quit)
         self._worker.finished.connect(self._worker.deleteLater)
@@ -473,13 +473,13 @@ class SetupWorker(QObject):
     
     Signals:
         finished(bool, str): Emitted when setup completes (success, message)
-        progress_update(str): Emitted during progress updates
+        progressUpdate(str): Emitted during progress updates
     
     References:
         - Qt6 Threading: https://doc.qt.io/qt-6/threads-qobject.html
     """
     finished = pyqtSignal(bool, str)
-    progress_update = pyqtSignal(str)
+    progressUpdate = pyqtSignal(str)
 
     def __init__(self, install_desktop, refinement_enabled, models_to_download):
         super().__init__()
@@ -490,7 +490,7 @@ class SetupWorker(QObject):
     def do_work(self):
         # 1. Desktop Integration
         if self.install_desktop:
-            self.progress_update.emit("Configuring desktop integration...")
+            self.progressUpdate.emit("Configuring desktop integration...")
             try:
                 project_root = Path(__file__).resolve().parents[4]
                 script_path = project_root / "scripts" / "install-desktop-entry.sh"
@@ -528,10 +528,10 @@ class SetupWorker(QObject):
                         continue
 
                     model = MODELS[model_id]
-                    self.progress_update.emit(f"Downloading model: {model.name}...")
+                    self.progressUpdate.emit(f"Downloading model: {model.name}...")
 
                     worker = ProvisioningWorker(model, cache_dir)
-                    worker.signals.progress.connect(self.progress_update.emit)
+                    worker.signals.progress.connect(self.progressUpdate.emit)
 
                     success = False
                     error_msg = ""
@@ -636,7 +636,7 @@ class CalibrationPage(BasePage):
         self.thread = CalibrationWorker(self.calibrator)
         self.thread.progress.connect(self.output_log.setText)
         self.thread.finished.connect(self._on_finished)
-        self.thread.error_occurred.connect(self._on_error)
+        self.thread.errorOccurred.connect(self._on_error)
         self.thread.start()
 
     def _on_error(self, error_msg):
@@ -681,7 +681,7 @@ class CalibrationPage(BasePage):
 
 class CalibrationWorker(QThread):
     progress = pyqtSignal(object)
-    error_occurred = pyqtSignal(str)
+    errorOccurred = pyqtSignal(str)
 
     def __init__(self, calibrator):
         super().__init__()
@@ -692,5 +692,5 @@ class CalibrationWorker(QThread):
             results = self.calibrator.calibrate(on_progress=self.progress.emit)
             self.finished.emit(results)
         except Exception as e:
-            self.error_occurred.emit(str(e))
+            self.errorOccurred.emit(str(e))
             self.progress.emit(f"Error: {e}")

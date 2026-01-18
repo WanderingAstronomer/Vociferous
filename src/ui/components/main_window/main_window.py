@@ -7,7 +7,7 @@ Integrates Icon Rail, main workspace, and metrics strip in a responsive layout.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from PyQt6.QtCore import (
     QEvent,
@@ -75,6 +75,7 @@ from ui.interaction.intents import (
 
 if TYPE_CHECKING:
     from database.history_manager import HistoryEntry, HistoryManager
+    from src.core.command_bus import CommandBus
 
 logger = logging.getLogger(__name__)
 
@@ -95,11 +96,11 @@ class MainWindow(QMainWindow):
     └─────────────────────────────────────────┘
 
     Signals:
-        intent_dispatched(InteractionIntent): Core event bus
+        intentDispatched(InteractionIntent): Core event bus
         windowCloseRequested(): Window is closing
     """
 
-    intent_dispatched = pyqtSignal(object)
+    intentDispatched = pyqtSignal(object)
 
     windowCloseRequested = pyqtSignal()
     # Legacy signals - deprecated
@@ -113,7 +114,10 @@ class MainWindow(QMainWindow):
     )  # id, text, profile, user_instruct
 
     def __init__(
-        self, history_manager: HistoryManager | None = None, key_listener=None
+        self,
+        history_manager: HistoryManager | None = None,
+        key_listener=None,
+        command_bus: CommandBus | None = None,
     ) -> None:
         super().__init__()
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint)
@@ -121,6 +125,7 @@ class MainWindow(QMainWindow):
         self.settings = QSettings("Vociferous", "MainWindow")
         self.history_manager = history_manager
         self.key_listener = key_listener
+        self.command_bus = command_bus
 
         # Custom title bar (no menu bar needed)
         self.title_bar = TitleBar(self)
@@ -166,7 +171,7 @@ class MainWindow(QMainWindow):
         self.icon_rail.setSizePolicy(
             QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
         )
-        self.icon_rail.intent_emitted.connect(self._on_interaction_intent)
+        self.icon_rail.intentEmitted.connect(self._on_interaction_intent)
         container_layout.addWidget(self.icon_rail, 0)
 
         # 2. Content Column (Views + ActionDock)
@@ -384,10 +389,17 @@ class MainWindow(QMainWindow):
     def _on_interaction_intent(self, intent: InteractionIntent) -> None:
         """Dispatcher for all intents bubbling up from UI components."""
         # logger.debug(f"MainWindow received intent: {intent}")
-        # 1. Propagate valid intents to the coordinator / owner
-        self.intent_dispatched.emit(intent)
+        
+        # 1. Dispatch via Command Bus if available (Preferred Architecture)
+        if self.command_bus:
+            self.command_bus.dispatch(intent)
+        else:
+            # Fallback for legacy / testing without bus
+            self.intentDispatched.emit(intent)
 
         # 2. Handle View-Level Actions (Navigation) locally
+        # Note: Ideally these should be handlers registered to the Bus too.
+        # But keeping local handling for UI-specific logic is acceptable for now.
         if isinstance(intent, NavigateIntent):
             self._on_navigation_requested(intent.target_view_id)
         elif isinstance(intent, ViewTranscriptIntent):
