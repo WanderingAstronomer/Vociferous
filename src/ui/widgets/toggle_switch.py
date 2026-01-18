@@ -24,6 +24,12 @@ class ToggleSwitch(QCheckBox):
     toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None):
+        """
+        Initialize the toggle switch widget.
+
+        Args:
+            parent: Optional parent widget for Qt ownership hierarchy.
+        """
         super().__init__(parent)
         self.setCheckable(True)
         self.setFixedSize(50, 24)
@@ -64,10 +70,12 @@ class ToggleSwitch(QCheckBox):
 
     @pyqtProperty(float)
     def circle_position(self) -> float:
+        """Get the current horizontal position of the toggle circle."""
         return self._circle_position
 
     @circle_position.setter
     def circle_position(self, pos: float) -> None:
+        """Set the circle position and trigger a repaint."""
         self._circle_position = pos
         self.update()
 

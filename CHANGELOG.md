@@ -12,6 +12,13 @@
   - Created `EngineServer` to host Whisper model, preventing UI freezes and reducing main process memory footprint
   - Created `EngineClient` to manage subprocess lifecycle and communication
   - Integrated `TranscriptionRuntime` with `EngineClient` transparently
+- **Docstring coverage enforcement (Phase 5.2 TDD)**: Added comprehensive docstrings to priority architectural components:
+  - `BaseView.__init__`: Documents parent widget parameter and initialization
+  - `ToggleSwitch.__init__`, `circle_position` property: Documents widget initialization and animation state
+  - `ContentPanel.__init__`: Documents panel initialization for transcript display
+  - `SelectionState.has_selection`, `is_single_selection`: Documents selection query properties
+  - Created automated enforcement tests preventing missing docstrings on public APIs
+- **Docstring coverage test suite**: Created `test_docstring_coverage.py` with 10 tests validating docstring presence and quality
 - **Color constant centralization (Phase 5.1 TDD)**: Centralized all UI colors into semantic constants per P3-06 audit finding:
   - Added semantic color tokens: `TOGGLE_CIRCLE_ON`, `HOVER_OVERLAY_LIGHT`, `HOVER_OVERLAY_BLUE`, `OVERLAY_BACKDROP`
   - Refactored `toggle_switch.py`, `unified_stylesheet.py`, `refine_view.py`, `main_window_styles.py` to use centralized constants
