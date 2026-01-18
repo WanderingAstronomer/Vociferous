@@ -1,196 +1,107 @@
 """
-Color palette constants.
+Canonical color palette for Vociferous UI.
 
-Dark theme colors following Refactoring UI principles:
-- 3-tier text hierarchy: primary, secondary, tertiary
-- Consolidated accent colors (no duplicates)
-- Semantic naming for states and actions
+Naming Convention:
+- Colors are named by family (e.g., GRAY, BLUE) and index (0-9).
+- Lower index = lighter color; higher index = darker color.
+- Only colors used in the UI are defined here.
 
-Usage:
-    from ui.constants import Colors
-    widget.setStyleSheet(f"background: {Colors.BACKGROUND};")
+Purpose:
+- Centralize color definitions for consistency.
+- Facilitate easy updates to the color scheme.
 """
 
+# Grays
+GRAY_0 = "#ffffff"
+GRAY_1 = "#e0e0e0"
+GRAY_2 = "#d4d4d4"
+GRAY_3 = "#bbbbbb"
+GRAY_4 = "#888888"
+GRAY_5 = "#555555"
+GRAY_6 = "#4c4c4c"
+GRAY_7 = "#3c3c3c"
+GRAY_8 = "#2a2a2a"
+GRAY_9 = "#1e1e1e"
 
-class Colors:
-    """Application color palette."""
+# Blues
+BLUE_0 = "#e6f0fa"
+BLUE_1 = "#cce0f5"
+BLUE_2 = "#99c2ed"
+BLUE_3 = "#6db3e8"
+BLUE_4 = "#5a9fd4"
+BLUE_5 = "#4a8ac0"
+BLUE_6 = "#3d4f5f"
+BLUE_7 = "#2d5a7b"
+BLUE_8 = "#2d3d4d"
+BLUE_9 = "#1a252e"
 
-    # =================================================================
-    # BACKGROUNDS (4-level surface hierarchy)
-    # =================================================================
-    BACKGROUND = "#1e1e1e"  # L0: Main window/app background
-    SURFACE = "#252526"  # L1: Panels, cards, dialogs
-    SURFACE_ALT = "#2a2a2a"  # L2: List items, hover states
-    HEADER = "#1a1a1a"  # L-1: Section headers (darker)
+# Greens
+GREEN_4 = "#5bc95f"
+GREEN_5 = "#4caf50"
+GREEN_7 = "#3d8b40"
+SUCCESS_BRIGHT = "#50fa7b"  # Onboarding Finish
 
-    # Legacy aliases (deprecated - use semantic names above)
-    BG_PRIMARY = BACKGROUND
-    BG_SECONDARY = SURFACE
-    BG_TERTIARY = SURFACE_ALT
-    BG_HEADER = HEADER
+# Reds
+RED_4 = "#ff8585"
+RED_5 = "#ff6b6b"
+RED_7 = "#cc5656"
+RED_8 = "#7a3535"
+RED_9 = "#5a2d2d"
+DANGER_BRIGHT = "#ff5555"  # Onboarding Cancel
 
-    # =================================================================
-    # TEXT HIERARCHY (per Refactoring UI: 3 tiers)
-    # =================================================================
-    TEXT_PRIMARY = "#d4d4d4"  # Headlines, important content
-    TEXT_SECONDARY = "#888888"  # Supporting text, metadata
-    TEXT_TERTIARY = "#555555"  # Disabled, very subtle hints
+# Orange
+ORANGE_4 = "#ffb733"
+ORANGE_5 = "#ffa500"
+ORANGE_7 = "#cc8400"
 
-    # Special text colors
-    TEXT_ACCENT = "#5a9fd4"  # Links, interactive text
-    TEXT_ON_ACCENT = "#ffffff"  # Text on accent backgrounds
-    TEXT_GREETING = "#ffffff"  # Hero/greeting text
+# Purple
+PURPLE_4 = "#9d46f0"
+PURPLE_5 = "#8a2be2"
+PURPLE_7 = "#5e1d9b"
+PURPLE_9 = "#2a0a44"
 
-    # Legacy alias
-    TEXT_MUTED = TEXT_TERTIARY
-    TEXT_DISABLED = TEXT_TERTIARY
-    TEXT_ON_PRIMARY = TEXT_ON_ACCENT
+# =============================================================================
+# Semantic Tokens (Phase 5 TDD - Color Constant Centralization)
+# =============================================================================
 
-    # =================================================================
-    # PRIMARY ACCENT (consolidated - single source of truth)
-    # =================================================================
-    PRIMARY = "#5a9fd4"
-    PRIMARY_HOVER = "#6db3e8"
-    PRIMARY_PRESSED = "#2d5a7b"
-    ACCENT_TRANSPARENT = "rgba(90, 159, 212, 0.15)"
+# Toggle Switch
+TOGGLE_CIRCLE_ON = GRAY_0  # White circle when toggle is ON
 
-    # Legacy aliases (all point to PRIMARY family)
-    ACCENT_BLUE = PRIMARY
-    ACCENT_BLUE_HOVER = PRIMARY_HOVER
-    ACCENT_BLUE_DARK = PRIMARY_PRESSED
-    ACCENT_BLUE_PRESSED = PRIMARY_PRESSED
-    ACCENT_BLUE_BRIGHT = PRIMARY  # Consolidated
-    ACCENT_BLUE_BRIGHT_HOVER = PRIMARY_HOVER  # Consolidated
-    ACCENT_PRIMARY = PRIMARY
-    ACCENT_HOVER = PRIMARY_HOVER
-    ACCENT_PRESSED = PRIMARY_PRESSED
-    BORDER_ACCENT = PRIMARY
+# Hover Overlays (semi-transparent overlays for interactive states)
+HOVER_OVERLAY_LIGHT = "rgba(255, 255, 255, 0.08)"  # Light overlay on dark backgrounds
+HOVER_OVERLAY_BLUE = "rgba(59, 130, 246, 0.08)"  # Blue-tinted hover for tree/table views
 
-    # =================================================================
-    # SEMANTIC COLORS
-    # =================================================================
-    # Success (green)
-    SUCCESS = "#4caf50"
-    SUCCESS_HOVER = "#5bc95f"
-    SUCCESS_PRESSED = "#3d8b40"
-
-    # Destructive/Error (red)
-    DESTRUCTIVE = "#ff6b6b"
-    DESTRUCTIVE_HOVER = "#ff8585"
-    DESTRUCTIVE_PRESSED = "#cc5656"
-    DESTRUCTIVE_BG = "#5a2d2d"  # Subtle background tint
-
-    # Warning (orange)
-    WARNING = "#ffa500"
-    WARNING_HOVER = "#ffb733"
-    WARNING_PRESSED = "#cc8400"
-
-    # Legacy destructive aliases
-    ACCENT_DESTRUCTIVE = DESTRUCTIVE
-    DESTRUCTIVE_IDLE = "#7a3535"
-    DESTRUCTIVE_HOVER_BG = DESTRUCTIVE_BG
-
-    # =================================================================
-    # ACTION BUTTON COLORS
-    # =================================================================
-    # Start/Go (green)
-    ACCENT_GREEN = "#2d6a4f"
-    ACCENT_GREEN_HOVER = "#40916c"
-    ACCENT_GREEN_PRESSED = "#1b4332"
-
-    # Stop/Cancel (red)
-    ACCENT_RED = "#e06c75"
-    ACCENT_RECORDING = DESTRUCTIVE
-
-    # Legacy
-    ACCENT_SUCCESS = SUCCESS
-
-    # =================================================================
-    # STATUS INDICATORS
-    # =================================================================
-    STATUS_RECORDING = DESTRUCTIVE
-    STATUS_TRANSCRIBING = WARNING
-    STATUS_SUCCESS = SUCCESS
-
-    # =================================================================
-    # BORDERS
-    # =================================================================
-    BORDER_DEFAULT = "#3c3c3c"
-    BORDER_LIGHT = "#4c4c4c"
-    BORDER_MEDIUM = BORDER_DEFAULT
-
-    # Legacy alias
-    BORDER_COLOR = BORDER_DEFAULT
-
-    # =================================================================
-    # INTERACTIVE STATES
-    # =================================================================
-    HOVER_BG = "#2d3d4d"  # Primary hover bg
-    HOVER_OVERLAY = "rgba(255, 255, 255, 0.08)"
-    PRESSED_OVERLAY = "rgba(255, 255, 255, 0.12)"
-    SELECTED_BG = PRIMARY_PRESSED
-
-    # Component-specific hover states
-    HOVER_BG_SECTION = "#3a3a3a"
-    HOVER_BG_DAY = "#333333"
-    HOVER_BG_ITEM = "#2e2e2e"
-
-    # Section headers
-    SECTION_HEADER_BG = "#323e4e"
-    SECTION_HEADER_HOVER = "#3d4f5f"
-
-    # =================================================================
-    # SPECIAL
-    # =================================================================
-    TRANSPARENT = "transparent"
-    BUTTON_SECONDARY = "#3c3c3c"
+# Modal/Loading Overlays
+OVERLAY_BACKDROP = "rgba(0, 0, 0, 0.5)"  # Semi-transparent black for modal backdrops
 
 
 class ProjectColors:
     """
-    Darker color palette for Projects.
+    Project-specific color selection utilities.
 
-    Design principles:
-    - Darker colors for better contrast with white text
-    - Full-width colored bars as section headers
-    - Distinct enough for quick identification
-    - Works on dark background
+    Uses canonical color constants.
     """
+
+    # User-facing names for the colors (mapped to canonical values)
+    COLOR_NAMES = {
+        BLUE_7: "Ocean Blue",
+        GREEN_7: "Forest Green",
+        ORANGE_7: "Goldenrod",
+        PURPLE_7: "Amethyst",
+        RED_8: "Brick Red",
+        BLUE_4: "Teal",
+    }
 
     # Ordered palette - used for auto-assignment to new groups
     # Six distinct colors with good visual separation
     PALETTE = [
-        "#3a5f7f",  # Deep Ocean Blue - cool, professional
-        "#4f6b38",  # Forest Green - natural, earthy
-        "#b8860b",  # Dark Goldenrod - warm, distinct
-        "#8b5a9e",  # Amethyst Purple - rich, creative
-        "#a04238",  # Brick Red - warm, grounded
-        "#5a8e8e",  # Teal - cool, balanced
+        BLUE_7,
+        GREEN_7,
+        ORANGE_7,
+        PURPLE_7,
+        RED_8,
+        BLUE_4,
     ]
-
-    # Color names for UI display
-    COLOR_NAMES = {
-        "#3a5f7f": "Ocean Blue",
-        "#4f6b38": "Forest Green",
-        "#b8860b": "Goldenrod",
-        "#8b5a9e": "Amethyst",
-        "#a04238": "Brick Red",
-        "#5a8e8e": "Teal",
-    }
-
-    # Named colors for specific UI purposes
-    SLATE = "#6b8fa3"
-    TEAL = "#7ba89b"
-    AMBER = "#c4a574"
-    INDIGO = "#8b7bb8"
-    ROSE = "#a87b8b"
-    CYAN = "#7ba3a3"
-    TAUPE = "#a89b7b"
-    OLIVE = "#8b9b7b"
-    LAVENDER = "#9b8ba8"
-    SAND = "#a8947b"
-    STEEL = "#7b8ba8"
-    MOSS = "#8ba87b"
 
     @classmethod
     def get_next_color(cls, existing_colors: list[str | None]) -> str:

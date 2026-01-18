@@ -789,7 +789,7 @@ QTreeView {{
 }}
 
 QTreeView::item:hover {{
-    background-color: rgba(59, 130, 246, 0.08);
+    background-color: {c.HOVER_OVERLAY_BLUE};
 }}
 
 QTableView {{
@@ -799,6 +799,6 @@ QTableView {{
 }}
 
 QTableView::item:hover {{
-    background-color: rgba(59, 130, 246, 0.08);
+    background-color: {c.HOVER_OVERLAY_BLUE};
 }}
 """

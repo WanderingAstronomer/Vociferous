@@ -12,6 +12,12 @@
   - Created `EngineServer` to host Whisper model, preventing UI freezes and reducing main process memory footprint
   - Created `EngineClient` to manage subprocess lifecycle and communication
   - Integrated `TranscriptionRuntime` with `EngineClient` transparently
+- **Color constant centralization (Phase 5.1 TDD)**: Centralized all UI colors into semantic constants per P3-06 audit finding:
+  - Added semantic color tokens: `TOGGLE_CIRCLE_ON`, `HOVER_OVERLAY_LIGHT`, `HOVER_OVERLAY_BLUE`, `OVERLAY_BACKDROP`
+  - Refactored `toggle_switch.py`, `unified_stylesheet.py`, `refine_view.py`, `main_window_styles.py` to use centralized constants
+  - Created automated enforcement tests preventing hardcoded hex/rgba colors in production code
+  - Addresses audit finding P3-06 (Hardcoded colors bypass centralized palette) from UI Architecture Audit Report
+- **Color constant test suite**: Created `test_color_constants.py` with 12 tests validating color constant coverage, completeness, and usage
 - **Threading pattern optimization (Phase 4 TDD)**: Refactored background workers from QThread subclass anti-pattern to Qt6-recommended moveToThread pattern:
   - `SetupWorker`: Converted from `QThread` subclass to `QObject` with `do_work()` slot (no longer overrides `run()`)
   - `SetupPage`: Implements moveToThread pattern with proper cleanup chain via `deleteLater()` on worker and thread

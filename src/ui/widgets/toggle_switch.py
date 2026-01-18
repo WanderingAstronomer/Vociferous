@@ -92,7 +92,7 @@ class ToggleSwitch(QCheckBox):
         # Colors based on state
         if self.isChecked():
             bg_color = QColor(c.BLUE_4)
-            circle_color = QColor("#FFFFFF")
+            circle_color = QColor(c.TOGGLE_CIRCLE_ON)
         else:
             bg_color = QColor(c.GRAY_7)  # Dark gray
             circle_color = QColor(c.GRAY_5)  # Medium gray
