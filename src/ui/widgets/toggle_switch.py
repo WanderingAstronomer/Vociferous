@@ -10,6 +10,7 @@ from PyQt6.QtGui import QPainter, QColor
 from PyQt6.QtWidgets import QCheckBox
 
 import ui.constants.colors as c
+import ui.constants.dimensions as d
 
 
 class ToggleSwitch(QCheckBox):
@@ -32,14 +33,14 @@ class ToggleSwitch(QCheckBox):
         """
         super().__init__(parent)
         self.setCheckable(True)
-        self.setFixedSize(50, 24)
+        self.setFixedSize(d.TOGGLE_WIDTH, d.TOGGLE_HEIGHT)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         # Animation for circle position
-        self._circle_position = 3  # Start position (left)
+        self._circle_position = d.TOGGLE_CIRCLE_MARGIN  # Start position (left)
         self.animation = QPropertyAnimation(self, b"circle_position", self)
         self.animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
-        self.animation.setDuration(200)  # milliseconds
+        self.animation.setDuration(d.TOGGLE_ANIMATION_DURATION_MS)  # milliseconds
 
         # Connect state change to animation
         self.stateChanged.connect(self._animate_toggle)
@@ -57,7 +58,7 @@ class ToggleSwitch(QCheckBox):
         References:
             - layout.html § "Custom Widgets in Layouts"
         """
-        return QSize(50, 24)
+        return QSize(d.TOGGLE_WIDTH, d.TOGGLE_HEIGHT)
 
     def minimumSizeHint(self) -> QSize:
         """
@@ -66,7 +67,7 @@ class ToggleSwitch(QCheckBox):
         Returns:
             QSize: Minimum size equals fixed size (50x24)
         """
-        return QSize(50, 24)
+        return QSize(d.TOGGLE_WIDTH, d.TOGGLE_HEIGHT)
 
     @pyqtProperty(float)
     def circle_position(self) -> float:
@@ -84,11 +85,13 @@ class ToggleSwitch(QCheckBox):
         if state == Qt.CheckState.Checked.value:
             # Move circle to right
             self.animation.setStartValue(self._circle_position)
-            self.animation.setEndValue(29)  # 50 - 18 - 3 = 29
+            # 50 - 18 - 3 = 29
+            end_pos = d.TOGGLE_WIDTH - d.TOGGLE_CIRCLE_SIZE - d.TOGGLE_CIRCLE_MARGIN
+            self.animation.setEndValue(end_pos)
         else:
             # Move circle to left
             self.animation.setStartValue(self._circle_position)
-            self.animation.setEndValue(3)
+            self.animation.setEndValue(d.TOGGLE_CIRCLE_MARGIN)
 
         self.animation.start()
 
@@ -108,11 +111,18 @@ class ToggleSwitch(QCheckBox):
         # Draw pill-shaped background
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(bg_color)
-        painter.drawRoundedRect(0, 0, 50, 24, 12, 12)
+        painter.drawRoundedRect(
+            0, 0, d.TOGGLE_WIDTH, d.TOGGLE_HEIGHT, d.TOGGLE_RADIUS, d.TOGGLE_RADIUS
+        )
 
         # Draw sliding circle
         painter.setBrush(circle_color)
-        painter.drawEllipse(int(self._circle_position), 3, 18, 18)
+        painter.drawEllipse(
+            int(self._circle_position),
+            d.TOGGLE_CIRCLE_MARGIN,
+            d.TOGGLE_CIRCLE_SIZE,
+            d.TOGGLE_CIRCLE_SIZE,
+        )
 
     def hitButton(self, pos):
         """Make entire widget clickable."""

@@ -12,6 +12,10 @@
   - Created `EngineServer` to host Whisper model, preventing UI freezes and reducing main process memory footprint
   - Created `EngineClient` to manage subprocess lifecycle and communication
   - Integrated `TranscriptionRuntime` with `EngineClient` transparently
+- **Magic number extraction (Phase 5.3 TDD)**: Extracted hardcoded layout dimensions to `ui.constants.dimensions` per audit findings:
+  - `ToggleSwitch`: Extracted width (50), height (24), radius (12), circle size (18), margin (3), duration (200ms)
+  - `ContentPanel`: Extracted margins (32, 24) and spacing (12)
+  - Created automated enforcement tests in `test_magic_numbers.py` to prevent regression
 - **Docstring coverage enforcement (Phase 5.2 TDD)**: Added comprehensive docstrings to priority architectural components:
   - `BaseView.__init__`: Documents parent widget parameter and initialization
   - `ToggleSwitch.__init__`, `circle_position` property: Documents widget initialization and animation state

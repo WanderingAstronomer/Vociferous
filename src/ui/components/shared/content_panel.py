@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.utils.history_utils import format_day_header, format_preview, format_time
+import ui.constants.dimensions as d
 
 if TYPE_CHECKING:
     from database.history_manager import HistoryEntry
@@ -51,8 +52,13 @@ class ContentPanel(QWidget):
     def _setup_ui(self) -> None:
         """Initialize the UI layout with detail display structure."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(32, 24, 32, 24)
-        layout.setSpacing(12)
+        layout.setContentsMargins(
+            d.CONTENT_PANEL_DETAIL_MARGIN_H,
+            d.CONTENT_PANEL_DETAIL_MARGIN_V,
+            d.CONTENT_PANEL_DETAIL_MARGIN_H,
+            d.CONTENT_PANEL_DETAIL_MARGIN_V,
+        )
+        layout.setSpacing(d.CONTENT_PANEL_DETAIL_SPACING)
 
         # Header Section (Title)
         self._lbl_title = QLabel("Select a transcript")
