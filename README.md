@@ -1,4 +1,6 @@
-<div align="center">  Vociferous  Privacy-First Speech-to-Text for Linux
+<div align="center">
+
+Vociferous  Privacy-First Speech-to-Text for Linux
 
 Your voice. Your machine. Your data.
 
