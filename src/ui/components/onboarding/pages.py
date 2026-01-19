@@ -7,7 +7,7 @@ from __future__ import annotations
 from src.core.resource_manager import ResourceManager
 import os
 import subprocess
-from PyQt6.QtCore import Qt, pyqtSignal, QThread, QObject
+from PyQt6.QtCore import Qt, pyqtSignal, QThread, QObject, QRect, QSize
 from PyQt6.QtGui import QPainter, QColor, QBrush
 from PyQt6.QtWidgets import (
     QWidget,
@@ -19,6 +19,8 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QAbstractButton,
     QSizePolicy,
+    QLayout,
+    QLayoutItem,
 )
 from src.core.config_manager import ConfigManager, get_model_cache_dir
 from src.ui.widgets.hotkey_widget.hotkey_widget import HotkeyWidget
@@ -27,6 +29,96 @@ from src.services.slm_service import MODELS, ProvisioningWorker
 from src.ui.constants import Typography, Spacing
 from src.ui.constants.dimensions import BORDER_RADIUS_SM
 import src.ui.constants.colors as c
+
+
+class FlowLayout(QLayout):
+    """Flow layout that wraps items to new lines based on available width."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._items: list[QLayoutItem] = []
+        self._spacing = 0
+
+    def addItem(self, item: QLayoutItem) -> None:
+        """Add an item to the layout."""
+        self._items.append(item)
+
+    def itemAt(self, index: int) -> QLayoutItem | None:
+        """Get item at index."""
+        if 0 <= index < len(self._items):
+            return self._items[index]
+        return None
+
+    def takeAt(self, index: int) -> QLayoutItem | None:
+        """Remove and return item at index."""
+        if 0 <= index < len(self._items):
+            return self._items.pop(index)
+        return None
+
+    def count(self) -> int:
+        """Return number of items."""
+        return len(self._items)
+
+    def setSpacing(self, spacing: int) -> None:
+        """Set spacing between items."""
+        self._spacing = spacing
+
+    def spacing(self) -> int:
+        """Get spacing between items."""
+        return self._spacing
+
+    def sizeHint(self) -> QSize:
+        """Return preferred size."""
+        return self.minimumSize()
+
+    def minimumSize(self) -> QSize:
+        """Return minimum size."""
+        size = QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        margins = self.contentsMargins()
+        size.setWidth(size.width() + margins.left() + margins.right())
+        size.setHeight(size.height() + margins.top() + margins.bottom())
+        return size
+
+    def doLayout(self, rect: QRect) -> None:
+        """Layout items in flow pattern."""
+        margins = self.contentsMargins()
+        x = rect.x() + margins.left()
+        y = rect.y() + margins.top()
+        line_height = 0
+
+        for item in self._items:
+            wid = item.widget()
+            space_x = wid.style().layoutSpacing(
+                QSizePolicy.ControlType.PushButton,
+                QSizePolicy.ControlType.PushButton,
+                Qt.Orientation.Horizontal,
+            )
+            space_y = wid.style().layoutSpacing(
+                QSizePolicy.ControlType.PushButton,
+                QSizePolicy.ControlType.PushButton,
+                Qt.Orientation.Vertical,
+            )
+
+            next_x = x + item.sizeHint().width() + space_x
+            if next_x - space_x > rect.right() and line_height > 0:
+                # Move to next line
+                x = rect.x() + margins.left()
+                y = y + line_height + space_y
+                next_x = x + item.sizeHint().width() + space_x
+                line_height = 0
+
+            item.setGeometry(
+                QRect(x, y, item.sizeHint().width(), item.sizeHint().height())
+            )
+            x = next_x
+            line_height = max(line_height, item.sizeHint().height())
+
+    def setGeometry(self, rect: QRect) -> None:
+        """Set geometry and perform layout."""
+        super().setGeometry(rect)
+        self.doLayout(rect)
 
 
 class ToggleSwitch(QAbstractButton):
@@ -222,7 +314,7 @@ class RefinementPage(BasePage):
 
         self.model_pills = {}
         pills_container = QWidget()
-        pills_layout = QHBoxLayout(pills_container)
+        pills_layout = FlowLayout(pills_container)
         pills_layout.setContentsMargins(0, Spacing.S2, 0, 0)
         pills_layout.setSpacing(Spacing.S2)
 
@@ -234,7 +326,6 @@ class RefinementPage(BasePage):
             self.model_pills[model.id] = pill
             pills_layout.addWidget(pill)
 
-        pills_layout.addStretch()
         self.layout.addWidget(pills_container)
 
         # Info display for selected models
