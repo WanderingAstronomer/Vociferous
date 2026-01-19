@@ -10,25 +10,7 @@ Vociferous uses a **single-page application pattern** with a ViewHost that displ
 
 ### Layout
 
-```
-┌────────────────────────────────────────────────────┐
-│                    MainWindow                       │
-│  ┌────────┬───────────────────────┬──────────────┐ │
-│  │        │                       │              │ │
-│  │  Icon  │                       │    Action    │ │
-│  │  Rail  │       ViewHost        │     Dock     │ │
-│  │        │                       │              │ │
-│  │  ┌──┐  │  ┌─────────────────┐  │  ┌────────┐  │ │
-│  │  │📝│  │  │                 │  │  │  Copy  │  │ │
-│  │  │📚│  │  │   Active View   │  │  │  Edit  │  │ │
-│  │  │🔍│  │  │                 │  │  │ Delete │  │ │
-│  │  │✨│  │  │                 │  │  │ Refine │  │ │
-│  │  │⚙️│  │  │                 │  │  │        │  │ │
-│  │  │👤│  │  └─────────────────┘  │  └────────┘  │ │
-│  │  └──┘  │                       │              │ │
-│  └────────┴───────────────────────┴──────────────┘ │
-└────────────────────────────────────────────────────┘
-```
+<img src="https://raw.githubusercontent.com/WanderingAstronomer/Vociferous/main/docs/images/transcribe_view.png" alt="Application Layout" width="800" />
 
 ### Components
 
@@ -177,12 +159,12 @@ The IconRail provides primary navigation between views:
 
 | Icon | View | Always Visible |
 |------|------|----------------|
-| Microphone | Transcribe | ✓ |
-| Clock | History | ✓ |
-| Search | Search | ✓ |
+| Microphone | Transcribe | Yes |
+| Clock | History | Yes |
+| Search | Search | Yes |
 | Sparkles | Refine | When enabled |
-| Gear | Settings | ✓ |
-| User | User | ✓ |
+| Gear | Settings | Yes |
+| User | User | Yes |
 
 ### Navigation Flow
 
@@ -216,7 +198,7 @@ def navigate_to(self, view_id: str):
 
 **Capabilities:** Recording actions, Copy, Edit, Delete, Refine
 
-→ [View-Transcribe](View-Transcribe)
+[View-Transcribe](View-Transcribe)
 
 ---
 
@@ -228,7 +210,7 @@ def navigate_to(self, view_id: str):
 
 **Capabilities:** Copy, Edit, Delete, Refine (selection-dependent)
 
-→ [View-History](View-History)
+[View-History](View-History)
 
 ---
 
@@ -240,7 +222,7 @@ def navigate_to(self, view_id: str):
 
 **Capabilities:** Copy, Edit, Delete, Refine (selection-dependent)
 
-→ [View-Search](View-Search)
+[View-Search](View-Search)
 
 ---
 
@@ -252,7 +234,7 @@ def navigate_to(self, view_id: str):
 
 **Capabilities:** Refine, Save, Discard, Copy
 
-→ [View-Refine](View-Refine)
+[View-Refine](View-Refine)
 
 ---
 
@@ -264,7 +246,7 @@ def navigate_to(self, view_id: str):
 
 **Capabilities:** None (configuration-only)
 
-→ [View-Settings](View-Settings)
+[View-Settings](View-Settings)
 
 ---
 
@@ -276,7 +258,7 @@ def navigate_to(self, view_id: str):
 
 **Capabilities:** None (informational-only)
 
-→ [View-User](View-User)
+[View-User](View-User)
 
 ---
 
@@ -388,17 +370,17 @@ def cleanup(self) -> None:
 
 ### Do
 
-- ✅ Implement all `ViewInterface` methods
-- ✅ Emit `capabilities_changed` on state changes
-- ✅ Override `cleanup()` to disconnect signals
-- ✅ Use `SelectionState` for selection handling
+- Implement all `ViewInterface` methods
+- Emit `capabilities_changed` on state changes
+- Override `cleanup()` to disconnect signals
+- Use `SelectionState` for selection handling
 
 ### Don't
 
-- ❌ Execute actions directly in views (use intents)
-- ❌ Cache capabilities (recalculate each time)
-- ❌ Connect to signals without disconnect in cleanup
-- ❌ Access other views directly
+- Execute actions directly in views (use intents)
+- Cache capabilities (recalculate each time)
+- Connect to signals without disconnect in cleanup
+- Access other views directly
 
 ---
 

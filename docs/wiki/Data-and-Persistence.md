@@ -28,46 +28,6 @@ Vociferous uses **SQLAlchemy 2.0+** with SQLite for persistent storage of transc
 
 ## Database Schema
 
-### Entity-Relationship Diagram
-
-```mermaid
-erDiagram
-    Project ||--o{ Transcript : contains
-    Transcript ||--o{ TranscriptVariant : has
-    
-    Project {
-        int id PK
-        string name
-        string color
-        datetime created_at
-        datetime updated_at
-    }
-    
-    Transcript {
-        int id PK
-        string raw_text
-        string normalized_text
-        datetime timestamp
-        float duration_seconds
-        int word_count
-        int project_id FK
-        datetime created_at
-        datetime updated_at
-    }
-    
-    TranscriptVariant {
-        int id PK
-        int transcript_id FK
-        string variant_type
-        string text
-        datetime created_at
-    }
-```
-
----
-
-## ORM Models
-
 ### Transcript
 
 The primary entity representing a transcribed recording.
@@ -75,13 +35,13 @@ The primary entity representing a transcribed recording.
 ```python
 class Transcript(Base):
     __tablename__ = "transcripts"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
-    normalized_text: Mapped[str] = mapped_column(Text, nullable=False)
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    duration_seconds: Mapped[float] = mapped_column(Float, default=0.0)
-    word_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    raw_text: Mapped[str] = mapped_column(String, nullable=False)
+    normalized_text: Mapped[str] = mapped_column(String, nullable=False)
+    timestamp: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    speech_duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id"))
     
     # Relationships
@@ -99,35 +59,18 @@ This separation preserves the original transcription while allowing user modific
 
 ### Project
 
-Optional grouping for transcripts.
+Grouping for transcripts.
 
 ```python
 class Project(Base):
     __tablename__ = "projects"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(255), unique=True)
-    color: Mapped[str] = mapped_column(String(7), default="#3B82F6")
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    color: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
+
     transcripts: Mapped[list["Transcript"]] = relationship(back_populates="project")
-```
-
-### TranscriptVariant
-
-Alternative versions of a transcript (refinements, summaries, etc.).
-
-```python
-class TranscriptVariant(Base):
-    __tablename__ = "transcript_variants"
-    
-    id: Mapped[int] = mapped_column(primary_key=True)
-    transcript_id: Mapped[int] = mapped_column(ForeignKey("transcripts.id"))
-    variant_type: Mapped[str] = mapped_column(String(50))  # "refined", "summary"
-    text: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    
-    transcript: Mapped["Transcript"] = relationship(back_populates="variants")
 ```
 
 ---
@@ -139,32 +82,16 @@ DTOs are immutable, slotted dataclasses used for passing data to the UI layer.
 ### HistoryEntry
 
 ```python
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class HistoryEntry:
-    id: int
+    timestamp: str               # ISO 8601 String
     text: str                    # normalized_text for display
-    raw_text: str                # Original Whisper output
-    timestamp: datetime
-    duration_seconds: float
-    word_count: int
+    duration_ms: int
+    display_name: str | None
+    speech_duration_ms: int
     project_id: int | None
     project_name: str | None
-    project_color: str | None
-    
-    @property
-    def display_name(self) -> str:
-        """Human-readable title."""
-        return self.timestamp.strftime("%Y-%m-%d %H:%M:%S")
-```
-
-### LifetimeMetrics
-
-```python
-@dataclass(frozen=True, slots=True)
-class LifetimeMetrics:
-    count: int
-    total_duration_seconds: float
-    total_word_count: int
+    id: int | None
 ```
 
 ---
@@ -188,29 +115,6 @@ The `HistoryManager` is the **repository facade** providing a clean API for all 
 | `delete_transcript(id)` | Remove transcript |
 | `get_lifetime_metrics()` | Aggregate statistics |
 | `export_to_csv(path)` | Export all data |
-| `clear_all()` | Delete all transcripts |
-
-### Usage Pattern
-
-```python
-# Inject into views
-history_manager = HistoryManager()
-view.set_history_manager(history_manager)
-
-# Create transcript
-entry = history_manager.add_transcript(
-    raw_text="transcribed text",
-    normalized_text="transcribed text",
-    duration_seconds=45.2,
-    word_count=120,
-)
-
-# Update
-history_manager.update_normalized_text(entry.id, "edited text")
-
-# Delete
-history_manager.delete_transcript(entry.id)
-```
 
 ### Invariant
 
@@ -220,28 +124,11 @@ history_manager.delete_transcript(entry.id)
 
 ## Signal Bridge
 
-The `DatabaseSignalBridge` provides real-time change notifications to UI components.
+The `DatabaseSignalBridge` provides real-time change notifications to UI components via PyQt signals.
 
 ### Location
 
 `src/database/signal_bridge.py`
-
-### Pattern
-
-```python
-class DatabaseSignalBridge(QObject):
-    """Singleton signal emitter for database changes."""
-    
-    data_changed = pyqtSignal(EntityChange)
-    
-    @classmethod
-    def instance(cls) -> "DatabaseSignalBridge":
-        ...
-    
-    def emit_change(self, entity_type: str, action: ChangeAction, ids: list[int]):
-        change = EntityChange(entity_type=entity_type, action=action, ids=ids)
-        self.data_changed.emit(change)
-```
 
 ### EntityChange
 
@@ -252,162 +139,3 @@ class EntityChange:
     action: ChangeAction      # CREATED, UPDATED, DELETED
     ids: list[int]            # Affected entity IDs
 ```
-
-### ChangeAction
-
-```python
-class ChangeAction(Enum):
-    CREATED = "created"
-    UPDATED = "updated"
-    DELETED = "deleted"
-```
-
-### Usage in Views
-
-```python
-class HistoryView(BaseView):
-    def set_history_manager(self, manager):
-        self._history_manager = manager
-        DatabaseSignalBridge().data_changed.connect(self._handle_data_changed)
-    
-    @pyqtSlot(EntityChange)
-    def _handle_data_changed(self, change: EntityChange):
-        if change.entity_type == "transcription":
-            if change.action == ChangeAction.DELETED:
-                self._model.remove_entries(change.ids)
-            elif change.action == ChangeAction.CREATED:
-                self._model.add_entries(change.ids)
-```
-
----
-
-## Data Flow
-
-### Create Transcript
-
-```mermaid
-sequenceDiagram
-    participant AC as Coordinator
-    participant HM as HistoryManager
-    participant DB as SQLite
-    participant SB as SignalBridge
-    participant HV as HistoryView
-
-    AC->>HM: add_transcript(text, ...)
-    HM->>DB: INSERT
-    DB-->>HM: entry
-    HM->>SB: emit_change(CREATED, [id])
-    SB->>HV: data_changed(EntityChange)
-    HV->>HV: _model.add_entry(entry)
-```
-
-### Update Transcript
-
-```mermaid
-sequenceDiagram
-    participant EV as EditView
-    participant AC as Coordinator
-    participant HM as HistoryManager
-    participant DB as SQLite
-    participant SB as SignalBridge
-
-    EV->>AC: edit_saved(id, text)
-    AC->>HM: update_normalized_text(id, text)
-    HM->>DB: UPDATE
-    HM->>SB: emit_change(UPDATED, [id])
-```
-
----
-
-## Session Management
-
-### Engine Configuration
-
-```python
-engine = create_engine(
-    f"sqlite:///{db_path}",
-    echo=False,
-    pool_pre_ping=True,
-)
-```
-
-### Session Factory
-
-```python
-Session = sessionmaker(bind=engine)
-
-def get_session() -> Session:
-    return Session()
-```
-
-### Context Manager Pattern
-
-```python
-with get_session() as session:
-    transcript = session.get(Transcript, id)
-    transcript.normalized_text = new_text
-    session.commit()
-```
-
----
-
-## Schema Migrations
-
-*Derived from implementation:* Vociferous uses simple schema versioning with automatic migrations on startup.
-
-### Migration Pattern
-
-```python
-def _check_schema_version(engine):
-    current_version = get_current_version(engine)
-    
-    if current_version < LATEST_VERSION:
-        run_migrations(engine, current_version, LATEST_VERSION)
-```
-
----
-
-## Performance Considerations
-
-### Indexing
-
-- Primary key indexes on all `id` columns
-- Foreign key indexes on `project_id`, `transcript_id`
-- Timestamp index for chronological queries
-
-### DTO Optimization
-
-- All DTOs use `slots=True` for memory efficiency
-- Frozen dataclasses prevent accidental mutation
-- Lazy loading for relationships
-
-### Query Patterns
-
-- Avoid N+1 queries with eager loading
-- Use pagination for large result sets
-- Cache frequently accessed data
-
----
-
-## Best Practices
-
-### Do
-
-- ✅ Use HistoryManager for all database operations
-- ✅ Use DTOs when passing data to UI
-- ✅ Connect to SignalBridge for reactive updates
-- ✅ Use frozen dataclasses for immutability
-
-### Don't
-
-- ❌ Execute raw SQL from UI code
-- ❌ Pass ORM models to UI layer
-- ❌ Modify `raw_text` after creation
-- ❌ Create sessions in UI components
-
----
-
-## See Also
-
-- [Architecture](Architecture) — System design
-- [UI Views Overview](UI-Views-Overview) — View architecture

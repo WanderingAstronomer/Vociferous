@@ -173,7 +173,7 @@ Located in `tests/test_architecture_contracts.py`:
 | Contract | Verification |
 |----------|--------------|
 | Dual-text invariant | raw_text immutability |
-| Intent pattern | Signal → Intent → Handler |
+| Intent pattern | Signal -> Intent -> Handler |
 | Cleanup protocol | All widgets implement cleanup() |
 | Style isolation | No inline setStyleSheet() |
 
@@ -352,19 +352,19 @@ open htmlcov/index.html
 
 ### Do
 
-- ✅ Use fixtures for setup/teardown
-- ✅ Test one concept per test
-- ✅ Use descriptive test names
-- ✅ Clean up resources explicitly
-- ✅ Mock external dependencies
+- Use fixtures for setup/teardown
+- Test one concept per test
+- Use descriptive test names
+- Clean up resources explicitly
+- Mock external dependencies
 
 ### Don't
 
-- ❌ Share state between tests
-- ❌ Depend on test execution order
-- ❌ Use sleep() for timing
-- ❌ Access real network/files
-- ❌ Skip tests without reason
+- Share state between tests
+- Depend on test execution order
+- Use sleep() for timing
+- Access real network/files
+- Skip tests without reason
 
 ---
 

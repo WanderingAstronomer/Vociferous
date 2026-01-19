@@ -32,7 +32,7 @@ sudo usermod -a -G input $USER
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/Vociferous.git
+git clone https://github.com/WanderingAstronomer/Vociferous.git
 cd Vociferous
 ```
 
@@ -54,7 +54,8 @@ python -m venv .venv
 ./vociferous
 ```
 
-> ⚠️ **Important:** Always use the `./vociferous` script to launch the application. Running `python src/main.py` directly bypasses GPU library configuration and may cause issues.
+> [!WARNING]
+> Always use the `./vociferous` script to launch the application. Running `python src/main.py` directly bypasses GPU library configuration and may cause issues.
 
 ---
 
@@ -80,7 +81,7 @@ The Whisper model downloads automatically when you make your first transcription
 | Device | Auto-detect (GPU if available) |
 | Language | English (`en`) |
 | Recording Mode | Push-to-talk |
-| Hotkey | `F4` |
+| Hotkey | `Right Alt` |
 | Refinement | Disabled |
 
 ---
@@ -89,7 +90,7 @@ The Whisper model downloads automatically when you make your first transcription
 
 ### Making Your First Recording
 
-1. **Press the hotkey** (default: `F4`) to start recording
+1. **Press the hotkey** (default: `Right Alt`) to start recording
 2. **Speak clearly** into your microphone
 3. **Press the hotkey again** to stop recording
 4. **Wait** for transcription to complete
@@ -118,7 +119,6 @@ Navigate to the **Settings** view (gear icon) to customize:
 ### Recording Options
 - **Activation Key** — Change the recording hotkey
 - **Recording Mode** — Push-to-talk or toggle
-- **Input Backend** — evdev (Wayland) or pynput (X11)
 
 ### Refinement (Optional)
 - **Enable AI Refinement** — Toggle the feature
@@ -215,5 +215,5 @@ To remove:
 
 ---
 
-![Startup Log](images/startup_log.png)
+<img src="https://raw.githubusercontent.com/WanderingAstronomer/Vociferous/main/docs/images/startup_log.png" alt="Startup Log" width="800" />
 *Application startup showing model loading and initialization*

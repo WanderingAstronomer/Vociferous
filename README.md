@@ -1,4 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Vociferous — Privacy-First Speech-to-Text for Linux</title>
+</head>
+<body>
+
 <div align="center">
+    <h1>Vociferous</h1>
+    <p><strong>Privacy-First Speech-to-Text for Linux</strong></p>
+    <p>Your voice. Your machine. Your data.</p>
 
 # Vociferous
 
@@ -15,21 +26,40 @@
 
 [Features](#features) • [Installation](#installation) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Architecture](#architecture)
 
+    <p>
+        Features • Installation • Quick Start • Documentation • Architecture
+    </p>
 </div>
 
----
+<hr>
 
 ## What is Vociferous?
 
-**Vociferous** is a production-grade, local-first dictation system that transforms speech into text entirely on your machine. Built with architectural rigor and attention to user experience, it leverages **OpenAI's Whisper** for state-of-the-art transcription and offers optional **AI-powered refinement** to polish your text with grammar correction and formatting.
+<p>
+    Vociferous is a production-grade, local-first dictation system that transforms speech into text entirely on your machine.
+    Built with architectural rigor and attention to user experience, it leverages OpenAI's Whisper for state-of-the-art
+    transcription and offers optional AI-powered refinement to polish your text with grammar correction and formatting.
+</p>
 
-Unlike cloud-based alternatives, Vociferous processes everything locally—**your voice never leaves your computer**. No subscriptions, no usage limits, no privacy compromises.
+<p>
+    Unlike cloud-based alternatives, Vociferous processes everything locally—your voice never leaves your computer.
+    No subscriptions, no usage limits, no privacy compromises.
+</p>
 
----
+<hr>
 
 ## Features
 
-### Core Capabilities
+<h3>Core Capabilities</h3>
+<ul>
+    <li>🔒 <strong>Complete Privacy</strong> — All transcription and refinement happens on-device using local models</li>
+    <li>🎯 <strong>Whisper ASR</strong> — OpenAI's state-of-the-art speech recognition via faster-whisper</li>
+    <li>✨ <strong>AI Refinement</strong> — Optional SLM-powered text improvement (grammar, punctuation, formatting)</li>
+    <li>🐧 <strong>Native Linux Support</strong> — First-class Wayland integration with global hotkey support</li>
+    <li>📚 <strong>Persistent History</strong> — SQLite-backed transcript storage with full-text search and organization</li>
+    <li>⚡ <strong>GPU Acceleration</strong> — CUDA support for real-time transcription and refinement</li>
+    <li>🎨 <strong>Modern UI</strong> — Sleek PyQt6 interface with polished design system</li>
+</ul>
 
 - **Complete Privacy** — All transcription and refinement happens on-device using local models
 - **Whisper ASR** — OpenAI's state-of-the-art speech recognition via [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
@@ -39,7 +69,7 @@ Unlike cloud-based alternatives, Vociferous processes everything locally—**you
 - **GPU Acceleration** — CUDA support for real-time transcription and refinement
 - **Modern UI** — Sleek PyQt6 interface with polished design system
 
-### Technical Highlights
+<hr>
 
 - **Intent-Driven Architecture** — Clean separation between user intent and execution logic
 - **Dual-Text Model** — Preserves raw Whisper output while allowing user edits
@@ -54,58 +84,57 @@ Unlike cloud-based alternatives, Vociferous processes everything locally—**you
 <details>
 <summary><b>View Gallery (Click to expand)</b></summary>
 
-<table>
-<tr>
-<td align="center">
-<img src="docs/images/transcribe_view.png" width="400" alt="Transcribe View"><br>
-<em>Transcribe View — Live dictation and recording</em>
-</td>
-<td align="center">
-<img src="docs/images/history_view.png" width="400" alt="History View"><br>
-<em>History View — Browse and manage transcripts</em>
-</td>
-</tr>
-<tr>
-<td align="center">
-<img src="docs/images/search_and_manage_view.png" width="400" alt="Search View"><br>
-<em>Search & Manage — Filter and organize</em>
-</td>
-<td align="center">
-<img src="docs/images/refinement_view.png" width="400" alt="Refine View"><br>
-<em>Refine View — AI-powered text improvement</em>
-</td>
-</tr>
-<tr>
-<td align="center">
-<img src="docs/images/settings_view.png" width="400" alt="Settings View"><br>
-<em>Settings View — Configure transcription and refinement</em>
-</td>
-<td align="center">
-<img src="docs/images/user_view.png" width="400" alt="User View"><br>
-<em>User View — Metrics and documentation</em>
-</td>
-</tr>
-</table>
+    <table>
+        <tr>
+            <td align="center">
+                <img src="docs/images/transcribe_view.png" width="400" alt="Transcribe View"><br>
+                <em>Transcribe View — Live dictation and recording</em>
+            </td>
+            <td align="center">
+                <img src="docs/images/history_view.png" width="400" alt="History View"><br>
+                <em>History View — Browse and manage transcripts</em>
+            </td>
+        </tr>
+        <tr>
+            <td align="center">
+                <img src="docs/images/search_and_manage_view.png" width="400" alt="Search View"><br>
+                <em>Search &amp; Manage — Filter and organize</em>
+            </td>
+            <td align="center">
+                <img src="docs/images/refinement_view.png" width="400" alt="Refine View"><br>
+                <em>Refine View — AI-powered text improvement</em>
+            </td>
+        </tr>
+        <tr>
+            <td align="center">
+                <img src="docs/images/settings_view.png" width="400" alt="Settings View"><br>
+                <em>Settings View — Configure transcription and refinement</em>
+            </td>
+            <td align="center">
+                <img src="docs/images/user_view.png" width="400" alt="User View"><br>
+                <em>User View — Metrics and documentation</em>
+            </td>
+        </tr>
+    </table>
 
-### Onboarding Experience
+    <h4>Onboarding Experience</h4>
 
-<table>
-<tr>
-<td align="center">
-<img src="docs/images/onboarding_welcome.png" width="300" alt="Onboarding Welcome"><br>
-<em>Welcome screen</em>
-</td>
-<td align="center">
-<img src="docs/images/onboarding_transcription_model_choice.png" width="300" alt="Model Selection"><br>
-<em>Model selection</em>
-</td>
-<td align="center">
-<img src="docs/images/onboarding_choose_hotkey.png" width="300" alt="Hotkey Setup"><br>
-<em>Hotkey configuration</em>
-</td>
-</tr>
-</table>
-
+    <table>
+        <tr>
+            <td align="center">
+                <img src="docs/images/onboarding_welcome.png" width="300" alt="Onboarding Welcome"><br>
+                <em>Welcome screen</em>
+            </td>
+            <td align="center">
+                <img src="docs/images/onboarding_transcription_model_choice.png" width="300" alt="Model Selection"><br>
+                <em>Model selection</em>
+            </td>
+            <td align="center">
+                <img src="docs/images/onboarding_choose_hotkey.png" width="300" alt="Hotkey Setup"><br>
+                <em>Hotkey configuration</em>
+            </td>
+        </tr>
+    </table>
 </details>
 
 ---
@@ -386,3 +415,6 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 [Back to Top](#vociferous)
 
 </div>
+
+</body>
+</html>

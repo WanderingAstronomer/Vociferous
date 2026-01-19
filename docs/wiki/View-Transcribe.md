@@ -1,232 +1,81 @@
-# Transcribe View
+# View: Transcribe
 
-The Transcribe View is the primary recording and live dictation surface in Vociferous.
+The **Transcribe View** is the primary operational surface of Vociferous. It remains in focus during active dictation, recording, and immediate post-processing. It is designed as a state-driven workspace that adapts to the current phase of the transcription lifecycle.
 
----
+<img src="https://raw.githubusercontent.com/WanderingAstronomer/Vociferous/main/docs/images/transcribe_view.png" alt="Transcribe View - Idle State" width="800" />
 
-## Overview
+## Component Hierarchy
 
-The Transcribe View is where users:
-- Initiate and stop recordings
-- See real-time audio visualization
-- View transcription results
-- Take action on completed transcripts
+The view is composed of the following hierarchical components, managed by the `MainWorkspace`:
 
-![Transcribe View](images/transcribe_view.png)
-
----
-
-## Location
-
-`src/ui/views/transcribe_view.py`
-
-**View ID:** `VIEW_TRANSCRIBE` = `"transcribe"`
+1.  **Workspace Header**: displays the current mode (Idle, Recording, Viewing) and the Message of the Day (MOTD).
+2.  **Transcript Metrics**: (Hidden during recording) Displays word count, audio duration, and speech duration.
+3.  **Content Panel**: The central flexible area that hosts:
+    *   **Live Visualizer**: Real-time waveform and spectrum display during recording.
+    *   **Transcript Editor**: A read-only or editable text surface for the resulting text.
+4.  **Batch Status Footer**: Shows background processing status at the bottom of the screen.
 
 ---
 
-## Layout
+## Workspace States
 
-The TranscribeView hosts the `MainWorkspace` component:
+The view implements a strict state machine (`WorkspaceState`) that dictates UI behavior and available capabilities.
 
-```
-┌──────────────────────────────────────────────────┐
-│                    Header                         │
-│            [Message of the Day]                   │
-├──────────────────────────────────────────────────┤
-│                                                   │
-│                  Visualizer                       │
-│              ▁▂▃▅▇▅▃▂▁▂▃▅▇▅▃▂▁                  │
-│                                                   │
-├──────────────────────────────────────────────────┤
-│                                                   │
-│               Transcript Area                     │
-│                                                   │
-│   "Your transcribed text appears here..."        │
-│                                                   │
-│                                                   │
-└──────────────────────────────────────────────────┘
-```
+### 1. IDLE
+*   **Visuals**: Grey/Neutral accents. Displays a welcome greeting or "Ready to Record" message.
+*   **Behavior**: Passive. Waiting for user input.
+*   **Actions**: `Start Recording` is available.
 
----
+### 2. RECORDING
+*   **Visuals**: **Red/Active** styling.
+*   **Content**: Shows the real-time audio visualizer and live partial transcription text (if supported by the model).
+*   **Actions**:
+    *   `Stop Recording`: Finalizes the audio and begins transcription.
+    *   `Cancel Recording`: Discards the current buffer immediately.
 
-## State Machine
+<img src="https://raw.githubusercontent.com/WanderingAstronomer/Vociferous/main/docs/images/transcribe_view-active_recording.png" alt="Transcribe View - Active Recording" width="800" />
 
-The view tracks workspace state:
+### 3. TRANSCRIBING
+*   **Visuals**: **Amber/Busy** styling.
+*   **Content**: Displays a "Transcribing..." loading state or spinner.
+*   **Actions**: Locked. User must wait for the engine to return text.
 
-| State | Description |
-|-------|-------------|
-| `IDLE` | Ready to record, no active content |
-| `RECORDING` | Audio capture in progress |
-| `TRANSCRIBING` | Whisper inference running |
-| `READY` | Result available for action |
-| `EDITING` | User modifying transcript |
-| `VIEWING` | Read-only display |
+### 4. READY (Viewing)
+*   **Visuals**: **Green/Success** styling.
+*   **Content**: Displays the final `normalized_text` from the transcription engine.
+*   **Metrics**: Visible. Shows Word Count, Total Duration, and Speech Duration.
+*   **Actions**:
+    *   `Copy`: Copy text to clipboard.
+    *   `Edit`: Enter editing mode.
+    *   `Refine`: Send text to the Refinement Engine (if enabled).
+    *   `Delete`: Discard this transcript.
+    *   `Start Recording`: Auto-archives current text and starts new session.
 
-### State Diagram
-
-The following shows the workspace state transitions. States correspond exactly to the `WorkspaceState` enum in `src/ui/constants/enums.py`.
-
-```mermaid
-stateDiagram-v2
-    [*] --> IDLE
-    
-    IDLE --> RECORDING: Start recording
-    RECORDING --> TRANSCRIBING: Stop recording
-    RECORDING --> IDLE: Cancel recording
-    TRANSCRIBING --> READY: Transcription complete
-    
-    READY --> IDLE: Copy/Delete
-    READY --> EDITING: Edit action
-    READY --> VIEWING: View selected
-    READY --> RECORDING: New recording
-    
-    EDITING --> READY: Save
-    EDITING --> VIEWING: Discard
-    VIEWING --> EDITING: Edit action
-    VIEWING --> IDLE: Clear selection
-```
-
-**Trace:**
-- `src/ui/constants/enums.py:10` — `WorkspaceState` enum definition
+### 5. EDITING
+*   **Visuals**: **Blue/Focus** styling.
+*   **Content**: Text area becomes writable.
+*   **Actions**:
+    *   `Save`: Commit changes to `normalized_text`.
+    *   `Discard`: Revert to the version before editing started.
 
 ---
 
-## Capabilities
+## Capabilities & Interaction
 
-The view advertises capabilities based on current state:
+The view exposes its capabilities to the main application controller via the `Capabilities` contract. These capabilities update dynamically based on the state:
 
-| Capability | IDLE | RECORDING | TRANSCRIBING | READY | EDITING |
-|------------|------|-----------|--------------|-------|---------|
-| Start Recording | ✓ | | | ✓ | |
-| Stop Recording | | ✓ | | | |
-| Cancel | | ✓ | | | |
-| Copy | | | | ✓ | |
-| Edit | | | | ✓ | |
-| Delete | | | | ✓ | |
-| Refine | | | | ✓* | |
-| Save | | | | | ✓ |
-| Discard | | | | | ✓ |
+| Action | IDLE | RECORDING | TRANSCRIBING | READY | EDITING |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Start** | ✅ | ❌ | ❌ | ✅ | ❌ |
+| **Stop** | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **Cancel** | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **Copy** | ❌ | ❌ | ❌ | ✅ | ❌ |
+| **Edit** | ❌ | ❌ | ❌ | ✅ | ❌ |
+| **Refine** | ❌ | ❌ | ❌ | ✅ | ❌ |
+| **Save** | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **Discard** | ❌ | ❌ | ❌ | ❌ | ✅ |
 
-*\* Only when refinement is enabled in Settings*
-
----
-
-## Signals
-
-### Outbound Signals
-
-| Signal | Parameters | Purpose |
-|--------|------------|---------|
-| `edit_normalized_text` | `int, str` | Save edited text |
-| `edit_requested` | `int` | Navigate to Edit view |
-| `delete_requested` | — | Request deletion |
-| `refine_requested` | `int` | Navigate to Refine view |
-| `motd_refresh_requested` | — | Request new MOTD |
-
-### Inbound Slots
-
-| Slot | Parameters | Purpose |
-|------|------------|---------|
-| `update_for_recording_state` | `bool` | Start/stop visualization |
-| `pause_visualization` | — | Pause during transcription |
-| `set_live_text` | `str` | Update streaming text |
-| `set_audio_level` | `float` | Update visualizer amplitude |
-| `set_audio_spectrum` | `list[float]` | Update FFT bands |
-
----
-
-## Audio Visualization
-
-During recording, the view displays real-time audio feedback:
-
-### Waveform Display
-
-The visualizer shows audio amplitude levels:
-- Bars animate based on microphone input
-- FFT bands show frequency distribution
-- Pauses during transcription
-
-### Data Flow
-
-```mermaid
-sequenceDiagram
-    participant AE as AudioEngine
-    participant AC as Coordinator
-    participant TV as TranscribeView
-    participant VZ as Visualizer
-
-    AE->>AC: level_ready(0.75)
-    AC->>TV: set_audio_level(0.75)
-    TV->>VZ: add_level(0.75)
-    VZ->>VZ: Update bars
-```
-
----
-
-## MOTD Integration
-
-The Message of the Day displays in the workspace header:
-
-### Setting MOTD
-
-```python
-def set_motd(self, text: str) -> None:
-    self.workspace.header.set_motd(text)
-```
-
-### Refresh
-
-When users click the refresh button, a new MOTD is generated by the SLM.
-
----
-
-## Action Dispatch
-
-The view handles actions from the ActionDock:
-
-| ActionId | Handler |
-|----------|---------|
-| `START_RECORDING` | Emit `BeginRecordingIntent` |
-| `STOP_RECORDING` | Emit `StopRecordingIntent` |
-| `COPY` | Copy text, reset to IDLE |
-| `DELETE` | Emit `DeleteTranscriptIntent` |
-| `EDIT` | Emit `EditTranscriptIntent` |
-| `SAVE` | Emit `CommitEditsIntent` |
-| `DISCARD` | Emit `DiscardEditsIntent` |
-| `CANCEL` | Emit `CancelRecordingIntent` |
-| `REFINE` | Route to refine via signal |
-
----
-
-## Navigation Behavior
-
-### Leaving the View
-
-When navigating away from Transcribe:
-1. `hideEvent()` fires
-2. State resets to IDLE (if in READY, EDITING, or VIEWING)
-3. Transcript content persists in database
-
-### Returning
-
-When returning to Transcribe:
-1. View shows IDLE state
-2. Ready for new recording
-
----
-
-## Keyboard Shortcuts
-
-| Key | Action |
-|-----|--------|
-| Hotkey (F4) | Toggle recording |
-| Escape | Cancel recording or editing |
-| Ctrl+S | Save edits |
-
----
-
-## Related Pages
-
-- [Architecture](Architecture) — System design
-- [UI Views Overview](UI-Views-Overview) — View architecture
-- [View-Refine](View-Refine) — Refinement interface
+### Visual Feedback
+The `ContentPanel` uses dynamic Qt profiling to paint its background based on state properties:
+*   `property="recording"`: Triggers active recording styles.
+*   `property="editing"`: Triggers focus styles for text manipulation.

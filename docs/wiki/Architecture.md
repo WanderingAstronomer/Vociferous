@@ -61,12 +61,12 @@ flowchart TB
 ```
 
 **Trace:**
-- `src/ui/components/main_window/main_window.py:87` — `MainWindow`
-- `src/core/application_coordinator.py:62` — `ApplicationCoordinator`
-- `src/core_runtime/client.py:22` — `EngineClient`
+- `src/ui/components/main_window/main_window.py` — `MainWindow`
+- `src/core/application_coordinator.py` — `ApplicationCoordinator`
+- `src/core_runtime/client.py` — `EngineClient`
 - `src/core_runtime/server.py` — `EngineServer`
 - `src/core_runtime/engine.py` — `TranscriptionEngine`
-- `src/services/slm_service.py:44` — `SLMService`
+- `src/services/slm_service.py` — `SLMService`
 - `src/database/history_manager.py` — `HistoryManager`
 
 ---
@@ -207,22 +207,11 @@ Services encapsulate business logic and run on background threads.
 
 ### MainWindow
 
-**Location:** `src/ui/main_window.py`
+**Location:** `src/ui/components/main_window/main_window.py`
 
 **Role:** Application shell containing navigation and view host
 
-**Layout:**
-```
-┌────────────────────────────────────────────────┐
-│                  MainWindow                     │
-│  ┌──────┬──────────────────────────┬────────┐  │
-│  │      │                          │        │  │
-│  │ Icon │       ViewHost           │ Action │  │
-│  │ Rail │                          │  Dock  │  │
-│  │      │                          │        │  │
-│  └──────┴──────────────────────────┴────────┘  │
-└────────────────────────────────────────────────┘
-```
+<img src="https://raw.githubusercontent.com/WanderingAstronomer/Vociferous/main/docs/images/transcribe_view.png" alt="MainWindow Layout" width="800" />
 
 ### View Architecture
 
@@ -306,64 +295,3 @@ ConfigManager.set_config_value("section", "key", new_value)
 # Listen for changes
 config_manager.config_changed.connect(handler)
 ```
-
----
-
-## Resource Management
-
-### ResourceManager
-
-**Location:** `src/core/resource_manager.py`
-
-**Purpose:** Centralized asset path resolution
-
-**Assets:** Icons, stylesheets, model paths
-
-```python
-icon_path = ResourceManager.get_icon_path("record")
-```
-
----
-
-## Error Handling
-
-### Exception Hierarchy
-
-```
-VociferousError (Base)
-├── ConfigurationError
-├── TranscriptionError
-├── RefinementError
-├── DatabaseError
-└── InputError
-```
-
-**Location:** `src/core/exceptions.py`
-
----
-
-## Key Architectural Decisions
-
-### 1. Composition over Inheritance
-
-Components are composed at runtime by the Coordinator rather than through deep inheritance hierarchies.
-
-### 2. Intent-Driven UI
-
-User actions emit **intents** (immutable dataclasses) that propagate upward through the widget hierarchy for centralized handling.
-
-### 3. Dual-Text Invariant
-
-Transcripts maintain separate `raw_text` (immutable Whisper output) and `normalized_text` (editable user content).
-
-### 4. View Capabilities
-
-Each view advertises its current capabilities, and the ActionDock dynamically shows/hides buttons.
-
----
-
-## See Also
-
-- [Design System](Design-System) — UI tokens and styling
-- [Data and Persistence](Data-and-Persistence) — Database layer
-- [UI Views Overview](UI-Views-Overview) — View architecture details

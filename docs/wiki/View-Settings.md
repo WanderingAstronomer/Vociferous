@@ -1,19 +1,20 @@
 # Settings View
 
-The Settings View provides comprehensive application configuration.
+The Settings View is the sole surface for mutating persistent application configuration.
 
 ---
 
 ## Overview
 
 The Settings View allows users to:
-- Configure audio input/output
-- Set recording hotkeys
-- Select Whisper model and language
-- Enable/disable refinement features
-- Customize application behavior
+- Configure the Whisper ASR engine (Model, Device, Compute Type)
+- Set up Recording behaviors (Hotkeys, Toggle vs Push-to-Talk)
+- Customize Visualization feedback
+- Enable and configure AI Grammar Refinement
+- Calibrate the voice visualizer
+- Manage History and Application state
 
-![Settings View](images/settings_view.png)
+<img src="https://raw.githubusercontent.com/WanderingAstronomer/Vociferous/main/docs/images/settings_view.png" alt="Settings View" width="800" />
 
 ---
 
@@ -25,329 +26,104 @@ The Settings View allows users to:
 
 ---
 
-## Layout
-
-Settings are organized into collapsible sections:
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ Settings                                                 │
-├─────────────────────────────────────────────────────────┤
-│ ▼ Recording Settings                                     │
-│   ┌───────────────────────────────────────────────────┐ │
-│   │ Audio Device       [Default Microphone       ▼]   │ │
-│   │ Sample Rate        [44100 Hz                 ▼]   │ │
-│   │ Push-to-Talk Key   [Super + Shift + V      🔄]   │ │
-│   └───────────────────────────────────────────────────┘ │
-├─────────────────────────────────────────────────────────┤
-│ ▼ Transcription Settings                                 │
-│   ┌───────────────────────────────────────────────────┐ │
-│   │ Whisper Model      [large-v3                 ▼]   │ │
-│   │ Compute Type       [float16                  ▼]   │ │
-│   │ Language           [English                  ▼]   │ │
-│   │ Beam Size          [5                        ▼]   │ │
-│   └───────────────────────────────────────────────────┘ │
-├─────────────────────────────────────────────────────────┤
-│ ▼ Refinement Settings                                    │
-│   ┌───────────────────────────────────────────────────┐ │
-│   │ Enable Refinement  [═══════●]                     │ │
-│   │ SLM Model          [Qwen3-4B-Instruct        ▼]   │ │
-│   │ Default Strength   [○ ○ ● ○ ○]                    │ │
-│   │ Auto-Load Model    [═══════●]                     │ │
-│   └───────────────────────────────────────────────────┘ │
-├─────────────────────────────────────────────────────────┤
-│ ▼ Output Settings                                        │
-│   ┌───────────────────────────────────────────────────┐ │
-│   │ Auto Copy          [═══════●]                     │ │
-│   │ Auto Paste         [═══════●]                     │ │
-│   │ Output Target      [Active Window            ▼]   │ │
-│   └───────────────────────────────────────────────────┘ │
-├─────────────────────────────────────────────────────────┤
-│ ▼ Interface Settings                                     │
-│   ┌───────────────────────────────────────────────────┐ │
-│   │ Start Minimized    [═══════○]                     │ │
-│   │ Show Notifications [═══════●]                     │ │
-│   │ Theme              [Dark                     ▼]   │ │
-│   └───────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────┘
-```
-
----
-
 ## Configuration Sections
 
-### Recording Settings
+The view is organized into card-based sections:
 
-Controls audio capture behavior.
+### 1. Whisper ASR Settings
+Configuration for the core transcription engine.
 
-| Setting | Type | Options | Default |
-|---------|------|---------|---------|
-| Audio Device | Dropdown | System devices | Default |
-| Sample Rate | Dropdown | 16000, 44100, 48000 | 44100 |
-| Push-to-Talk Key | Hotkey | Any key combo | Super+Shift+V |
+| Setting | Type | Options |
+|---------|------|---------|
+| **Whisper Architecture** | Dropdown | `tiny`, `base`, `small`, `medium`, `large-v3` (Shows estimated VRAM usage) |
+| **Device** | Dropdown | `cuda` (if available), `cpu` |
+| **Compute Type** | Dropdown | `float16`, `int8_float16`, `int8` (Filtered by device) |
+| **Language** | Text Field | ISO-639-1 Code (e.g., `en`, `fr`) or auto |
 
-### Transcription Settings
+### 2. Recording
+Controls how audio is captured.
 
-Configures Whisper model behavior.
+| Setting | Type | Description |
+|---------|------|-------------|
+| **Activation Key** | HotkeyWidget | Global hotkey to start/stop recording (e.g., `Super+Shift+V`) |
+| **Recording Mode** | Dropdown | `Toggle` (Press to start/stop) or `Talk` (Hold to Record) |
 
-| Setting | Type | Options | Default |
-|---------|------|---------|---------|
-| Model | Dropdown | tiny, base, small, medium, large-v3 | large-v3 |
-| Compute Type | Dropdown | float16, float32, int8 | float16 |
-| Language | Dropdown | Auto, English, ... | Auto |
-| Beam Size | Spinner | 1-10 | 5 |
+### 3. Visualization
+Customizes the real-time audio visualizer in the Transcribe View.
 
-### Refinement Settings
+| Setting | Type | Options |
+|---------|------|---------|
+| **Spectrum Type** | Dropdown | `Bar`, `Line`, `Wave` |
 
-Manages SLM-based text refinement.
+### 4. Output & Processing
+Post-transcription text handling.
 
-| Setting | Type | Options | Default |
-|---------|------|---------|---------|
-| Enable Refinement | Toggle | On/Off | On |
-| SLM Model | Dropdown | Available models | Qwen3-4B-Instruct |
-| Default Strength | Selector | 0-4 | 2 (Moderate) |
-| Auto-Load | Toggle | On/Off | Off |
+| Setting | Type | Description |
+|---------|------|-------------|
+| **Add Trailing Space** | ToggleSwitch | Appends a space after transcription for seamless dictation flow. |
+| **Grammar Refinement** | ToggleSwitch | Enables SLM-based text post-processing. |
+| **Refinement Model** | Dropdown | Selects the SLM to use (e.g., `Qwen2.5-1.5B`, `Qwen3-4B`). *Visible only when enabled.* |
 
-### Output Settings
-
-Defines post-transcription behavior.
-
-| Setting | Type | Options | Default |
-|---------|------|---------|---------|
-| Auto Copy | Toggle | On/Off | On |
-| Auto Paste | Toggle | On/Off | On |
-| Output Target | Dropdown | Clipboard, Active Window | Active Window |
-
-### Interface Settings
-
-Application appearance and behavior.
-
-| Setting | Type | Options | Default |
-|---------|------|---------|---------|
-| Start Minimized | Toggle | On/Off | Off |
-| Show Notifications | Toggle | On/Off | On |
-| Theme | Dropdown | Dark, Light | Dark |
-
----
-
-## Custom Widgets
-
-### ToggleSwitch
-
-A macOS-style toggle switch.
-
-```python
-class ToggleSwitch(QAbstractButton):
-    """Animated on/off toggle with pill track."""
-```
-
-**Visual States:**
-- Off: Gray track, left-positioned circle
-- On: Blue track, right-positioned circle
-
-**Signals:**
-- `toggled(bool)` — State changed
-
----
-
-### HotkeyWidget
-
-Captures keyboard shortcuts.
-
-```python
-class HotkeyWidget(QLineEdit):
-    """Press-to-capture hotkey input field."""
-```
+### 5. Voice Calibration
+A dedicated tool to tune the visualizer's sensitivity to your specific voice pitch and volume.
 
 **Features:**
-- Click to start capture
-- Shows "Press keys..." prompt
-- Validates modifier requirements
-- Reset button support
-
-**Signals:**
-- `hotkeyChanged(str)` — New hotkey string
+- **Calibration Run:** Records a sample of your speech while reading a prompt.
+- **Analysis:** Calculates Fundamental Frequency and Mean Frequency.
+- **Persistence:** Save calibration data to `voice_calibration` config section.
 
 ---
 
-### StrengthSelector
+## Controls
 
-Refinement strength picker.
+### History Controls
+*Located below main settings.*
 
-```python
-class StrengthSelector(QWidget):
-    """Visual strength level selector (0-4)."""
-```
+*   **Export History:** Export all transcriptions to a JSON file.
+*   **Clear All History:** Permanently delete all local database records.
 
-**Appearance:** Five circular buttons, active one highlighted
-
-**Signals:**
-- `strengthChanged(int)` — Level 0-4
-
----
-
-## Validation
-
-### Input Validation
-
-| Field | Rule | Error Message |
-|-------|------|---------------|
-| Hotkey | Requires modifier | "Modifier key required" |
-| Beam Size | Range 1-10 | "Must be between 1-10" |
-| Audio Device | Must exist | "Device not found" |
-
-### Model Validation
-
-```python
-def _validate_model_selection(self, model_id: str) -> bool:
-    """Check if model is available in registry."""
-    return self._slm_service.is_model_available(model_id)
-```
+### Application Controls
+*   **Restart Application:** Reloads the entire application state.
+*   **Exit:** Quits Vociferous.
 
 ---
 
 ## Capabilities
 
-| State | can_save | can_reset | can_apply |
-|-------|----------|-----------|-----------|
-| Unchanged | | | |
-| Modified | ✓ | ✓ | ✓ |
-| Invalid | | ✓ | |
+The Settings View is **configuration-only** and does not support standard item actions (Edit, Delete, Refine).
+
+| Capability | Supported |
+|------------|-----------|
+| `can_edit` | No |
+| `can_delete` | No |
+| `can_refine` | No |
+| `can_copy` | No |
 
 ---
 
-## Persistence Flow
+## Custom Widgets
 
-### Save Settings
+### HotkeyWidget
+Captures global key combinations.
+*   **Interaction:** Click to focus, press keys to bind.
+*   **Validation:** Requires a modifier key (Ctrl, Alt, Super/Meta).
 
-```mermaid
-sequenceDiagram
-    participant SV as SettingsView
-    participant CM as ConfigManager
-    participant FS as Filesystem
-
-    SV->>SV: Collect all values
-    SV->>CM: update_section("recording", {...})
-    SV->>CM: update_section("transcription", {...})
-    CM->>FS: Write config.yaml
-    SV->>SV: Mark unchanged
-```
-
-### Load Settings
-
-```mermaid
-sequenceDiagram
-    participant SV as SettingsView
-    participant CM as ConfigManager
-    participant FS as Filesystem
-
-    SV->>CM: get_section("recording")
-    CM->>FS: Read config.yaml
-    CM-->>SV: Recording config dict
-    SV->>SV: Populate controls
-```
+### ToggleSwitch
+A modern, animated boolean toggle used for "Enable Refinement" and "Trailing Space".
 
 ---
 
-## Action Dispatch
+## Validation Logic
 
-| ActionId | Handler | Behavior |
-|----------|---------|----------|
-| `SAVE` | `_save_settings` | Persist to config.yaml |
-| `RESET` | `_reset_to_defaults` | Restore default values |
-| `APPLY` | `_apply_changes` | Apply without saving |
-
----
-
-## Configuration Schema
-
-Settings map to `src/config_schema.yaml`:
-
-```yaml
-recording:
-  device: str | null
-  sample_rate: int
-  hotkey: str
-
-transcription:
-  model: str
-  compute_type: str
-  language: str
-  beam_size: int
-
-refinement:
-  enabled: bool
-  model: str
-  default_strength: int
-  auto_load: bool
-
-output:
-  auto_copy: bool
-  auto_paste: bool
-  target: str
-
-interface:
-  start_minimized: bool
-  notifications: bool
-  theme: str
-```
+The view implements real-time validation:
+*   **Device Checks:** Checks for CUDA availability (`ctranslate2.get_cuda_device_count()`).
+*   **Compute Type Filtering:** Hides `float16` if running on CPU (as it's slow/unsupported).
+*   **Model VRAM Estimates:** Displays required memory next to model names.
 
 ---
 
-## Change Detection
-
-The view tracks modifications:
-
-```python
-def _on_setting_changed(self) -> None:
-    """Called when any setting changes."""
-    self._has_changes = self._detect_changes()
-    self.capabilities_changed.emit()
-```
-
-**Dirty tracking** enables:
-- Save button only when changed
-- Confirmation on navigate away
-- Visual change indicators
-
----
-
-## Device Enumeration
-
-Audio devices are enumerated at view load:
-
-```python
-def _populate_devices(self) -> None:
-    """Scan and list available audio input devices."""
-    devices = self._audio_service.list_input_devices()
-    for device in devices:
-        self._cb_device.addItem(device.name, device.id)
-```
-
----
-
-## Hotkey Capture
-
-### Capture Flow
-
-1. User clicks hotkey field
-2. Field shows "Press keys..."
-3. User presses key combination
-4. Field validates (modifier required)
-5. Field displays formatted shortcut
-
-### Hotkey Format
-
-| Keys Pressed | Display Format |
-|--------------|----------------|
-| Ctrl + Shift + A | Ctrl+Shift+A |
-| Super + V | Super+V |
-| Alt + F2 | Alt+F2 |
-
----
-
-## Related Pages
+## See Also
 
 - [Architecture](Architecture) — ConfigManager details
-- [View-Refine](View-Refine) — Refinement settings effect
-- [Getting-Started](Getting-Started) — Initial configuration
+- [Refinement System](Refinement-System) — SLM details
+- [View-Transcribe](View-Transcribe) — Visualizer usage

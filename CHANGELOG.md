@@ -1,25 +1,19 @@
 # Vociferous Changelog
 
-## v3.0.1 - Desktop Entry Launcher Fixes
+## v3.0.2 - Documentation Styling and Accessibility
 
 **Date:** January 19, 2026  
-**Status:** Hotfix Release  
-**Focus:** Application launcher integration and documentation polish
-
-### Fixed
-
-- **Desktop entry launcher** — Fixed desktop entry execution wrapper to properly handle working directory changes. Wrapped `Exec` command with `sh -c "cd ... && ..."` to ensure relative paths (`.venv`) resolve correctly when launched from application menu.
-- **Desktop entry permissions** — Removed incorrect executable bit flag that prevented GTK/desktop environments from recognizing the `.desktop` file.
-- **Desktop entry categories** — Simplified `Categories` field from `AudioVideo;Audio;Utility;` to `Utility;` (single main category) for cleaner menu organization.
-- **README accessibility** — Removed all emojis from section headers and body text for improved Markdown rendering, accessibility, and professional presentation.
+**Status:** Documentation Release  
+**Focus:** Wiki reformatting and emoji elimination
 
 ### Changed
 
-- **scripts/install-desktop-entry.sh** — Improved robustness of desktop entry creation with proper shell execution wrapper and working directory preservation.
+- **Wiki content reformatting** — Eliminated all emojis and purely decorative symbols from the entire GitHub Wiki documentation suite (14 pages).
+- **GitHub Wiki best practices** — Standardized formatting across all wiki pages, replaced manual warning icons with GitHub-native alert blocks (`[!TIP]`, `[!WARNING]`, etc.), and converted status symbols (`✓`, `❌`) to text-based equivalents (`Yes`, `No`) for improved accessibility and professional presentation.
 
 ---
 
-## v3.0.0 - Production-Ready Release with Comprehensive Documentation
+## v3.0.1 - Desktop Entry Launcher Fixes
 
 **Date:** January 19, 2026  
 **Status:** Major Release — Production Ready  

@@ -1,33 +1,43 @@
-# Vociferous Wiki
+<div align="center">
+  <h1 id="vociferous-wiki">Vociferous Wiki</h1>
+  <p><strong>Privacy-first, local-first speech-to-text for Linux</strong></p>
 
-> **Privacy-first speech-to-text for Linux**
+  <p>
+    <a href="https://github.com/WanderingAstronomer/Vociferous/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/version-3.0.0-blue.svg" alt="Version 3.0.0"/></a>
+    <img src="https://img.shields.io/badge/platform-Linux-green.svg" alt="Platform Linux"/>
+    <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License MIT"/>
+  </p>
 
-![Vociferous Main Interface](images/transcribe_view.png)
+  <br/>
+  <img src="https://raw.githubusercontent.com/WanderingAstronomer/Vociferous/main/docs/images/transcribe_view.png" alt="Vociferous Transcribe View" width="800"/>
+  <p><em>The main transcription interface featuring real-time audio capture and Whisper inference.</em></p>
+</div>
 
----
+<hr/>
 
-## What is Vociferous?
+## Overview
 
-**Vociferous** is a modern, local-first dictation system that transforms speech into text entirely on your machine. Built with a sleek PyQt6 interface, it leverages OpenAI's Whisper model for accurate transcription and offers optional AI-powered refinement to polish your text.
+**Vociferous** is a professional, local-first dictation system designed for Linux. It transforms speech into text entirely on your machine using **OpenAI's Whisper** (via `faster-whisper`) and optional SLM-powered text refinement.
 
 ### Key Features
 
 | Feature | Description |
-|---------|-------------|
-| 🔒 **Local Processing** | All transcription happens on-device—your voice never leaves your computer |
-| 🎯 **Whisper ASR** | OpenAI's state-of-the-art speech recognition via faster-whisper |
-| ✨ **AI Refinement** | Optional SLM-powered text improvement (grammar, formatting) |
-| 🐧 **Wayland Support** | Native global hotkeys on modern Linux desktops |
-| 📚 **Persistent History** | SQLite-backed transcript storage with search and organization |
-| ⚡ **GPU Acceleration** | CUDA support for fast transcription and refinement |
+| :--- | :--- |
+| **Local Processing** | Zero-latency, privacy-focused. Your voice never leaves your device. |
+| **Whisper ASR** | State-of-the-art speech recognition with multi-language support. |
+| **AI Refinement** | Intelligent punctuation, grammar, and formatting correction. |
+| **Wayland Native** | First-class support for global hotkeys on modern Linux desktops. |
+| **SQLite History** | Persistent, searchable transcript storage with dual-text safety. |
+| **CUDA Acceleration** | Fully optimized for NVIDIA GPUs for near-instant inference. |
 
 ---
 
-## Quick Start
+## Getting Started
 
-Ready to dictate? Get up and running in minutes:
+Ready to begin using Vociferous? Follow the installation guide to get up and running:
 
-→ **[Getting Started](Getting-Started)** — Installation and first run guide
+> [!TIP]
+> **[Installation & First Run Guide](Getting-Started)**
 
 ---
 
@@ -35,73 +45,83 @@ Ready to dictate? Get up and running in minutes:
 
 ### Core Concepts
 
-| Page | Description |
-|------|-------------|
-| [Architecture](Architecture) | System design, component boundaries, threading model |
-| [Design System](Design-System) | Colors, typography, spacing tokens |
-| [Data and Persistence](Data-and-Persistence) | Database schema, models, dual-text invariant |
+| Topic | Description |
+| :--- | :--- |
+| Architecture | System design, component boundaries, and threading. |
+| Design System | Visual tokens, colors, and typography. |
+| Data & Persistence | Database schema and the dual-text invariant. |
 
-### Views
+### View Reference
 
-| View | Description |
-|------|-------------|
-| [Transcribe](View-Transcribe) | Live recording and transcript display |
-| [History](View-History) | Browse and manage past transcripts |
-| [Search](View-Search) | Filter and find transcripts |
-| [Refine](View-Refine) | AI-powered text refinement |
-| [Settings](View-Settings) | Configure application options |
-| [User](View-User) | Metrics, about, and documentation links |
+| View | Purpose |
+| :--- | :--- |
+| Transcribe | Live recording and real-time transcript display. |
+| History | Browse, edit, and manage past transcriptions. |
+| Search | Powerful filtering and discovery tools. |
+| Refine | AI-powered polishing and text improvement. |
+| Settings | Backend, Hotkey, and Model configuration. |
+| User | Usage metrics, documentation, and about info. |
 
 ### Advanced Topics
 
 | Page | Description |
-|------|-------------|
-| [UI Views Overview](UI-Views-Overview) | View architecture and capabilities system |
-| [Refinement System](Refinement-System) | SLM service, model provisioning, prompt engineering |
-| [Testing Philosophy](Testing-Philosophy) | Test tiers, fixtures, CI strategy |
+| :--- | :--- |
+| UI Views Overview | Deep dive into the UI capability system. |
+| Refinement System | Detailed look at SLM service and provisioning. |
+| Testing Philosophy | Our approach to quality and CI. |
 
 ---
 
-## Technology Stack
+## Tech Stack
 
 | Layer | Technology |
-|-------|------------|
-| Language | Python 3.12+ |
-| UI Framework | PyQt6 6.7.0+ |
-| Speech Recognition | faster-whisper (CTranslate2 backend) |
-| Text Refinement | CTranslate2 + Qwen3-4B-Instruct |
-| Database | SQLAlchemy 2.0+ with SQLite |
-| Input Handling | evdev (Wayland) / pynput (X11) |
+| :--- | :--- |
+| **Language** | Python 3.12+ |
+| **UI Framework** | PyQt6 6.7.0+ |
+| **Inference Engine** | CTranslate2 (via faster-whisper) |
+| **Refinement** | Qwen-based SLMs |
+| **Storage** | SQLAlchemy 2.0+ (SQLite) |
+| **Input** | `evdev` (Wayland) / `pynput` (X11) |
 
 ---
 
-## Screenshots
+## Additional Screenshots
 
-<table>
-<tr>
-<td><img src="images/transcribe_view.png" alt="Transcribe View" width="300"/><br/><em>Transcribe View</em></td>
-<td><img src="images/history_view.png" alt="History View" width="300"/><br/><em>History View</em></td>
-</tr>
-<tr>
-<td><img src="images/search_and_manage_view.png" alt="Search View" width="300"/><br/><em>Search View</em></td>
-<td><img src="images/refinement_view.png" alt="Refine View" width="300"/><br/><em>Refine View</em></td>
-</tr>
-<tr>
-<td><img src="images/settings_view.png" alt="Settings View" width="300"/><br/><em>Settings View</em></td>
-<td><img src="images/user_view.png" alt="User View" width="300"/><br/><em>User View</em></td>
-</tr>
-</table>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; justify-items: center;">
+  <div style="text-align: center;">
+    <img src="https://raw.githubusercontent.com/WanderingAstronomer/Vociferous/main/docs/images/history_view.png" alt="History View" style="width: 100%; max-width: 400px; height: auto;">
+    <br/><em>History View</em>
+  </div>
+  <div style="text-align: center;">
+    <img src="https://raw.githubusercontent.com/WanderingAstronomer/Vociferous/main/docs/images/search_and_manage_view.png" alt="Search View" style="width: 100%; max-width: 400px; height: auto;">
+    <br/><em>Search View</em>
+  </div>
+  <div style="text-align: center;">
+    <img src="https://raw.githubusercontent.com/WanderingAstronomer/Vociferous/main/docs/images/refinement_view.png" alt="Refine View" style="width: 100%; max-width: 400px; height: auto;">
+    <br/><em>Refine View</em>
+  </div>
+  <div style="text-align: center;">
+    <img src="https://raw.githubusercontent.com/WanderingAstronomer/Vociferous/main/docs/images/settings_view.png" alt="Settings View" style="width: 100%; max-width: 400px; height: auto;">
+    <br/><em>Settings View</em>
+  </div>
+  <div style="text-align: center;">
+    <img src="https://raw.githubusercontent.com/WanderingAstronomer/Vociferous/main/docs/images/user_view.png" alt="User View" style="width: 100%; max-width: 400px; height: auto;">
+    <br/><em>User View</em>
+  </div>
+</div>
 
 ---
 
-## Links
+## External Links
 
 | Resource | Link |
-|----------|------|
-| 📦 GitHub Repository | [Vociferous on GitHub](https://github.com/your-username/Vociferous) |
-| 🐛 Issue Tracker | [Report Issues](https://github.com/your-username/Vociferous/issues) |
-| 📋 Changelog | [CHANGELOG.md](https://github.com/your-username/Vociferous/blob/main/CHANGELOG.md) |
+| :--- | :--- |
+| **GitHub Repository** | [Vociferous on GitHub](https://github.com/WanderingAstronomer/Vociferous) |
+| **Issue Tracker** | [Report Issues & Bugs](https://github.com/WanderingAstronomer/Vociferous/issues) |
+| **Changelog** | [Full Version History](https://github.com/WanderingAstronomer/Vociferous/blob/main/CHANGELOG.md) |
 
----
+<br/>
 
-**Version:** 3.0.0 | [View Changelog](https://github.com/your-username/Vociferous/blob/main/CHANGELOG.md)
+<div align="center">
+  <sub>Built for the Linux Community</sub>
+</div>
