@@ -2,16 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+- **FlowLayout Class**: New responsive layout that wraps items to multiple lines based on available width, enabling proper display of dynamic content
+
 ### Fixed
+- **AI Refinement Model Selection Layout**: Model selection pills in onboarding now wrap to multiple lines instead of cramming all pills on one line, preventing text truncation and improving readability
 - **Onboarding Startup Check**: Onboarding wizard now launches automatically when `user.onboarding_completed` is set to `false` in config. Previously, the startup logic was not checking this flag, so manually resetting it in the YAML had no effect. Now you can trigger onboarding by setting `onboarding_completed: false` and restarting the app.
 
-### Added
-- **Personalization Features Restored**: User name now updates in real-time across UI components after onboarding completion:
-  - UserView title bar now displays "[Name]'s Vociferous Journey" (e.g., "Andrew's Vociferous Journey")
-  - Icon rail user button now displays the user's name instead of generic "User" label
-  - Both components now listen to `ConfigManager.config_changed` signal for dynamic updates
-
 ### Changed
+- **RefinementPage Model Selection (`src/ui/components/onboarding/pages.py`)**:
+  - Replaced `QHBoxLayout` with new `FlowLayout` for model pills container
+  - Model names now fully visible with proper spacing
+  - Layout automatically adapts to window width and number of models
 - **UserView (`src/ui/views/user_view.py`)**: 
   - Added `_title_label` instance variable to store reference to title QLabel for dynamic updates
   - Added `_on_config_changed()` slot to listen for user name configuration changes and update title in real-time
