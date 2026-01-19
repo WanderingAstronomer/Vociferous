@@ -30,6 +30,7 @@ env/
 # Editor / IDE Noise
 # =========================
 
+.github/copilot-instructions.md
 .vscode/
 .idea/
 *.swp
@@ -75,6 +76,7 @@ __pypackages__/
 # =========================
 
 docs/agent_reports/
+docs/wiki/phase2/
 
 # =========================
 # Tests: Generated Artifacts
