@@ -145,6 +145,12 @@ def _preflight_env() -> None:
         except Exception as e:
             # Fallback
              logging.getLogger("Vociferous").warning(f"Failed to enforce venv: {e}")
+    else:
+        logging.getLogger("Vociferous").warning(
+            "Virtual environment not found at .venv/. Proceeding with system Python."
+        )
+        # Create the venv directory variable for later use
+        #TODO: venv_path = None
 
     # Sentinel to prevent infinite re-exec loop
     if os.environ.get("_VOCIFEROUS_ENV_READY") == "1":
