@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Added
+- **Personalization Features Restored**: User name now updates in real-time across UI components after onboarding completion:
+  - UserView title bar now displays "[Name]'s Vociferous Journey" (e.g., "Andrew's Vociferous Journey")
+  - Icon rail user button now displays the user's name instead of generic "User" label
+  - Both components now listen to `ConfigManager.config_changed` signal for dynamic updates
+
+### Changed
+- **UserView (`src/ui/views/user_view.py`)**: 
+  - Added `_title_label` instance variable to store reference to title QLabel for dynamic updates
+  - Added `_on_config_changed()` slot to listen for user name configuration changes and update title in real-time
+  - Connected `ConfigManager.instance().config_changed` signal in `__init__()`
+  - Updated `cleanup()` to properly disconnect config change signal
+- **IconRail (`src/ui/components/main_window/icon_rail.py`)**:
+  - Added `_user_btn` instance variable to store reference to user button for label updates
+  - Added `_on_config_changed()` slot to listen for user name changes and update button text dynamically
+  - Connected `ConfigManager.instance().config_changed` signal in `__init__()`
+  - Updated `_build_footer()` to store user button reference
+
 ---
 
 # v2.9.5 - Test Suite Organization & Path Resolution
