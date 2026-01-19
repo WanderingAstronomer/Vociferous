@@ -1,6 +1,6 @@
 # Vociferous Changelog
 
-## [Unreleased]
+## v2.9.6 - Onboarding UX & Layout Improvements
 
 ### Added
 - **FlowLayout Class**: New responsive layout that wraps items to multiple lines based on available width, enabling proper display of dynamic content

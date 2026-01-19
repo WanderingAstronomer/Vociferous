@@ -21,12 +21,21 @@ logger = logging.getLogger(__name__)
 class VoiceCalibrator:
     """Calibrate visualizer to user's voice characteristics."""
 
+    # Constants for frequency calculations
+    MIN_FREQ = 20.0
+    MAX_FREQ = 8000.0
+    FUNDAMENTAL_MULTIPLIER = 0.7
+    ENERGY_HEADROOM = 1.2
+    DEFAULT_FUNDAMENTAL = 85.0
+    DEFAULT_ENERGY_95 = 4000.0
+
     def __init__(self) -> None:
         self.sample_rate = 16000
         self.duration = 15  # seconds
         self.fft_size = 512
         self._cancel_requested = False
         self._stream = None
+        self.fft_freqs = np.fft.rfftfreq(self.fft_size, 1 / self.sample_rate)
 
     def request_cancel(self) -> None:
         """Request calibration to stop (will stop current recording)."""
@@ -223,26 +232,16 @@ class VoiceCalibrator:
             calibration = self.get_calibration()
 
         if calibration is None:
-            # Fallback to generic logarithmic bins
             return self._default_bins(n_bins)
 
-        # Use calibration to define FIXED frequency window (structure)
-        fundamental = calibration.get("fundamental_freq", 85.0)
-        energy_95 = calibration["energy_95th"]
+        fundamental = calibration.get("fundamental_freq", self.DEFAULT_FUNDAMENTAL)
+        energy_95 = calibration.get("energy_95th", self.DEFAULT_ENERGY_95)
 
-        # Fixed bounds stay stable during rendering (no drift)
-        # Shift lower bound to capture fundamental cleanly (start slightly below fundamental)
-        min_freq = max(20.0, fundamental * 0.7)
-        # Fixed upper bound based on 95th percentile, with headroom for harmonics
-        max_freq = min(8000.0, energy_95 * 1.2)
+        min_freq = max(self.MIN_FREQ, fundamental * self.FUNDAMENTAL_MULTIPLIER)
+        max_freq = min(self.MAX_FREQ, energy_95 * self.ENERGY_HEADROOM)
 
-        # Create logarithmic spacing across fixed range
-        # This naturally emphasizes mids where formants live
         freq_edges = np.geomspace(min_freq, max_freq, n_bins + 1)
-
-        # Convert frequencies to FFT bin indices
-        fft_freqs = np.fft.rfftfreq(self.fft_size, 1 / self.sample_rate)
-        bin_edges = np.searchsorted(fft_freqs, freq_edges)
+        bin_edges = np.searchsorted(self.fft_freqs, freq_edges)
 
         logger.info(
             f"Custom bins: {min_freq:.0f}Hz - {max_freq:.0f}Hz "
@@ -253,7 +252,6 @@ class VoiceCalibrator:
 
     def _default_bins(self, n_bins: int) -> np.ndarray:
         """Default logarithmic bins (generic, not personalized)."""
-        fft_freqs = np.fft.rfftfreq(self.fft_size, 1 / self.sample_rate)
-        freq_min, freq_max = 60, 8000
+        freq_min, freq_max = 60, self.MAX_FREQ
         freq_edges = np.geomspace(freq_min, freq_max, n_bins + 1)
-        return np.searchsorted(fft_freqs, freq_edges)
+        return np.searchsorted(self.fft_freqs, freq_edges)

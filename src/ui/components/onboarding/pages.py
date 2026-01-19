@@ -4,6 +4,7 @@ Onboarding Pages - Content for each step of the onboarding wizard.
 
 from __future__ import annotations
 
+from pathlib import Path
 from src.core.resource_manager import ResourceManager
 import os
 import subprocess
@@ -32,12 +33,15 @@ import src.ui.constants.colors as c
 
 
 class FlowLayout(QLayout):
-    """Flow layout that wraps items to new lines based on available width."""
+    """Flow layout that wraps items to new lines based on available width.
+
+    Implements height-for-width to ensure proper sizing in scrollable containers.
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._items: list[QLayoutItem] = []
-        self._spacing = 0
+        self._spacing = Spacing.S2
 
     def addItem(self, item: QLayoutItem) -> None:
         """Add an item to the layout."""
@@ -67,8 +71,22 @@ class FlowLayout(QLayout):
         """Get spacing between items."""
         return self._spacing
 
+    def hasHeightForWidth(self) -> bool:
+        """Indicate that this layout's height depends on its width."""
+        return True
+
+    def heightForWidth(self, width: int) -> int:
+        """Calculate required height for given width."""
+        height = self._doLayoutCalculation(QRect(0, 0, width, 0))
+        return height
+
     def sizeHint(self) -> QSize:
         """Return preferred size."""
+        # If parent has a width, calculate proper height
+        if self.parentWidget() and self.parentWidget().width() > 0:
+            width = self.parentWidget().width()
+            height = self.heightForWidth(width)
+            return QSize(width, height)
         return self.minimumSize()
 
     def minimumSize(self) -> QSize:
@@ -83,37 +101,45 @@ class FlowLayout(QLayout):
 
     def doLayout(self, rect: QRect) -> None:
         """Layout items in flow pattern."""
+        self._doLayoutCalculation(rect, apply_geometry=True)
+
+    def _doLayoutCalculation(self, rect: QRect, apply_geometry: bool = False) -> int:
+        """Calculate layout and optionally apply geometry.
+
+        Args:
+            rect: The rectangle to lay out within
+            apply_geometry: If True, actually position widgets; if False, only calculate height
+
+        Returns:
+            Total height required
+        """
         margins = self.contentsMargins()
         x = rect.x() + margins.left()
         y = rect.y() + margins.top()
         line_height = 0
+        spacing = self._spacing
 
         for item in self._items:
-            wid = item.widget()
-            space_x = wid.style().layoutSpacing(
-                QSizePolicy.ControlType.PushButton,
-                QSizePolicy.ControlType.PushButton,
-                Qt.Orientation.Horizontal,
-            )
-            space_y = wid.style().layoutSpacing(
-                QSizePolicy.ControlType.PushButton,
-                QSizePolicy.ControlType.PushButton,
-                Qt.Orientation.Vertical,
-            )
+            item_size = item.sizeHint()
+            next_x = x + item_size.width() + spacing
 
-            next_x = x + item.sizeHint().width() + space_x
-            if next_x - space_x > rect.right() and line_height > 0:
+            # Check if we need to wrap to next line
+            effective_right = rect.right() - margins.right()
+            if next_x - spacing > effective_right and line_height > 0:
                 # Move to next line
                 x = rect.x() + margins.left()
-                y = y + line_height + space_y
-                next_x = x + item.sizeHint().width() + space_x
+                y = y + line_height + spacing
+                next_x = x + item_size.width() + spacing
                 line_height = 0
 
-            item.setGeometry(
-                QRect(x, y, item.sizeHint().width(), item.sizeHint().height())
-            )
+            if apply_geometry:
+                item.setGeometry(QRect(x, y, item_size.width(), item_size.height()))
+
             x = next_x
-            line_height = max(line_height, item.sizeHint().height())
+            line_height = max(line_height, item_size.height())
+
+        # Return total height used
+        return y + line_height - rect.y() + margins.bottom()
 
     def setGeometry(self, rect: QRect) -> None:
         """Set geometry and perform layout."""
@@ -223,10 +249,11 @@ class WelcomePage(BasePage):
         content.setWordWrap(True)
         content.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         content.setStyleSheet(
-            f"font-size: {Typography.FONT_SIZE_MD}pt; color: {c.GRAY_2}; line-height: 1.5;"
+            f"font-size: {Typography.FONT_SIZE_MD}pt; color: {c.GRAY_2};"
         )
 
         self.layout.addWidget(title)
+        self.layout.addSpacing(Spacing.S3)  # Use layout spacing instead of margins
         self.layout.addWidget(content)
         self.layout.addStretch()
 
@@ -250,8 +277,6 @@ class IdentityPage(BasePage):
             f"border: 2px solid {c.GRAY_6}; border-radius: {BORDER_RADIUS_SM}px; padding: 8px; "
             f"background-color: {c.GRAY_8}; color: {c.GRAY_2};"
         )
-        # Optional field - no completeness check needed
-        # self.name_input.textChanged.connect(self._check_completeness)
 
         privacy = QLabel(
             "We do not share your name with anyone. Your name never leaves your local system configuration. "
@@ -259,12 +284,15 @@ class IdentityPage(BasePage):
         )
         privacy.setWordWrap(True)
         privacy.setStyleSheet(
-            f"color: {c.GRAY_4}; font-size: {Typography.SMALL_SIZE}pt; margin-top: 5px;"
+            f"color: {c.GRAY_4}; font-size: {Typography.SMALL_SIZE}pt;"
         )
 
         self.layout.addWidget(title)
+        self.layout.addSpacing(Spacing.S2)
         self.layout.addWidget(desc)
+        self.layout.addSpacing(Spacing.S3)
         self.layout.addWidget(self.name_input)
+        self.layout.addSpacing(Spacing.S2)
         self.layout.addWidget(privacy)
         self.layout.addStretch()
 
@@ -295,16 +323,19 @@ class RefinementPage(BasePage):
         desc.setWordWrap(True)
         desc.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         desc.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        desc.setStyleSheet(f"color: {c.GRAY_2}; line-height: 1.4;")
+        desc.setStyleSheet(f"color: {c.GRAY_2};")
 
         self.layout.addWidget(title)
+        self.layout.addSpacing(Spacing.S2)
         self.layout.addWidget(desc)
 
         # Model Selection with TogglePills
         models_label = QLabel("Select Models:")
         models_label.setStyleSheet(
-            f"font-weight: 600; font-size: {Typography.FONT_SIZE_MD}pt; margin-top: {Spacing.S3}px;"
+            f"font-weight: 600; font-size: {Typography.FONT_SIZE_MD}pt;"
         )
+
+        self.layout.addSpacing(Spacing.S3)
         self.layout.addWidget(models_label)
 
         # Import service to get models
@@ -403,6 +434,140 @@ class RefinementPage(BasePage):
             ConfigManager.save_config()
 
 
+class ASRModelPage(BasePage):
+    """Page for selecting Whisper ASR model for transcription."""
+
+    def setup_ui(self, **kwargs):
+        from src.ui.widgets.toggle_pill import TogglePill
+
+        title = QLabel("Transcription Model Setup")
+        title.setStyleSheet(
+            f"font-size: {Typography.FONT_SIZE_LG}pt; font-weight: bold;"
+        )
+        title.setWordWrap(True)
+
+        desc = QLabel(
+            "Vociferous uses OpenAI Whisper models for speech-to-text transcription.\n\n"
+            "Choose one model to download. Models vary in speed, quality, and resource requirements."
+        )
+        desc.setWordWrap(True)
+        desc.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        desc.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        desc.setStyleSheet(f"color: {c.GRAY_2};")
+
+        self.layout.addWidget(title)
+        self.layout.addSpacing(Spacing.S2)
+        self.layout.addWidget(desc)
+
+        # Model Selection with TogglePills
+        models_label = QLabel("Select ASR Model:")
+        models_label.setStyleSheet(
+            f"font-weight: 600; font-size: {Typography.FONT_SIZE_MD}pt;"
+        )
+
+        self.layout.addSpacing(Spacing.S3)
+        self.layout.addWidget(models_label)
+
+        # Import ASR models from registry
+        from src.core.model_registry import ASR_MODELS, DEFAULT_ASR_MODEL_ID
+
+        self.model_pills = {}
+        pills_container = QWidget()
+        pills_layout = FlowLayout(pills_container)
+        pills_layout.setContentsMargins(0, Spacing.S2, 0, 0)
+        pills_layout.setSpacing(Spacing.S2)
+
+        for model_id, model in ASR_MODELS.items():
+            pill = TogglePill(model.name)
+            pill.toggled.connect(
+                lambda checked, m=model: self._on_pill_toggled(m.id, checked)
+            )
+            self.model_pills[model.id] = pill
+            pills_layout.addWidget(pill)
+
+            # Pre-select the default model
+            if model.id == DEFAULT_ASR_MODEL_ID:
+                pill.setChecked(True)
+
+        self.layout.addWidget(pills_container)
+
+        # Info display for selected model
+        self.info_label = QLabel("")
+        self.info_label.setWordWrap(True)
+        self.info_label.setStyleSheet(
+            f"color: {c.GRAY_4}; margin-top: {Spacing.S2}px; font-size: {Typography.SMALL_SIZE}pt;"
+        )
+        self.layout.addWidget(self.info_label)
+
+        # Validation message
+        self.validation_label = QLabel("")
+        self.validation_label.setStyleSheet(
+            f"color: {c.RED_4}; font-weight: 600; margin-top: {Spacing.S1}px;"
+        )
+        self.layout.addWidget(self.validation_label)
+
+        self.layout.addStretch()
+
+        # Track selected model (only one allowed)
+        self.selected_model = DEFAULT_ASR_MODEL_ID
+        self._update_info()
+
+    def _on_pill_toggled(self, model_id: str, checked: bool):
+        """Handle pill toggle - only one can be selected at a time."""
+        if checked:
+            # Uncheck all other pills
+            for pill_id, pill in self.model_pills.items():
+                if pill_id != model_id:
+                    pill.setChecked(False)
+            self.selected_model = model_id
+        else:
+            # Don't allow unchecking if it's the only selection
+            if self.selected_model == model_id:
+                self.model_pills[model_id].setChecked(True)
+                return
+
+        self._update_info()
+        self._check_completeness()
+
+    def _update_info(self):
+        """Update info display with selected model details."""
+        from src.core.model_registry import ASR_MODELS
+
+        if not self.selected_model:
+            self.info_label.setText("")
+            return
+
+        model = ASR_MODELS[self.selected_model]
+        info = (
+            f"• {model.name}\n"
+            f"• VRAM Required: ~{model.required_vram_mb // 1024}GB\n"
+            f"• Repo: {model.repo_id}"
+        )
+        self.info_label.setText(info)
+
+    def _check_completeness(self):
+        """Validate selection - exactly one model must be selected."""
+        is_valid = self.selected_model is not None
+
+        if not is_valid:
+            self.validation_label.setText("Please select an ASR model to continue.")
+        else:
+            self.validation_label.setText("")
+
+        self.completeness_changed.emit(is_valid)
+
+    def is_complete(self):
+        return self.selected_model is not None
+
+    def on_exit(self):
+        """Save selected ASR model to config."""
+        if self.selected_model:
+            ConfigManager.set_config_value(
+                self.selected_model, "transcription", "model_id"
+            )
+            ConfigManager.save_config()
+
+
 class HotkeyPage(BasePage):
     def setup_ui(self, key_listener=None, **kwargs):
         title = QLabel("Transcription Hotkey")
@@ -415,7 +580,7 @@ class HotkeyPage(BasePage):
             "Press the key combination you want to use to start/stop recording."
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("margin-bottom: 10px;")
+        desc.setStyleSheet(f"color: {c.GRAY_2};")
 
         # HotkeyWidget is complex, it expects full app context occasionally.
         # But here we just want to update config.
@@ -428,7 +593,9 @@ class HotkeyPage(BasePage):
         self.hotkey_widget.display.setText(current)
 
         self.layout.addWidget(title)
+        self.layout.addSpacing(Spacing.S2)
         self.layout.addWidget(desc)
+        self.layout.addSpacing(Spacing.S3)
         self.layout.addWidget(self.hotkey_widget)
         self.layout.addStretch()
 
@@ -579,6 +746,20 @@ class SetupWorker(QObject):
         self.refinement_enabled = refinement_enabled
         self.models_to_download = models_to_download
 
+    def _validate_model_artifacts(self, model_dir: Path) -> bool:
+        """Check if all required model artifacts exist."""
+        if not model_dir.exists():
+            return False
+
+        # CTranslate2 can produce vocabulary.json OR vocabulary.txt, check loosely
+        has_vocab = (model_dir / "vocabulary.json").exists() or (
+            model_dir / "vocabulary.txt"
+        ).exists()
+        has_model = (model_dir / "model.bin").exists()
+        has_config = (model_dir / "config.json").exists()
+
+        return has_vocab and has_model and has_config
+
     def do_work(self):
         # 1. Desktop Integration
         if self.install_desktop:
@@ -620,6 +801,15 @@ class SetupWorker(QObject):
                         continue
 
                     model = MODELS[model_id]
+                    model_dir = cache_dir / model.dir_name
+
+                    # Skip if model already exists and is valid
+                    if self._validate_model_artifacts(model_dir):
+                        self.progress_update.emit(
+                            f"Model {model.name} already downloaded. Skipping..."
+                        )
+                        continue
+
                     self.progress_update.emit(f"Downloading model: {model.name}...")
 
                     worker = ProvisioningWorker(model, cache_dir)
@@ -666,22 +856,19 @@ class CalibrationPage(BasePage):
         )
         desc.setWordWrap(True)
         desc.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        desc.setStyleSheet(f"color: {c.GRAY_2}; margin-top: 10px; margin-bottom: 10px;")
+        desc.setStyleSheet(f"color: {c.GRAY_2};")
 
         self.prompt = QLabel(
             "Artificial intelligence continues to advance rapidly, enabling new possibilities for human-computer interaction. Speech recognition systems can now understand natural language with remarkable accuracy, providing a significant productivity boost for many!"
         )
         self.prompt.setStyleSheet(
-            f"font-style: italic; color: {c.BLUE_4}; margin: 20px; font-size: {Typography.FONT_SIZE_MD}pt; padding: 15px;"
+            f"font-style: italic; color: {c.BLUE_4}; font-size: {Typography.FONT_SIZE_MD}pt; padding: {Spacing.S3}px;"
         )
         self.prompt.setWordWrap(True)
         self.prompt.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.btn_start = QPushButton("Start Calibration")
-        self.btn_start.setObjectName("primaryButton")
-        self.btn_start.setStyleSheet(
-            f"background-color: {c.BLUE_4}; color: white; border-radius: {BORDER_RADIUS_SM}px; padding: 8px 16px; font-weight: bold;"
-        )
+        self.btn_start.setProperty("styleClass", "primaryButton")
         self.btn_start.clicked.connect(self.start_calibration)
 
         self.btn_skip = QPushButton("Skip Calibration")
@@ -692,13 +879,17 @@ class CalibrationPage(BasePage):
 
         self.output_log = QLabel("")
         self.output_log.setWordWrap(True)
-        self.output_log.setStyleSheet(f"color: {c.GRAY_4}; margin-top: 10px;")
+        self.output_log.setStyleSheet(f"color: {c.GRAY_4};")
 
         self.layout.addWidget(title)
+        self.layout.addSpacing(Spacing.S2)
         self.layout.addWidget(desc)
+        self.layout.addSpacing(Spacing.S3)
         self.layout.addWidget(self.prompt)
+        self.layout.addSpacing(Spacing.S3)
         self.layout.addWidget(self.btn_start)
         self.layout.addWidget(self.btn_skip)
+        self.layout.addSpacing(Spacing.S2)
         self.layout.addWidget(self.output_log)
         self.layout.addStretch()
 
@@ -727,7 +918,7 @@ class CalibrationPage(BasePage):
 
         self.thread = CalibrationWorker(self.calibrator)
         self.thread.progress.connect(self.output_log.setText)
-        self.thread.finished.connect(self._on_finished)
+        self.thread.calibration_finished.connect(self._on_finished)  # Use custom signal
         self.thread.error_occurred.connect(self._on_error)
         self.thread.start()
 
@@ -772,7 +963,17 @@ class CalibrationPage(BasePage):
 
 
 class CalibrationWorker(QThread):
+    """
+    Worker thread for voice calibration.
+
+    Signals:
+        progress(object): Emitted during calibration progress
+        calibration_finished(dict): Emitted when calibration completes successfully with results
+        error_occurred(str): Emitted when an error occurs
+    """
+
     progress = pyqtSignal(object)
+    calibration_finished = pyqtSignal(object)  # Custom signal for results
     error_occurred = pyqtSignal(str)
 
     def __init__(self, calibrator):
@@ -782,7 +983,9 @@ class CalibrationWorker(QThread):
     def run(self):
         try:
             results = self.calibrator.calibrate(on_progress=self.progress.emit)
-            self.finished.emit(results)
+            self.calibration_finished.emit(
+                results
+            )  # Use custom signal instead of QThread.finished
         except Exception as e:
             self.error_occurred.emit(str(e))
             self.progress.emit(f"Error: {e}")
