@@ -539,13 +539,26 @@ class SettingsView(BaseView):
         )
         calibration_content.addWidget(calibration_desc)
 
+        # Calibration prompt text (same as in onboarding)
+        prompt_text = QLabel(
+            "Artificial intelligence continues to advance rapidly, enabling new possibilities for human-computer interaction. "
+            "Speech recognition systems can now understand natural language with remarkable accuracy, providing a significant productivity boost for many!"
+        )
+        prompt_text.setWordWrap(True)
+        prompt_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        prompt_text.setStyleSheet(
+            f"font-style: italic; color: {c.BLUE_4}; font-size: {Typography.FONT_SIZE_MD}pt; "
+            f"padding: {Spacing.S3}px; margin: {Spacing.S2}px 0;"
+        )
+        calibration_content.addWidget(prompt_text)
+
         # Calibration button and status row
         calibration_row = QHBoxLayout()
         calibration_row.setSpacing(Spacing.MINOR_GAP)
 
         self.calibration_btn = QPushButton("Run Calibration")
         self.calibration_btn.setProperty("styleClass", "primaryButton")
-        self.calibration_btn.setFixedWidth(160)
+        self.calibration_btn.setFixedWidth(200)
         self.calibration_btn.clicked.connect(self._run_calibration)
 
         self.calibration_status = QLabel("")
@@ -1031,8 +1044,8 @@ class SettingsView(BaseView):
         header = QLabel("History Management")
         header.setObjectName("settingsSectionHeader")
         header.setStyleSheet(
-            f"font-weight: bold; font-size: {Typography.FONT_SIZE_LG}px; "
-            f"color: {c.GRAY_4};"
+            f"font-weight: bold; font-size: {Typography.FONT_SIZE_XL}px; "
+            f"color: {c.BLUE_4};"
         )
         layout.addWidget(header, 0, Qt.AlignmentFlag.AlignCenter)
 
@@ -1091,8 +1104,8 @@ class SettingsView(BaseView):
         header = QLabel("Application")
         header.setObjectName("settingsSectionHeader")
         header.setStyleSheet(
-            f"font-weight: bold; font-size: {Typography.FONT_SIZE_LG}px; "
-            f"color: {c.GRAY_4};"
+            f"font-weight: bold; font-size: {Typography.FONT_SIZE_XL}px; "
+            f"color: {c.BLUE_4};"
         )
         layout.addWidget(header, 0, Qt.AlignmentFlag.AlignCenter)
 
