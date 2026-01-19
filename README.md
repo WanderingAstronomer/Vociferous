@@ -13,13 +13,13 @@
 
 <img src="docs/images/transcribe_view.png" width="700" alt="Vociferous Main Interface">
 
-[Features](#-features) • [Installation](#-installation) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [Architecture](#-architecture)
+[Features](#features) • [Installation](#installation) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Architecture](#architecture)
 
 </div>
 
 ---
 
-## 🎯 What is Vociferous?
+## What is Vociferous?
 
 **Vociferous** is a production-grade, local-first dictation system that transforms speech into text entirely on your machine. Built with architectural rigor and attention to user experience, it leverages **OpenAI's Whisper** for state-of-the-art transcription and offers optional **AI-powered refinement** to polish your text with grammar correction and formatting.
 
@@ -27,17 +27,17 @@ Unlike cloud-based alternatives, Vociferous processes everything locally—**you
 
 ---
 
-## ✨ Features
+## Features
 
 ### Core Capabilities
 
-- **🔒 Complete Privacy** — All transcription and refinement happens on-device using local models
-- **🎯 Whisper ASR** — OpenAI's state-of-the-art speech recognition via [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
-- **✨ AI Refinement** — Optional SLM-powered text improvement (grammar, punctuation, formatting)
-- **🐧 Native Linux Support** — First-class Wayland integration with global hotkey support
-- **📚 Persistent History** — SQLite-backed transcript storage with full-text search and organization
-- **⚡ GPU Acceleration** — CUDA support for real-time transcription and refinement
-- **🎨 Modern UI** — Sleek PyQt6 interface with polished design system
+- **Complete Privacy** — All transcription and refinement happens on-device using local models
+- **Whisper ASR** — OpenAI's state-of-the-art speech recognition via [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+- **AI Refinement** — Optional SLM-powered text improvement (grammar, punctuation, formatting)
+- **Native Linux Support** — First-class Wayland integration with global hotkey support
+- **Persistent History** — SQLite-backed transcript storage with full-text search and organization
+- **GPU Acceleration** — CUDA support for real-time transcription and refinement
+- **Modern UI** — Sleek PyQt6 interface with polished design system
 
 ### Technical Highlights
 
@@ -49,10 +49,10 @@ Unlike cloud-based alternatives, Vociferous processes everything locally—**you
 
 ---
 
-## 🖼️ Screenshots
+## Screenshots
 
 <details>
-<summary><b>📸 View Gallery (Click to expand)</b></summary>
+<summary><b>View Gallery (Click to expand)</b></summary>
 
 <table>
 <tr>
@@ -110,7 +110,7 @@ Unlike cloud-based alternatives, Vociferous processes everything locally—**you
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ### Prerequisites
 
@@ -154,11 +154,11 @@ sudo usermod -a -G input $USER
    ./vociferous
    ```
 
-> ⚠️ **Important:** Always use the `./vociferous` launcher script. Running `python src/main.py` directly bypasses GPU library configuration.
+> **Important:** Always use the `./vociferous` launcher script. Running `python src/main.py` directly bypasses GPU library configuration.
 
 ---
 
-## 🎬 Quick Start
+## Quick Start
 
 ### Your First Recording
 
@@ -191,7 +191,7 @@ After transcription completes:
 
 ---
 
-## 🧠 Optional AI Refinement
+## Optional AI Refinement
 
 Vociferous includes an optional **text refinement system** powered by local language models.
 
@@ -204,7 +204,7 @@ Vociferous includes an optional **text refinement system** powered by local lang
 
 ### Enabling Refinement
 
-1. Open **Settings** (⚙️ icon)
+1. Open **Settings**
 2. Toggle **Enable AI Refinement** to ON
 3. Select your preferred **SLM Model** (e.g., Qwen3-4B-Instruct)
 4. Click **Apply**
@@ -219,7 +219,7 @@ Refinement models require:
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 Comprehensive documentation is available in the [**project wiki**](docs/wiki):
 
@@ -246,7 +246,7 @@ Comprehensive documentation is available in the [**project wiki**](docs/wiki):
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 Vociferous is built with **architectural rigor** and follows strict design principles to ensure maintainability and extensibility.
 
@@ -300,7 +300,7 @@ This ensures:
 
 ---
 
-## 🔧 Development
+## Development
 
 ### Requirements
 
@@ -351,7 +351,7 @@ vociferous/
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Vociferous is built with high standards for code quality and architectural integrity. Before contributing:
 
@@ -363,13 +363,13 @@ Vociferous is built with high standards for code quality and architectural integ
 
 ---
 
-## 📜 License
+## License
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **[OpenAI Whisper](https://github.com/openai/whisper)** — Foundation of the transcription engine
 - **[faster-whisper](https://github.com/SYSTRAN/faster-whisper)** — CTranslate2-based Whisper inference
@@ -381,8 +381,8 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 <div align="center">
 
-**Built with ❤️ for the Linux community**
+**Built with love for the Linux community**
 
-[⬆ Back to Top](#vociferous)
+[Back to Top](#vociferous)
 
 </div>

@@ -37,10 +37,10 @@ Version=1.0
 Type=Application
 Name=Vociferous
 Comment=Speech-to-text dictation using Whisper
-Exec=$ABS_VOCIFEROUS_PATH
+Exec=sh -c "cd '$PROJECT_DIR' && '$ABS_VOCIFEROUS_PATH' >> /tmp/vociferous-launcher.log 2>&1"
 Icon=vociferous
 Terminal=false
-Categories=AudioVideo;Audio;Utility;
+Categories=Utility;
 Keywords=speech;dictation;transcription;whisper;voice;
 StartupNotify=true
 StartupWMClass=vociferous
@@ -48,9 +48,6 @@ X-AppStream-Ignore=false
 EOF
 
 echo "  ✓ Created desktop entry"
-
-# Make desktop entry executable (required by some DEs)
-chmod +x "$APPLICATIONS_DIR/vociferous.desktop"
 
 # Validate desktop entry
 if command -v desktop-file-validate &> /dev/null; then

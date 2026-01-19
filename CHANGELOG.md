@@ -1,5 +1,24 @@
 # Vociferous Changelog
 
+## v3.0.1 - Desktop Entry Launcher Fixes
+
+**Date:** January 19, 2026  
+**Status:** Hotfix Release  
+**Focus:** Application launcher integration and documentation polish
+
+### Fixed
+
+- **Desktop entry launcher** — Fixed desktop entry execution wrapper to properly handle working directory changes. Wrapped `Exec` command with `sh -c "cd ... && ..."` to ensure relative paths (`.venv`) resolve correctly when launched from application menu.
+- **Desktop entry permissions** — Removed incorrect executable bit flag that prevented GTK/desktop environments from recognizing the `.desktop` file.
+- **Desktop entry categories** — Simplified `Categories` field from `AudioVideo;Audio;Utility;` to `Utility;` (single main category) for cleaner menu organization.
+- **README accessibility** — Removed all emojis from section headers and body text for improved Markdown rendering, accessibility, and professional presentation.
+
+### Changed
+
+- **scripts/install-desktop-entry.sh** — Improved robustness of desktop entry creation with proper shell execution wrapper and working directory preservation.
+
+---
+
 ## v3.0.0 - Production-Ready Release with Comprehensive Documentation
 
 **Date:** January 19, 2026  
