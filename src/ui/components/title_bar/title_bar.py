@@ -7,7 +7,7 @@ Provides window controls, drag-to-move, and centered title.
 from __future__ import annotations
 
 from PyQt6.QtCore import QEvent, QPoint, QSize, Qt
-from PyQt6.QtGui import QGuiApplication, QIcon
+from PyQt6.QtGui import QGuiApplication, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -44,6 +44,19 @@ class TitleBar(QWidget):
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
         self.title_label.setMinimumWidth(0)
+
+        # Icon label for system tray icon
+        self.icon_label = QLabel(self)
+        self.icon_label.setObjectName("titleBarIcon")
+        icon_path = ResourceManager.get_icon_path("system_tray_icon")
+        pixmap = QPixmap(icon_path).scaled(
+            16,
+            16,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.icon_label.setPixmap(pixmap)
+        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         btn_size = QSize(36, 28)
 
@@ -90,6 +103,7 @@ class TitleBar(QWidget):
         right_l.addStretch(1)
         right_l.addWidget(self._controls)
 
+        layout.addWidget(self.icon_label)
         layout.addWidget(self.title_label, 1)
         layout.addWidget(self._right_slot)
 

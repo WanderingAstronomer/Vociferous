@@ -280,7 +280,7 @@ prompts:
     _internal: true
 
   motd_system:
-    value: "You are a creative assistant embedded in a desktop application."
+    value: "You are a creative assistant embedded in a desktop application. Your response must contain ONLY the message-of-the-day text itself. Produce no preamble, explanation, metadata, or additional commentary. Output exclusively the message that will be displayed to the user."
     type: str
     description: "System prompt for MOTD generation."
     _internal: false

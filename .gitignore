@@ -71,8 +71,7 @@ __pypackages__/
 # Docs: Generated or Non-Source Material
 # =========================
 
-# Scraped or mirrored documentation
-docs/agent_resources/ai_docs/**/static/
+docs/agent_reports/
 
 # =========================
 # Tests: Generated Artifacts

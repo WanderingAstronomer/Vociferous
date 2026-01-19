@@ -7,8 +7,16 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import Qt, QSortFilterProxyModel, pyqtSlot, pyqtSignal, QSize, QRect
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QKeySequence
+from PyQt6.QtCore import (
+    Qt,
+    QSortFilterProxyModel,
+    pyqtSlot,
+    pyqtSignal,
+    QSize,
+    QRect,
+    QModelIndex,
+)
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QKeySequence, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QVBoxLayout,
     QAbstractItemView,
@@ -18,6 +26,7 @@ from PyQt6.QtWidgets import (
     QTableView,
     QHeaderView,
     QStyledItemDelegate,
+    QMenu,
 )
 
 from src.database.signal_bridge import DatabaseSignalBridge
@@ -28,6 +37,7 @@ from src.ui.contracts.capabilities import Capabilities, SelectionState, ActionId
 from src.ui.views.base_view import BaseView
 from src.ui.models import TranscriptionTableModel
 from src.ui.widgets.transcript_preview_overlay import TranscriptPreviewOverlay
+from src.ui.utils.error_handler import safe_callback
 
 if TYPE_CHECKING:
     from src.database.history_manager import HistoryManager
@@ -176,12 +186,14 @@ class SearchView(BaseView):
         # Results Table
         self._table = SearchTableView()
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._table.setSortingEnabled(True)
         self._table.setAlternatingRowColors(True)
         self._table.setShowGrid(False)
         self._table.verticalHeader().setVisible(False)
         self._table.setWordWrap(True)  # Enable word wrapping for variable height
+        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._show_context_menu)
 
         # Apply custom delegate for text column
         self._table.setItemDelegateForColumn(
@@ -214,18 +226,7 @@ class SearchView(BaseView):
         self._proxy.setSourceModel(self._model)
         self._table.setModel(self._proxy)
 
-        # Connect to database updates
-        DatabaseSignalBridge().data_changed.connect(self._handle_data_changed)
-
-    @pyqtSlot(EntityChange)
-    def _handle_data_changed(self, change: EntityChange) -> None:
-        """Handle incoming surgical updates from the database."""
-        if change.entity_type == "transcription":
-            # SearchView re-runs search on any transcription change
-            # for data consistency.
-            self.refresh()
-
-        # Configure column resize modes
+        # Configure column resize modes for proper auto-fit on first visit
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(
             TranscriptionTableModel.COL_ID, QHeaderView.ResizeMode.ResizeToContents
@@ -248,9 +249,21 @@ class SearchView(BaseView):
         # Set maximum width to prevent content column from rendering off-screen
         header.setMaximumSectionSize(800)
 
+        # Connect selection changes signal so action dock updates on first visit
         self._table.selectionModel().selectionChanged.connect(
             self._on_selection_changed
         )
+
+        # Connect to database updates
+        DatabaseSignalBridge().data_changed.connect(self._handle_data_changed)
+
+    @pyqtSlot(EntityChange)
+    def _handle_data_changed(self, change: EntityChange) -> None:
+        """Handle incoming surgical updates from the database."""
+        if change.entity_type in ("transcription", "project"):
+            # SearchView re-runs search or project mapping update on change
+            # for data consistency.
+            self.refresh()
 
     def refresh(self) -> None:
         """Reload the model state."""
@@ -344,6 +357,180 @@ class SearchView(BaseView):
 
     def _on_selection_changed(self) -> None:
         self.capabilities_changed.emit()
+
+    def _get_selected_source_indices(self) -> list[QModelIndex]:
+        """Get all selected source model indices."""
+        if not self._table.selectionModel():
+            return []
+
+        indexes = self._table.selectionModel().selectedRows()
+        return [self._proxy.mapToSource(idx) for idx in indexes if idx.isValid()]
+
+    def _show_context_menu(self, position) -> None:
+        """Show context menu for table entries."""
+        index = self._table.indexAt(position)
+        if not index.isValid():
+            return
+
+        selected_source_indices = self._get_selected_source_indices()
+        if not selected_source_indices:
+            return
+
+        # Ensure the clicked item is part of selection, or select it exclusively
+        # Normalize to column 0 for robust comparison with selectedRows() results
+        source_idx = self._proxy.mapToSource(index)
+        source_idx_col0 = source_idx.siblingAtColumn(0)
+
+        # Check if any index in selection matches the clicked row (normalized to column 0)
+        is_selected = any(idx == source_idx_col0 for idx in selected_source_indices)
+
+        if not is_selected:
+            selected_source_indices = [source_idx_col0]
+
+        count = len(selected_source_indices)
+        menu = QMenu(self)
+
+        # Basic Actions
+        if count == 1:
+            copy_action = menu.addAction("Copy")
+            copy_action.triggered.connect(lambda: self.dispatch_action(ActionId.COPY))
+
+            edit_action = menu.addAction("Edit")
+            edit_action.triggered.connect(lambda: self.dispatch_action(ActionId.EDIT))
+
+            refine_action = menu.addAction("Refine")
+            refine_action.triggered.connect(
+                lambda: self.dispatch_action(ActionId.REFINE)
+            )
+
+            menu.addSeparator()
+
+        # Project Assignment
+        if self._history_manager:
+            projects = self._history_manager.get_projects()
+            if projects:
+                menu_label = (
+                    "Assign to Project"
+                    if count == 1
+                    else f"Assign {count} Items to Project"
+                )
+                assign_menu = menu.addMenu(menu_label)
+
+                # Group ID for current selection if uniform
+                group_ids = {
+                    idx.data(TranscriptionTableModel.ProjectIDRole)
+                    for idx in selected_source_indices
+                }
+                current_group_id = group_ids.pop() if len(group_ids) == 1 else None
+
+                # Build hierarchy (same as HistoryTreeView)
+                roots = []
+                children_map: dict[int | None, list[tuple]] = {}
+
+                for row in projects:
+                    gid, name, color, pid = row if len(row) == 4 else (*row, None)
+                    if pid is None:
+                        roots.append((gid, name, color))
+                    else:
+                        children_map.setdefault(pid, []).append((gid, name, color))
+
+                def add_project_action(menu_obj, p_id, p_name, p_color, indent=0):
+                    prefix = "↳ " if indent > 0 else ""
+                    icon = QIcon()
+                    if p_color:
+                        pixmap = QPixmap(12, 12)
+                        pixmap.fill(QColor(p_color))
+                        icon = QIcon(pixmap)
+
+                    action = menu_obj.addAction(icon, f"{prefix}{p_name}")
+                    action.setCheckable(True)
+                    action.setChecked(p_id == current_group_id)
+                    action.triggered.connect(
+                        safe_callback(
+                            lambda checked,
+                            pid=p_id,
+                            indices=selected_source_indices: self._assign_items_to_project(
+                                indices, pid
+                            ),
+                            "assign_to_project",
+                        )
+                    )
+
+                for gid, name, color in roots:
+                    add_project_action(assign_menu, gid, name, color)
+                    for c_gid, c_name, c_color in children_map.get(gid, []):
+                        add_project_action(
+                            assign_menu, c_gid, c_name, c_color, indent=1
+                        )
+
+                assign_menu.addSeparator()
+
+                # Check if any selected item has a project
+                if any(
+                    idx.data(TranscriptionTableModel.ProjectIDRole) is not None
+                    for idx in selected_source_indices
+                ):
+                    remove_label = (
+                        "Remove from Project"
+                        if count == 1
+                        else f"Remove {count} Items from Project"
+                    )
+                    remove_action = assign_menu.addAction(remove_label)
+                    remove_action.triggered.connect(
+                        safe_callback(
+                            lambda checked,
+                            indices=selected_source_indices: self._assign_items_to_project(
+                                indices, None
+                            ),
+                            "remove_from_project",
+                        )
+                    )
+
+                menu.addSeparator()
+
+        # Delete Action
+        delete_label = "Delete Entry" if count == 1 else f"Delete {count} Entries"
+        delete_action = menu.addAction(delete_label)
+        delete_action.triggered.connect(
+            lambda checked,
+            indices=selected_source_indices: self._on_context_delete_triggered(indices)
+        )
+
+        menu.exec(self._table.viewport().mapToGlobal(position))
+
+    def _on_context_delete_triggered(self, indices: list[QModelIndex]) -> None:
+        """Handle delete from context menu using specific indices."""
+        ids = []
+        for idx in indices:
+            t_id = idx.data(TranscriptionTableModel.IdRole)
+            if t_id is not None:
+                ids.append(t_id)
+
+        if ids:
+            self.delete_requested.emit(ids)
+
+    def _assign_items_to_project(
+        self, indices: list[QModelIndex], project_id: int | None
+    ) -> None:
+        """Assign multiple transcripts to a project."""
+        if not self._history_manager:
+            return
+
+        # Collect timestamps first because indices become invalid during model resets
+        timestamps = [
+            idx.data(TranscriptionTableModel.TimestampRole) for idx in indices
+        ]
+        timestamps = [ts for ts in timestamps if ts]
+
+        if not timestamps:
+            return
+
+        from src.database.signal_bridge import DatabaseSignalBridge
+        from src.database.events import ChangeAction
+
+        with DatabaseSignalBridge().signal_group("transcription", ChangeAction.UPDATED):
+            for ts in timestamps:
+                self._history_manager.assign_transcript_to_project(ts, project_id)
 
     def dispatch_action(self, action_id: ActionId) -> None:
         """Handle actions dispatched by ActionDock."""

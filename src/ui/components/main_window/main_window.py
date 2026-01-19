@@ -673,11 +673,17 @@ class MainWindow(QMainWindow):
         )
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
+            from src.database.signal_bridge import DatabaseSignalBridge
+            from src.database.events import ChangeAction
+
             try:
-                for tid in transcript_ids:
-                    entry = self.history_manager.get_entry(tid)
-                    if entry:
-                        self.history_manager.delete_entry(entry.timestamp)
+                with DatabaseSignalBridge().signal_group(
+                    "transcription", ChangeAction.DELETED
+                ):
+                    for tid in transcript_ids:
+                        entry = self.history_manager.get_entry(tid)
+                        if entry:
+                            self.history_manager.delete_entry(entry.timestamp)
 
                 # Note: UI updates via DatabaseSignalBridge
                 logger.info(f"Deleted {len(transcript_ids)} transcripts")
@@ -707,6 +713,7 @@ class MainWindow(QMainWindow):
         import os
         import subprocess
         import sys
+        import time
 
         try:
             project_root = ResourceManager.get_app_root()
@@ -717,6 +724,11 @@ class MainWindow(QMainWindow):
 
             if os.path.exists(vociferous_script):
                 logger.info(f"Restarting via entry point: {vociferous_script}")
+                # Close the current application first, allow shutdown to complete
+                self.close()
+                # Small delay to ensure old instance releases lock
+                time.sleep(0.5)
+                # Now spawn the new instance
                 subprocess.Popen(
                     [sys.executable, vociferous_script],
                     start_new_session=True,
@@ -725,13 +737,12 @@ class MainWindow(QMainWindow):
                 # Fallback: launch src/main.py directly
                 main_script = os.path.join(project_root, "src", "main.py")
                 logger.warning(f"Entry point not found, falling back to: {main_script}")
+                self.close()
+                time.sleep(0.5)
                 subprocess.Popen(
                     [sys.executable, main_script],
                     start_new_session=True,
                 )
-
-            # Close the current application
-            self.close()
         except Exception as e:
             logger.exception("Failed to restart application")
             show_error_dialog(

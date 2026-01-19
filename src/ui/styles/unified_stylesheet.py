@@ -150,9 +150,9 @@ QPushButton {{
 }}
 
 QPushButton[styleClass="primaryButton"] {{
-    background-color: {c.BLUE_4};
-    color: {c.GRAY_0};
-    border: none;
+    background-color: transparent;
+    color: {c.BLUE_4};
+    border: 1px solid {c.BLUE_4};
     border-radius: {BORDER_RADIUS_LG}px;
     font-size: 16px;
     font-weight: {Typography.FONT_WEIGHT_EMPHASIS};
@@ -162,7 +162,8 @@ QPushButton[styleClass="primaryButton"] {{
 }}
 
 QPushButton[styleClass="primaryButton"]:hover {{
-    background-color: {c.BLUE_3};
+    background-color: {c.BLUE_9};
+    color: {c.GRAY_0};
 }}
 
 QPushButton[styleClass="primaryButton"]:pressed {{
@@ -170,12 +171,13 @@ QPushButton[styleClass="primaryButton"]:pressed {{
 }}
 
 QPushButton[styleClass="primaryButton"]:focus {{
-    background-color: {c.BLUE_3};
+    border-color: {c.BLUE_3};
 }}
 
 QPushButton[styleClass="primaryButton"]:disabled {{
-    background-color: {c.GRAY_7};
-    color: {c.GRAY_4};
+    background-color: transparent;
+    color: {c.GRAY_7};
+    border: 1px solid {c.GRAY_7};
 }}
 
 QPushButton[styleClass="secondaryButton"] {{
@@ -461,14 +463,18 @@ QPushButton#errorDialogViewLogs:hover {{
    ================================================================= */
 
 QWidget#titleBar {{
-    background-color: {c.SHELL_BACKGROUND};
-    border-bottom: 1px solid {c.BLUE_3};
+    background-color: {c.GRAY_8};
+    border-bottom: 1px solid {c.GRAY_6};
 }}
 
 QLabel#titleBarLabel {{
-    color: {c.GRAY_0};
+    color: {c.BLUE_4};
     font-size: {Typography.TITLE_BAR_SIZE}px;
     font-weight: 600;
+}}
+
+QLabel#titleBarIcon {{
+    margin-right: 8px;
 }}
 
 QToolButton#titleBarControl {{
@@ -582,7 +588,13 @@ ActionDock QPushButton:pressed {{
     background-color: {c.BLUE_6};
 }}
 
-ActionDock QPushButton#btn_START_RECORDING {{
+ActionDock QPushButton[styleClass="primaryButton"] {{
+    color: {c.BLUE_4};
+    border-color: {c.BLUE_4};
+}}
+
+ActionDock QPushButton[styleClass="primaryButton"]:hover {{
+    background-color: {c.BLUE_9};
     color: {c.GRAY_0};
 }}
 

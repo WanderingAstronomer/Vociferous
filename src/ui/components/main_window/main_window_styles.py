@@ -54,16 +54,17 @@ ABOUT_DIALOG_STYLE = f"""
     }}
     
     QPushButton#primaryButton {{
-        background-color: {c.BLUE_4};
-        color: {c.GRAY_0};
-        border: none;
+        background-color: transparent;
+        color: {c.BLUE_4};
+        border: 1px solid {c.BLUE_4};
         border-radius: {BORDER_RADIUS_SM}px;
         padding: {Spacing.BUTTON_PAD_V}px {Spacing.BUTTON_PAD_H}px;
         font-size: {Typography.FONT_SIZE_BODY}px;
         font-weight: {Typography.FONT_WEIGHT_MEDIUM};
     }}
     QPushButton#primaryButton:hover {{
-        background-color: {c.BLUE_3};
+        background-color: {c.BLUE_9};
+        color: {c.GRAY_0};
     }}
     QPushButton#primaryButton:pressed {{
         background-color: {c.BLUE_7};

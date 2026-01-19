@@ -611,16 +611,29 @@ class ProjectTreeWidget(QTreeWidget):
     def _remove_items_from_project(self, items: list[QTreeWidgetItem]) -> None:
         """Remove multiple transcripts from their current Projects."""
         try:
-            if self._history_manager:
-                for item in items:
-                    timestamp = item.data(0, ROLE_TIMESTAMP_ISO)
-                    if timestamp:
-                        self._history_manager.assign_transcript_to_project(
-                            timestamp, None
-                        )
-                QTimer.singleShot(0, self.load_projects)
-                # Notify assignment changed (moved to unassigned)
-                self.entry_assignment_changed.emit()
+            if not self._history_manager:
+                return
+
+            # Collect timestamps first to avoid issues with model/tree resets
+            timestamps = [item.data(0, ROLE_TIMESTAMP_ISO) for item in items]
+            timestamps = [ts for ts in timestamps if ts]
+
+            if not timestamps:
+                return
+
+            from src.database.signal_bridge import DatabaseSignalBridge
+            from src.database.events import ChangeAction
+
+            with DatabaseSignalBridge().signal_group(
+                "transcription", ChangeAction.UPDATED
+            ):
+                for ts in timestamps:
+                    self._history_manager.assign_transcript_to_project(ts, None)
+
+            # Traditional refresh as fallback/backup
+            QTimer.singleShot(0, self.load_projects)
+            # Notify assignment changed (moved to unassigned)
+            self.entry_assignment_changed.emit()
         except Exception:
             logger.exception("Error removing items from project")
 
@@ -643,6 +656,9 @@ class ProjectTreeWidget(QTreeWidget):
     def _delete_transcripts(self, items: list[QTreeWidgetItem]) -> None:
         """Delete multiple transcripts from history."""
         try:
+            if not self._history_manager:
+                return
+
             count = len(items)
             title = "Delete Transcript" if count == 1 else f"Delete {count} Transcripts"
             message = (
@@ -660,14 +676,25 @@ class ProjectTreeWidget(QTreeWidget):
             )
 
             if dialog.exec():
-                if self._history_manager:
-                    for item in items:
-                        timestamp = item.data(0, ROLE_TIMESTAMP_ISO)
-                        if timestamp:
-                            self._history_manager.delete_entry(timestamp)
-                    QTimer.singleShot(0, self.load_projects)
-                    # Notify deletions
-                    self.entry_assignment_changed.emit()
+                # Collect timestamps first to avoid issues with model/tree resets
+                timestamps = [item.data(0, ROLE_TIMESTAMP_ISO) for item in items]
+                timestamps = [ts for ts in timestamps if ts]
+
+                if not timestamps:
+                    return
+
+                from src.database.signal_bridge import DatabaseSignalBridge
+                from src.database.events import ChangeAction
+
+                with DatabaseSignalBridge().signal_group(
+                    "transcription", ChangeAction.DELETED
+                ):
+                    for ts in timestamps:
+                        self._history_manager.delete_entry(ts)
+
+                QTimer.singleShot(0, self.load_projects)
+                # Notify deletions
+                self.entry_assignment_changed.emit()
         except Exception:
             logger.exception("Error deleting transcripts")
 

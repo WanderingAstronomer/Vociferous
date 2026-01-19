@@ -32,7 +32,7 @@ from src.ui.widgets.hotkey_widget import HotkeyWidget
 from src.ui.widgets.slider_field import SliderField
 from src.ui.widgets.toggle_switch import ToggleSwitch
 from src.ui.widgets.dialogs import ConfirmationDialog, show_error_dialog
-from src.ui.views.settings_view_styles import get_settings_view_stylesheet
+from src.ui.styles.settings_view_styles import get_settings_view_stylesheet
 from src.core.config_manager import ConfigManager
 from src.core.model_registry import ASR_MODELS
 from src.services.slm_service import SLMState, SLMService
@@ -250,24 +250,24 @@ class SettingsView(BaseView):
             Spacing.MAJOR_GAP,
             Spacing.MAJOR_GAP * 2,
         )
-        center_layout.setSpacing(Spacing.MAJOR_GAP * 3)
+        center_layout.setSpacing(Spacing.MAJOR_GAP * 2)
 
         # Settings sections
         self._populate_settings(center_layout)
 
         # Divider
-        center_layout.addSpacing(Spacing.MAJOR_GAP)
+        center_layout.addSpacing(Spacing.MAJOR_GAP * 2)
         center_layout.addWidget(self._create_divider())
-        center_layout.addSpacing(Spacing.MINOR_GAP)
+        center_layout.addSpacing(Spacing.MAJOR_GAP * 2)
 
         # History Controls Section
         history_section = self._create_history_controls()
         center_layout.addWidget(history_section)
 
         # Divider
-        center_layout.addSpacing(Spacing.MINOR_GAP)
+        center_layout.addSpacing(Spacing.MAJOR_GAP * 2)
         center_layout.addWidget(self._create_divider())
-        center_layout.addSpacing(Spacing.MINOR_GAP)
+        center_layout.addSpacing(Spacing.MAJOR_GAP * 2)
 
         # Application Controls Section
         app_section = self._create_app_controls()
@@ -301,7 +301,7 @@ class SettingsView(BaseView):
         title.setObjectName("viewTitle")
         # Override to ensure it's largest and centered
         title.setStyleSheet(
-            f"font-size: {Typography.FONT_SIZE_XXL}px; font-weight: bold;"
+            f"font-size: {Typography.FONT_SIZE_XXL}px; font-weight: bold; color: {c.BLUE_4};"
         )
         layout.addWidget(title, 0, Qt.AlignmentFlag.AlignCenter)
 
@@ -368,9 +368,9 @@ class SettingsView(BaseView):
         model_content.addLayout(self._create_form_row("Language", lang_widget))
 
         layout.addWidget(model_card)
-        layout.addSpacing(Spacing.MAJOR_GAP)
+        layout.addSpacing(Spacing.MAJOR_GAP * 2)
         layout.addWidget(self._create_divider())
-        layout.addSpacing(Spacing.MAJOR_GAP)
+        layout.addSpacing(Spacing.MAJOR_GAP * 2)
 
         # Recording Section
         recording_card, recording_content = self._create_settings_card("Recording")
@@ -409,9 +409,9 @@ class SettingsView(BaseView):
         )
 
         layout.addWidget(recording_card)
-        layout.addSpacing(Spacing.MAJOR_GAP)
+        layout.addSpacing(Spacing.MAJOR_GAP * 2)
         layout.addWidget(self._create_divider())
-        layout.addSpacing(Spacing.MAJOR_GAP)
+        layout.addSpacing(Spacing.MAJOR_GAP * 2)
 
         # Visualization Section
         vis_card, vis_content = self._create_settings_card("Visualization")
@@ -429,9 +429,9 @@ class SettingsView(BaseView):
         vis_content.addLayout(self._create_form_row("Spectrum Type", visualizer_widget))
 
         layout.addWidget(vis_card)
-        layout.addSpacing(Spacing.MAJOR_GAP)
+        layout.addSpacing(Spacing.MAJOR_GAP * 2)
         layout.addWidget(self._create_divider())
-        layout.addSpacing(Spacing.MAJOR_GAP)
+        layout.addSpacing(Spacing.MAJOR_GAP * 2)
 
         # Output & Processing Section
         output_card, output_content = self._create_settings_card("Output & Processing")
@@ -484,25 +484,29 @@ class SettingsView(BaseView):
         self.widgets[("refinement", "model_id")] = model_select
         self._connect_validation_signals("refinement", "model_id", model_select)
 
-        # Status Label
-        self.refinement_status_label = QLabel("")
-        self.refinement_status_label.setStyleSheet(
-            f"color: {c.GRAY_3}; font-style: italic; margin-top: 4px;"
-        )
-        self.refinement_status_label.setWordWrap(True)
-
-        # Create model row with status underneath
-        model_container = QWidget()
-        model_layout = QVBoxLayout(model_container)
-        model_layout.setContentsMargins(0, 0, 0, 0)
-        model_layout.setSpacing(Spacing.MINOR_GAP // 2)
-        model_layout.addWidget(model_select)
-        model_layout.addWidget(self.refinement_status_label)
-
+        # Model selector row
         self._refinement_model_row = self._create_form_row(
-            "Refinement Model", model_container
+            "Refinement Model", model_select
         )
         output_content.addLayout(self._refinement_model_row)
+
+        # Status Label on its own row (placed in the left label column)
+        self.refinement_status_label = QLabel("")
+        self.refinement_status_label.setStyleSheet(
+            f"color: {c.BLUE_4}; font-style: italic;"
+        )
+        self.refinement_status_label.setWordWrap(True)
+        # Place status in a row that occupies the left label column area
+        status_row = QHBoxLayout()
+        status_row.setSpacing(Spacing.MINOR_GAP)
+        status_row.addStretch()
+        self.refinement_status_label.setMinimumWidth(200)
+        self.refinement_status_label.setAlignment(
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter
+        )
+        status_row.addWidget(self.refinement_status_label)
+        status_row.addStretch()
+        output_content.addLayout(status_row)
 
         # Store references for visibility control
         self._refinement_model_select = model_select
@@ -518,8 +522,8 @@ class SettingsView(BaseView):
         layout.addSpacing(Spacing.MAJOR_GAP)
 
     def _update_refinement_visibility(self, enabled: bool) -> None:
-        """Show or hide refinement model selector based on toggle."""
-        # Hide/show the entire form row
+        """Show or hide refinement model selector and status based on toggle."""
+        # Hide/show the model selector form row
         for i in range(self._refinement_model_row.count()):
             widget = self._refinement_model_row.itemAt(i).widget()
             if widget:
@@ -530,6 +534,9 @@ class SettingsView(BaseView):
                     sub_widget = layout.itemAt(j).widget()
                     if sub_widget:
                         sub_widget.setVisible(enabled)
+
+        # Hide/show the status label
+        self.refinement_status_label.setVisible(enabled)
 
     def update_refinement_state(self, state: SLMState) -> None:
         """Handle state updates from SLM Service."""
@@ -658,9 +665,17 @@ class SettingsView(BaseView):
         card.setObjectName("settingsCard")
         card.setFrameShape(QFrame.Shape.StyledPanel)
 
+        # Allow card to expand horizontally to fill available width
+        from PyQt6.QtWidgets import QSizePolicy
+
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+
         main_layout = QVBoxLayout(card)
         main_layout.setContentsMargins(
-            Spacing.MAJOR_GAP, Spacing.MAJOR_GAP, Spacing.MAJOR_GAP, Spacing.MAJOR_GAP
+            Spacing.MAJOR_GAP * 2,
+            Spacing.MAJOR_GAP,
+            Spacing.MAJOR_GAP * 2,
+            Spacing.MAJOR_GAP,
         )
         main_layout.setSpacing(Spacing.MAJOR_GAP)
 
@@ -696,25 +711,32 @@ class SettingsView(BaseView):
         row = QHBoxLayout()
         row.setSpacing(Spacing.MAJOR_GAP)
 
-        # Label (fixed width for alignment)
+        # Label (minimum width for alignment, allows text to render fully)
         label = QLabel(label_text)
-        label.setFixedWidth(160)
+        label.setMinimumWidth(200)
         label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(label)
 
-        # Widget container (to support help text)
-        widget_container = QVBoxLayout()
-        widget_container.setSpacing(Spacing.MINOR_GAP // 2)
-        widget_container.addWidget(widget)
-
+        # Widget container (supports help text to the right)
         if help_text:
+            # Horizontal layout: control | help text
+            widget_container = QHBoxLayout()
+            widget_container.setSpacing(Spacing.MAJOR_GAP)
+            widget_container.addWidget(widget)
+
             help_label = QLabel(help_text)
             help_label.setStyleSheet(
                 f"color: {c.TEXT_SECONDARY}; font-size: {Typography.FONT_SIZE_SM}px; "
                 f"font-style: italic;"
             )
             help_label.setWordWrap(True)
+            help_label.setMaximumWidth(500)  # Limit width for readability
             widget_container.addWidget(help_label)
+        else:
+            # Vertical layout: just the control
+            widget_container = QVBoxLayout()
+            widget_container.setSpacing(Spacing.MINOR_GAP // 2)
+            widget_container.addWidget(widget)
 
         row.addLayout(widget_container)
         row.addStretch()

@@ -1,6 +1,9 @@
 # Vociferous - Simple Speech-to-Text Dictation
 # Python 3.12+ compatible dependencies
 
+# UI Framework (Required)
+PyQt6>=6.7.0
+
 # Speech Recognition & Audio Processing
 faster-whisper>=1.2.0
 ctranslate2>=4.6.2

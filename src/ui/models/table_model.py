@@ -36,6 +36,7 @@ class TranscriptionTableModel(QAbstractTableModel):
     IdRole = Qt.ItemDataRole.UserRole + 7
     FullTextRole = Qt.ItemDataRole.UserRole + 4
     TimestampRole = Qt.ItemDataRole.UserRole + 3
+    ProjectIDRole = Qt.ItemDataRole.UserRole + 5
 
     def __init__(self, history_manager: HistoryManager, parent=None):
         super().__init__(parent)
@@ -127,6 +128,8 @@ class TranscriptionTableModel(QAbstractTableModel):
             return entry.text
         elif role == self.TimestampRole:
             return entry.timestamp
+        elif role == self.ProjectIDRole:
+            return entry.project_id
 
         return None
 

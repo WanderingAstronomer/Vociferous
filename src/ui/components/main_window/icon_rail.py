@@ -16,7 +16,7 @@ from typing import Final, TYPE_CHECKING
 if TYPE_CHECKING:
     pass
 
-from PyQt6.QtCore import pyqtSignal, Qt, QTimer, QSize
+from PyQt6.QtCore import pyqtSignal, Qt, QTimer, QSize, pyqtSlot
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QWidget,
@@ -169,6 +169,9 @@ class IconRail(QWidget):
         self._button_group.setExclusive(True)
         self._button_group.buttonClicked.connect(self._on_button_clicked)
 
+        # Store reference to user button for dynamic updates
+        self._user_btn: RailButton | None = None
+
         # Build Inventory (Strictly Icons)
         self._build_inventory()
 
@@ -176,6 +179,9 @@ class IconRail(QWidget):
 
         # Bottom Inventory (Global Affordances)
         self._build_footer()
+
+        # Connect to config changes for name personalization
+        ConfigManager.instance().config_changed.connect(self._on_config_changed)
 
     def _build_inventory(self) -> None:
         """Construct the rail buttons based on canonical view list."""
@@ -213,9 +219,9 @@ class IconRail(QWidget):
             user_label = user_name.strip()
         else:
             user_label = "User"
-        user_btn = RailButton(VIEW_USER, "rail_icon-profile_view", user_label)
-        self._layout.addWidget(user_btn)
-        self._button_group.addButton(user_btn)
+        self._user_btn = RailButton(VIEW_USER, "rail_icon-profile_view", user_label)
+        self._layout.addWidget(self._user_btn)
+        self._button_group.addButton(self._user_btn)
 
         # Settings
         settings_btn = RailButton(VIEW_SETTINGS, "rail_icon-settings_view", "Settings")
@@ -278,3 +284,15 @@ class IconRail(QWidget):
                 source=IntentSource.ICON_RAIL, target_view_id=button.view_id
             )
             self.intent_emitted.emit(intent)
+
+    @pyqtSlot(str, str, object)
+    def _on_config_changed(self, section: str, key: str, value: object) -> None:
+        """Handle config changes, specifically user name updates."""
+        if section == "user" and key == "name" and self._user_btn:
+            # Update the user button label with the new name
+            user_name = str(value) if value else ""
+            if user_name and user_name.strip():
+                new_label = user_name.strip()
+            else:
+                new_label = "User"
+            self._user_btn.setText(new_label)

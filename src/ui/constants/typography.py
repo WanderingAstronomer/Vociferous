@@ -42,7 +42,7 @@ class Typography:
     BODY_SIZE = FONT_SIZE_BASE  # 16px - main content
     SMALL_SIZE = FONT_SIZE_SM  # 13px - secondary info
     GREETING_SIZE = FONT_SIZE_LG  # 24px - welcome text
-    TITLE_BAR_SIZE = FONT_SIZE_SM  # 13px - compact title bar text
+    TITLE_BAR_SIZE = FONT_SIZE_BASE  # 13px - compact title bar text
     SECTION_HEADER_SIZE = FONT_SIZE_LG  # 24px - "History", "Projects"
     DAY_HEADER_SIZE = FONT_SIZE_XS  # 11px - "Today", "Yesterday"
     TRANSCRIPT_ITEM_SIZE = FONT_SIZE_SM  # 13px - transcript previews

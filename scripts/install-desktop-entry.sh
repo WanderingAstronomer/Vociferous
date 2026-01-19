@@ -7,57 +7,59 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# Resolve absolute path for desktop entry (required for portable installs)
+ABS_VOCIFEROUS_PATH="$(cd "$PROJECT_DIR" && pwd)/vociferous"
+
 # XDG paths
 APPLICATIONS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 ICONS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
 
 echo "Installing Vociferous desktop entry..."
+echo "  Application path: $ABS_VOCIFEROUS_PATH"
 
 # Create directories if they don't exist
 mkdir -p "$APPLICATIONS_DIR"
-mkdir -p "$ICONS_DIR/512x512/apps"
-mkdir -p "$ICONS_DIR/192x192/apps"
+mkdir -p "$ICONS_DIR/scalable/apps"
 mkdir -p "$ICONS_DIR/48x48/apps"
 
-# Copy icons
-if [ -f "$PROJECT_DIR/assets/icons/512x512.png" ]; then
-    cp "$PROJECT_DIR/assets/icons/512x512.png" "$ICONS_DIR/512x512/apps/vociferous.png"
-    echo "  ✓ Installed 512x512 icon"
+# Copy the system tray icon (which we have)
+if [ -f "$PROJECT_DIR/assets/icons/system_tray_icon.png" ]; then
+    cp "$PROJECT_DIR/assets/icons/system_tray_icon.png" "$ICONS_DIR/48x48/apps/vociferous.png"
+    echo "  ✓ Installed 48x48 icon"
+else
+    echo "  ⚠ Warning: system_tray_icon.png not found (optional)"
 fi
 
-if [ -f "$PROJECT_DIR/assets/icons/192x192.png" ]; then
-    cp "$PROJECT_DIR/assets/icons/192x192.png" "$ICONS_DIR/192x192/apps/vociferous.png"
-    echo "  ✓ Installed 192x192 icon"
-fi
-
-# Create 48x48 from 192x192 if ImageMagick is available
-if command -v convert &> /dev/null && [ -f "$PROJECT_DIR/assets/icons/192x192.png" ]; then
-    convert "$PROJECT_DIR/assets/icons/192x192.png" -resize 48x48 "$ICONS_DIR/48x48/apps/vociferous.png"
-    echo "  ✓ Created 48x48 icon"
-elif [ -f "$PROJECT_DIR/assets/icons/192x192.png" ]; then
-    cp "$PROJECT_DIR/assets/icons/192x192.png" "$ICONS_DIR/48x48/apps/vociferous.png"
-    echo "  ✓ Installed 48x48 icon (from 192x192)"
-fi
-
-# Create desktop entry
+# Create desktop entry with absolute path
 cat > "$APPLICATIONS_DIR/vociferous.desktop" << EOF
 [Desktop Entry]
+Version=1.0
 Type=Application
 Name=Vociferous
 Comment=Speech-to-text dictation using Whisper
-Exec=$PROJECT_DIR/vociferous
+Exec=$ABS_VOCIFEROUS_PATH
 Icon=vociferous
 Terminal=false
 Categories=AudioVideo;Audio;Utility;
 Keywords=speech;dictation;transcription;whisper;voice;
 StartupNotify=true
 StartupWMClass=vociferous
+X-AppStream-Ignore=false
 EOF
 
 echo "  ✓ Created desktop entry"
 
 # Make desktop entry executable (required by some DEs)
 chmod +x "$APPLICATIONS_DIR/vociferous.desktop"
+
+# Validate desktop entry
+if command -v desktop-file-validate &> /dev/null; then
+    if desktop-file-validate "$APPLICATIONS_DIR/vociferous.desktop" 2>/dev/null; then
+        echo "  ✓ Desktop entry is valid"
+    else
+        echo "  ⚠ Warning: Desktop entry validation found issues (may still work)"
+    fi
+fi
 
 # Update icon cache if possible
 if command -v gtk-update-icon-cache &> /dev/null; then
@@ -75,6 +77,11 @@ echo ""
 echo "Installation complete!"
 echo ""
 echo "Vociferous should now appear in your application launcher."
-echo "If it doesn't appear immediately, try logging out and back in."
+echo "If it doesn't appear immediately:"
+echo "  - Try logging out and back in"
+echo "  - Run: killall -9 plasmashell  (for KDE Plasma)"
+echo ""
+echo "To verify the installation:"
+echo "  grep Exec $APPLICATIONS_DIR/vociferous.desktop"
 echo ""
 echo "To uninstall, run: ./scripts/uninstall-desktop-entry.sh"

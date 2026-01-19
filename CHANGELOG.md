@@ -2,23 +2,221 @@
 
 ## [Unreleased]
 
-### Added
+---
+
+# v2.9.5 - Test Suite Organization & Path Resolution
+
+**Date:** January 19, 2026
+**Status:** Maintenance Release
+
+---
+
+## Summary
+
+This release restructures the test suite into logical categories and improves path resolution across nested test directories for better maintainability and discoverability.
+
+## Changed
+- **Test Directory Reorganization**: Restructured 493 tests into 8 logical categories for improved organization and discoverability:
+  - `tests/unit/` — Fast, isolated component tests (database, config, services, input, utils)
+  - `tests/ui/` — All UI layer tests (components, views, intents, layout, accessibility, styling)
+  - `tests/integration/` — Component interaction tests (ui, services, application, command)
+  - `tests/contracts/` — Architecture & invariant validation tests
+  - `tests/features/` — Feature-specific end-to-end tests
+  - `tests/code_quality/` — Static analysis and code quality checks
+  - `tests/platform/` — Platform-specific compatibility tests
+  - `tests/core/` and `tests/core_runtime/` — Low-level runtime tests (existing well-organized structure preserved)
+  - Added `PROJECT_ROOT` and `SRC_DIR` constants to `tests/conftest.py` for robust path resolution across nested test directories
+  - Updated 8 test files to use conftest path constants instead of relative path calculations
+
+---
+
+# v2.9.4 - Style Architecture & Installation Modernization
+
+**Date:** January 18, 2026
+**Status:** Maintenance Release
+
+---
+
+## Summary
+
+This release enforces proper architectural separation for style modules and modernizes installation scripts to align with current project structure and Python 3.12+ requirements.
+
+## Changed
+- **Style Module Organization**: Migrated `settings_view_styles.py` and `user_view_styles.py` from `src/ui/views/` to `src/ui/styles/` for proper architectural separation and consistency with the unified stylesheet pattern.
+- **Installation Scripts Modernization**: Updated all installation and desktop entry scripts to align with current project architecture, enforce Python 3.12+ requirement, properly resolve paths for portable installs, and use actual available assets.
+- **requirements.txt Completeness**: Added missing critical dependency `PyQt6>=6.7.0` to requirements.txt and reorganized for clarity.
+
+## Removed
+- **Excess Provisioning Tests**: Removed `test_slm_provisioner.py` which tested removed `scripts/setup_refinement.py` setup script (excess engineering with no project integration).
+
+---
+
+# v2.9.3 - Refinement View UX Enhancement
+
+**Date:** January 17, 2026
+**Status:** Feature Enhancement
+
+---
+
+## Summary
+
+This release replaces the old refinement strength slider with a professional card-based interface and enhances custom instruction input with improved visual hierarchy.
+
+## Added
+- **Refinement Strength Card**: Replaced the old "Minimal...Overkill" slider with a professional, card-based `StrengthSelector` widget in the Refinement View footer.
+- **Enhanced Custom Instructions**: The custom instructions input now resides in its own card with a `BLUE_4` focus border and subtle placeholder styling.
+
+---
+
+# v2.9.2 - Speech Quality Metrics Expansion
+
+**Date:** January 16, 2026
+**Status:** Feature Enhancement
+
+---
+
+## Summary
+
+This release adds comprehensive speech quality metrics to the User View, including vocabulary analysis, pause detection, and filler word tracking with detailed calculation explanations.
+
+## Added
+- **Title Bar Icon**: Added the system tray icon to the top left corner of the main window title bar, sized to match the title label font size (16px).
 - **Speech Quality Metrics**: Added three new metric cards to the User View: Vocabulary (lexical complexity), Avg. Pauses (silence detection), and Filler Words (um, uh, like, you know tracking).
 - **Total Silence Metric**: Added a new "Total Silence" metric card to the Usage & Activity section showing accumulated pauses across all transcriptions.
 - **Speech Quality Calculation Details**: Added comprehensive explanations in the User View's "Calculation Details" section describing how Vocabulary, Average Pauses, Total Silence, and Filler Words metrics are calculated.
+
+---
+
+# v2.9.1 - Self-Healing SLM & Multi-Model Support
+
+**Date:** January 15, 2026
+**Status:** Feature Enhancement
+
+---
+
+## Summary
+
+This release introduces automatic dependency management for the SLM runtime and expands Whisper model support with a unified registry system.
+
+## Added
 - **Self-Healing SLM Runtime**: The `SLMService` now automatically detects and installs missing conversion dependencies (`transformers`, `torch`, `ctranslate2`) in the background if they are absent during model provisioning.
 - **Multi-Model Support**: Unified Whisper model registry in `src/core/model_registry.py` with support for `large-v3-turbo`.
+
+---
+
+# v2.9.0 - Hot-Swappable Whisper Engine
+
+**Date:** January 14, 2026
+**Status:** Major Feature Release
+
+---
+
+## Summary
+
+This major release implements real-time model switching without application restarts, complete with VRAM indicators and transparent download progress overlays.
+
+## Added
 - **Hot-Swappable Engine**: Implemented `UPDATE_CONFIG` protocol for real-time model switching without application restarts.
 - **VRAM Indicators**: Added VRAM requirement metadata to model selection UI in Settings.
 - **Download Transparency**: Integrated a "Loading Model" status bridge that shows a blocking UI overlay during model downloads/initialization.
 
-### Changed
+---
+
+# v2.8.5 - Button Visual Language Consolidation
+
+**Date:** January 13, 2026
+**Status:** UI Polish Release
+
+---
+
+## Summary
+
+This release standardizes primary button styling across the application with a transparent visual pattern, aligning with existing destructive and purple button styles.
+
+## Changed
+- **Button Visual Language Consolidation**: Redefined the `primaryButton` style class to use an unfilled (transparent) visual pattern. Primary actions (Edit, Save, Start Recording, Apply, Change) now consistently feature a `BLUE_4` border and matching text color on a transparent background, aligning with the existing `destructiveButton` and `purpleButton` pattern. Hover states transition to a subtle `BLUE_9` background with white text for clear interaction feedback.
+- **Refinement View UI Polish**: Centered all footer section titles and lightened the text color using `GRAY_3` for a cleaner, modern look. Removed nested borders for better visual flow.
+
+---
+
+# v2.8.4 - Test Infrastructure Consolidation
+
+**Date:** January 12, 2026
+**Status:** DevEx Enhancement
+
+---
+
+## Summary
+
+This release decommissions ad-hoc verification scripts in favor of centralized testing through the pytest suite, improving code quality and maintainability.
+
+## Changed
+- **Test Infrastructure Consolidation**: Decommissioned 10+ ad-hoc verification scripts from `scripts/` (e.g., `verify_ui_colors.py`, `verify_ui_runtime.py`) and internalized their logic into the `pytest` suite.
+
+---
+
+# v2.8.3 - Settings View Layout Standardization
+
+**Date:** January 11, 2026
+**Status:** UI Architecture Release
+
+---
+
+## Summary
+
+This release completely restructures the Settings view with a unified card-based layout and consistent form-style grammar across all sections for improved visual cohesion.
+
+## Changed
 - **Settings View Layout Standardization**: Completely restructured the Settings view to use a unified card-based layout with consistent form-style row grammar (label next to control) across all sections. All settings sections now use `QFrame#settingsCard` containers with proper borders, backgrounds, and padding for visual cohesion.
+
+---
+
+# v2.8.2 - Settings View Responsive Design
+
+**Date:** January 10, 2026
+**Status:** UX Enhancement
+
+---
+
+## Summary
+
+This release improves Settings view adaptability with flexible width constraints and natural content anchoring for better reading flow across different screen sizes.
+
+## Changed
 - **Settings View Responsiveness**: Replaced fixed 900px width with min/max constraints (800px-1200px) for better adaptation to different screen sizes.
 - **Settings View Content Anchoring**: Removed top vertical stretch to anchor settings content to the top of the scroll area, providing a more natural reading flow.
+
+---
+
+# v2.8.1 - Input Field Styling Enhancement
+
+**Date:** January 9, 2026
+**Status:** UI Polish Release
+
+---
+
+## Summary
+
+This release adds consistent baseline styling to all input fields with refined focus/hover states for reduced visual noise and improved interaction feedback.
+
+## Changed
 - **Input Field Styling**: Added consistent baseline styles for all input fields (QLineEdit, QSpinBox, QDoubleSpinBox) with hover and focus states. Blue borders now appear only on focus/hover rather than being permanently visible, reducing visual noise.
 
-### Fixed
+---
+
+# v2.8.0 - Critical Bug Fix & Stability Release
+
+**Date:** January 8, 2026
+**Status:** Major Fix Release
+
+---
+
+## Summary
+
+This major bug fix release addresses numerous critical issues affecting system tray behavior, UI rendering, refinement engine stability, and settings persistence across the application.
+
+## Fixed
+- **UI Invariants Robustness**: Updated `test_color_constants.py` and `test_ui_invariants.py` to allow more flexible color naming and internalized the AST-based colors scan, preventing test failures caused by visual polish or script cleanup.
 - **QComboBox Popup Styling**: Fixed a long-standing issue where combo box popups displayed an ugly white background at the top and bottom. Set `combobox-popup: 0` to use stylized popups and normalized padding on the item view to ensure the background covers the entire popup area.
 - **System Tray Window Restoration**: Fixed system tray icon toggle behavior where clicking to hide and then restore the window would fail to show the window again. The system tray manager now uses explicit state tracking instead of relying on `isVisible()` to work around unreliable visibility reporting on some window managers (particularly Wayland).
 - **Missing Application Icon**: Set application-wide window icon using `QApplication.setWindowIcon()` to ensure proper icon display in taskbar/dock instead of showing as a generic gear cog placeholder.
@@ -40,24 +238,94 @@
 - **Main Window Background Color**: Fixed jet-black background issue by setting the central widget background color to match the main window color (GRAY_8). The background is now properly visible instead of appearing transparent/black.
 - **Delete Button in Transcribe View**: Fixed `AttributeError` when deleting a transcript from the Transcribe View's complete state. The delete handler now correctly calls `workspace.clear_transcript()` instead of the non-existent `workspace.clear()` method.
 
-### Changed
+---
+
+# v2.7.5 - User View Professional Enhancement
+
+**Date:** January 7, 2026
+**Status:** UI Polish Release
+
+---
+
+## Summary
+
+This release applies professional Qt UI engineering improvements to the User View with normalized spacing, enhanced icons, and refined visual hierarchy.
+
+## Changed
 - **User View Stylesheet**: Applied professional Qt UI engineering improvements including normalized spacing scale (20px/32px instead of 24px/40px), added min-height (96px) to metric cards for layout stability, improved button accessibility with vertical padding (6px 24px), removed unsupported CSS line-height property, and refined hover states to only emphasize borders for calmer visual feedback.
 - **User View Icons**: Updated all metric cards to use new appropriately named user_view-specific icons (time_saved, words_captured, transcriptions, time_recorded, avg_length, total_silence, vocabulary, pauses, filler_words) and doubled their size from 24x24 to 48x48 pixels for better visibility.
 - **User View Layout**: Repositioned the tagline "Solid efficiency gains from dictation over typing" to appear directly beneath the "Lifetime Statistics" header as a subheader for improved visual hierarchy.
 - **About Section**: Expanded the footer description to provide more comprehensive information about Vociferous's privacy-first architecture, local processing capabilities, and AI-powered features.
 - **Creator Attribution Styling**: Styled the "Created by Andrew Brown" text at the bottom of the User View with BLUE_3 color for improved visual prominence.
+
+---
+
+# v2.7.4 - Refinement View Layout Improvement
+
+**Date:** January 6, 2026
+**Status:** UX Enhancement
+
+---
+
+## Changed
 - **Refine View Layout**: Moved the "Refine" button from the view footer to the ActionDock with proper purple styling. Stacked the strength slider controls vertically with the hint text above the slider for better readability. The slider now spans the full width of its container.
+
+---
+
+# v2.7.3 - Refinement Engine & Script Cleanup
+
+**Date:** January 5, 2026
+**Status:** Feature Enhancement
+
+---
+
+## Summary
+
+This release introduces dynamic refinement scaling, improves workflow with draft mode, and purges redundant verification scripts in favor of centralized pytest execution.
+
+## Removed
+- **Redundant Scripts**: Purged ad-hoc verification scripts (`verify_*.py`, `ui_smoke.py`, `setup_refinement.py`) in favor of centralized execution authority via `pytest` and formal installation workflows.
+
+## Changed
 - **Dynamic Refinement Scaling**: Replaced the hardcoded generation limit with a sliding scale mechanism. The maximum allowed output now scales proportionally with the input length (providing ~50% headroom and a 150-token minimum buffer), capped at 16,384 tokens (~1 hour of speech). This ensures that long transcripts are not prematurely truncated while maintaining a safety ceiling for small inputs.
 - **Improved UI Responsiveness**: Refinement engine now calculates dynamic limits per-request, reducing GPU overhead for short snippets.
 - **Refinement Workflow**: Clicking "Refine" now navigates to the Refine view in "Draft" mode, allowing you to adjust instructions and profiles before manually triggering the generation with the "Refine" button. This prevents accidental immediate consumption of GPU resources.
+
+## Fixed
 - **Duplicate UI Entries**: Hardened `TranscriptionModel` with ID-based idempotency to prevent duplicate entries when receiving multiple change signals.
 - **Test Suite Hang**: Fixed a race condition in `test_restart_application_closes_window` by ensuring strict cleanup of `ConfigManager` and `SettingsView` between test runs.
 - **Test Infrastructure**: Resolved `ModuleNotFoundError` in `test_ui_scenarios.py` by correcting mock paths to `src.database.history_manager`.
 
-### Changed
+---
+
+# v2.7.2 - Transcription Flow Optimization
+
+**Date:** January 4, 2026
+**Status:** Performance Enhancement
+
+---
+
+## Summary
+
+This release optimizes the transcription result handoff between the engine and UI for immediate metric updates and improved responsiveness.
+
+## Changed
 - **Transcription Flow**: Optimized the handoff between the transcription engine and UI by passing the saved `HistoryEntry` directly to `MainWindow`, ensuring immediate metric updates.
 
-### Changed
+---
+
+# v2.7.1 - Refinement System Overhaul & UI Cleanup
+
+**Date:** January 3, 2026
+**Status:** Major Enhancement
+
+---
+
+## Summary
+
+This release completely re-engineers the refinement prompt architecture with a 4-layer enforcement model and removes tooltips across the entire UI for architectural purity.
+
+## Changed
 - **Tooltip Removal**: Universally removed all hover-over tooltip text pop-ups from the UI and deleted all related prohibition tests to reduce cognitive noise and maintain architectural purity.
 - **Refinement Architecture**: Re-engineered the prompt engine to use a 4-layer enforcement model (Global Invariants, Role definition, Permitted/Prohibited actions, and Primary Directive). This significantly improved instruction following and cognitive posture.
 - **Refinement Profiles**: Replaced flat strings with stratified Levels 0-4 (Literal, Structural, Neutral, Intent, and Overkill).
@@ -65,7 +333,7 @@
 - **Inference Optimization**: Optimized ChatML prompt structure to maintain high-quality results while using `/no_think` mode for fast (2s) local inference.
 - **ASR Model**: Updated default model configuration to large-v3-turbo for higher transcription accuracy (user-configurable via config.yaml).
 
-### Fixed
+## Fixed
 - **Engine Server Syntax**: Fixed a `SyntaxError` in `src/core_runtime/server.py` and implemented the missing `_ensure_model_loaded` method for thread-safe model loading.
 - **SLM Provisioning Errors**: Fixed startup error spam when refinement is enabled but model conversion dependencies (`transformers`, `torch`) are not installed. The SLM service now gracefully detects missing build-time dependencies and shows a clear warning directing users to run `scripts/setup_refinement.py` instead of throwing errors.
 - **Icon Rail Width Constant**: Corrected `RAIL_WIDTH` constant from 120 to 142 to match actual layout requirements (button width 110 + margins 32).
@@ -78,15 +346,24 @@
 - **Shutdown Idempotency**: Confirmed ApplicationCoordinator.cleanup() is already idempotent with early return guard.
 - **Engine Respawn**: Verified engine client does not respawn during intentional shutdown by checking running flag in connection loss handler.
 
-### Added
+## Added
 - **Unit Test**: Added test_refinement_status_message_handling to verify MainWindow calls IntentFeedbackHandler correctly.
 - **Shutdown Test**: Added test_engine_no_respawn_during_shutdown to assert no respawn loop during shutdown.
 
-### Changed
-- **Refinement UI**: Enhanced Settings View to provide real-time status feedback (Downloading, Ready, Error) and disable conflicting actions during model provisioning.
-- **Installation Documentation**: Restructured README.md to provide clear baseline install flow and separate "enable refinement" flow, with explicit dependency separation.
+---
 
-### Added
+# v2.7.0 - Architectural Milestone: Micro-Kernel & Plugin Ecosystem
+
+**Date:** January 2, 2026
+**Status:** Major Architecture Release
+
+---
+
+## Summary
+
+This major release introduces the micro-kernel architecture with isolated transcription engine process and implements a pluggable input backend system for extensibility.
+
+## Added
 - **Plugin Ecosystem (Epoch 3)**: Implemented pluggable input backend system:
   - Added `PluginLoader` (`src/core/plugins/loader.py`) for dynamic discovery of input backends via `vociferous.plugins.input` entry points
   - Refactored `KeyListener` to use `PluginLoader` for backend selection instead of hardcoded list
@@ -96,6 +373,25 @@
   - Created `EngineServer` to host Whisper model, preventing UI freezes and reducing main process memory footprint
   - Created `EngineClient` to manage subprocess lifecycle and communication
   - Integrated `TranscriptionRuntime` with `EngineClient` transparently
+
+## Changed
+- **Refinement UI**: Enhanced Settings View to provide real-time status feedback (Downloading, Ready, Error) and disable conflicting actions during model provisioning.
+- **Installation Documentation**: Restructured README.md to provide clear baseline install flow and separate "enable refinement" flow, with explicit dependency separation.
+
+---
+
+# v2.6.5 - TDD Phase 5: Code Quality Enforcement
+
+**Date:** December 30, 2025
+**Status:** Quality Enhancement
+
+---
+
+## Summary
+
+This release completes the TDD quality initiative with magic number extraction, docstring coverage enforcement, and color constant centralization.
+
+## Added
 - **Magic number extraction (Phase 5.3 TDD)**: Extracted hardcoded layout dimensions to `ui.constants.dimensions` per audit findings:
   - `ToggleSwitch`: Extracted width (50), height (24), radius (12), circle size (18), margin (3), duration (200ms)
   - `ContentPanel`: Extracted margins (32, 24) and spacing (12)
@@ -113,6 +409,21 @@
   - Created automated enforcement tests preventing hardcoded hex/rgba colors in production code
   - Addresses audit finding P3-06 (Hardcoded colors bypass centralized palette) from UI Architecture Audit Report
 - **Color constant test suite**: Created `test_color_constants.py` with 12 tests validating color constant coverage, completeness, and usage
+
+---
+
+# v2.6.4 - TDD Phase 4: Threading Pattern Migration
+
+**Date:** December 29, 2025
+**Status:** Architecture Fix
+
+---
+
+## Summary
+
+This release refactors background workers from the QThread subclass anti-pattern to the Qt6-recommended moveToThread pattern for proper resource management.
+
+## Added
 - **Threading pattern optimization (Phase 4 TDD)**: Refactored background workers from QThread subclass anti-pattern to Qt6-recommended moveToThread pattern:
   - `SetupWorker`: Converted from `QThread` subclass to `QObject` with `do_work()` slot (no longer overrides `run()`)
   - `SetupPage`: Implements moveToThread pattern with proper cleanup chain via `deleteLater()` on worker and thread
@@ -120,6 +431,21 @@
   - Thread cleanup automatically triggered via `thread.finished` signal
   - Addresses audit finding P1-05 (Critical: QThread subclass anti-pattern) from UI Architecture Audit Report
 - **Threading pattern test suite**: Created `test_threading_patterns.py` with 8 tests validating QObject pattern compliance, moveToThread safety, and resource cleanup
+
+---
+
+# v2.6.3 - TDD Phase 3: Accessibility Implementation
+
+**Date:** December 28, 2025
+**Status:** Accessibility Enhancement
+
+---
+
+## Summary
+
+This release implements comprehensive accessibility support for keyboard users and screen readers with proper focus states and ARIA labels.
+
+## Added
 - **Accessibility & keyboard navigation (Phase 3 TDD)**: Implemented comprehensive accessibility support for keyboard users and screen readers:
   - Added `:focus` pseudo-state styling for all button types (`primaryButton`, `secondaryButton`, `destructiveButton`, `purpleButton`) with 2px outline and offset
   - `RailButton`: Set `accessibleName` to "Navigate to {view}" and `accessibleDescription` for screen reader support
@@ -127,6 +453,21 @@
   - All interactive widgets now support keyboard focus and tab navigation
   - Addresses audit findings P2-03, P4-04, P4-05 from UI Architecture Audit Report
 - **Accessibility test suite**: Created comprehensive `test_accessibility.py` with 14 tests validating focus states, tab navigation, accessible names, and keyboard shortcuts
+
+---
+
+# v2.6.2 - TDD Phase 2: Widget Cleanup Protocol
+
+**Date:** December 27, 2025
+**Status:** Resource Management Enhancement
+
+---
+
+## Summary
+
+This release implements mandatory cleanup() methods for all stateful widgets to prevent resource leaks and ensure proper lifecycle management.
+
+## Added
 - **Widget cleanup protocol (Phase 2 TDD)**: Implemented `cleanup()` methods for all stateful widgets to prevent resource leaks:
   - `ToggleSwitch`: Stops QPropertyAnimation to prevent animation leaks
   - `RailButton`: Resets blink state (QTimer.singleShot auto-cleans, but consistency enforced)
@@ -138,17 +479,32 @@
   - `MainWindow.closeEvent()`: Now calls `_cleanup_children()` before window close
   - Addresses audit findings P1-03, P1-04, P2-01, P2-02, P2-05 from UI Architecture Audit Report
 - **Widget cleanup test suite**: Created comprehensive `test_widget_cleanup.py` with 21 tests validating cleanup protocol compliance, idempotency, and resource release
+
+---
+
+# v2.6.1 - TDD Phase 1: Widget Sizing & Comprehensive Fixes
+
+**Date:** December 26, 2025
+**Status:** Major Quality & Feature Release
+
+---
+
+## Summary
+
+This release kicks off the TDD initiative with widget sizing compliance and includes numerous critical fixes for refinement, resource resolution, and UI behavior across the application.
+
+## Added
 - **Widget sizing compliance (Phase 1 TDD)**: Implemented `sizeHint()` and `minimumSizeHint()` methods for 7 custom widgets per Qt6 layout best practices:
   - `BarSpectrumVisualizer`: Returns preferred size 200x100, minimum 100x50
   - `ToggleSwitch`: Returns fixed size 50x24 (matches setFixedSize)
   - `RailButton`: Returns square 110x110 dimensions
-  - `TranscriptPreviewOverlay`: Returns preferred 400x300, minimum 200x150
+  - `TranscriptPreviewOverlay`: Returns preferred 400x300, minimum 150x150
   - `HistoryTreeView`: Returns preferred 300x400, minimum 150x200
   - `BlockingOverlay`: Returns preferred 600x400, minimum 300x200
   - Addresses audit findings P1-01, P1-02, P2-04 from UI Architecture Audit Report
 - **Widget sizing test suite**: Created comprehensive `test_widget_sizing.py` with 29 tests validating sizeHint compliance across all custom widgets
 
-### Fixed
+## Fixed
 - **Authoritative Resource Resolution**: Unified asset resolution across production and testing environments using `ResourceManager`. Removed relative path traversal antipatterns (`Path(__file__).parents[...]`) in `TitleBar`, `Onboarding`, and Application Restart logic.
 - **Asset Verification Hardening**: Updated `scripts/verify_assets.py` to perform comprehensive, non-zero-exiting checks on all critical icons (IconRail, TitleBar), unified stylesheet integrity, and font/sound directories.
 - **Refinement model echoing**: Fixed an issue where 8B and 14B models (and some 4B variants) would echo the original transcript instead of refining it. Shifted default SLM model definitions to use Instruct variants instead of Base variants, added explicit stop token support to `RefinementEngine`, and improved `_parse_output` to strip accidentally echoed transcript markers.

@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import pyqtSignal, pyqtSlot
-from PyQt6.QtWidgets import QHBoxLayout, QFrame, QVBoxLayout
+from PyQt6.QtCore import pyqtSignal, pyqtSlot, Qt
+from PyQt6.QtWidgets import QHBoxLayout, QFrame, QVBoxLayout, QWidget, QLabel
 
 from src.database.signal_bridge import DatabaseSignalBridge
 from src.database.events import ChangeAction, EntityChange
@@ -17,6 +17,8 @@ from src.ui.contracts.capabilities import ActionId, Capabilities, SelectionState
 from src.ui.views.base_view import BaseView
 from src.ui.models import TranscriptionModel, ProjectProxyModel
 from src.ui.widgets.project.project_tree import ProjectTreeWidget
+import src.ui.constants.colors as c
+from src.ui.constants import Spacing, Typography
 
 if TYPE_CHECKING:
     from src.database.history_manager import HistoryManager
@@ -61,7 +63,17 @@ class ProjectsView(BaseView):
 
     def _setup_ui(self) -> None:
         """Initialize the layout."""
-        layout = QHBoxLayout(self)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Title Bar
+        title_bar = self._create_title_bar()
+        main_layout.addWidget(title_bar)
+
+        # Content Container
+        content_container = QWidget()
+        layout = QHBoxLayout(content_container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
@@ -69,8 +81,8 @@ class ProjectsView(BaseView):
         self._projects_container = QFrame()
         self._projects_container.setObjectName("projectsPane")
         projects_layout = QVBoxLayout(self._projects_container)
-        # Top margin matches icon rail (28px) for visual alignment
-        projects_layout.setContentsMargins(0, 28, 0, 0)
+        # No top margin needed - title bar provides spacing
+        projects_layout.setContentsMargins(0, 0, 0, 0)
 
         self.project_tree = ProjectTreeWidget()
         projects_layout.addWidget(self.project_tree)
@@ -88,6 +100,27 @@ class ProjectsView(BaseView):
         # Add to layout
         layout.addWidget(self._projects_container, 4)
         layout.addWidget(self._content_container, 6)
+
+        # Add content container to main layout
+        main_layout.addWidget(content_container, 1)
+
+    def _create_title_bar(self) -> QWidget:
+        """Create title bar with label."""
+        title_bar = QWidget()
+        title_bar.setObjectName("viewTitleBar")
+        title_bar.setFixedHeight(80)
+
+        layout = QHBoxLayout(title_bar)
+        layout.setContentsMargins(Spacing.MAJOR_GAP, 0, Spacing.MAJOR_GAP, 0)
+
+        title = QLabel("Projects")
+        title.setObjectName("viewTitle")
+        title.setStyleSheet(
+            f"font-size: {Typography.FONT_SIZE_XXL}px; font-weight: bold; color: {c.BLUE_4}; border: none;"
+        )
+        layout.addWidget(title, 0, Qt.AlignmentFlag.AlignCenter)
+
+        return title_bar
 
     def _connect_signals(self) -> None:
         """Connect internal signals."""

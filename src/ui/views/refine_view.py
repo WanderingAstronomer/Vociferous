@@ -12,19 +12,17 @@ from PyQt6.QtWidgets import (
     QWidget,
     QFrame,
     QPlainTextEdit,
-    QSlider,
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 
 import src.ui.constants.colors as c
 from src.ui.constants.view_ids import VIEW_REFINE
-from src.ui.constants import Spacing
+from src.ui.constants import Spacing, Typography
 from src.ui.views.base_view import BaseView
 from src.ui.contracts.capabilities import Capabilities, ActionId
 from src.ui.components.shared import ContentPanel
-
-
-from src.ui.views.refine_view_styles import get_refine_view_stylesheet
+from src.ui.widgets.strength_selector import StrengthSelector
+from src.ui.styles.refine_view_styles import get_refine_card_stylesheet
 
 
 class RefineView(BaseView):
@@ -49,7 +47,6 @@ class RefineView(BaseView):
         self._original_text = ""
         self._refined_text = ""
         self._is_loading = False
-        self._profiles = ["MINIMAL", "BALANCED", "STRONG", "OVERKILL"]
 
         self._setup_ui()
 
@@ -81,78 +78,63 @@ class RefineView(BaseView):
         )
         main_layout.addWidget(divider)
 
-        # --- Footer Area (Controls + Input) ---
+        # --- Footer Area (Two Cards Side-by-Side) ---
         footer_layout = QHBoxLayout()
         footer_layout.setContentsMargins(0, 0, 0, 0)
-        footer_layout.setSpacing(Spacing.S4)  # Gap between Input and Action Strip
+        footer_layout.setSpacing(Spacing.MAJOR_GAP)
 
-        # 1. User Prompt Input (Left/Center - Expanding)
+        # Left Card: Custom Instructions
+        instructions_card = self._create_card()
+        instructions_layout = QVBoxLayout(instructions_card)
+        instructions_layout.setContentsMargins(
+            Spacing.MAJOR_GAP, Spacing.MAJOR_GAP, Spacing.MAJOR_GAP, Spacing.MAJOR_GAP
+        )
+        instructions_layout.setSpacing(Spacing.MINOR_GAP)
+
+        # Label
+        lbl_instructions = QLabel("Custom Instructions")
+        lbl_instructions.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_instructions.setStyleSheet(
+            f"color: {c.GRAY_3}; font-size: {Typography.FONT_SIZE_MD}px; "
+            f"font-weight: bold; border: none; background: transparent; padding: 0px;"
+        )
+        instructions_layout.addWidget(lbl_instructions)
+
+        # Input
         self._user_prompt_input = QPlainTextEdit()
         self._user_prompt_input.setPlaceholderText(
             "Add specific instructions (e.g., 'Make it bullet points', 'Fix technical jargon')..."
         )
-        self._user_prompt_input.setMinimumHeight(80)
-        self._user_prompt_input.setMaximumHeight(120)
         self._user_prompt_input.setStyleSheet(
-            f"border: 1px solid {c.GRAY_6}; border-radius: 4px; padding: 6px; background: {c.GRAY_8}; margin: 0px;"
+            f"border: 1px solid {c.BLUE_4}; border-radius: 4px; "
+            f"padding: {Spacing.MINOR_GAP}px; background: {c.GRAY_8}; color: {c.GRAY_3};"
         )
-        footer_layout.addWidget(self._user_prompt_input, 1)
+        instructions_layout.addWidget(self._user_prompt_input, 1)
 
-        # 2. Refinement Action Strip (Right - Strength Slider Group)
-        action_strip = QWidget()
-        strip_layout = QVBoxLayout(action_strip)
-        strip_layout.setContentsMargins(0, 0, 0, 0)
-        strip_layout.setSpacing(4)
-        strip_layout.setAlignment(Qt.AlignmentFlag.AlignBottom)
+        footer_layout.addWidget(instructions_card, 2)
 
-        # Microcopy FIRST (top of the stack)
-        self._lbl_microcopy = QLabel("Controls how aggressively the text is rewritten")
-        self._lbl_microcopy.setStyleSheet(
-            f"color: {c.GRAY_5}; font-size: 10px; font-style: italic;"
+        # Right Card: Refinement Strength
+        strength_card = self._create_card()
+        strength_layout = QVBoxLayout(strength_card)
+        strength_layout.setContentsMargins(
+            Spacing.MAJOR_GAP, Spacing.MAJOR_GAP, Spacing.MAJOR_GAP, Spacing.MAJOR_GAP
         )
-        self._lbl_microcopy.setAlignment(Qt.AlignmentFlag.AlignRight)
-        strip_layout.addWidget(self._lbl_microcopy)
+        strength_layout.setSpacing(Spacing.MINOR_GAP)
 
-        # Strength Group (Label + Slider) - full width now
-        strength_container = QWidget()
-        strength_layout = QVBoxLayout(strength_container)
-        strength_layout.setContentsMargins(0, 0, 0, 0)
-        strength_layout.setSpacing(2)
-
-        # Label Row
-        lbl_layout = QHBoxLayout()
-        lbl_layout.setSpacing(4)
-        lbl_layout.addStretch()  # Center the labels
-
-        lbl_strength_title = QLabel("Strength:")
-        lbl_strength_title.setStyleSheet(f"color: {c.GRAY_5}; font-size: 10px;")
-
-        self._lbl_strength_value = QLabel("BALANCED")
-        self._lbl_strength_value.setStyleSheet(
-            f"color: {c.BLUE_3}; font-size: 10px; font-weight: bold;"
+        # Label
+        lbl_strength = QLabel("Refinement Strength")
+        lbl_strength.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_strength.setStyleSheet(
+            f"color: {c.GRAY_3}; font-size: {Typography.FONT_SIZE_MD}px; "
+            f"font-weight: bold; border: none; background: transparent; padding: 0px;"
         )
+        strength_layout.addWidget(lbl_strength)
 
-        lbl_layout.addWidget(lbl_strength_title)
-        lbl_layout.addWidget(self._lbl_strength_value)
-        lbl_layout.addStretch()
+        # Strength Selector Widget
+        self._strength_selector = StrengthSelector()
+        strength_layout.addWidget(self._strength_selector, 1)
 
-        strength_layout.addLayout(lbl_layout)
-
-        # Slider (Muted track color, accent thumb) - wider now
-        self.slider_strength = QSlider(Qt.Orientation.Horizontal)
-        self.slider_strength.setRange(0, 3)
-        self.slider_strength.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.slider_strength.setTickInterval(1)
-        self.slider_strength.setValue(1)
-        self.slider_strength.setMinimumWidth(180)  # Wider than before
-        self.slider_strength.valueChanged.connect(self._update_strength_label)
-        # Apply specific styling to subordinate visual dominance
-        self.slider_strength.setStyleSheet(get_refine_view_stylesheet())
-        strength_layout.addWidget(self.slider_strength)
-
-        strip_layout.addWidget(strength_container)
-
-        footer_layout.addWidget(action_strip)
+        footer_layout.addWidget(strength_card, 1)
 
         main_layout.addLayout(footer_layout)
 
@@ -168,32 +150,20 @@ class RefineView(BaseView):
         super().resizeEvent(event)
         self._lbl_loading.resize(self.size())
 
+    def _create_card(self) -> QFrame:
+        """Create a styled card container matching Settings/User view quality."""
+        card = QFrame()
+        card.setFrameShape(QFrame.Shape.NoFrame)
+        card.setStyleSheet(get_refine_card_stylesheet())
+        return card
+
     def _update_controls_state(self) -> None:
         """Update visual state of controls based on context."""
         has_transcript = self._current_transcript_id is not None
         can_interact = has_transcript and not self._is_loading
 
-        self.slider_strength.setEnabled(can_interact)
+        self._strength_selector.setEnabled(can_interact)
         self._user_prompt_input.setEnabled(can_interact)
-
-        # Microcopy visibility
-        self._lbl_microcopy.setVisible(can_interact)
-
-        # Visual styling for strength label
-        if can_interact:
-            # Wake up slider visual
-            self._lbl_strength_value.setStyleSheet(
-                f"color: {c.BLUE_3}; font-size: 10px; font-weight: bold;"
-            )
-        else:
-            # Mute slider visual
-            self._lbl_strength_value.setStyleSheet(
-                f"color: {c.GRAY_5}; font-size: 10px;"
-            )
-
-    def _update_strength_label(self, value: int) -> None:
-        if 0 <= value < len(self._profiles):
-            self._lbl_strength_value.setText(self._profiles[value])
 
     def set_loading(self, is_loading: bool) -> None:
         """Set loading state."""
@@ -318,11 +288,7 @@ class RefineView(BaseView):
         """Handle Refine button click from ActionDock."""
         if self._current_transcript_id is not None:
             user_instructions = self._user_prompt_input.toPlainText().strip()
-            # Map slider value to profile string
-            val = self.slider_strength.value()
-            profile = (
-                self._profiles[val] if 0 <= val < len(self._profiles) else "BALANCED"
-            )
+            profile = self._strength_selector.get_value()
 
             self.refinement_rerun_requested.emit(
                 self._current_transcript_id, profile, user_instructions

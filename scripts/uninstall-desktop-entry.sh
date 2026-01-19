@@ -17,23 +17,16 @@ else
     echo "  - Desktop entry not found (already removed?)"
 fi
 
-# Remove icons
+# Remove icons (check new and old locations for compatibility)
 removed_icons=0
 
-if [ -f "$ICONS_DIR/512x512/apps/vociferous.png" ]; then
-    rm "$ICONS_DIR/512x512/apps/vociferous.png"
-    ((removed_icons++))
-fi
-
-if [ -f "$ICONS_DIR/192x192/apps/vociferous.png" ]; then
-    rm "$ICONS_DIR/192x192/apps/vociferous.png"
-    ((removed_icons++))
-fi
-
-if [ -f "$ICONS_DIR/48x48/apps/vociferous.png" ]; then
-    rm "$ICONS_DIR/48x48/apps/vociferous.png"
-    ((removed_icons++))
-fi
+for icon_size in "48x48" "192x192" "512x512" "scalable"; do
+    icon_path="$ICONS_DIR/$icon_size/apps/vociferous.png"
+    if [ -f "$icon_path" ]; then
+        rm "$icon_path"
+        ((removed_icons++))
+    fi
+done
 
 if [ $removed_icons -gt 0 ]; then
     echo "  ✓ Removed $removed_icons icon(s)"

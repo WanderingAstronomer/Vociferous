@@ -37,7 +37,7 @@ from src.ui.constants import (
 )
 from src.core.resource_manager import ResourceManager
 from src.ui.contracts.capabilities import Capabilities, SelectionState, ActionId
-from src.ui.views.user_view_styles import get_user_view_stylesheet
+from src.ui.styles.user_view_styles import get_user_view_stylesheet
 
 if TYPE_CHECKING:
     from src.database.history_manager import HistoryManager
@@ -64,16 +64,28 @@ class UserView(BaseView):
             DatabaseSignalBridge().data_changed.disconnect(self._handle_data_changed)
         except (TypeError, RuntimeError):
             pass
+        try:
+            from src.core.config_manager import ConfigManager
+
+            ConfigManager.instance().config_changed.disconnect(self._on_config_changed)
+        except (TypeError, RuntimeError):
+            pass
         super().cleanup()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("UserView")
         self._history_manager: HistoryManager | None = None
+        self._title_label: QLabel | None = None
         self._setup_ui()
 
         # Apply view-specific stylesheet
         self.setStyleSheet(get_user_view_stylesheet())
+
+        # Connect to config changes for name personalization
+        from src.core.config_manager import ConfigManager
+
+        ConfigManager.instance().config_changed.connect(self._on_config_changed)
 
     def get_view_id(self) -> str:
         return VIEW_USER
@@ -103,6 +115,18 @@ class UserView(BaseView):
         """Handle incoming surgical updates from the database."""
         if change.entity_type == "transcription":
             self.refresh_metrics()
+
+    @pyqtSlot(str, str, object)
+    def _on_config_changed(self, section: str, key: str, value: object) -> None:
+        """Handle config changes, specifically user name updates."""
+        if section == "user" and key == "name" and self._title_label:
+            # Update the title bar with the new name
+            user_name = str(value) if value else ""
+            if user_name and user_name.strip():
+                new_title = f"{user_name.strip()}'s Vociferous Journey"
+            else:
+                new_title = "Your Vociferous Journey"
+            self._title_label.setText(new_title)
 
     def _generate_insight(
         self,
@@ -277,12 +301,12 @@ class UserView(BaseView):
         else:
             title_text = "Your Vociferous Journey"
 
-        title = QLabel(title_text)
-        title.setObjectName("viewTitle")
-        title.setStyleSheet(
+        self._title_label = QLabel(title_text)
+        self._title_label.setObjectName("viewTitle")
+        self._title_label.setStyleSheet(
             f"font-size: {Typography.FONT_SIZE_XXL}px; font-weight: bold; color: {c.BLUE_4}; border: none;"
         )
-        layout.addWidget(title, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._title_label, 0, Qt.AlignmentFlag.AlignCenter)
 
         return title_bar
 

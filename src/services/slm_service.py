@@ -775,6 +775,7 @@ class _MOTDWorker(QRunnable):
                 "Avoid overly dramatic language; subtle poetic elements and wordplay are encouraged.",
                 "Do not use emojis.",
                 "Do not produce slogans or marketing copy.",
+                "Respond with ONLY the message itself. No preamble, explanation, or additional text.",
             ]
 
             guidance = [

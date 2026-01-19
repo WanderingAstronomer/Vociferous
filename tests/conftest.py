@@ -34,9 +34,13 @@ from pathlib import Path
 
 import pytest
 
+# Project root - resolve from this conftest location (tests/conftest.py -> tests -> project root)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+
 # Add src to path
 # Use resolve() for determinism across working directories
-# sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+# sys.path.insert(0, str(SRC_DIR))
 
 
 def _get_vociferous_lock_path() -> str:
