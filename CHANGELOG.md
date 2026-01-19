@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Onboarding Startup Check**: Onboarding wizard now launches automatically when `user.onboarding_completed` is set to `false` in config. Previously, the startup logic was not checking this flag, so manually resetting it in the YAML had no effect. Now you can trigger onboarding by setting `onboarding_completed: false` and restarting the app.
+
 ### Added
 - **Personalization Features Restored**: User name now updates in real-time across UI components after onboarding completion:
   - UserView title bar now displays "[Name]'s Vociferous Journey" (e.g., "Andrew's Vociferous Journey")
@@ -19,6 +22,10 @@
   - Added `_on_config_changed()` slot to listen for user name changes and update button text dynamically
   - Connected `ConfigManager.instance().config_changed` signal in `__init__()`
   - Updated `_build_footer()` to store user button reference
+- **ApplicationCoordinator (`src/core/application_coordinator.py`)**:
+  - Added onboarding completion check in `start()` method
+  - Launches onboarding wizard if `user.onboarding_completed` is `false`
+  - Exits gracefully if user cancels onboarding
 
 ---
 
