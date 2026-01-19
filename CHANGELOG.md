@@ -4,10 +4,12 @@
 
 ### Added
 - **FlowLayout Class**: New responsive layout that wraps items to multiple lines based on available width, enabling proper display of dynamic content
+- **Voice Calibration in Settings**: Added Voice Calibration section to Settings View with "Run Calibration" button, allowing users to re-calibrate their voice profile at any time. Shows current calibration results (fundamental and mean frequency) when available.
 
 ### Fixed
 - **AI Refinement Model Selection Layout**: Model selection pills in onboarding now wrap to multiple lines instead of cramming all pills on one line, preventing text truncation and improving readability
 - **Onboarding Startup Check**: Onboarding wizard now launches automatically when `user.onboarding_completed` is set to `false` in config. Previously, the startup logic was not checking this flag, so manually resetting it in the YAML had no effect. Now you can trigger onboarding by setting `onboarding_completed: false` and restarting the app.
+- **Onboarding Completion Dialog**: Fixed bug where clicking "Finish" in onboarding would show an unexpected "Exit Setup?" confirmation dialog. The wizard now completes cleanly without interruption, properly saving the `onboarding_completed` flag to config.
 
 ### Changed
 - **RefinementPage Model Selection (`src/ui/components/onboarding/pages.py`)**:

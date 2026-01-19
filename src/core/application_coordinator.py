@@ -176,6 +176,9 @@ class ApplicationCoordinator(QObject):
         onboarding_completed = ConfigManager.get_config_value(
             "user", "onboarding_completed"
         )
+        logger.info(
+            f"Onboarding status check: onboarding_completed={onboarding_completed} (type: {type(onboarding_completed).__name__})"
+        )
         if not onboarding_completed:
             # Launch onboarding wizard if not completed
             logger.info("Onboarding not completed, launching wizard...")
