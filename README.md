@@ -1,486 +1,388 @@
+<div align="center">
+
 # Vociferous
 
-**Version 2.4.1** — Documentation Polish
+### Privacy-First Speech-to-Text for Linux
 
-Vociferous is a fast, local speech-to-text dictation application for Linux. It transcribes your voice using OpenAI's Whisper model (via faster-whisper) and copies the result directly to your clipboard. No cloud services, no account required—just press a hotkey, speak, and paste.
+*Your voice. Your machine. Your data.*
 
-[![Vociferous Main Window](docs/images/main_window.png)](docs/images/main_window.png)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PyQt6](https://img.shields.io/badge/GUI-PyQt6-green.svg)](https://www.riverbankcomputing.com/software/pyqt/)
+[![Whisper](https://img.shields.io/badge/ASR-OpenAI%20Whisper-orange.svg)](https://github.com/openai/whisper)
 
----
+<img src="docs/images/transcribe_view.png" width="700" alt="Vociferous Main Interface">
 
-## What Changed in v2.4.0
+[Features](#-features) • [Installation](#-installation) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [Architecture](#-architecture)
 
-This release introduces **Refinement Profiles** and **Dynamic VRAM Management**.
-
-- **Control Your Edit**: Choose between `Minimal` (grammar only), `Balanced` (cleanup), or `Strong` (flow) refinement.
-- **Smart Loading**: The system automatically detects your GPU's VRAM headroom and optimizes model loading for speed vs. stability.
-- **Improved Engine**: Upgraded backend to `Qwen3-4B-Instruct` for professional-grade copy editing.
-
----
-
-## Features
-
-### Core Transcription
-- Fast local transcription using faster-whisper (CTranslate2 backend)
-- **AI Grammar Refinement**: Single-click cleanup using local Instruct models (Qwen3-4B) with selectable profiles
-- GPU acceleration (NVIDIA CUDA) with automatic CPU fallback
-- Voice Activity Detection filters silence automatically
-- Clipboard-first workflow—no input injection or typing simulation
-
-### User Interface
-- Modern PyQt6 frameless window with dark theme
-- Collapsible sidebar with focus groups, recent transcripts, and search
-- Real-time waveform visualization during recording
-- Metrics showing recording time, words/minute, and time saved
-
-### History & Organization
-- Persistent history using **SQLAlchemy 2.0+**
-- Focus groups for organizing transcripts by topic
-- Editable transcriptions (original preserved, edits saved separately)
-- Export to TXT, CSV, or Markdown
-
-[![Recording State](docs/images/recording_state.png)](docs/images/recording_state.png)
+</div>
 
 ---
 
-## Technical Architecture
+## 🎯 What is Vociferous?
 
-### Stack
-- **Languages**: Python 3.12+
-- **GUI**: PyQt6 (Frameless custom design)
-- **AI**: darker-whisper (Transcription), Qwen-based SLM (Refinement)
-- **Data**: SQLAlchemy ORM (SQLite backend)
+**Vociferous** is a production-grade, local-first dictation system that transforms speech into text entirely on your machine. Built with architectural rigor and attention to user experience, it leverages **OpenAI's Whisper** for state-of-the-art transcription and offers optional **AI-powered refinement** to polish your text with grammar correction and formatting.
 
-### Design Patterns
-- **User Intents**: Interactions are decoupled via an Command/Intent pattern (`src/ui/interaction/`).
-- **Dual-Text Storage**: Originals are immutable; edits are mutable.
+Unlike cloud-based alternatives, Vociferous processes everything locally—**your voice never leaves your computer**. No subscriptions, no usage limits, no privacy compromises.
 
 ---
 
-## How It Works
+## ✨ Features
 
-Vociferous follows a simple, predictable interaction model:
+### Core Capabilities
 
-1. **You act** — Press a hotkey or click a button
-2. **The system validates** — Can this action happen right now?
-3. **State changes** — If valid, the workspace transitions (idle → recording → transcribing → viewing)
-4. **You see feedback** — Success is silent; problems are explained in the status bar
+- **🔒 Complete Privacy** — All transcription and refinement happens on-device using local models
+- **🎯 Whisper ASR** — OpenAI's state-of-the-art speech recognition via [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+- **✨ AI Refinement** — Optional SLM-powered text improvement (grammar, punctuation, formatting)
+- **🐧 Native Linux Support** — First-class Wayland integration with global hotkey support
+- **📚 Persistent History** — SQLite-backed transcript storage with full-text search and organization
+- **⚡ GPU Acceleration** — CUDA support for real-time transcription and refinement
+- **🎨 Modern UI** — Sleek PyQt6 interface with polished design system
 
-This model is intentionally rigid. The application will not let you start recording while editing unsaved changes, switch transcripts without saving, or delete content you're actively modifying. These constraints exist to protect your work.
+### Technical Highlights
 
----
-
-## Quick Start
-
-### Installation
-
-```bash
-chmod +x scripts/install.sh
-./scripts/install.sh
-```
-
-### Running
-
-**GPU (recommended):**
-```bash
-./vociferous.sh
-```
-
-**CPU fallback:**
-```bash
-python scripts/run.py
-```
-
-### Basic Usage
-
-1. Press **Right Alt** (default hotkey) or click **Record**
-2. Speak naturally—the waveform shows your audio
-3. Press **Right Alt** again or click **Stop**
-4. Your transcription appears and is copied to the clipboard
-5. Paste anywhere with **Ctrl+V**
+- **Intent-Driven Architecture** — Clean separation between user intent and execution logic
+- **Dual-Text Model** — Preserves raw Whisper output while allowing user edits
+- **Pluggable Backends** — Modular input handling (evdev/pynput), model selection, and audio processing
+- **Production-Ready** — Comprehensive test suite, type safety, and architectural guardrails
+- **Fully Offline** — No internet connection required after initial model download
 
 ---
 
-## Scripts and Launchers
+## 🖼️ Screenshots
 
-### scripts/run.py
+<details>
+<summary><b>📸 View Gallery (Click to expand)</b></summary>
 
-**Application entry point with GPU library configuration.**
+<table>
+<tr>
+<td align="center">
+<img src="docs/images/transcribe_view.png" width="400" alt="Transcribe View"><br>
+<em>Transcribe View — Live dictation and recording</em>
+</td>
+<td align="center">
+<img src="docs/images/history_view.png" width="400" alt="History View"><br>
+<em>History View — Browse and manage transcripts</em>
+</td>
+</tr>
+<tr>
+<td align="center">
+<img src="docs/images/search_and_manage_view.png" width="400" alt="Search View"><br>
+<em>Search & Manage — Filter and organize</em>
+</td>
+<td align="center">
+<img src="docs/images/refinement_view.png" width="400" alt="Refine View"><br>
+<em>Refine View — AI-powered text improvement</em>
+</td>
+</tr>
+<tr>
+<td align="center">
+<img src="docs/images/settings_view.png" width="400" alt="Settings View"><br>
+<em>Settings View — Configure transcription and refinement</em>
+</td>
+<td align="center">
+<img src="docs/images/user_view.png" width="400" alt="User View"><br>
+<em>User View — Metrics and documentation</em>
+</td>
+</tr>
+</table>
 
-```bash
-python scripts/run.py
-```
+### Onboarding Experience
 
-**What it does**
+<table>
+<tr>
+<td align="center">
+<img src="docs/images/onboarding_welcome.png" width="300" alt="Onboarding Welcome"><br>
+<em>Welcome screen</em>
+</td>
+<td align="center">
+<img src="docs/images/onboarding_transcription_model_choice.png" width="300" alt="Model Selection"><br>
+<em>Model selection</em>
+</td>
+<td align="center">
+<img src="docs/images/onboarding_choose_hotkey.png" width="300" alt="Hotkey Setup"><br>
+<em>Hotkey configuration</em>
+</td>
+</tr>
+</table>
 
-1. **Configures GPU libraries** - Sets `LD_LIBRARY_PATH` for CUDA/cuDNN in the venv
-2. **Re-executes if needed** - Uses `os.execv()` to restart with correct environment
-3. **Sets up Python path** - Adds `src/` to module search path
-4. **Configures logging** - Initializes logging before any imports
-5. **Launches application** - Imports and runs `main.py`
-
-**Why a separate entry point?**
-
-`LD_LIBRARY_PATH` must be set **before** any CUDA libraries are loaded. Python's import system loads shared libraries immediately, so environment changes after import don't work. The re-exec pattern solves this:
-
-```
-First run: Check GPU paths → Set LD_LIBRARY_PATH → os.execv() (restart)
-Second run: LD_LIBRARY_PATH already set → Import CUDA → Run app
-```
-
-**Environment Variables**
-
-- `_VOCIFEROUS_ENV_READY` - Sentinel to prevent infinite re-exec loops
-- `CUDA_VISIBLE_DEVICES` - Defaults to `0` if not set
-- `LD_LIBRARY_PATH` - Prepended with NVIDIA library paths from venv
-
----
-
-### scripts/check_deps.py
-
-**Dependency verification script.**
-
-```bash
-python scripts/check_deps.py
-```
-
-**Output**
-
-```
-==============================================================
-Vociferous Dependency Check
-==============================================================
-
-Required Packages:
---------------------------------------------------------------
-  ✓ faster-whisper
-  ✓ ctranslate2
-  ✓ numpy
-  ...
-
-Optional Packages:
---------------------------------------------------------------
-  ⚠ some-optional-pkg - not installed (optional)
-
-Development Packages:
---------------------------------------------------------------
-  ✓ pytest
-  ✓ ruff
-
-==============================================================
-```
-
-**Package Categories**
-
-| Category | Purpose |
-| --- | --- |
-| **Required** | Must be installed for app to run |
-| **Optional** | Enhance functionality but not required |
-| **Development** | Testing and code quality tools |
-
-**Exit Code**
-
-- `0` - All required packages present
-- `1` - One or more required packages missing
+</details>
 
 ---
 
-### scripts/install.sh
+## 🚀 Installation
 
-**Automated installation script.**
+### Prerequisites
+
+| Requirement | Minimum | Recommended |
+|-------------|---------|-------------|
+| **OS** | Linux (X11/Wayland) | Linux (Wayland) |
+| **Python** | 3.12+ | 3.12 |
+| **RAM** | 4 GB | 8 GB |
+| **GPU** | None (CPU mode) | NVIDIA CUDA |
+| **VRAM** | N/A | 4+ GB (for refinement) |
+
+### Wayland Setup
+
+For global hotkeys on Wayland, add your user to the `input` group:
 
 ```bash
-chmod +x scripts/install.sh
-./scripts/install.sh
+sudo usermod -a -G input $USER
+# Log out and back in for changes to take effect
 ```
 
-**What it does**
+### Install Steps
 
-1. **Checks Python version** - Warns if not 3.12/3.13
-2. **Creates virtual environment** - `.venv/` in project root
-3. **Upgrades pip** - Ensures latest pip, setuptools, wheel
-4. **Installs dependencies** - `pip install -r requirements.txt`
-5. **Verifies installation** - Imports key packages to confirm success
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/Vociferous.git
+   cd Vociferous
+   ```
 
-**Output**
+2. **Create virtual environment**
+   ```bash
+   python3 -m venv .venv
+   ```
+
+3. **Install dependencies**
+   ```bash
+   .venv/bin/pip install -r requirements.txt
+   ```
+
+4. **Launch Vociferous**
+   ```bash
+   ./vociferous
+   ```
+
+> ⚠️ **Important:** Always use the `./vociferous` launcher script. Running `python src/main.py` directly bypasses GPU library configuration.
+
+---
+
+## 🎬 Quick Start
+
+### Your First Recording
+
+1. **Launch** the application with `./vociferous`
+2. **Press Right Alt** (default hotkey) to start recording
+3. **Speak clearly** into your microphone
+4. **Press Right Alt again** to stop recording
+5. **Wait** for Whisper to transcribe your speech
+6. **Review** your transcript in the main panel
+
+### Default Configuration
+
+| Setting | Default Value |
+|---------|---------------|
+| Whisper Model | `distil-large-v3` (~1.5 GB) |
+| Device | Auto-detect (GPU if available) |
+| Language | English (`en`) |
+| Recording Mode | Push-to-talk |
+| Hotkey | `Right Alt` |
+| Refinement | Disabled (optional) |
+
+### Available Actions
+
+After transcription completes:
+- **Copy** — Copy text to clipboard
+- **Edit** — Modify the transcript
+- **Delete** — Remove the transcript
+- **Refine** — Polish with AI (if enabled)
+- **Save** — Persist to history database
+
+---
+
+## 🧠 Optional AI Refinement
+
+Vociferous includes an optional **text refinement system** powered by local language models.
+
+### What Does Refinement Do?
+
+- Fixes grammar and punctuation errors
+- Improves sentence structure and flow
+- Applies consistent formatting
+- Preserves original intent and meaning
+
+### Enabling Refinement
+
+1. Open **Settings** (⚙️ icon)
+2. Toggle **Enable AI Refinement** to ON
+3. Select your preferred **SLM Model** (e.g., Qwen3-4B-Instruct)
+4. Click **Apply**
+
+On first use, Vociferous will download and convert the model (~4 GB). This happens once per model and takes several minutes.
+
+### GPU Requirements
+
+Refinement models require:
+- **CUDA-capable NVIDIA GPU** with 4+ GB VRAM (recommended)
+- **CPU fallback** supported (slower, ~8+ GB RAM recommended)
+
+---
+
+## 📚 Documentation
+
+Comprehensive documentation is available in the [**project wiki**](docs/wiki):
+
+### Core Concepts
+- [**Architecture**](docs/wiki/Architecture.md) — System design, threading model, component boundaries
+- [**Design System**](docs/wiki/Design-System.md) — Colors, typography, spacing tokens
+- [**Data & Persistence**](docs/wiki/Data-and-Persistence.md) — Database schema, dual-text invariant
+
+### User Guides
+- [**Getting Started**](docs/wiki/Getting-Started.md) — Installation and first-run guide
+- [**UI Views Overview**](docs/wiki/UI-Views-Overview.md) — View architecture and capabilities
+
+### View Documentation
+- [**Transcribe View**](docs/wiki/View-Transcribe.md) — Live recording and dictation
+- [**History View**](docs/wiki/View-History.md) — Browse and manage past transcripts
+- [**Search View**](docs/wiki/View-Search.md) — Filter and find transcripts
+- [**Refine View**](docs/wiki/View-Refine.md) — AI-powered text refinement
+- [**Settings View**](docs/wiki/View-Settings.md) — Configure application options
+- [**User View**](docs/wiki/View-User.md) — Metrics, about, and documentation
+
+### Advanced Topics
+- [**Refinement System**](docs/wiki/Refinement-System.md) — SLM service, model provisioning, prompt engineering
+- [**Testing Philosophy**](docs/wiki/Testing-Philosophy.md) — Test tiers, fixtures, CI strategy
+
+---
+
+## 🏗️ Architecture
+
+Vociferous is built with **architectural rigor** and follows strict design principles to ensure maintainability and extensibility.
+
+### Intent-Driven Design
+
+All user interactions follow a strict **Intent Pattern**:
 
 ```
-==========================================
-Vociferous Installation Script
-==========================================
+User Action → Intent (immutable dataclass) → Signal → Controller → Execution
+```
 
-Detected Python version: 3.12
-Creating virtual environment...
-Activating virtual environment...
-Upgrading pip...
+This ensures:
+- Clean separation between UI and business logic
+- Testable and predictable behavior
+- No spaghetti code or hidden side effects
 
-==========================================
-Installing dependencies
-==========================================
-...
+### Technology Stack
 
-==========================================
-Verifying installation
-==========================================
-✓ faster-whisper imported successfully
-✓ onnxruntime imported successfully
-✓ PyQt6 imported successfully
-...
+| Layer | Technology |
+|-------|------------|
+| Language | Python 3.12+ |
+| UI Framework | PyQt6 6.7.0+ |
+| Speech Recognition | faster-whisper (CTranslate2) |
+| Text Refinement | CTranslate2 + Qwen3-4B-Instruct |
+| Database | SQLAlchemy 2.0+ (SQLite) |
+| Input Handling | evdev (Wayland) / pynput (X11) |
+| GPU Acceleration | CUDA (optional) |
 
-==========================================
-Installation complete!
-==========================================
+### Component Overview
 
-To run the application:
-  source .venv/bin/activate
-  python scripts/run.py
+```
+┌─────────────────────────────────────────────────────┐
+│                    UI Layer (PyQt6)                 │
+├─────────────────────────────────────────────────────┤
+│              Application Coordinator                │
+│    (Composition root, signal wiring, lifecycle)     │
+├─────────────────────────────────────────────────────┤
+│  Services Layer                                     │
+│  • TranscriptionService    • SLMService             │
+│  • AudioService           • VoiceCalibration        │
+├─────────────────────────────────────────────────────┤
+│  Core Runtime (Background Engine)                   │
+│  • Whisper Inference      • Audio Capture           │
+│  • State Management       • IPC Protocol            │
+├─────────────────────────────────────────────────────┤
+│  Database Layer (SQLAlchemy + SQLite)               │
+│  • HistoryManager         • Models & DTOs           │
+│  • Repositories           • Signal Bridge           │
+└─────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### vociferous.sh (project root)
+## 🔧 Development
 
-**GPU-optimized launcher wrapper.**
+### Requirements
+
+- Python 3.12+
+- Virtual environment (`.venv/`)
+- Development tools: `ruff`, `mypy`, `pytest`
+
+### Running Tests
 
 ```bash
-./vociferous.sh
+# Full test suite
+VOCIFEROUS_TEST_IGNORE_RUNNING=1 ./scripts/check.sh
+
+# Individual test categories
+.venv/bin/pytest tests/unit/
+.venv/bin/pytest tests/integration/
+.venv/bin/pytest tests/contracts/
 ```
 
-Sets environment variables and activates venv before running:
-- `LD_LIBRARY_PATH` for CUDA libraries
-- `RUST_LOG=error` to suppress Vulkan warnings
-- Activates `.venv` automatically
+### Code Quality
+
+```bash
+# Linting
+.venv/bin/ruff check .
+
+# Type checking
+.venv/bin/mypy .
+
+# Auto-formatting
+.venv/bin/ruff format .
+```
+
+### Project Structure
+
+```
+vociferous/
+├── src/
+│   ├── core/              # Application coordination, config, exceptions
+│   ├── core_runtime/      # Background engine and IPC
+│   ├── database/          # SQLAlchemy models and persistence
+│   ├── services/          # Business logic (transcription, SLM, audio)
+│   ├── ui/                # PyQt6 views, components, styles
+│   └── input_handler/     # Keyboard/input backends
+├── tests/                 # Comprehensive test suite
+├── docs/wiki/             # User and developer documentation
+└── assets/                # Icons, sounds, resources
+```
 
 ---
 
-## System Requirements
+## 🤝 Contributing
 
-- **Python**: 3.12+
-- **OS**: Linux (Wayland or X11)
-- **Audio**: Working microphone
-- **GPU** (optional): CUDA-compatible NVIDIA GPU for fast transcription
+Vociferous is built with high standards for code quality and architectural integrity. Before contributing:
 
-### Dependencies
-
-See `requirements.txt` for the full list. Key dependencies:
-
-- `faster-whisper` / `ctranslate2` — Whisper inference
-- `PyQt6` — User interface
-- `sounddevice` / `webrtcvad` — Audio capture and VAD
-- `pynput` / `evdev` — Hotkey detection
+1. Read the [Architecture documentation](docs/wiki/Architecture.md)
+2. Review the [Testing Philosophy](docs/wiki/Testing-Philosophy.md)
+3. Ensure all tests pass: `./scripts/check.sh`
+4. Follow the intent-driven design pattern
+5. Update documentation for any behavioral changes
 
 ---
 
-## Configuration
+## 📜 License
 
-Settings are managed through the Settings dialog (accessible via the menu).
-
-Key options include:
-- **Device**: `auto`, `cuda`, or `cpu`
-- **Compute type**: `float16`, `float32`, or `int8`
-- **Language**: Transcription language (default: English)
-- **Activation key**: Hotkey to start/stop recording
-
-All settings take effect immediately.
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## Documentation
+## 🙏 Acknowledgments
 
-### User Documentation
-
-- [Installation Guide](docs/wiki/Installation-Guide.md) — Complete setup instructions
-- [Recording](docs/wiki/Recording.md) — How recording and transcription work
-- [Hotkey System](docs/wiki/Hotkey-System.md) — evdev/pynput backends
-- [Troubleshooting](docs/wiki/Troubleshooting.md) — Common issues and solutions
-
-### Developer Documentation
-
-- [Backend Architecture](docs/wiki/Backend-Architecture.md) — Module structure and design patterns
-- [Threading Model](docs/wiki/Threading-Model.md) — Qt signals/slots and worker threads
-- [Configuration Schema](docs/wiki/Configuration-Schema.md) — YAML-based settings
+- **[OpenAI Whisper](https://github.com/openai/whisper)** — Foundation of the transcription engine
+- **[faster-whisper](https://github.com/SYSTRAN/faster-whisper)** — CTranslate2-based Whisper inference
+- **[PyQt6](https://www.riverbankcomputing.com/software/pyqt/)** — Powerful cross-platform GUI framework
+- **[SQLAlchemy](https://www.sqlalchemy.org/)** — The Python SQL toolkit
+- **[Qwen Team](https://huggingface.co/Qwen)** — High-quality open-source language models
 
 ---
 
-## For Developers
+<div align="center">
 
-### Architecture Overview
+**Built with ❤️ for the Linux community**
 
-Vociferous uses an **intent-driven interaction model**. User actions are represented as explicit intent objects, validated against the current application state, and either accepted or rejected with a clear reason. This architecture is documented and frozen as of Beta 2.0.
+[⬆ Back to Top](#vociferous)
 
-### Frozen Architecture Documents
-
-The interaction core is semantically sealed. These documents define how the system works:
-
-- [Interaction Core Freeze Declaration](docs/dev/interaction-core-frozen.md) — What is frozen and why
-- [Intent Catalog](docs/dev/intent-catalog.md) — Complete vocabulary of user intents
-- [Authority Invariants](docs/dev/authority-invariants.md) — Who owns state transitions
-- [Edit Invariants](docs/dev/edit-invariants.md) — Transactional editing guarantees
-
-### Contributing
-
-Changes that violate the architectural guardrail tests are invalid and will not be accepted. Before contributing:
-
-1. Read the [Interaction Core Freeze Declaration](docs/dev/interaction-core-frozen.md)
-2. Run `pytest tests/test_architecture_guardrails.py` to verify compliance
-3. Follow the extension pattern documented in the freeze declaration
-
-### Quality Checks
-
-Run all checks before committing:
-
-```bash
-./scripts/check.sh
-```
-
-#### Tools Configured
-
-##### 1. **Ruff** (Linting & Formatting)
-Fast Python linter and formatter, replaces flake8, black, isort, and more.
-
-**Usage:**
-```bash
-# Check for issues
-python -m ruff check .
-
-# Auto-fix issues
-python -m ruff check --fix .
-
-# Format code
-python -m ruff format .
-```
-
-**Config:** [pyproject.toml](pyproject.toml)
-
-##### 2. **MyPy** (Static Type Checking)
-Validates Python 3.12+ type hints to catch type-related bugs.
-
-**Usage:**
-```bash
-python -m mypy src/
-```
-
-**Config:** [mypy.ini](mypy.ini)
-
-**Note:** ~331 errors are Qt6-related false positives (union-attr, override issues) and are acceptable.
-
-##### 3. **Bandit** (Security Scanner)
-Finds common security issues in Python code.
-
-**Usage:**
-```bash
-# Basic scan
-python -m bandit -r src/
-
-# JSON output
-python -m bandit -r src/ -f json
-```
-
-**Findings:** 10 LOW severity issues (subprocess usage in `input_simulation.py` and `clipboard_utils.py` - all intentional for Linux keyboard/clipboard control).
-
-##### 4. **Pytest** (Unit Testing)
-Comprehensive test suite with 125+ tests covering core functionality.
-
-**Usage:**
-```bash
-# Run all tests
-pytest
-
-# Run specific test file
-pytest tests/test_ui_components.py
-
-# Run with coverage
-pytest --cov=src --cov-report=html
-```
-
-**Config:** [pytest.ini](pytest.ini)
-
-#### CI/CD Integration
-
-The `scripts/check.sh` script is designed for CI/CD pipelines:
-
-```yaml
-# Example GitHub Actions
-- name: Run quality checks
-  run: ./scripts/check.sh
-```
-
-Exit codes:
-- `0` - All checks passed
-- `1` - One or more checks failed
-
-#### Manual Fixes
-
-**Fix all auto-fixable issues:**
-```bash
-python -m ruff check --fix .
-python -m ruff format .
-```
-
-**View detailed errors:**
-```bash
-# Ruff errors
-python -m ruff check .
-
-# Type errors
-python -m mypy src/
-
-# Security issues
-python -m bandit -r src/ -f screen
-```
-
-#### Installing Tools
-
-All tools are in [requirements.txt](requirements.txt):
-
-```bash
-pip install -r requirements.txt
-```
-
-Or install individually:
-```bash
-pip install ruff mypy bandit pytest types-PyYAML
-```
-
-#### Baseline Quality Metrics
-
-As of January 9, 2026:
-
-| Tool | Status | Details |
-|------|--------|---------|
-| **Ruff Linting** | ✅ Pass | 0 errors |
-| **Ruff Formatting** | ✅ Pass | All files formatted |
-| **MyPy** | ✅ Pass | 331 Qt false positives (acceptable) |
-| **Bandit** | ✅ Pass | 10 LOW severity (expected) |
-| **Pytest** | ✅ Pass | 125 passed, 1 skipped |
-
-#### Pre-commit Hooks (Optional)
-
-Install pre-commit hooks to run checks automatically:
-
-```bash
-pip install pre-commit
-pre-commit install
-```
-
-Create `.pre-commit-config.yaml`:
-```yaml
-repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.0
-    hooks:
-      - id: ruff
-        args: [--fix]
-      - id: ruff-format
-```
-
-### Versioning Policy
-
-- **2.0.x** — Stabilization releases (no new features, bug fixes only)
-- **2.1.x** — Feature development resumes (local SLM integration planned)
-
----
-
-## License
-
-See [LICENSE](LICENSE) for details.
+</div>

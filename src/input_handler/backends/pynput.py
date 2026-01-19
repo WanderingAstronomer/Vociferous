@@ -27,7 +27,7 @@ class PynputBackend:
         self.keyboard: Any = None
         self.mouse: Any = None
         self.key_map: dict | None = None
-        self.on_input_event = None  # type: ignore[method-assign]
+        self.on_input_event: Any = None
 
     def start(self) -> None:
         """Start listening for keyboard and mouse events."""
@@ -63,18 +63,21 @@ class PynputBackend:
 
     def _on_keyboard_press(self, key) -> None:
         """Handle keyboard press events."""
-        translated_event = self._translate_key_event((key, True))
-        self.on_input_event(translated_event)
+        if self.on_input_event:
+            translated_event = self._translate_key_event((key, True))
+            self.on_input_event(translated_event)
 
     def _on_keyboard_release(self, key) -> None:
         """Handle keyboard release events."""
-        translated_event = self._translate_key_event((key, False))
-        self.on_input_event(translated_event)
+        if self.on_input_event:
+            translated_event = self._translate_key_event((key, False))
+            self.on_input_event(translated_event)
 
     def _on_mouse_click(self, x, y, button, pressed) -> None:
         """Handle mouse click events."""
-        translated_event = self._translate_key_event((button, pressed))
-        self.on_input_event(translated_event)
+        if self.on_input_event:
+            translated_event = self._translate_key_event((button, pressed))
+            self.on_input_event(translated_event)
 
     def _create_key_map(self) -> dict:
         """Create a mapping from pynput keys to our internal KeyCode enum."""
@@ -170,7 +173,6 @@ class PynputBackend:
             self.keyboard.Key.left: KeyCode.LEFT,
             self.keyboard.Key.right: KeyCode.RIGHT,
             # Numpad keys
-            self.keyboard.Key.num_lock: KeyCode.NUM_LOCK,
             self.keyboard.KeyCode.from_vk(96): KeyCode.NUMPAD_0,
             self.keyboard.KeyCode.from_vk(97): KeyCode.NUMPAD_1,
             self.keyboard.KeyCode.from_vk(98): KeyCode.NUMPAD_2,
@@ -210,10 +212,3 @@ class PynputBackend:
             self.mouse.Button.right: KeyCode.MOUSE_RIGHT,
             self.mouse.Button.middle: KeyCode.MOUSE_MIDDLE,
         }
-
-    def on_input_event(self, event):
-        """
-        Callback method to be set by the KeyListener.
-        This method is called for each processed input event.
-        """
-        pass

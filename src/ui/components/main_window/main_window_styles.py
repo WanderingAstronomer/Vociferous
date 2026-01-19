@@ -2,125 +2,114 @@
 Stylesheet definitions for MainWindow component.
 """
 
-from ui.constants import Colors, Dimensions, Spacing, Typography
-
-# Sidebar toggle button
-TOGGLE_BUTTON_STYLE = f"""
-    QPushButton#sidebarToggleBtn {{
-        background-color: {Colors.TRANSPARENT};
-        border: none;
-        border-radius: {Dimensions.BORDER_RADIUS_MD}px;
-        padding: {Spacing.BUTTON_PAD_V}px {Spacing.BUTTON_PAD_H}px;
-    }}
-    QPushButton#sidebarToggleBtn:hover {{
-        background-color: {Colors.HOVER_OVERLAY};
-    }}
-    QPushButton#sidebarToggleBtn:pressed {{
-        background-color: {Colors.PRESSED_OVERLAY};
-    }}
-"""
+import src.ui.constants.colors as c
+from src.ui.constants import Spacing, Typography
+from src.ui.constants.dimensions import BORDER_RADIUS_LG, BORDER_RADIUS_SM
 
 # About dialog styles
 ABOUT_DIALOG_STYLE = f"""
     QDialog {{
-        background-color: {Colors.SURFACE};
-        border-radius: {Dimensions.BORDER_RADIUS_LG}px;
+        background-color: {c.GRAY_8};
+        border-radius: {BORDER_RADIUS_LG}px;
     }}
     
     QLabel#aboutTitle {{
         font-size: {Typography.FONT_SIZE_HEADER}px;
         font-weight: {Typography.FONT_WEIGHT_BOLD};
-        color: {Colors.TEXT_PRIMARY};
+        color: {c.GRAY_4};
         margin-bottom: {Spacing.MINOR_GAP}px;
     }}
     
     QLabel#aboutSubtitle {{
         font-size: {Typography.FONT_SIZE_LARGE}px;
         font-weight: {Typography.FONT_WEIGHT_MEDIUM};
-        color: {Colors.TEXT_SECONDARY};
+        color: {c.GRAY_4};
     }}
     
     QLabel#aboutDescription {{
         font-size: {Typography.FONT_SIZE_BODY}px;
-        color: {Colors.TEXT_SECONDARY};
+        color: {c.GRAY_4};
         line-height: 1.5;
     }}
     
     QLabel#aboutCreator {{
         font-size: {Typography.FONT_SIZE_BODY}px;
         font-weight: {Typography.FONT_WEIGHT_MEDIUM};
-        color: {Colors.TEXT_PRIMARY};
+        color: {c.GRAY_4};
     }}
     
     QPushButton#secondaryButton {{
-        background-color: {Colors.BUTTON_SECONDARY};
-        color: {Colors.TEXT_PRIMARY};
-        border: 1px solid {Colors.BORDER_MEDIUM};
-        border-radius: {Dimensions.BORDER_RADIUS_SM}px;
+        background-color: {c.GRAY_7};
+        color: {c.GRAY_4};
+        border: 1px solid {c.GRAY_7};
+        border-radius: {BORDER_RADIUS_SM}px;
         padding: {Spacing.BUTTON_PAD_V}px {Spacing.BUTTON_PAD_H}px;
         font-size: {Typography.FONT_SIZE_BODY}px;
         font-weight: {Typography.FONT_WEIGHT_MEDIUM};
         min-width: 120px;
     }}
     QPushButton#secondaryButton:hover {{
-        background-color: {Colors.HOVER_OVERLAY};
-        border-color: {Colors.BORDER_LIGHT};
+        background-color: {c.HOVER_OVERLAY_LIGHT};
+        border-color: {c.GRAY_6};
     }}
     
     QPushButton#primaryButton {{
-        background-color: {Colors.PRIMARY};
-        color: {Colors.TEXT_ON_PRIMARY};
-        border: none;
-        border-radius: {Dimensions.BORDER_RADIUS_SM}px;
+        background-color: transparent;
+        color: {c.BLUE_4};
+        border: 1px solid {c.BLUE_4};
+        border-radius: {BORDER_RADIUS_SM}px;
         padding: {Spacing.BUTTON_PAD_V}px {Spacing.BUTTON_PAD_H}px;
         font-size: {Typography.FONT_SIZE_BODY}px;
         font-weight: {Typography.FONT_WEIGHT_MEDIUM};
     }}
     QPushButton#primaryButton:hover {{
-        background-color: {Colors.PRIMARY_HOVER};
+        background-color: {c.BLUE_9};
+        color: {c.GRAY_0};
     }}
     QPushButton#primaryButton:pressed {{
-        background-color: {Colors.PRIMARY_PRESSED};
+        background-color: {c.BLUE_7};
     }}
 """
 
 # Clear history dialog
 CLEAR_DIALOG_STYLE = f"""
     QDialog {{
-        background-color: {Colors.SURFACE};
-        border-radius: {Dimensions.BORDER_RADIUS_LG}px;
+        background-color: {c.GRAY_8};
+        border-radius: {BORDER_RADIUS_LG}px;
     }}
     
     QLabel {{
         font-size: {Typography.FONT_SIZE_BODY}px;
-        color: {Colors.TEXT_PRIMARY};
+        color: {c.GRAY_4};
     }}
     
     QPushButton {{
-        background-color: {Colors.BUTTON_SECONDARY};
-        color: {Colors.TEXT_PRIMARY};
-        border: 1px solid {Colors.BORDER_MEDIUM};
-        border-radius: {Dimensions.BORDER_RADIUS_SM}px;
+        background-color: {c.GRAY_7};
+        color: {c.GRAY_4};
+        border: 1px solid {c.GRAY_7};
+        border-radius: {BORDER_RADIUS_SM}px;
         padding: {Spacing.BUTTON_PAD_V}px {Spacing.BUTTON_PAD_H}px;
         font-size: {Typography.FONT_SIZE_BODY}px;
         min-width: 80px;
     }}
     QPushButton:hover {{
-        background-color: {Colors.HOVER_OVERLAY};
+        background-color: {c.HOVER_OVERLAY_LIGHT};
     }}
     QPushButton:default {{
-        border-color: {Colors.PRIMARY};
+        border-color: {c.BLUE_4};
     }}
 """
 
 # Main window container
 MAIN_WINDOW_STYLE = f"""
     QMainWindow {{
-        background-color: {Colors.BACKGROUND};
+        background-color: {c.GRAY_9};
+        border: none;
+        border-radius: 6px;
     }}
     
     QWidget#centralWidget {{
-        background-color: {Colors.BACKGROUND};
+        background-color: transparent;
     }}
 """
 
@@ -129,4 +118,4 @@ def get_combined_stylesheet() -> str:
     """
     Return combined stylesheet for main window.
     """
-    return MAIN_WINDOW_STYLE + TOGGLE_BUTTON_STYLE
+    return MAIN_WINDOW_STYLE

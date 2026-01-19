@@ -2,10 +2,10 @@
 MainWorkspace - State-driven main workspace canvas.
 
 States:
-- IDLE: Welcome greeting, start button, description
-- RECORDING: Recording indicator, stop button
-- VIEWING: Transcript display, edit button
-- EDITING: Editable transcript, save button
+- IDLE: Welcome greeting
+- RECORDING: Active recording state
+- VIEWING: Transcript display
+- EDITING: Editable transcript
 """
 
 from __future__ import annotations
@@ -13,23 +13,20 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
-    QFrame,
     QHBoxLayout,
-    QLabel,
-    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
-from ui.components.workspace.content import WorkspaceContent
-from ui.components.workspace.controls import WorkspaceControls
-from ui.components.workspace.header import WorkspaceHeader
-from ui.constants import Spacing, Typography, WorkspaceState
-from ui.interaction import (
+from src.ui.components.workspace.content import WorkspaceContent
+from src.ui.components.workspace.footer import BatchStatusFooter
+from src.ui.components.workspace.header import WorkspaceHeader
+from src.ui.constants import Spacing, WorkspaceState
+from src.ui.widgets.workspace_panel import WorkspacePanel
+from src.ui.interaction import (
     BeginRecordingIntent,
     CancelRecordingIntent,
     CommitEditsIntent,
@@ -43,11 +40,10 @@ from ui.interaction import (
     StopRecordingIntent,
     ViewTranscriptIntent,
 )
-from ui.utils.clipboard_utils import copy_text
-from ui.widgets.content_panel import ContentPanel
+from src.ui.utils.clipboard_utils import copy_text
 
 if TYPE_CHECKING:
-    from history_manager import HistoryEntry
+    from src.database.history_manager import HistoryEntry
 
 logger = logging.getLogger(__name__)
 
@@ -68,16 +64,21 @@ class MainWorkspace(QWidget):
         textEdited(): Text was edited
     """
 
-    startRequested = pyqtSignal()
-    stopRequested = pyqtSignal()
-    cancelRequested = pyqtSignal()
-    saveRequested = pyqtSignal(str)
-    deleteRequested = pyqtSignal()
-    refineRequested = pyqtSignal(str, str, str)  # Passes (profile, text, timestamp)
-    textEdited = pyqtSignal()
+    start_requested = pyqtSignal()
+    stop_requested = pyqtSignal()
+    cancel_requested = pyqtSignal()
+    save_requested = pyqtSignal(str)
+    delete_requested = pyqtSignal()
+    refine_requested = pyqtSignal(str, str, str)  # Passes (profile, text, timestamp)
+    edit_requested = pyqtSignal(str)  # Passes timestamp
+    text_edited = pyqtSignal()
+    state_changed = pyqtSignal(WorkspaceState)
 
     # Intent processing signal (Phase 2: observability only)
-    intentProcessed = pyqtSignal(object)  # IntentResult
+    intent_processed = pyqtSignal(object)  # IntentResult
+
+    # New signal for MOTD refresh
+    motd_refresh_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -116,11 +117,12 @@ class MainWorkspace(QWidget):
 
         # Header component (fixed height, no stretch)
         self.header = WorkspaceHeader()
+        self.header.request_motd_refresh.connect(self.motd_refresh_requested.emit)
         layout.addWidget(self.header, 0)
         layout.addSpacing(Spacing.HEADER_CONTROLS_GAP)
 
         # Metrics display (above content panel, hidden by default)
-        from ui.components.workspace.transcript_metrics import TranscriptMetrics
+        from src.ui.components.workspace.transcript_metrics import TranscriptMetrics
 
         self.metrics = TranscriptMetrics()
         self.metrics.hide()
@@ -130,28 +132,15 @@ class MainWorkspace(QWidget):
         # Content panel (visual container) - EXPANDS TO FILL ALL REMAINING SPACE
         self._setup_content_panel(layout)
 
-        layout.addSpacing(Spacing.CONTROLS_CONTENT_GAP)
-
-        # Hotkey hint (fixed height, no stretch)
-        self.hotkey_hint = QLabel("Press Alt to start recording")
-        self.hotkey_hint.setObjectName("hotkeyHint")
-        self.hotkey_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hint_font = QFont()
-        hint_font.setPointSize(Typography.SMALL_SIZE)
-        self.hotkey_hint.setFont(hint_font)
-        layout.addWidget(self.hotkey_hint, 0)
-
-        layout.addSpacing(Spacing.CONTROLS_CONTENT_GAP)
-
-        # Controls component (fixed height, no stretch)
-        self.controls = WorkspaceControls()
-        layout.addWidget(self.controls, 0)
+        # Batch status footer (appears at the very bottom)
+        self.batch_footer = BatchStatusFooter()
+        layout.addWidget(self.batch_footer, 0)
 
         outer_layout.addWidget(self.content_column, 1)
 
     def _setup_content_panel(self, parent_layout: QVBoxLayout) -> None:
         """Create visual content panel container."""
-        self.content_panel = ContentPanel()
+        self.content_panel = WorkspacePanel()
         self.content_panel.setObjectName("contentPanelPainted")
         # Content panel expands vertically to fill available space
         self.content_panel.setSizePolicy(
@@ -167,42 +156,26 @@ class MainWorkspace(QWidget):
         )
         panel_layout.setSpacing(0)
 
-        # Scroll area for content
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setObjectName("workspaceScrollArea")
-        scroll.setViewportMargins(0, 0, 0, 4)
-        self.content_scroll = scroll
-
         # Content component
         self.content = WorkspaceContent()
-        scroll.setWidget(self.content)
+        panel_layout.addWidget(self.content)
 
-        panel_layout.addWidget(scroll)
         parent_layout.addWidget(
             self.content_panel, 1
         )  # Stretch=1: claim all vertical space
 
     def _connect_signals(self) -> None:
         """Wire up component signals to workspace handlers."""
-        self.controls.primaryClicked.connect(self._on_primary_click)
-        self.controls.editSaveClicked.connect(self._on_edit_save_click)
-        self.controls.destructiveClicked.connect(self._on_destructive_click)
-        self.controls.refineClicked.connect(self._handle_refine_request)
-
-        self.content.textChanged.connect(self._on_text_changed)
-        self.content.editRequested.connect(self._on_edit_save_click)
-        self.content.deleteRequested.connect(self._on_destructive_click)
+        self.content.text_changed.connect(self._on_text_changed)
+        self.content.edit_requested.connect(self._on_edit_save_click)
+        self.content.delete_requested.connect(self._on_destructive_click)
 
     def _handle_refine_request(self, profile: str) -> None:
         """Collect transcript data and emit refinement request."""
         text = self.content.get_text()
         timestamp = self.content.get_timestamp()
         if text and timestamp:
-            self.refineRequested.emit(profile, text, timestamp)
+            self.refine_requested.emit(profile, text, timestamp)
 
     def on_refinement_completed(
         self, text: str, timestamp: str, variants: list
@@ -220,9 +193,10 @@ class MainWorkspace(QWidget):
         """Update all components for current state."""
         is_editing = self._state == WorkspaceState.EDITING
         is_recording = self._state == WorkspaceState.RECORDING
+        is_transcribing = self._state == WorkspaceState.TRANSCRIBING
 
         self.content_panel.setProperty("editing", is_editing)
-        self.content_panel.setProperty("recording", is_recording)
+        self.content_panel.setProperty("recording", is_recording or is_transcribing)
         self.content_panel.style().unpolish(self.content_panel)
         self.content_panel.style().polish(self.content_panel)
         self.content_panel.update()
@@ -231,61 +205,70 @@ class MainWorkspace(QWidget):
             case WorkspaceState.IDLE:
                 self.header.set_state(self._state)
                 self.header.update_for_idle()
-                self.controls.update_for_idle()
+                # self.controls.update_for_idle() - DEPRECATED
                 self.content.update_for_idle()
-                self.hotkey_hint.setText("Press Alt to start recording")
                 self.metrics.hide()
-                self.content_scroll.setVerticalScrollBarPolicy(
-                    Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-                )
 
             case WorkspaceState.RECORDING:
                 self.header.set_state(self._state)
                 self.header.update_for_recording()
-                self.controls.update_for_recording()
+                # self.controls.update_for_recording() - DEPRECATED
                 self.content.update_for_recording()
-                self.hotkey_hint.setText("Press Alt to stop recording")
                 self.metrics.hide()
-                self.content_scroll.setVerticalScrollBarPolicy(
-                    Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-                )
-                # Ensure the waveform is fully visible even if the scroll area was
-                # previously scrolled in VIEWING/EDITING.
-                self.content_scroll.verticalScrollBar().setValue(0)
+
+            case WorkspaceState.TRANSCRIBING:
+                self.header.set_state(self._state)
+                self.header.update_for_transcribing()
+                self.content.update_for_transcribing()
+                self.metrics.hide()
 
             case WorkspaceState.VIEWING:
                 self.header.set_state(self._state)
                 self.header.update_for_viewing()
-                self.controls.update_for_viewing()
+                # self.controls.update_for_viewing() - DEPRECATED
                 self.content.update_for_viewing()
-                self.hotkey_hint.setText("Press Alt to start recording")
                 # Metrics visibility is handled in load_transcript/display_new_transcript
-                self.content_scroll.setVerticalScrollBarPolicy(
-                    Qt.ScrollBarPolicy.ScrollBarAsNeeded
-                )
+
+            case WorkspaceState.READY:
+                self.header.set_state(self._state)
+                self.header.update_for_ready()
+                self.content.update_for_viewing()
+                # Metrics should be visible for ready state
 
             case WorkspaceState.EDITING:
                 self.header.set_state(self._state)
                 self.header.update_for_editing()
-                self.controls.update_for_editing()
+                # self.controls.update_for_editing() - DEPRECATED
                 self.content.update_for_editing()
-                self.hotkey_hint.setText("Press Alt to start recording")
                 # Metrics visibility preserved from VIEWING state
-                self.content_scroll.setVerticalScrollBarPolicy(
-                    Qt.ScrollBarPolicy.ScrollBarAsNeeded
-                )
 
     # Public API
+
+    def get_transcript_scroll_area(self) -> WorkspacePanel:
+        """Public accessor for the transcript scroll area."""
+        return self.content_panel
 
     def set_history_manager(self, manager) -> None:
         """Set history manager for fetching transcript metadata."""
         self._history_manager = manager
 
+    def set_audio_level(self, level: float) -> None:
+        """Update waveform audio level."""
+        self.content.set_audio_level(level)
+
+    def set_live_text(self, text: str) -> None:
+        """Update live transcription text."""
+        self.content.set_live_text(text)
+
     def set_state(self, state: WorkspaceState) -> None:
         """Change workspace state."""
         try:
+            if self._state == state:
+                return
+
             self._state = state
             self._update_for_state()
+            self.state_changed.emit(state)
         except Exception:
             logger.exception("Error setting workspace state")
 
@@ -307,6 +290,7 @@ class MainWorkspace(QWidget):
 
             self.content.set_transcript(text, timestamp)
             self.header.set_timestamp(timestamp)
+
             self._has_unsaved_changes = False
 
             # Update metrics if we have duration data
@@ -330,6 +314,7 @@ class MainWorkspace(QWidget):
         try:
             self.content.set_transcript(entry.text, entry.timestamp)
             self.header.set_timestamp(entry.timestamp)
+
             self._has_unsaved_changes = False
 
             # Update metrics with entry data
@@ -342,7 +327,7 @@ class MainWorkspace(QWidget):
             else:
                 self.metrics.hide()
 
-            self.set_state(WorkspaceState.VIEWING)
+            self.set_state(WorkspaceState.READY)
         except Exception:
             logger.exception("Error displaying new transcript")
             raise
@@ -384,11 +369,18 @@ class MainWorkspace(QWidget):
             logger.exception("Error copying text to clipboard")
 
     def add_audio_level(self, level: float) -> None:
-        """Forward audio level to waveform visualization."""
+        """Forward audio level to visualizer."""
         try:
             self.content.add_audio_level(level)
         except Exception:
             # Don't log every audio level error to avoid spam
+            pass
+
+    def add_audio_spectrum(self, bands: list[float]) -> None:
+        """Forward FFT spectrum to visualizer."""
+        try:
+            self.content.set_audio_spectrum(bands)
+        except Exception:
             pass
 
     # Button handlers
@@ -419,8 +411,19 @@ class MainWorkspace(QWidget):
             match self._state:
                 case WorkspaceState.VIEWING:
                     # Phase 4: Route through intent layer
+                    timestamp = self.get_current_timestamp()
+                    transcript_id = 0
+                    if self._history_manager and timestamp:
+                        # Resolve ID securely
+                        res = self._history_manager.get_id_by_timestamp(timestamp)
+                        if res is not None:
+                            transcript_id = res
+
                     self.handle_intent(
-                        EditTranscriptIntent(source=IntentSource.CONTROLS)
+                        EditTranscriptIntent(
+                            source=IntentSource.CONTROLS,
+                            transcript_id=str(transcript_id),
+                        )
                     )
                 case WorkspaceState.EDITING:
                     # Phase 4: Route through intent layer
@@ -462,7 +465,7 @@ class MainWorkspace(QWidget):
         try:
             if self._state == WorkspaceState.EDITING:
                 self._has_unsaved_changes = True
-                self.textEdited.emit()
+                self.text_edited.emit()
         except Exception:
             logger.exception("Error tracking text change")
 
@@ -522,7 +525,7 @@ class MainWorkspace(QWidget):
                 )
 
         logger.debug("Intent result: %s (%s)", result.outcome.name, result.reason or "")
-        self.intentProcessed.emit(result)
+        self.intent_processed.emit(result)
         return result
 
     def _apply_begin_recording(self, intent: BeginRecordingIntent) -> IntentResult:
@@ -532,13 +535,24 @@ class MainWorkspace(QWidget):
         All state mutation for this intent happens here. Bridges route,
         applies mutate.
 
-        Precondition: state in (IDLE, VIEWING)
+        Precondition: state in (IDLE, VIEWING, READY)
         Postcondition: state == RECORDING, no unsaved changes
         """
-        if self._state in (WorkspaceState.IDLE, WorkspaceState.VIEWING):
+        if self._state in (
+            WorkspaceState.IDLE,
+            WorkspaceState.VIEWING,
+            WorkspaceState.READY,
+        ):
+            # Clear residual content from READY state before new recording
+            if self._state == WorkspaceState.READY:
+                self.content.set_transcript("", "")
+                self.header.set_timestamp("")
+                self.metrics.hide()
+                self._has_unsaved_changes = False
+
             # Authoritative mutation
             self.set_state(WorkspaceState.RECORDING)
-            self.startRequested.emit()
+            self.start_requested.emit()
 
             # Invariant checks: RECORDING implies clean slate
             if self._state != WorkspaceState.RECORDING:
@@ -566,19 +580,16 @@ class MainWorkspace(QWidget):
         """Apply StopRecordingIntent: request transcription and show status.
 
         Phase 3: Authoritative state mutator for StopRecordingIntent.
-        State remains RECORDING until transcription completes externally.
+        State transitions to TRANSCRIBING until completion signals arrive.
         Bridges route, applies mutate.
 
         Precondition: state == RECORDING
-        Postcondition: transcribing UI visible, stopRequested emitted
+        Postcondition: state == TRANSCRIBING, stop_requested emitted
         """
         if self._state == WorkspaceState.RECORDING:
-            # Authoritative mutation: show transcribing UI and emit signal
-            self.show_transcribing_status()
-            self.stopRequested.emit()
-
-            # Note: State remains RECORDING here. Transition to VIEWING happens
-            # when transcription completes via show_transcription().
+            # Authoritative mutation: transition to TRANSCRIBING and emit signal
+            self.set_state(WorkspaceState.TRANSCRIBING)
+            self.stop_requested.emit()
 
             return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
         else:
@@ -595,11 +606,11 @@ class MainWorkspace(QWidget):
         Bridges route, applies mutate.
 
         Precondition: state == RECORDING
-        Postcondition: state == IDLE, cancelRequested emitted
+        Postcondition: state == IDLE, cancel_requested emitted
         """
         if self._state == WorkspaceState.RECORDING:
             # Authoritative mutation
-            self.cancelRequested.emit()
+            self.cancel_requested.emit()
             self.set_state(WorkspaceState.IDLE)
 
             # Invariant assertions: IDLE implies clean slate
@@ -619,22 +630,17 @@ class MainWorkspace(QWidget):
             )
 
     def _apply_edit_transcript(self, intent: EditTranscriptIntent) -> IntentResult:
-        """Apply EditTranscriptIntent: enter editing mode for current transcript.
+        """Apply EditTranscriptIntent: request editing for current transcript.
 
-        Phase 4: Authoritative state mutator for EditTranscriptIntent.
-        Bridges route, applies mutate.
+        Phase 4: Authoritative handler for EditTranscriptIntent.
 
-        Precondition: state == VIEWING, current transcript loaded
-        Postcondition: state == EDITING
+        CHANGED: Now delegates to external edit view via signal instead of
+        entering in-place editing mode. This ensures architectural consistency.
 
-        Invariant 1: Editing implies selected transcript (enforced here)
-
-        Note: _has_unsaved_changes may become True after set_state(EDITING)
-        due to Qt's textChanged signal firing when the editor is populated.
-        This is expected behavior. The unsaved flag is cleared by terminal
-        intents (CommitEditsIntent, DiscardEditsIntent).
+        Precondition: state in (VIEWING, READY), current transcript loaded
+        Postcondition: edit_requested emitted
         """
-        if self._state == WorkspaceState.VIEWING:
+        if self._state in (WorkspaceState.VIEWING, WorkspaceState.READY):
             # Invariant 1: Must have a transcript loaded to edit
             current_ts = self.get_current_timestamp()
             if not current_ts:
@@ -644,15 +650,8 @@ class MainWorkspace(QWidget):
                     reason="No transcript loaded to edit",
                 )
 
-            # Authoritative mutation
-            self.set_state(WorkspaceState.EDITING)
-
-            # Postcondition assertions
-            assert self._state == WorkspaceState.EDITING, (
-                f"EditTranscriptIntent accepted but state is {self._state.value}"
-            )
-            # Note: Do not assert _has_unsaved_changes here - Qt's textChanged
-            # fires when the editor is populated, setting the flag to True.
+            # Authoritative delegation: emit signal for external routing
+            self.edit_requested.emit(current_ts)
 
             return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)
         elif self._state == WorkspaceState.EDITING:
@@ -686,7 +685,7 @@ class MainWorkspace(QWidget):
             # Authoritative mutation: persist edits and transition to VIEWING
             self.content.set_transcript(content, self.content.get_timestamp())
             self._has_unsaved_changes = False
-            self.saveRequested.emit(content)
+            self.save_requested.emit(content)
             self.set_state(WorkspaceState.VIEWING)
 
             # Postcondition assertions
@@ -750,8 +749,8 @@ class MainWorkspace(QWidget):
         happen when MainWindow confirms and calls clear_transcript().
         The confirmation dialog is a UX concern owned by MainWindow.
         """
-        # Precondition: can only delete while viewing
-        if self._state != WorkspaceState.VIEWING:
+        # Precondition: can only delete while viewing or just finished
+        if self._state not in (WorkspaceState.VIEWING, WorkspaceState.READY):
             return IntentResult(
                 outcome=IntentOutcome.REJECTED,
                 intent=intent,
@@ -768,7 +767,7 @@ class MainWorkspace(QWidget):
             )
 
         # Emit signal for MainWindow to handle (shows confirmation, performs I/O)
-        self.deleteRequested.emit()
+        self.delete_requested.emit()
 
         # State change happens in clear_transcript() after confirmation
         return IntentResult(outcome=IntentOutcome.ACCEPTED, intent=intent)

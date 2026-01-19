@@ -33,7 +33,7 @@ class EvdevBackend:
         self.evdev: Any = None
         self.thread: threading.Thread | None = None
         self.stop_event: threading.Event | None = None
-        self.on_input_event = None  # type: ignore[method-assign]
+        self.on_input_event: Any = None
 
     def start(self) -> None:
         """Start the evdev backend."""
@@ -149,7 +149,8 @@ class EvdevBackend:
         """Process a single input event."""
         key_code, event_type = self._translate_key_event(event)
         if key_code is not None and event_type is not None:
-            self.on_input_event((key_code, event_type))
+            if self.on_input_event:
+                self.on_input_event((key_code, event_type))
 
     def _translate_key_event(self, event) -> tuple[KeyCode | None, InputEvent | None]:
         """Translate an evdev event to our internal representation."""
@@ -283,13 +284,13 @@ class EvdevBackend:
             self.evdev.ecodes.KEY_COMMA: KeyCode.COMMA,
             self.evdev.ecodes.KEY_DOT: KeyCode.PERIOD,
             self.evdev.ecodes.KEY_SLASH: KeyCode.SLASH,
-            # Media keys
-            self.evdev.ecodes.KEY_MUTE: KeyCode.MUTE,
-            self.evdev.ecodes.KEY_VOLUMEDOWN: KeyCode.VOLUME_DOWN,
-            self.evdev.ecodes.KEY_VOLUMEUP: KeyCode.VOLUME_UP,
-            self.evdev.ecodes.KEY_PLAYPAUSE: KeyCode.PLAY_PAUSE,
-            self.evdev.ecodes.KEY_NEXTSONG: KeyCode.NEXT_TRACK,
-            self.evdev.ecodes.KEY_PREVIOUSSONG: KeyCode.PREV_TRACK,
+            # Media and additional keys
+            self.evdev.ecodes.KEY_MUTE: KeyCode.AUDIO_MUTE,
+            self.evdev.ecodes.KEY_VOLUMEDOWN: KeyCode.AUDIO_VOLUME_DOWN,
+            self.evdev.ecodes.KEY_VOLUMEUP: KeyCode.AUDIO_VOLUME_UP,
+            self.evdev.ecodes.KEY_PLAYPAUSE: KeyCode.MEDIA_PLAY_PAUSE,
+            self.evdev.ecodes.KEY_NEXTSONG: KeyCode.MEDIA_NEXT,
+            self.evdev.ecodes.KEY_PREVIOUSSONG: KeyCode.MEDIA_PREVIOUS,
             # Additional function keys (if needed)
             self.evdev.ecodes.KEY_F13: KeyCode.F13,
             self.evdev.ecodes.KEY_F14: KeyCode.F14,
@@ -303,16 +304,10 @@ class EvdevBackend:
             self.evdev.ecodes.KEY_F22: KeyCode.F22,
             self.evdev.ecodes.KEY_F23: KeyCode.F23,
             self.evdev.ecodes.KEY_F24: KeyCode.F24,
-            # Additional Media and Special Function Keys
-            self.evdev.ecodes.KEY_PLAYPAUSE: KeyCode.MEDIA_PLAY_PAUSE,
+            # Additional app and system keys
             self.evdev.ecodes.KEY_STOP: KeyCode.MEDIA_STOP,
-            self.evdev.ecodes.KEY_PREVIOUSSONG: KeyCode.MEDIA_PREVIOUS,
-            self.evdev.ecodes.KEY_NEXTSONG: KeyCode.MEDIA_NEXT,
             self.evdev.ecodes.KEY_REWIND: KeyCode.MEDIA_REWIND,
             self.evdev.ecodes.KEY_FASTFORWARD: KeyCode.MEDIA_FAST_FORWARD,
-            self.evdev.ecodes.KEY_MUTE: KeyCode.AUDIO_MUTE,
-            self.evdev.ecodes.KEY_VOLUMEUP: KeyCode.AUDIO_VOLUME_UP,
-            self.evdev.ecodes.KEY_VOLUMEDOWN: KeyCode.AUDIO_VOLUME_DOWN,
             self.evdev.ecodes.KEY_MEDIA: KeyCode.MEDIA_SELECT,
             self.evdev.ecodes.KEY_WWW: KeyCode.WWW,
             self.evdev.ecodes.KEY_MAIL: KeyCode.MAIL,
@@ -322,7 +317,6 @@ class EvdevBackend:
             self.evdev.ecodes.KEY_HOMEPAGE: KeyCode.APP_HOME,
             self.evdev.ecodes.KEY_BACK: KeyCode.APP_BACK,
             self.evdev.ecodes.KEY_FORWARD: KeyCode.APP_FORWARD,
-            self.evdev.ecodes.KEY_STOP: KeyCode.APP_STOP,
             self.evdev.ecodes.KEY_REFRESH: KeyCode.APP_REFRESH,
             self.evdev.ecodes.KEY_BOOKMARKS: KeyCode.APP_BOOKMARKS,
             self.evdev.ecodes.KEY_BRIGHTNESSDOWN: KeyCode.BRIGHTNESS_DOWN,
@@ -344,14 +338,5 @@ class EvdevBackend:
             self.evdev.ecodes.BTN_MIDDLE: KeyCode.MOUSE_MIDDLE,
             self.evdev.ecodes.BTN_SIDE: KeyCode.MOUSE_BACK,
             self.evdev.ecodes.BTN_EXTRA: KeyCode.MOUSE_FORWARD,
-            self.evdev.ecodes.BTN_FORWARD: KeyCode.MOUSE_SIDE1,
-            self.evdev.ecodes.BTN_BACK: KeyCode.MOUSE_SIDE2,
             self.evdev.ecodes.BTN_TASK: KeyCode.MOUSE_SIDE3,
         }
-
-    def on_input_event(self, event):
-        """
-        Callback method to be overridden by the KeyListener.
-        This method is called for each processed input event.
-        """
-        pass

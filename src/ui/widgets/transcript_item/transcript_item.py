@@ -1,6 +1,6 @@
 """
 Shared factory for creating transcript tree items.
-Ensures consistent rendering between HistoryTreeWidget and FocusGroupTreeWidget.
+Ensures consistent rendering between HistoryTreeWidget and ProjectTreeWidget.
 """
 
 from __future__ import annotations
@@ -11,13 +11,14 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import QTreeWidgetItem
 
-from ui.constants import Colors, Typography
-from ui.utils.history_utils import (
+import src.ui.constants.colors as c
+from src.ui.constants import Typography
+from src.ui.utils.history_utils import (
     format_preview,
 )
 
 if TYPE_CHECKING:
-    from history_manager import HistoryEntry
+    from src.database.history_manager import HistoryEntry
 
 # Item Data Roles (Must match usages in widgets)
 ROLE_DAY_KEY = Qt.ItemDataRole.UserRole + 1
@@ -25,6 +26,7 @@ ROLE_TIMESTAMP_ISO = Qt.ItemDataRole.UserRole + 2
 ROLE_FULL_TEXT = Qt.ItemDataRole.UserRole + 3
 ROLE_GROUP_ID = Qt.ItemDataRole.UserRole + 4
 ROLE_IS_HEADER = Qt.ItemDataRole.UserRole + 5
+ROLE_ENTRY_ID = Qt.ItemDataRole.UserRole + 6
 
 
 def create_transcript_item(
@@ -42,17 +44,23 @@ def create_transcript_item(
     """
     # dt = datetime.fromisoformat(entry.timestamp)
     # time_str = format_time_compact(dt)
-    preview = format_preview(entry.text, preview_length)
 
-    item = QTreeWidgetItem([preview])
+    # Naming Model: Display Name > 30-char fallback
+    if entry.display_name and entry.display_name.strip():
+        label = entry.display_name
+    else:
+        label = format_preview(entry.text, max_length=30)  # Match History View fallback
+
+    item = QTreeWidgetItem([label])
     item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
 
     # Store Data
     item.setData(0, ROLE_TIMESTAMP_ISO, entry.timestamp)
     item.setData(0, ROLE_FULL_TEXT, entry.text)
     # item.setData(1, ROLE_FULL_TEXT, entry.text) # No longer needed
-    item.setData(0, ROLE_GROUP_ID, entry.focus_group_id)
+    item.setData(0, ROLE_GROUP_ID, entry.project_id)
     item.setData(0, ROLE_IS_HEADER, False)
+    item.setData(0, ROLE_ENTRY_ID, entry.id)
 
     # Alignment
     item.setTextAlignment(0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -61,12 +69,6 @@ def create_transcript_item(
     preview_font = QFont()
     preview_font.setPointSize(Typography.TRANSCRIPT_ITEM_SIZE)
     item.setFont(0, preview_font)
-    item.setForeground(0, QColor(Colors.TEXT_PRIMARY))
-
-    # Set tooltip (Disabled requested by user choice)
-    # dt = datetime.fromisoformat(entry.timestamp)
-    # full_date = format_day_header(dt, include_year=True)
-    # full_time = format_time(dt)
-    # item.setToolTip(0, f"{full_date} at {full_time}\n\n{entry.text}")
+    item.setForeground(0, QColor(c.GRAY_4))
 
     return item

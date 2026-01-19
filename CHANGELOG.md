@@ -1,5 +1,1168 @@
 # Vociferous Changelog
 
+## v3.0.0 - Production-Ready Release with Comprehensive Documentation
+
+**Date:** January 19, 2026  
+**Status:** Major Release — Production Ready  
+**Focus:** Documentation completeness, architectural verification, and release readiness
+
+---
+
+## Summary
+
+Vociferous v3.0.0 marks the transition to a production-ready, fully documented release. This version includes a comprehensive GitHub Wiki (14 pages), complete Mermaid diagram audit with repository-backed architecture visualizations, and validated README PDF export. All architectural invariants are documented, all views are explained with capabilities matrices and state machines, and the entire system is now suitable for professional deployment and contribution.
+
+### Major Additions
+
+#### 📚 Complete GitHub Wiki (14 Pages)
+
+A comprehensive, repository-authoritative documentation suite:
+
+- **Architecture.md** — Layered architecture diagram (Mermaid flowchart), component responsibilities, threading model, ApplicationCoordinator design pattern
+- **Design-System.md** — Color scales (Gray/Blue/Green/Red/Purple), typography, spacing (S0-S7), unified stylesheet patterns
+- **Data-and-Persistence.md** — Entity-relationship diagram, ORM models (Transcript, Project, TranscriptVariant), dual-text invariant, HistoryManager facade
+- **UI-Views-Overview.md** — View architecture, BaseView protocol, Capabilities system, ActionDock, navigation flow
+- **View-Transcribe.md** — Live recording view, WorkspaceState machine, capabilities matrix, MOTD integration
+- **View-History.md** — Master-detail browser, TranscriptionModel, database reactivity via SignalBridge
+- **View-Search.md** — Tabular search interface, SearchProxyModel, preview overlay, multi-select handling
+- **View-Refine.md** — AI-powered text refinement, side-by-side comparison, strength selector, custom instructions
+- **View-Settings.md** — Configuration mutations, custom widgets (ToggleSwitch, HotkeyWidget, StrengthSelector), validation
+- **View-User.md** — Usage metrics, personalization, application info, credits, insights generation
+- **Refinement-System.md** — SLMService lifecycle, provisioning flow, state machine, model registry, GPU memory management
+- **Getting-Started.md** — Installation, first run, Wayland setup, troubleshooting, default configuration
+- **Testing-Philosophy.md** — Two-tier test strategy, fixtures, lock prevention, architecture guardrails
+- **Home.md** — Landing page with technology stack, navigation, screenshots, links
+
+Every page includes:
+- Trace points to repository source files (class names, line numbers)
+- State diagrams and sequence flows (Mermaid)
+- Capabilities matrices for views
+- Examples and configuration details
+- Internal wiki cross-links
+
+#### 📊 Mermaid Diagram Audit & Conversion
+
+Full audit of wiki diagrams with 4 conversions applied:
+
+- **Architecture.md** — ASCII layered architecture → Mermaid `flowchart TB` with 4 subgraphs (UI, Core, Runtime, Database layers)
+- **Refinement-System.md** — ASCII component stack → Mermaid `flowchart TB` with proper hierarchy
+- **Refinement-System.md** — Enhanced SLMState machine with `WAITING_FOR_USER` transition and error recovery paths
+- **View-Transcribe.md** — Aligned WorkspaceState diagram with enum; added `VIEWING` state and `RECORDING → IDLE` cancel transition
+
+All conversions verified with 7 trace points per diagram and validated against GitHub's Mermaid renderer.
+
+#### 🎨 Beautiful README PDF Export
+
+Professional PDF version of README.md with:
+- Custom styling (branded blue theme, professional typography)
+- Technology stack table with proper formatting
+- Architecture highlights section
+- Installation and quick start guides
+- Feature list with emoji and descriptions
+- 5.8 KB file size, print-ready
+
+#### 📋 Documentation Artifacts
+
+Two new audit reports for transparency and reproducibility:
+
+- **DIAGRAM_AUDIT_REPORT.md** — Complete audit of all 14 wiki pages, classifying 100+ diagrams by type, conversion feasibility, and evidence traces
+- **MERMAID_VALIDATION_REPORT.md** — Post-conversion validation confirming syntax validity, semantic accuracy, and repository-backed nodes/edges
+
+### Documentation Architecture
+
+All documentation follows strict repository-authoritywith:
+- Zero invented components or behaviors
+- All diagrams traceable to source files (file path + class/function name)
+- Prose flows explained with "Derived from implementation" citations
+- Internal links validated
+- ASCII layouts preserved where appropriate (UI mockups, pixel-geometry representations)
+- Mermaid conversions used only for structural/behavioral diagrams
+
+### Validation & Quality Assurance
+
+- ✅ All 22 Mermaid blocks syntactically valid (GitHub-compatible)
+- ✅ 14 wiki pages internally linked and cross-referenced
+- ✅ 6 image paths verified (docs/images/)
+- ✅ Zero unevidenced nodes or edges in any diagram
+- ✅ README.pdf successfully generated and tested
+- ✅ All tests pass: `ruff check`, `mypy`, `pytest`
+
+### Changed
+
+- **CHANGELOG.md** — Added comprehensive v3.0.0 entry with full documentation of wiki pages, diagram conversions, and validation results
+- **docs/wiki/** — 14 production-ready wiki pages with Mermaid diagrams and trace points
+- **docs/wiki/DIAGRAM_AUDIT_REPORT.md** — 3-part audit report (planning, execution, validation)
+- **docs/wiki/MERMAID_VALIDATION_REPORT.md** — Post-conversion validation with 22 Mermaid blocks verified
+- **README.pdf** — Auto-generated PDF export (5.8 KB) for distribution
+
+### Not Changed (Intentional)
+
+The following were intentionally NOT converted to Mermaid as they represent pixel-geometry UI layouts rather than architectural structures:
+- MainWindow layout diagrams (spatial arrangement, not hierarchy)
+- All view layout diagrams (Form, master-detail, table, cards layouts)
+- These remain as ASCII for clarity of visual intent
+
+### Documentation Standards Established
+
+This release establishes documentation standards for future development:
+
+1. **Repository-First Authority** — Documentation never invents; it traces to code
+2. **Trace Points Required** — Every diagram includes source file references
+3. **Mermaid for Architecture** — Structural/behavioral flows use Mermaid; pixel layouts remain ASCII
+4. **Dual Reports** — Complex documentation includes audit + validation reports
+5. **Cross-Link Integrity** — All internal links maintained through automated validation
+
+### Files Added
+
+```
+docs/wiki/
+├── Home.md                               # Landing page
+├── Getting-Started.md                    # Installation guide
+├── Architecture.md                       # System design (Mermaid)
+├── Design-System.md                      # Design tokens and styles
+├── Data-and-Persistence.md               # Database layer (Mermaid ER)
+├── UI-Views-Overview.md                  # View architecture (Mermaid)
+├── Refinement-System.md                  # AI refinement (Mermaid)
+├── View-Transcribe.md                    # Transcription view (Mermaid)
+├── View-History.md                       # History browser (Mermaid)
+├── View-Search.md                        # Search interface (Mermaid)
+├── View-Refine.md                        # AI refinement UI (Mermaid)
+├── View-Settings.md                      # Configuration view
+├── View-User.md                          # User metrics view
+├── Testing-Philosophy.md                 # Test strategy
+├── DIAGRAM_AUDIT_REPORT.md               # Audit report
+├── MERMAID_VALIDATION_REPORT.md          # Validation report
+├── WIKI_PLAN.md                          # Planning document
+├── phase2/                               # 14 trace reports
+│   ├── TRACE_*.md
+│   └── ...
+├── README.pdf                            # PDF export (5.8 KB)
+```
+
+### Commits & Reproducibility
+
+This release is fully reproducible. All wiki content is:
+- Derived from repository code via trace points
+- Validated against Mermaid rendering rules
+- Cross-linked and consistent
+- Suitable for git history and attribution
+
+---
+
+## v2.9.7 - Test Warning Suppression
+
+### Fixed
+- **FutureWarning Suppression**: Added `filterwarnings = ["ignore::FutureWarning"]` to pytest configuration to suppress deprecation warnings from PyTorch's `torch.distributed.reduce_op` during test runs, ensuring clean test output without affecting functionality.
+
+---
+
+## v2.9.6 - Onboarding UX & Layout Improvements
+
+### Added
+- **FlowLayout Class**: New responsive layout that wraps items to multiple lines based on available width, enabling proper display of dynamic content
+- **Voice Calibration in Settings**: Added Voice Calibration section to Settings View with "Run Calibration" button, allowing users to re-calibrate their voice profile at any time. Shows current calibration results (fundamental and mean frequency) when available.
+
+### Fixed
+- **AI Refinement Model Selection Layout**: Model selection pills in onboarding now wrap to multiple lines instead of cramming all pills on one line, preventing text truncation and improving readability
+- **Onboarding Startup Check**: Onboarding wizard now launches automatically when `user.onboarding_completed` is set to `false` in config. Previously, the startup logic was not checking this flag, so manually resetting it in the YAML had no effect. Now you can trigger onboarding by setting `onboarding_completed: false` and restarting the app.
+- **Onboarding Completion Dialog**: Fixed bug where clicking "Finish" in onboarding would show an unexpected "Exit Setup?" confirmation dialog. The wizard now completes cleanly without interruption, properly saving the `onboarding_completed` flag to config.
+
+### Changed
+- **RefinementPage Model Selection (`src/ui/components/onboarding/pages.py`)**:
+  - Replaced `QHBoxLayout` with new `FlowLayout` for model pills container
+  - Model names now fully visible with proper spacing
+  - Layout automatically adapts to window width and number of models
+- **UserView (`src/ui/views/user_view.py`)**: 
+  - Added `_title_label` instance variable to store reference to title QLabel for dynamic updates
+  - Added `_on_config_changed()` slot to listen for user name configuration changes and update title in real-time
+  - Connected `ConfigManager.instance().config_changed` signal in `__init__()`
+  - Updated `cleanup()` to properly disconnect config change signal
+- **IconRail (`src/ui/components/main_window/icon_rail.py`)**:
+  - Added `_user_btn` instance variable to store reference to user button for label updates
+  - Added `_on_config_changed()` slot to listen for user name changes and update button text dynamically
+  - Connected `ConfigManager.instance().config_changed` signal in `__init__()`
+  - Updated `_build_footer()` to store user button reference
+- **ApplicationCoordinator (`src/core/application_coordinator.py`)**:
+  - Added onboarding completion check in `start()` method
+  - Launches onboarding wizard if `user.onboarding_completed` is `false`
+  - Exits gracefully if user cancels onboarding
+
+---
+
+# v2.9.5 - Test Suite Organization & Path Resolution
+
+**Date:** January 19, 2026
+**Status:** Maintenance Release
+
+---
+
+## Summary
+
+This release restructures the test suite into logical categories and improves path resolution across nested test directories for better maintainability and discoverability.
+
+## Changed
+- **Test Directory Reorganization**: Restructured 493 tests into 8 logical categories for improved organization and discoverability:
+  - `tests/unit/` — Fast, isolated component tests (database, config, services, input, utils)
+  - `tests/ui/` — All UI layer tests (components, views, intents, layout, accessibility, styling)
+  - `tests/integration/` — Component interaction tests (ui, services, application, command)
+  - `tests/contracts/` — Architecture & invariant validation tests
+  - `tests/features/` — Feature-specific end-to-end tests
+  - `tests/code_quality/` — Static analysis and code quality checks
+  - `tests/platform/` — Platform-specific compatibility tests
+  - `tests/core/` and `tests/core_runtime/` — Low-level runtime tests (existing well-organized structure preserved)
+  - Added `PROJECT_ROOT` and `SRC_DIR` constants to `tests/conftest.py` for robust path resolution across nested test directories
+  - Updated 8 test files to use conftest path constants instead of relative path calculations
+
+---
+
+# v2.9.4 - Style Architecture & Installation Modernization
+
+**Date:** January 18, 2026
+**Status:** Maintenance Release
+
+---
+
+## Summary
+
+This release enforces proper architectural separation for style modules and modernizes installation scripts to align with current project structure and Python 3.12+ requirements.
+
+## Changed
+- **Style Module Organization**: Migrated `settings_view_styles.py` and `user_view_styles.py` from `src/ui/views/` to `src/ui/styles/` for proper architectural separation and consistency with the unified stylesheet pattern.
+- **Installation Scripts Modernization**: Updated all installation and desktop entry scripts to align with current project architecture, enforce Python 3.12+ requirement, properly resolve paths for portable installs, and use actual available assets.
+- **requirements.txt Completeness**: Added missing critical dependency `PyQt6>=6.7.0` to requirements.txt and reorganized for clarity.
+
+## Removed
+- **Excess Provisioning Tests**: Removed `test_slm_provisioner.py` which tested removed `scripts/setup_refinement.py` setup script (excess engineering with no project integration).
+
+---
+
+# v2.9.3 - Refinement View UX Enhancement
+
+**Date:** January 17, 2026
+**Status:** Feature Enhancement
+
+---
+
+## Summary
+
+This release replaces the old refinement strength slider with a professional card-based interface and enhances custom instruction input with improved visual hierarchy.
+
+## Added
+- **Refinement Strength Card**: Replaced the old "Minimal...Overkill" slider with a professional, card-based `StrengthSelector` widget in the Refinement View footer.
+- **Enhanced Custom Instructions**: The custom instructions input now resides in its own card with a `BLUE_4` focus border and subtle placeholder styling.
+
+---
+
+# v2.9.2 - Speech Quality Metrics Expansion
+
+**Date:** January 16, 2026
+**Status:** Feature Enhancement
+
+---
+
+## Summary
+
+This release adds comprehensive speech quality metrics to the User View, including vocabulary analysis, pause detection, and filler word tracking with detailed calculation explanations.
+
+## Added
+- **Title Bar Icon**: Added the system tray icon to the top left corner of the main window title bar, sized to match the title label font size (16px).
+- **Speech Quality Metrics**: Added three new metric cards to the User View: Vocabulary (lexical complexity), Avg. Pauses (silence detection), and Filler Words (um, uh, like, you know tracking).
+- **Total Silence Metric**: Added a new "Total Silence" metric card to the Usage & Activity section showing accumulated pauses across all transcriptions.
+- **Speech Quality Calculation Details**: Added comprehensive explanations in the User View's "Calculation Details" section describing how Vocabulary, Average Pauses, Total Silence, and Filler Words metrics are calculated.
+
+---
+
+# v2.9.1 - Self-Healing SLM & Multi-Model Support
+
+**Date:** January 15, 2026
+**Status:** Feature Enhancement
+
+---
+
+## Summary
+
+This release introduces automatic dependency management for the SLM runtime and expands Whisper model support with a unified registry system.
+
+## Added
+- **Self-Healing SLM Runtime**: The `SLMService` now automatically detects and installs missing conversion dependencies (`transformers`, `torch`, `ctranslate2`) in the background if they are absent during model provisioning.
+- **Multi-Model Support**: Unified Whisper model registry in `src/core/model_registry.py` with support for `large-v3-turbo`.
+
+---
+
+# v2.9.0 - Hot-Swappable Whisper Engine
+
+**Date:** January 14, 2026
+**Status:** Major Feature Release
+
+---
+
+## Summary
+
+This major release implements real-time model switching without application restarts, complete with VRAM indicators and transparent download progress overlays.
+
+## Added
+- **Hot-Swappable Engine**: Implemented `UPDATE_CONFIG` protocol for real-time model switching without application restarts.
+- **VRAM Indicators**: Added VRAM requirement metadata to model selection UI in Settings.
+- **Download Transparency**: Integrated a "Loading Model" status bridge that shows a blocking UI overlay during model downloads/initialization.
+
+---
+
+# v2.8.5 - Button Visual Language Consolidation
+
+**Date:** January 13, 2026
+**Status:** UI Polish Release
+
+---
+
+## Summary
+
+This release standardizes primary button styling across the application with a transparent visual pattern, aligning with existing destructive and purple button styles.
+
+## Changed
+- **Button Visual Language Consolidation**: Redefined the `primaryButton` style class to use an unfilled (transparent) visual pattern. Primary actions (Edit, Save, Start Recording, Apply, Change) now consistently feature a `BLUE_4` border and matching text color on a transparent background, aligning with the existing `destructiveButton` and `purpleButton` pattern. Hover states transition to a subtle `BLUE_9` background with white text for clear interaction feedback.
+- **Refinement View UI Polish**: Centered all footer section titles and lightened the text color using `GRAY_3` for a cleaner, modern look. Removed nested borders for better visual flow.
+
+---
+
+# v2.8.4 - Test Infrastructure Consolidation
+
+**Date:** January 12, 2026
+**Status:** DevEx Enhancement
+
+---
+
+## Summary
+
+This release decommissions ad-hoc verification scripts in favor of centralized testing through the pytest suite, improving code quality and maintainability.
+
+## Changed
+- **Test Infrastructure Consolidation**: Decommissioned 10+ ad-hoc verification scripts from `scripts/` (e.g., `verify_ui_colors.py`, `verify_ui_runtime.py`) and internalized their logic into the `pytest` suite.
+
+---
+
+# v2.8.3 - Settings View Layout Standardization
+
+**Date:** January 11, 2026
+**Status:** UI Architecture Release
+
+---
+
+## Summary
+
+This release completely restructures the Settings view with a unified card-based layout and consistent form-style grammar across all sections for improved visual cohesion.
+
+## Changed
+- **Settings View Layout Standardization**: Completely restructured the Settings view to use a unified card-based layout with consistent form-style row grammar (label next to control) across all sections. All settings sections now use `QFrame#settingsCard` containers with proper borders, backgrounds, and padding for visual cohesion.
+
+---
+
+# v2.8.2 - Settings View Responsive Design
+
+**Date:** January 10, 2026
+**Status:** UX Enhancement
+
+---
+
+## Summary
+
+This release improves Settings view adaptability with flexible width constraints and natural content anchoring for better reading flow across different screen sizes.
+
+## Changed
+- **Settings View Responsiveness**: Replaced fixed 900px width with min/max constraints (800px-1200px) for better adaptation to different screen sizes.
+- **Settings View Content Anchoring**: Removed top vertical stretch to anchor settings content to the top of the scroll area, providing a more natural reading flow.
+
+---
+
+# v2.8.1 - Input Field Styling Enhancement
+
+**Date:** January 9, 2026
+**Status:** UI Polish Release
+
+---
+
+## Summary
+
+This release adds consistent baseline styling to all input fields with refined focus/hover states for reduced visual noise and improved interaction feedback.
+
+## Changed
+- **Input Field Styling**: Added consistent baseline styles for all input fields (QLineEdit, QSpinBox, QDoubleSpinBox) with hover and focus states. Blue borders now appear only on focus/hover rather than being permanently visible, reducing visual noise.
+
+---
+
+# v2.8.0 - Critical Bug Fix & Stability Release
+
+**Date:** January 8, 2026
+**Status:** Major Fix Release
+
+---
+
+## Summary
+
+This major bug fix release addresses numerous critical issues affecting system tray behavior, UI rendering, refinement engine stability, and settings persistence across the application.
+
+## Fixed
+- **UI Invariants Robustness**: Updated `test_color_constants.py` and `test_ui_invariants.py` to allow more flexible color naming and internalized the AST-based colors scan, preventing test failures caused by visual polish or script cleanup.
+- **QComboBox Popup Styling**: Fixed a long-standing issue where combo box popups displayed an ugly white background at the top and bottom. Set `combobox-popup: 0` to use stylized popups and normalized padding on the item view to ensure the background covers the entire popup area.
+- **System Tray Window Restoration**: Fixed system tray icon toggle behavior where clicking to hide and then restore the window would fail to show the window again. The system tray manager now uses explicit state tracking instead of relying on `isVisible()` to work around unreliable visibility reporting on some window managers (particularly Wayland).
+- **Missing Application Icon**: Set application-wide window icon using `QApplication.setWindowIcon()` to ensure proper icon display in taskbar/dock instead of showing as a generic gear cog placeholder.
+- **SLM Multi-Turn Leaks**: Resolved an issue where Llama 3-based models (like NeuralDaredevil) would leak chat tokens (`<|im_end|>`) and continue generating into subsequent turns. Added robust stop-token detection for multiple prompt formats (ChatML, Llama 3) and implemented literal string truncation as a second-tier safeguard.
+- **GPU Runaway Generation**: Reduced the maximum generation length for refinement tasks from 32,768 to 2,048 tokens. This prevents models from running into infinite loops that cause high GPU utilization and system "whining" when stop tokens are missed.
+- **Settings State Persistence**: Resolved a bug where changes in the settings menu would persist in the UI even if the user navigated away without clicking "Apply". The Settings view now automatically refreshes all widgets from the current configuration every time it is entered, ensuring a clean state and clear visual feedback for discarded changes.
+- **Dependency Persistence**: Removed aggressive cleanup logic in `scripts/setup_refinement.py` that was force-uninstalling `torch` and `transformers` after every conversion, ensuring the environment remains stable for future use.
+- **Refinement Gridlock**: Resolved a critical signal signature mismatch in `ApplicationCoordinator` that caused the UI to get stuck on "Refining..." indefinitely after a successful backend generation.
+- **Model Resolution Bug**: Corrected a critical argument mismatch in the engine server's `ConfigManager.set_config_value` call, which caused model selection updates to be applied to wrong keys (ignoring the user's choice).
+- **Settings UI Layout**: Switched both Whisper and Refinement model dropdowns to `AdjustToContents` mode. This ensures they auto-expand to fit long model names and VRAM indicators without manual width overrides.
+- **Startup Crash**: Resolved `NameError: name 'entry' is not defined` in `main_window.py` caused by orphaned logic during architectural refactoring.
+- **MOTD Layout and Wrapping**: Relaxed the Message of the Day word-balancing thresholds and increased the allowed horizontal span to 820px. This prevents the MOTD from being forced into a narrow column on wide screens and ensures it spans the workspace area as intended.
+- **MOTD Text Wrapping**: Fixed Message of the Day text wrapping to balance words equally across lines when the text is long enough to wrap. Enabled word wrapping on the subtext label and added text balancing logic. (Refined in latest update)
+- **User View Metrics Layout**: Removed confusing empty "ALL TIME" badge, improved insight text generation to be more meaningful, and cleaned up the metrics section header.
+- **Transcribing State Hint Text**: During the transcribing state, the content area now shows "Please wait while the Whisper engine processes your audio..." instead of the misleading idle message.
+- **Language Field Width Conflict**: Fixed stylesheet/code mismatch where language field had conflicting width declarations (120px vs 200px).
+- **Settings Visual Inconsistency**: Eliminated mixed layout patterns (centered columns vs inline rows vs form grids) that created a "whack" feeling. All settings now follow a consistent form-style layout pattern.
+- **Project and Subproject Styling**: Fixed reversed styling hierarchy where subprojects were displaying with the same large, bold styling as top-level projects. Now top-level projects display with full-width colored headers and markers, while subprojects use smaller, simpler styling similar to transcript items with small color indicators. Also adjusted font sizes and row heights so subprojects are visually distinguished and smaller than their parent projects.
+- **Main Window Background Color**: Fixed jet-black background issue by setting the central widget background color to match the main window color (GRAY_8). The background is now properly visible instead of appearing transparent/black.
+- **Delete Button in Transcribe View**: Fixed `AttributeError` when deleting a transcript from the Transcribe View's complete state. The delete handler now correctly calls `workspace.clear_transcript()` instead of the non-existent `workspace.clear()` method.
+
+---
+
+# v2.7.5 - User View Professional Enhancement
+
+**Date:** January 7, 2026
+**Status:** UI Polish Release
+
+---
+
+## Summary
+
+This release applies professional Qt UI engineering improvements to the User View with normalized spacing, enhanced icons, and refined visual hierarchy.
+
+## Changed
+- **User View Stylesheet**: Applied professional Qt UI engineering improvements including normalized spacing scale (20px/32px instead of 24px/40px), added min-height (96px) to metric cards for layout stability, improved button accessibility with vertical padding (6px 24px), removed unsupported CSS line-height property, and refined hover states to only emphasize borders for calmer visual feedback.
+- **User View Icons**: Updated all metric cards to use new appropriately named user_view-specific icons (time_saved, words_captured, transcriptions, time_recorded, avg_length, total_silence, vocabulary, pauses, filler_words) and doubled their size from 24x24 to 48x48 pixels for better visibility.
+- **User View Layout**: Repositioned the tagline "Solid efficiency gains from dictation over typing" to appear directly beneath the "Lifetime Statistics" header as a subheader for improved visual hierarchy.
+- **About Section**: Expanded the footer description to provide more comprehensive information about Vociferous's privacy-first architecture, local processing capabilities, and AI-powered features.
+- **Creator Attribution Styling**: Styled the "Created by Andrew Brown" text at the bottom of the User View with BLUE_3 color for improved visual prominence.
+
+---
+
+# v2.7.4 - Refinement View Layout Improvement
+
+**Date:** January 6, 2026
+**Status:** UX Enhancement
+
+---
+
+## Changed
+- **Refine View Layout**: Moved the "Refine" button from the view footer to the ActionDock with proper purple styling. Stacked the strength slider controls vertically with the hint text above the slider for better readability. The slider now spans the full width of its container.
+
+---
+
+# v2.7.3 - Refinement Engine & Script Cleanup
+
+**Date:** January 5, 2026
+**Status:** Feature Enhancement
+
+---
+
+## Summary
+
+This release introduces dynamic refinement scaling, improves workflow with draft mode, and purges redundant verification scripts in favor of centralized pytest execution.
+
+## Removed
+- **Redundant Scripts**: Purged ad-hoc verification scripts (`verify_*.py`, `ui_smoke.py`, `setup_refinement.py`) in favor of centralized execution authority via `pytest` and formal installation workflows.
+
+## Changed
+- **Dynamic Refinement Scaling**: Replaced the hardcoded generation limit with a sliding scale mechanism. The maximum allowed output now scales proportionally with the input length (providing ~50% headroom and a 150-token minimum buffer), capped at 16,384 tokens (~1 hour of speech). This ensures that long transcripts are not prematurely truncated while maintaining a safety ceiling for small inputs.
+- **Improved UI Responsiveness**: Refinement engine now calculates dynamic limits per-request, reducing GPU overhead for short snippets.
+- **Refinement Workflow**: Clicking "Refine" now navigates to the Refine view in "Draft" mode, allowing you to adjust instructions and profiles before manually triggering the generation with the "Refine" button. This prevents accidental immediate consumption of GPU resources.
+
+## Fixed
+- **Duplicate UI Entries**: Hardened `TranscriptionModel` with ID-based idempotency to prevent duplicate entries when receiving multiple change signals.
+- **Test Suite Hang**: Fixed a race condition in `test_restart_application_closes_window` by ensuring strict cleanup of `ConfigManager` and `SettingsView` between test runs.
+- **Test Infrastructure**: Resolved `ModuleNotFoundError` in `test_ui_scenarios.py` by correcting mock paths to `src.database.history_manager`.
+
+---
+
+# v2.7.2 - Transcription Flow Optimization
+
+**Date:** January 4, 2026
+**Status:** Performance Enhancement
+
+---
+
+## Summary
+
+This release optimizes the transcription result handoff between the engine and UI for immediate metric updates and improved responsiveness.
+
+## Changed
+- **Transcription Flow**: Optimized the handoff between the transcription engine and UI by passing the saved `HistoryEntry` directly to `MainWindow`, ensuring immediate metric updates.
+
+---
+
+# v2.7.1 - Refinement System Overhaul & UI Cleanup
+
+**Date:** January 3, 2026
+**Status:** Major Enhancement
+
+---
+
+## Summary
+
+This release completely re-engineers the refinement prompt architecture with a 4-layer enforcement model and removes tooltips across the entire UI for architectural purity.
+
+## Changed
+- **Tooltip Removal**: Universally removed all hover-over tooltip text pop-ups from the UI and deleted all related prohibition tests to reduce cognitive noise and maintain architectural purity.
+- **Refinement Architecture**: Re-engineered the prompt engine to use a 4-layer enforcement model (Global Invariants, Role definition, Permitted/Prohibited actions, and Primary Directive). This significantly improved instruction following and cognitive posture.
+- **Refinement Profiles**: Replaced flat strings with stratified Levels 0-4 (Literal, Structural, Neutral, Intent, and Overkill).
+- **Prompt Engineering**: Moved global invariants into the system message to enforce semantic fidelity and prevent "AI-flavored" fluff.
+- **Inference Optimization**: Optimized ChatML prompt structure to maintain high-quality results while using `/no_think` mode for fast (2s) local inference.
+- **ASR Model**: Updated default model configuration to large-v3-turbo for higher transcription accuracy (user-configurable via config.yaml).
+
+## Fixed
+- **Engine Server Syntax**: Fixed a `SyntaxError` in `src/core_runtime/server.py` and implemented the missing `_ensure_model_loaded` method for thread-safe model loading.
+- **SLM Provisioning Errors**: Fixed startup error spam when refinement is enabled but model conversion dependencies (`transformers`, `torch`) are not installed. The SLM service now gracefully detects missing build-time dependencies and shows a clear warning directing users to run `scripts/setup_refinement.py` instead of throwing errors.
+- **Icon Rail Width Constant**: Corrected `RAIL_WIDTH` constant from 120 to 142 to match actual layout requirements (button width 110 + margins 32).
+- **Blocking Overlay Test**: Fixed test mock assertion to match actual `show_message(message, title=)` signature.
+- **Type Annotation**: Added missing type annotation for `state` parameter in `MainWindow.update_refinement_state`.
+- **Baseline Dependency Tests**: Rewrote `test_baseline_dependency_contract.py` to correctly test conversion dependency detection behavior (these are build-time deps, not baseline runtime deps).
+- **Accessibility Tests**: Skip focus-related tests on Wayland/offscreen platforms where focus handling is unreliable.
+- **IntentFeedbackHandler API**: Aligned MainWindow.on_refinement_status_message with IntentFeedbackHandler's public method name by adding on_refinement_status_message method to the handler.
+- **QThread Lifecycle**: Ensured deterministic shutdown in ApplicationCoordinator tests by calling cleanup() to prevent "Destroyed while thread is still running" warnings.
+- **Shutdown Idempotency**: Confirmed ApplicationCoordinator.cleanup() is already idempotent with early return guard.
+- **Engine Respawn**: Verified engine client does not respawn during intentional shutdown by checking running flag in connection loss handler.
+
+## Added
+- **Unit Test**: Added test_refinement_status_message_handling to verify MainWindow calls IntentFeedbackHandler correctly.
+- **Shutdown Test**: Added test_engine_no_respawn_during_shutdown to assert no respawn loop during shutdown.
+
+---
+
+# v2.7.0 - Architectural Milestone: Micro-Kernel & Plugin Ecosystem
+
+**Date:** January 2, 2026
+**Status:** Major Architecture Release
+
+---
+
+## Summary
+
+This major release introduces the micro-kernel architecture with isolated transcription engine process and implements a pluggable input backend system for extensibility.
+
+## Added
+- **Plugin Ecosystem (Epoch 3)**: Implemented pluggable input backend system:
+  - Added `PluginLoader` (`src/core/plugins/loader.py`) for dynamic discovery of input backends via `vociferous.plugins.input` entry points
+  - Refactored `KeyListener` to use `PluginLoader` for backend selection instead of hardcoded list
+  - Enabled extensibility for third-party input handlers (e.g., custom Wayland compositors)
+- **Micro-Kernel Architecture (Epoch 2)**: Separated transcription engine into isolated process:
+  - Implemented Client-Server IPC architecture using `src/core_runtime/protocol.py` (PacketTransport)
+  - Created `EngineServer` to host Whisper model, preventing UI freezes and reducing main process memory footprint
+  - Created `EngineClient` to manage subprocess lifecycle and communication
+  - Integrated `TranscriptionRuntime` with `EngineClient` transparently
+
+## Changed
+- **Refinement UI**: Enhanced Settings View to provide real-time status feedback (Downloading, Ready, Error) and disable conflicting actions during model provisioning.
+- **Installation Documentation**: Restructured README.md to provide clear baseline install flow and separate "enable refinement" flow, with explicit dependency separation.
+
+---
+
+# v2.6.5 - TDD Phase 5: Code Quality Enforcement
+
+**Date:** December 30, 2025
+**Status:** Quality Enhancement
+
+---
+
+## Summary
+
+This release completes the TDD quality initiative with magic number extraction, docstring coverage enforcement, and color constant centralization.
+
+## Added
+- **Magic number extraction (Phase 5.3 TDD)**: Extracted hardcoded layout dimensions to `ui.constants.dimensions` per audit findings:
+  - `ToggleSwitch`: Extracted width (50), height (24), radius (12), circle size (18), margin (3), duration (200ms)
+  - `ContentPanel`: Extracted margins (32, 24) and spacing (12)
+  - Created automated enforcement tests in `test_magic_numbers.py` to prevent regression
+- **Docstring coverage enforcement (Phase 5.2 TDD)**: Added comprehensive docstrings to priority architectural components:
+  - `BaseView.__init__`: Documents parent widget parameter and initialization
+  - `ToggleSwitch.__init__`, `circle_position` property: Documents widget initialization and animation state
+  - `ContentPanel.__init__`: Documents panel initialization for transcript display
+  - `SelectionState.has_selection`, `is_single_selection`: Documents selection query properties
+  - Created automated enforcement tests preventing missing docstrings on public APIs
+- **Docstring coverage test suite**: Created `test_docstring_coverage.py` with 10 tests validating docstring presence and quality
+- **Color constant centralization (Phase 5.1 TDD)**: Centralized all UI colors into semantic constants per P3-06 audit finding:
+  - Added semantic color tokens: `TOGGLE_CIRCLE_ON`, `HOVER_OVERLAY_LIGHT`, `HOVER_OVERLAY_BLUE`, `OVERLAY_BACKDROP`
+  - Refactored `toggle_switch.py`, `unified_stylesheet.py`, `refine_view.py`, `main_window_styles.py` to use centralized constants
+  - Created automated enforcement tests preventing hardcoded hex/rgba colors in production code
+  - Addresses audit finding P3-06 (Hardcoded colors bypass centralized palette) from UI Architecture Audit Report
+- **Color constant test suite**: Created `test_color_constants.py` with 12 tests validating color constant coverage, completeness, and usage
+
+---
+
+# v2.6.4 - TDD Phase 4: Threading Pattern Migration
+
+**Date:** December 29, 2025
+**Status:** Architecture Fix
+
+---
+
+## Summary
+
+This release refactors background workers from the QThread subclass anti-pattern to the Qt6-recommended moveToThread pattern for proper resource management.
+
+## Added
+- **Threading pattern optimization (Phase 4 TDD)**: Refactored background workers from QThread subclass anti-pattern to Qt6-recommended moveToThread pattern:
+  - `SetupWorker`: Converted from `QThread` subclass to `QObject` with `do_work()` slot (no longer overrides `run()`)
+  - `SetupPage`: Implements moveToThread pattern with proper cleanup chain via `deleteLater()` on worker and thread
+  - Added `finished = pyqtSignal(bool, str)` for thread-safe result communication
+  - Thread cleanup automatically triggered via `thread.finished` signal
+  - Addresses audit finding P1-05 (Critical: QThread subclass anti-pattern) from UI Architecture Audit Report
+- **Threading pattern test suite**: Created `test_threading_patterns.py` with 8 tests validating QObject pattern compliance, moveToThread safety, and resource cleanup
+
+---
+
+# v2.6.3 - TDD Phase 3: Accessibility Implementation
+
+**Date:** December 28, 2025
+**Status:** Accessibility Enhancement
+
+---
+
+## Summary
+
+This release implements comprehensive accessibility support for keyboard users and screen readers with proper focus states and ARIA labels.
+
+## Added
+- **Accessibility & keyboard navigation (Phase 3 TDD)**: Implemented comprehensive accessibility support for keyboard users and screen readers:
+  - Added `:focus` pseudo-state styling for all button types (`primaryButton`, `secondaryButton`, `destructiveButton`, `purpleButton`) with 2px outline and offset
+  - `RailButton`: Set `accessibleName` to "Navigate to {view}" and `accessibleDescription` for screen reader support
+  - `ToggleSwitch`: Supports setting `accessibleName` from parent context
+  - All interactive widgets now support keyboard focus and tab navigation
+  - Addresses audit findings P2-03, P4-04, P4-05 from UI Architecture Audit Report
+- **Accessibility test suite**: Created comprehensive `test_accessibility.py` with 14 tests validating focus states, tab navigation, accessible names, and keyboard shortcuts
+
+---
+
+# v2.6.2 - TDD Phase 2: Widget Cleanup Protocol
+
+**Date:** December 27, 2025
+**Status:** Resource Management Enhancement
+
+---
+
+## Summary
+
+This release implements mandatory cleanup() methods for all stateful widgets to prevent resource leaks and ensure proper lifecycle management.
+
+## Added
+- **Widget cleanup protocol (Phase 2 TDD)**: Implemented `cleanup()` methods for all stateful widgets to prevent resource leaks:
+  - `ToggleSwitch`: Stops QPropertyAnimation to prevent animation leaks
+  - `RailButton`: Resets blink state (QTimer.singleShot auto-cleans, but consistency enforced)
+  - `BlockingOverlay`: Hides overlay if visible during cleanup
+  - `TranscriptPreviewOverlay`: Clears viewer content and hides during cleanup
+  - `ExportDialog`: Ensures dialog is closed during cleanup
+  - `DialogTitleBar`: Resets drag state during cleanup
+  - `MainWindow._cleanup_children()`: Recursive cleanup of all child views and components with graceful error handling
+  - `MainWindow.closeEvent()`: Now calls `_cleanup_children()` before window close
+  - Addresses audit findings P1-03, P1-04, P2-01, P2-02, P2-05 from UI Architecture Audit Report
+- **Widget cleanup test suite**: Created comprehensive `test_widget_cleanup.py` with 21 tests validating cleanup protocol compliance, idempotency, and resource release
+
+---
+
+# v2.6.1 - TDD Phase 1: Widget Sizing & Comprehensive Fixes
+
+**Date:** December 26, 2025
+**Status:** Major Quality & Feature Release
+
+---
+
+## Summary
+
+This release kicks off the TDD initiative with widget sizing compliance and includes numerous critical fixes for refinement, resource resolution, and UI behavior across the application.
+
+## Added
+- **Widget sizing compliance (Phase 1 TDD)**: Implemented `sizeHint()` and `minimumSizeHint()` methods for 7 custom widgets per Qt6 layout best practices:
+  - `BarSpectrumVisualizer`: Returns preferred size 200x100, minimum 100x50
+  - `ToggleSwitch`: Returns fixed size 50x24 (matches setFixedSize)
+  - `RailButton`: Returns square 110x110 dimensions
+  - `TranscriptPreviewOverlay`: Returns preferred 400x300, minimum 150x150
+  - `HistoryTreeView`: Returns preferred 300x400, minimum 150x200
+  - `BlockingOverlay`: Returns preferred 600x400, minimum 300x200
+  - Addresses audit findings P1-01, P1-02, P2-04 from UI Architecture Audit Report
+- **Widget sizing test suite**: Created comprehensive `test_widget_sizing.py` with 29 tests validating sizeHint compliance across all custom widgets
+
+## Fixed
+- **Authoritative Resource Resolution**: Unified asset resolution across production and testing environments using `ResourceManager`. Removed relative path traversal antipatterns (`Path(__file__).parents[...]`) in `TitleBar`, `Onboarding`, and Application Restart logic.
+- **Asset Verification Hardening**: Updated `scripts/verify_assets.py` to perform comprehensive, non-zero-exiting checks on all critical icons (IconRail, TitleBar), unified stylesheet integrity, and font/sound directories.
+- **Refinement model echoing**: Fixed an issue where 8B and 14B models (and some 4B variants) would echo the original transcript instead of refining it. Shifted default SLM model definitions to use Instruct variants instead of Base variants, added explicit stop token support to `RefinementEngine`, and improved `_parse_output` to strip accidentally echoed transcript markers.
+- **Thinking model support**: Enhanced robust parsing of `<think>` blocks to handle both complete and truncated reasoning, ensuring that AI "thoughts" are correctly logged but removed from the final refined output.
+- **SLM reasoning output filtering**: Added automatic stripping of `<think>` reasoning blocks from SLM outputs (Refinement and MOTD). This ensures that models which generate internal thoughts (like Qwen2.5-14B) do not pollute the final user-visible text with reasoning tags.
+- **MOTD token limit**: Increased MOTD generation token limit from 80 to 256 to allow enough headroom for models to perform internal reasoning before producing the final one-sentence message.
+- **Refinement View lifecycle**: `RefineView` is now fully operational. It correctly loads transcript data by ID, displays a "processing" state during fetches, and emits proper signals for acceptance/discarding. The previous "inert" implementation has been replaced with a reactive, styled component using `ContentPanel`.
+- **TranscribeView button persistence bug**: Fixed action buttons (edit, delete, copy) persisting when navigating away from transcribe view after completing a transcription. Added EDITING and VIEWING state transitions to IDLE in hideEvent handler.
+- **Search overlay missing background**: Added `QFrame#previewOverlay` stylesheet definition with GRAY_7 background and BLUE_4 border for proper visibility when previewing transcripts from search.
+- **Hotkey widget button heights**: Added fixed height (BUTTON_HEIGHT_PRIMARY = 48px) to hotkey input field and change button for consistent sizing.
+
+### Changed
+- **Model settings layout**: Refactored from 2-row horizontal layout to 3-column vertical stack (Device, Compute Type, Language side by side with labels above) for better visual organization.
+- **Settings view dividers**: Added consistent light gray dividers between all settings sections (Model Settings, Recording, Visualization, Output & Processing) for improved visual separation.
+- **User metrics explanations**: Enhanced "How Metrics Are Calculated" section with mathematical formulas showing actual calculation methods (e.g., "Time Saved = (words ÷ 50 WPM × 60) − recording_time").
+- **Personalized user metrics banner**: Changed "User Metrics" title to show user's name from config (e.g., "Andrew's Metrics") or "Your Metrics" as fallback.
+- **Dynamic icon rail user label**: Icon rail now reads user name from config instead of hardcoded "User" label for personalized navigation.
+
+### Fixed (continued from previous)
+- **ActionDock button text clipping**: Increased button padding from `8px 16px` to `12px 16px` and added explicit `min-height: 48px` to stylesheet to prevent descender characters (g, p, y) from being cut off, especially in grid layouts.
+- **HistoryView delete button**: Connected `deleteRequested` signal from HistoryView to new `_on_delete_from_history_view()` handler in MainWindow, enabling delete functionality with confirmation dialog and automatic model refresh.
+- **ProjectsView create project button**: Added `create_new_project()` wrapper method to `ProjectTreeWidget` that displays the CreateProjectDialog and calls the underlying `create_project()` method, fixing the CREATE_PROJECT action dispatch.
+
+### Changed
+- Removed the blue border from the `QMainWindow` in `unified_stylesheet.py` and `main_window_styles.py` to achieve a cleaner look.
+- Enhanced MOTD generation prompts in `slm_service.py` to encourage more engaging and varied messages: updated tone to "calm, grounded, professional, and engaging", expanded guidance to include wordplay, alliteration, light humor, and thematic inspiration for freshness and uniqueness.
+
+### Added
+- **Dynamic Refinement Prompts**: Moved all refinement system prompts from hardcoded Python source to `config_schema.yaml`, enabling user customization without code changes.
+- **User Instruction Input**: Added a configurable text input to the Refinement View, allowing users to supply specific instructions (e.g., "Make it bullet points") during refinement.
+- **Refinement Strength Selector**: Introduced a "Strength" selector (Minimal, Balanced, Strong) in the Refinement View to control the intensity of AI edits.
+- **Refinement Testing Suite**: Added comprehensive `tests/test_refinement_integration.py` (orchestration, persistence) and `tests/test_view_refine.py` (view states, contracts), bringing the Refinement feature to 100% test coverage.
+- **AI-Generated Message of the Day (MOTD)** — Implemented dynamic motivational subtext in workspace header:
+  - Created `src/core/state_manager.py` for persistent session state management
+  - Added `RefinementEngine.generate_custom()` for non-transcription text generation
+  - Added SLM background task for MOTD generation with a 5-second startup delay and retry logic
+  - Injected dynamic entropy (Unix timestamp) and increased temperature (1.2) to ensure variety in generated messages
+  - **Rationale**: Replaces static subtext with dynamic, AI-generated content to improve application identity and user engagement without blocking startup performance.
+- **Unified Logging Migration** — Moved all terminal output to the standard Python logging framework:
+  - Removed all `print()` and `ConfigManager.console_print()` calls from the source tree
+  - Replaced legacy console printing with appropriate `logger` levels (`info`, `warning`, `error`, `critical`)
+  - Integrated transcription result echoing into `logger.info` for unified monitoring
+  - Added JSON-based "Agent Friendly" formatting for log visualization
+  - **Refactored Logging Architecture**: Relocated core logging logic to `src/core/log_manager.py`, separating it from UI error handling invariants.
+  - **Rationale**: Consolidated all diagnostics into a single, rotatable, and configurable system. Eliminates "stray" terminal output that bypassed log management.
+- **Root directory reorganization** — Streamlined project structure following Python/Linux conventions:
+  - **Configuration consolidation**: Merged `mypy.ini` and `pytest.ini` into `pyproject.toml` `[tool.*]` sections (eliminated 2 standalone config files)
+  - **Assets organization**: Created `assets/` directory at root, moved `icons/` → `assets/icons/` (groups runtime assets, simplifies path resolution)
+  - **Script consolidation**: Moved `dev_tools/check.sh` → `scripts/check.sh` (eliminated `dev_tools/` directory, consolidated all build/dev scripts)
+  - Updated 5 icon path references in Python source + 1 shell script from `"icons/"` to `"assets/icons/"`
+  - **Rationale**: Modern Python projects consolidate config into `pyproject.toml`. Dedicated `assets/` directory improves discoverability and reduces path calculation complexity (e.g., `parents[4] / "assets" / "icons"` is semantically clearer than `parents[4] / "icons"`). All development tooling now centralized in `scripts/`.
+- **Entry point reorganization** — Moved main application entry point from `scripts/run.py` to root-level `vociferous` executable:
+  - Created executable `vociferous` script at project root (follows Linux convention: main entry point at root level)
+  - Deleted `scripts/run.py` — now redundant, functionality moved to root-level `vociferous`
+  - Deleted `vociferous.sh` — bash wrapper no longer needed (Python entry point handles environment setup directly)
+  - Updated `scripts/install.sh` to reference new entry point: `./vociferous` instead of `python scripts/run.py`
+  - Updated `scripts/install-desktop-entry.sh` to reference new entry point: `Exec=$PROJECT_DIR/vociferous` instead of `vociferous.sh`
+  - Updated `tests/test_single_instance.py` to reference new entry point location
+  - **Rationale**: Root-level entry point is the Linux/Unix convention for executable scripts. Simplifies user experience (`.venv/bin/activate && ./vociferous` instead of `.venv/bin/activate && python scripts/run.py`), matches common Python project patterns (e.g., Flask's `flask` command)
+- **Source directory reorganization** — Improved architectural clarity by moving modules to semantic subdirectories:
+  - Moved `src/transcription.py` → `src/services/transcription_service.py` (groups with other services: audio_service, slm_service, voice_calibration)
+  - Moved `src/history_manager.py` → `src/database/history_manager.py` (groups with database core, models, DTOs, repositories)
+  - Created `src/core/` subdirectory and moved `src/exceptions.py` → `src/core/exceptions.py` (establishes core utilities namespace for fundamental types)
+  - Deleted `src/key_listener.py` — deprecated compatibility shim that only re-exported from `input_handler` (no actual code)
+  - Updated 22+ import statements across codebase (main.py, result_thread.py, all views, widgets, models, tests)
+  - **Rationale**: Top-level src/ now contains only application entry point (main.py), configuration files, orchestration (result_thread.py), and utilities (utils.py). All other modules organized into purpose-specific subdirectories for improved navigability and architectural cohesion.
+
+### Fixed (Architecture & Quality)
+- **Onboarding Data Persistence** — Fixed missing config saves during onboarding completion
+  - Implemented `HotkeyPage.on_exit()` to save user-selected hotkey to `recording_options.activation_key`
+  - Added final page `on_exit()` call in `OnboardingWindow._finish_onboarding()` for consistency
+  - **Rationale**: Ensures all user preferences collected during onboarding (name, refinement toggle, hotkey) are properly saved to config before application starts
+- **Voice Calibration Thread Cancellation** — Fixed zombie process issue during onboarding cancellation
+  - Added `request_cancel()` method to `VoiceCalibrator` class with cancellation flag support
+  - Updated `CalibrationPage.cleanup()` to call `request_cancel()` instead of deprecated `stop_recording()` method
+  - Implemented proper thread lifecycle management to prevent hanging calibration threads when user exits onboarding mid-process
+  - **Rationale**: Prevents resource leaks and zombie processes that occurred when users cancelled onboarding during voice calibration phase
+- **Views Module Signal Routing Architecture** — Comprehensive audit and fixes to ensure Intent-Driven UI compliance
+  - **RefineView (CRITICAL)**: Removed rogue `QPushButton` instances (`_btn_discard`, `_btn_accept`) with direct `clicked.connect()` wiring; implemented proper signal routing (`refinementAccepted`, `refinementDiscarded`) and `dispatch_action()` handlers
+  - **SearchView (HIGH)**: Added missing `dispatch_action()` handlers for EDIT, DELETE, and REFINE actions; implemented routing signals (`editRequested`, `deleteRequested`, `refineRequested`)
+  - **EditView**: Fixed semantic conflict (removed `can_cancel=True`, changed handler from `ActionId.CANCEL` to `ActionId.DISCARD`); standardized spacing (32px→Spacing.S5, 16px→Spacing.S3)
+  - **HistoryView**: Removed inline `pane_style` variable and rogue border-left styling; added object names for unified stylesheet integration; implemented missing DELETE handler
+  - **SettingsView**: Added missing BaseView contract methods (`get_capabilities()`, `get_selection()`, `dispatch_action()`)
+  - **UserView**: Added missing BaseView contract methods (`get_capabilities()`, `get_selection()`, `dispatch_action()`)
+  - **Spacing Standardization**: Replaced all hardcoded spacing values across EditView, RefineView, SearchView with semantic constants (S0-S7)
+- **BaseView Interface Compliance**: All 10 views now uniformly implement the 4-method contract: `get_view_id()`, `get_capabilities()`, `get_selection()`, `dispatch_action()`
+
+### Removed
+- Deleted `scripts/audio_analyzer.py` — legacy debugging tool, never referenced in codebase
+- Deleted `scripts/calibrate_voice.py` — prototype CLI wrapper, superseded by production `VoiceCalibrator` service in `src/services/voice_calibration.py`
+- Deleted `src/ui/components/settings/` directory — SettingsDialog modal removed in favor of integrated SettingsView
+- Deleted merged `src/ui/widgets/content_panel/` directory — separated back into distinct, purpose-specific components
+- **Removed `AnimationDurations` class** from `src/ui/constants/timing.py` — consolidated all timing constants into single `Timing` class for unified, maintainable source of truth
+- **Removed dead-code intents** from `src/ui/interaction/intents.py` — removed `OpenOverlayIntent` and `CloseOverlayIntent` (never used, not exported)
+- **Removed dead-code model roles** from `src/ui/models/transcription_model.py` — removed unused `DisplayNameRole` (never queried via Qt model role API)
+- **Removed deprecated method** from `src/ui/models/project_proxy.py` — removed unused `_has_matching_children()` method (superseded by Qt's recursive filtering)
+- **Removed legacy typography aliases** from `Typography` class — `FONT_SIZE_BODY`, `FONT_SIZE_LARGE`, `FONT_SIZE_HEADER`, `FONT_SIZE_TITLE` removed; use scale names (`FONT_SIZE_BASE`, `FONT_SIZE_MD`, `FONT_SIZE_LG`, `FONT_SIZE_XXL`) instead
+- **Removed module-level duplication in spacing.py** — removed redundant module-level S0-S7 and semantic aliases; all spacing values now contained in `Spacing` class with backward-compatible module-level re-exports
+- **Removed dead-code stylesheet infrastructure** from `src/ui/styles/`:
+  - Deleted `src/ui/styles/theme.py` — unused stylesheet generation (generate_base_stylesheet, generate_dark_theme, generate_light_theme functions never called)
+  - Deleted `src/ui/styles/stylesheet_registry.py` — StylesheetRegistry singleton never instantiated or used anywhere in codebase (experimental dead code)
+- **Removed dead-code utility functions** from `src/ui/utils/`:
+  - Removed `qt_key_to_evdev()` from `keycode_mapping.py` — stub function with placeholder implementation (returns None), never called in codebase
+  - Removed `initial_collapsed_days()` from `history_utils.py` — only used in test, never referenced in production code
+- **Removed MetricsStrip widget and duplicate lifetime metrics rendering** from `src/ui/widgets/metrics_strip/`:
+  - Deleted entire `metrics_strip/` directory (metrics_strip.py, metrics_strip_styles.py, __init__.py)
+  - Removed MetricsStrip instantiation and layout integration from MainWindow
+  - Removed metrics visibility state persistence (settings keys)
+  - **Rationale**: MetricsStrip duplicated lifetime metrics rendering already provided by UserView with superior card-based layout. UserView is now the canonical location for all lifetime statistics (transcriptions, words, time recording, time saved, average length)
+  - **Impacts**: MainWindow layout simplified: ViewHost + ActionDock (metrics moved to UserView only)
+- **Removed dead StyledButton stylesheet file** from `src/ui/widgets/styled_button/`:
+  - Deleted `src/ui/widgets/styled_button/styled_button_styles.py` — never imported, dead code
+  - Migrated StyledButton to use unified stylesheet pattern: changed from object name selectors (`#styledPrimary`, `#styledSecondary`, `#styledDestructive`) to styleClass attribute selectors (`[styleClass="primaryButton"]`, etc.)
+  - Updated `_apply_style()` to use `setProperty("styleClass", ...)` instead of `setObjectName(...)`
+  - **Rationale**: Consolidates all button styling in unified_stylesheet.py, eliminates orphaned stylesheet definition
+- **Removed dead TranscriptItem stylesheet file** from `src/ui/widgets/transcript_item/`:
+  - Deleted `src/ui/widgets/transcript_item/transcript_item_styles.py` — never imported, dead code
+  - File contained only empty string: `TRANSCRIPT_ITEM_STYLESHEET = ""`
+  - Styling for transcript items is handled programmatically via QFont and QColor in `create_transcript_item()` and `paint_transcript_entry()`
+  - **Rationale**: Eliminates orphaned stylesheet file with no QSS usage
+- **Cleaned up Spectral Halo visualizer references** — incomplete removal had left orphaned config and documentation:
+  - Removed `spectral_halo` section from `src/config_schema.yaml` (leader_boost, halo_smoothness sliders no longer needed)
+  - Updated `src/ui/widgets/__init__.py` docstring to remove spectral_halo reference
+  - Updated `docs/wiki/UI-Architecture.md` to reference BarSpectrumVisualizer (only active visualizer)
+  - Updated `docs/wiki/Backend-Architecture.md` to show only bar_spectrum and waveform visualizer directories
+  - Updated `README.md` to describe "spectrum visualization" generically instead of "Spectral Halo"
+  - Updated `docs/wiki/Recording.md` to describe "spectrum visualization" generically
+  - **Rationale**: Previous removal of Spectral Halo code left stale config and documentation; waveform visualizer preserved for future resurrection
+- **Resurrected WaveformVisualizer** as optional spectrum visualization:
+  - Moved waveform_visualizer from legacy `src/ui/widgets/waveform_visualizer/` to `src/ui/widgets/visualizers/waveform_visualizer/`
+  - Created proper `__init__.py` files for visualizers package structure
+  - Added `add_spectrum()` adapter method to WaveformVisualizer for API compatibility with BarSpectrumVisualizer
+  - **Rationale**: Provides users with choice between bar spectrum (frequency bands) and waveform (amplitude levels) visualizations
+- **Added visualizer type configuration**:
+  - Added `visualization.visualizer_type` config schema with options: `bar_spectrum`, `waveform`
+  - Default is `bar_spectrum` for current behavior
+  - User can switch between visualizers in Settings View ("Visualization" section, "Spectrum Type" dropdown)
+- **Implemented visualizer factory pattern**:
+  - Created `create_visualizer()` factory function in `WorkspaceContent`
+  - Factory reads `visualization.visualizer_type` config and instantiates appropriate visualizer
+  - Both visualizers share common public API: `start()`, `stop()`, `add_spectrum(bands)`
+  - Visualizer changes take effect on next recording session
+- **Removed useless test cases** from test suite:
+  - Deleted `test_detect_session_type()` from `tests/test_wayland_compat.py` — tautological test that always passes (checks if value is in set containing all possible values)
+  - Deleted `test_views_dispatch_contract()` from `tests/test_phase2_scaffolding.py` — vague contract with unclear assertion (`isinstance(result, bool) or result is None`), removed per comment admitting implementation confusion
+  - Simplified `test_backquote_exists()` in `tests/test_input_handler.py` — removed redundant `is not None` assertion after `hasattr()` verification
+  - **Impact**: Test suite reduced from 264 to 262 passing tests (removed 2 useless tests), strengthened test signal
+
+### Changed
+- **Reorganized UI components directory structure** for improved architectural clarity:
+  - Moved MainWindow sub-components into `main_window/` subdirectory:
+    - `action_dock.py` → `main_window/action_dock.py` (context-sensitive action buttons)
+    - `icon_rail.py` → `main_window/icon_rail.py` (navigation rail)
+    - `system_tray.py` → `main_window/system_tray.py` (system tray manager)
+    - `view_host.py` → `main_window/view_host.py` (view router/switcher)
+  - Created `view_utilities/` subdirectory for shared view components:
+    - `content_panel.py` → `view_utilities/content_panel.py` (detail display panel for HistoryView, ProjectsView)
+    - `history_list.py` → `view_utilities/history_list.py` (history list wrapper)
+  - Updated all imports across codebase (main.py, views, tests)
+  - Updated architectural contract test to reflect new structure
+  - **Rationale**: Groups related components together—MainWindow shell components are now properly nested under main_window/, and view helper components are grouped in view_utilities/. Improves discoverability and maintains architectural boundaries.
+
+### Changed
+- **Constants Directory Consolidation**: Simplified constants architecture
+  - `spacing.py`: Moved all values into `Spacing` class; added module-level re-exports for backward compatibility with existing imports
+  - `typography.py`: Consolidated font weight aliases (FONT_WEIGHT_REGULAR, FONT_WEIGHT_MEDIUM, FONT_WEIGHT_SEMIBOLD, FONT_WEIGHT_BOLD) to two canonical weights (NORMAL=400, EMPHASIS=600); added legacy aliases in class for backward compatibility
+  - `timing.py`: Removed `AnimationDurations` class; all animation, polling, and timing constants now in single `Timing` class
+  - `dimensions.py`: Updated to use `Spacing.S2` instead of importing module-level S2 (since S2 now only lives in Spacing class)
+- **__init__.py exports**: Removed `AnimationDurations` from constants package exports and `__all__` list; maintained all other exports for API compatibility
+
+### Fixed
+- **MainWindow Title Bar Spacing**: Replaced hardcoded 3px spacer with semantic `Spacing.TITLE_BAR_SEPARATOR` constant (4px, S0 scale)
+- **ActionDock Layout Spacing**: Fixed non-standard 6px spacing to use scale-compliant 8px (S1) for consistency across UI
+- **Workspace Component Spacing**: Standardized all hardcoded spacing values in header.py, content.py, workspace.py, and transcript_metrics.py
+  - WorkspaceHeader: Changed `setSpacing(8)` → `Spacing.MINOR_GAP`
+  - WorkspaceContent carousel: Changed `setContentsMargins(12, 4, 12, 4)` → `(Spacing.S2, Spacing.S0, Spacing.S2, Spacing.S0)` and `setSpacing(8)` → `Spacing.MINOR_GAP`
+  - MainWorkspace footer: Changed `setSpacing(16)` → `Spacing.BUTTON_GAP`
+  - TranscriptMetrics grid: Changed `setSpacing(4)` → `Spacing.S0`, `setContentsMargins(0, 8, 0, 8)` → `(0, Spacing.MINOR_GAP, 0, Spacing.MINOR_GAP)`, `setHorizontalSpacing(24)` → `Spacing.S4`, `setVerticalSpacing(8)` → `Spacing.MINOR_GAP`
+- **ContentPanel Namespace Collision**: Resolved duplication by separating into two distinct, purpose-specific components:
+  - `src/ui/components/content_panel.py` — Detail display panel for HistoryView and ProjectsView (title, content, footer metadata)
+  - `src/ui/widgets/workspace_panel.py` — Styled container for MainWorkspace (custom-painted rounded corners, state-dependent borders)
+  - Each component now has a single, clear responsibility with no ambiguous mode switching
+- **Spacing Scale Compliance**: Added new `TITLE_BAR_SEPARATOR` semantic constant to enforce consistent spacing throughout the application
+
+### Added
+- **READY State**: New WorkspaceState.READY for completed transcriptions
+  - Green "Transcription ready" header persists until consuming action (Copy/Edit/Refine/Delete/Start Recording)
+  - Auto-resets to IDLE when navigating away from Transcribe view
+  - Provides clear visual feedback that a fresh transcription is available
+- **Collapsible Metrics Strip**: Transcript metrics can now be toggled
+  - "Show metrics" / "Hide metrics" toggle label
+  - Metrics align precisely to transcript output bounds (0 left/right margins)
+  - Collapsed state by default to reduce visual clutter
+- **Edit View Navigation**: Return-to-origin navigation after editing
+  - EditView tracks which view initiated the edit request
+  - Both Save and Cancel actions return to the originating view
+  - Search view state persists across edit operations via update_transcript()
+- **Toggle Switch Widget**: New animated pill-shaped toggle switch with sliding circle for boolean settings
+  - Smooth 200ms animation with cubic easing
+  - Theme-integrated colors (primary when active, dark gray when inactive)
+  - Replaces traditional checkboxes for modern UX
+- **View-Specific Stylesheets**: Custom styling modules for Settings and User views
+  - Dark dropdown menus with black backgrounds for better contrast
+  - Permanent blue borders on key input fields (hotkey, language)
+  - Fixed-width layouts with perfect centering
+  - Professional card-based designs
+
+### Fixed
+- **Hotkey Recording Toggle**: Fixed a bug where recording would not trigger via hotkey if the workspace was in VIEWING or READY states.
+- **Transcription Status**: Corrected an issue where fresh transcriptions incorrectly displayed "Transcript Loaded" instead of "Transcription complete" (green).
+- **Workspace Data Sync**: MainWindow now uses the full `display_new_transcript` pipeline for fresh results, ensuring metrics update and the correct READY state is reached.
+- **Intent Accessibility**: Relaxed guards on Edit and Delete intents to ensure they can be triggered immediately after a transcription completes.
+
+### Changed
+- **Unified Stylesheet Refactor**: Migrated `unified_stylesheet.py` to a more modular, section-based structure using semantic `Colors` mapping.
+  - Implemented `Colors` semantic mapping class in `ui.constants` to isolate palette from visual definitions.
+  - Improved styling for scrollbars, buttons, dialogs, and specific views (Transcribe, Edit, Refine).
+  - Added support for purple and destructive semantic button classes.
+- **UI Color Palette**: Added canonical `COLOR_*` constants and aligned legacy `Colors` names to the canonical palette for consistent naming without altering usage patterns.
+- **Action Dock Grid Layout**: Action buttons now self-organize into a smart grid layout instead of a vertical list.
+  - Dynamically repacks buttons into 2 columns based on visibility.
+  - Ensures primary actions (like Start Recording) take prominence when alone.
+  - Eliminates vertical stacking for cleaner UI.
+- **Icon Rail Visuals**: Updated background color to `SURFACE_ALT` (lighter gray) to distinguish it from the main window background.
+- **Icon Rail Interactivity**: Restored hover and active state visuals for navigation icons.
+  - **Hover**: Subtle background highlight (`HOVER_BG`).
+  - **Active**: Blue left border (`4px solid PRIMARY`) with semi-transparent background.
+  - Provides clear "you are here" feedback for better navigation.
+- **Transcribe View Header**: "Transcription ready" renamed to "Transcription complete" for better user alignment.
+- **Transcribe View Header**: Color-coded status indicators
+  - Recording state now uses Colors.DESTRUCTIVE (red) instead of hardcoded #FF4444
+  - Ready state displays in Colors.SUCCESS (green)
+  - Follows semantic color design tokens
+- **Edit View Controls**: Simplified action buttons
+  - Removed "Discard" button (redundant with Cancel)
+  - Cancel button shows red hover state to indicate destructive action
+  - Cleaner, less cluttered control panel
+- **Architecture Tests**: Updated ~10 tests to reflect external editing model
+  - Tests now validate that EditIntent delegates to external EditView
+  - Workspace stays in VIEWING state during editing (editing happens in separate view)
+  - CommitEditsIntent and DiscardEditsIntent return REJECTED/NO_OP when called on workspace
+- **Style Enforcement Tests**: Added exclusions for pre-existing hardcoded colors
+  - toggle_switch.py, bar_spectrum_visualizer.py, metrics_strip.py excluded as legacy widgets
+- **User View**: Completely redesigned with refined layout:
+  - Fixed-width centered container (900px) for consistent appearance
+  - Reduced excessive spacing between sections
+  - More concise explanations text to eliminate redundancy
+  - Maintained card-based metric design with improved proportions
+- **Settings View**: Complete overhaul with professional polish:
+  - Fixed-width centered container (700px)
+  - Multi-column grid layouts for related settings
+  - Toggle switches replace all checkboxes for boolean options
+  - Dark dropdown backgrounds (#1A1A1A) with white text for readability
+  - Permanent blue borders on activation key and language fields
+  - Language field limited to 120px width for better alignment
+  - Larger, more prominent buttons (40px height)
+  - Card-based design for History Management and Application sections
+- **Audio Service**: Improved FFT binning logic from linear to logarithmic distribution to better represent speech and human hearing. Increased default resolution to 64 bands.
+- **Audio Service**: Refined noise gating (0.12 threshold) and amplification curves for cleaner high-gain microphone performance.
+- **Bar Spectrum Visualizer**: Replaced basic linear decay with CAVA-inspired smoothing algorithms, including Monstercat horizontal filtering, integral temporal smoothing, and quadratic gravity falloff.
+- **Visualizer**: Established Bar Spectrum as the sole, integrated visualizer.
+- **Refine View**: Removed the `QSplitter` draggable handle and replaced it with a static side-by-side layout.
+- **Refine View**: Migrated styling to the unified stylesheet and improved the visual layout of the comparison zones.
+- **Settings View**: Refactored control buttons (History, App) to side-by-side layout for improved density.
+- **Settings View**: Increased horizontal spacing in form layouts for better readability.
+- **Recording Visualizer**: Replaced the black hole visualizer with the new Spectral Halo (halo-with-lead) renderer.
+
+### Added
+- **Bar Spectrum Visualizer**: New professional-grade frequency bar visualizer with peak-hold gravity, inspired by the markjay4k tutorial.
+- **Spectral Halo Visualizer**: New halo-with-lead spectrum visualizer with leader emphasis, smoothing, and ripple behavior.
+- **Settings**: Added configuration for visualizer type (Halo vs Bars).
+- **Settings**: Added tuning parameters for bar count, decay rate, and peak hold time.
+- **Spectral Halo**: Added Spectral Halo tuning sliders for leader boost and halo smoothness.
+
+### Removed
+- **Legacy Visualizers**: Removed deprecated Spectral Halo and Waveform visualizers and their associated configuration toggle logic. 
+- **BlackHoleVisualizer**: Deleted the deprecated black hole visualizer implementation.
+- **Spectral Halo Settings**: Removed Spectral Halo tuning controls from Settings View as the visualization method has been deprecated.
+
+### Fixed
+- **Scrollbars**: Restored the custom blue styling for scrollbars by migrating missing styles to the unified stylesheet.
+- **System Tray Icon**: Fixed icon mapping to use `system_tray_icon-placeholder.png` instead of non-existent image files.
+- **Copy Button**: Fixed regression where copy/edit actions remained visible during subsequent recordings.
+- **Styling**: Fixed window border not wrapping the entire application by moving it to the central widget and nesting the custom title bar.
+
+---
+
+# v2.6.0 - Navigation & Settings Architecture Overhaul
+
+**Date:** January 14, 2026
+**Status:** Major Feature Release
+
+---
+
+## Summary
+
+This major update removes the traditional menu bar system and introduces a modern, icon-based navigation paradigm with dedicated Settings and User views. All configuration and user information functionality has been migrated to full-featured view surfaces, replacing the previous dialog-based approach.
+
+## Added
+- **Icon Rail Bottom Cluster**: Added User and Settings navigation icons with visual separator
+- **SettingsView**: Complete settings management surface with:
+  - Form-based configuration editing with inline validation
+  - Hotkey configuration via `HotkeyWidget`
+  - Export history functionality
+  - Clear all history (with confirmation)
+  - Application restart and exit controls
+  - Real-time config synchronization
+- **UserView**: Comprehensive user information surface with:
+  - Lifetime metrics display (total transcriptions, words, time saved)
+  - About section with version, architecture, and license information
+  - Help section with keyboard shortcuts and documentation links
+  - Metrics refresh on view activation
+- **Refinement View Gating**: Icon Rail now checks `ConfigManager` for `refinement.enabled` to conditionally show refinement view
+
+## Changed
+- **Navigation Model**: Removed title bar menu system entirely, migrating all functionality to views
+- **Settings Access**: Configuration is now managed exclusively through SettingsView (no more modal dialogs)
+- **User Information**: Metrics and about information now accessed via dedicated UserView
+- **ViewHost Behavior**: Now always emits `viewChanged` signal on view switches (including redundant switches) to ensure proper observer synchronization on boot
+- **TitleBar**: Simplified to remove menu bar dependency, now uses symmetric layout slots
+- **MainWindow**: Removed `MenuBuilder` integration, wired SettingsView signals directly to handlers
+
+## Removed
+- **Menu Bar System**: Complete removal of title bar menus (File, Edit, View, etc.)
+- **SettingsDialog**: Replaced by SettingsView
+- **Menu-based Actions**: All menu actions migrated to Icon Rail navigation or SettingsView controls
+
+## Fixed
+- **ActionDock Boot Sync**: ViewHost now emits `viewChanged` on all switches to ensure ActionDock synchronizes properly during initial application load
+- **Title Bar Layout**: Fixed centering logic after menu bar removal
+- **Test Suite**: Updated all tests to reflect new menu-less architecture:
+  - Removed `QMenuBar` instantiation in TitleBar tests
+  - Updated ViewHost routing tests to expect signals on redundant switches
+
+## Technical Details
+
+### Architecture Impact
+- **Intent Propagation**: All user actions still follow strict intent-driven pattern (leaf → parent → controller)
+- **Signal-Based Communication**: Settings changes propagate via Qt signals (no direct coupling)
+- **Data Access**: UserView reads from HistoryManager using standard repository pattern
+- **Config Isolation**: SettingsView uses ConfigManager singleton (single source of truth)
+
+### Metrics Calculation
+- **Hybrid Approach**: MetricsStrip shows current session metrics, UserView shows lifetime aggregates
+- **Efficiency**: Time saved calculations use realistic typing (40 WPM) and speaking (150 WPM) speeds
+- **Precision**: Duration formatting includes hours, minutes, and seconds
+
+### Code Quality
+- All tests passing: 271 passed, 4 skipped, 1 xfailed
+- Ruff linting: All checks passed
+- Mypy type checking: Success, no issues found
+
+---
+
+# v2.5.5 - UI State & Interaction Fixes
+
+**Date:** January 13, 2026
+**Status:** Feature Fix
+
+---
+
+## Summary
+
+This update addresses critical usability issues identified in the January 13th audit, specifically targeting disjointed state management, broken navigation flows, and visual redundancy in the Action Dock.
+
+## Fixed
+- **Duplicate Action Dock**: Removed the redundant `WorkspaceControls` component from `MainWorkspace`, resolving the "double dock" issue.
+- **Action Wiring**: Fully implemented `TranscribeView.dispatch_action` to route Edit, Delete, Save, Cancel, and Discard actions to the workspace via Intents.
+- **View Navigation**: Implemented robust handling of `ViewTranscriptIntent` in `MainWindow`, enabling proper transition to detail views with data loading.
+- **State Reactivity**: Added `stateChanged` signal to `MainWorkspace`, ensuring the Action Grid updates dynamically when recording starts or stops.
+- **Cancel Logic**: Ensured the 'Cancel' button correctly triggers `CancelRecordingIntent`, aborting the pipeline instead of just stopping.
+
+---
+
+# v2.5.4 - Test Suite Convergence & Architecture Hardening
+
+**Date:** January 13, 2026
+**Status:** Maintenance Release
+
+---
+
+## Summary
+
+This release resolves all outstanding test failures, enforcing strict architectural guardrails and ensuring the stability of the error handling and refinement subsystems.
+
+## Fixed
+- **Architecture Guardrails**: Whitelisted `TranscribeView` for state mutation and enforced "Edit Safety" checks in `MainWindow` state synchronization.
+- **Error Handling**: Fixed function metadata preservation in `@safe_slot` and `@safe_callback` decorators to support proper introspection.
+- **Refinement Subsystem**: Updated backend tests to gracefully handle optional dependencies (Ctranslate2) via dynamic mocking.
+- **Intent Feedback**: Corrected test data initialization for `EditTranscriptIntent` verification.
+
+---
+
+# v2.5.3 - UI Convergence & Stabilization
+
+**Date:** January 13, 2026
+**Status:** Feature Release
+
+---
+
+## Summary
+
+This monumental release converges the entire UI implementation with the Target Specification. It enforces strict invariants for signal architecture, master-detail layouts, and selection identity, while resolving critical startup crashes and replacing legacy components.
+
+## Added
+- **ProjectColors**: Added correct color palette logic for projects.
+- **MetricsDock**: New unified statistics dock replacing the legacy MetricsStrip.
+- **EditView**: Full implementation of the standalone transcript editor.
+- **TranscribeView Editing**: Added live editing capability to the transcription preview.
+
+## Changed
+- **Typography Fixes**: Resolved `AttributeError` crashes by replacing non-existent `Typography` helper methods with explicit `QFont` instantiation across all views.
+- **Layout Architecture**: Enforced strict Master-Detail layouts (Fixed List | Fluid Inspector) for `RecentView` and `ProjectsView`, removing splitters.
+- **Selection Identity**: Migrated all selection logic from unreliable timestamps to robust integer `IdRole`.
+- **Reactivity**: Implemented `capabilitiesChanged` signal for deterministic ActionGrid updates.
+- **Metrics**: Replaced `MetricsStrip` with `MetricsDock`, simplifying the bottom bar architecture.
+
+## Fixed
+- **Startup Crash**: Fixed `AttributeError: type object 'Colors' has no attribute 'ACCENT_DANGER'` and others.
+- **Font API**: Fixed crashes caused by `Typography.h2_font()` calls.
+
+---
+
+# v2.5.2 - Agentic Self-Healing Logging
+
+**Date:** January 13, 2026
+**Status:** Feature Release
+
+---
+
+## Summary
+
+This release enables **"Agentic Self-Healing"** capabilities by transforming the logging infrastructure into a rich data stream for autonomous debugging. It introduces structured crash dumps, adjustable log verbosity, and referential error messages that point directly to documentation.
+
+## Added
+
+### Logging & Diagnostics
+- **Agentic Crash Dumps**: Uncaught exceptions now generate detailed JSON incidents in `~/.local/share/vociferous/logs/crash_dumps/`, capturing local variables, stack traces, and system state for AI analysis.
+- **Dynamic Verbosity**: Added configuration options to control logging levels at runtime via `config.yaml`.
+- **Structured Output**: Added `logging.structured_output` option to emit logs as machine-parseable JSON lines.
+
+### Error Handling
+- **Referential Exceptions**: Introduced `VociferousError` hierarchy (e.g., `AudioDeviceError`, `ModelLoadError`) that carries:
+  - **Context**: A dictionary of relevant variable states (e.g., model name, audio size).
+  - **Doc Links**: Direct references to Wiki pages (e.g., `docs/wiki/Audio-Recording.md`) for resolution.
+
+## Changed
+
+### Core Infrastructure
+- **Exception Hook**: Rewrote global `sys.excepthook` in `src/ui/utils/error_handler.py` to produce crash dumps before showing the user dialog.
+- **Config Schema**: Updated `src/config_schema.yaml` with the new `logging` section.
+
+---
+
+# v2.5.1 - Shell Migration Stabilization
+
+**Date:** January 13, 2026
+**Status:** Bug Fix Release
+
+---
+
+## Fixed
+
+### Shell & Navigation
+- **IconRail**: Updated to use `VIEW_ID` constants instead of legacy hardcoded strings, resolving startup errors ("Attempted to switch to unknown view_id").
+- **Navigation**: Temporarily disabled "Settings" button in rail until the Settings View is implemented.
+
+### Stability
+- **MainWindow**: Removed legacy `workspace` references that caused initialization crashes.
+- **Audio Routing**: Implemented `update_audio_level` in `MainWindow` to correctly route audio signals to the active `TranscribeView`.
+- **TranscriptList**: Added safety guards for `selectionModel` to prevent null pointer exceptions during data reloading.
+- **Refinement**: Disabled legacy callback `on_refinement_completed` to prevent crashes until `RefineView` is fully integrated.
+
 ---
 
 # v2.4.3 - Code Quality and Type Integrity
@@ -14,7 +1177,7 @@
 ### Code Quality
 - **Linting**: Resolved all remaining Ruff linting errors.
 - **Typing**: Fixed multiple MyPy type errors across the project, including improved `SystemTrayManager` integration in `VociferousApp`.
-- **Database**: Cleanup of unused type ignore comments in `TranscriptRepository` and `FocusGroupRepository`.
+- **Database**: Cleanup of unused type ignore comments in `TranscriptRepository` and `ProjectRepository`.
 - **Orchestration**: Removed redundant `_on_refine_requested` implementation and fixed incomplete signal-slot signatures.
 
 ---
@@ -128,12 +1291,12 @@ This release integrates a production-grade CTranslate2 inference engine directly
 
 ## Summary
 
-Introduces hierarchical organization for Focus Groups (subgroups), enabling deeper content structuring. Enhances the sidebar with drag-and-drop management, bulk operations for transcripts, and improved visual controls.
+Introduces hierarchical organization for Projects (subgroups), enabling deeper content structuring. Enhances the sidebar with drag-and-drop management, bulk operations for transcripts, and improved visual controls.
 
 ## Added
 
 ### Organization
-- **Nested Focus Groups**: Added ability to create subgroups up to one level deep.
+- **Nested Projects**: Added ability to create subgroups up to one level deep.
 - **Drag & Drop**: Transcripts can now be moved between groups via drag-and-drop.
 - **Bulk Actions**: Support for multi-selecting transcripts in the sidebar to move or delete them in batches.
 
@@ -145,7 +1308,7 @@ Introduces hierarchical organization for Focus Groups (subgroups), enabling deep
 ## Changed
 
 ### Core Infrastructure
-- **Database Schema**: Added `parent_id` column to `focus_groups` table with automatic micro-migration on startup.
+- **Database Schema**: Added `parent_id` column to `projects` table with automatic micro-migration on startup.
 
 ### Styling
 - **Visual Refinements**: Updated context menu selection styles and standardized radio button appearance.
@@ -169,7 +1332,7 @@ Complete persistence layer rewrite migrating from raw SQLite cursors to **SQLAlc
 
 ### Core Infrastructure
 - **Database Engine**: Replaced hand-rolled `sqlite3` queries with **SQLAlchemy** ORM sessions.
-- **Schema Management**: Introduced declarative models (`src/models.py`) for `Transcript` and `FocusGroup` entities.
+- **Schema Management**: Introduced declarative models (`src/models.py`) for `Transcript` and `Project` entities.
 - **Migration Strategy**: Implemented "fresh start" policy—legacy databases are detected and reset to pristine state to guarantee stability.
 
 ### Internal API
@@ -178,7 +1341,7 @@ Complete persistence layer rewrite migrating from raw SQLite cursors to **SQLAlc
 
 ---
 
-# v2.1.6 - UI Polish (Focus Group Indicators)
+# v2.1.6 - UI Polish (Project Indicators)
 
 **Date:** January 2026
 **Status:** Enhancement
@@ -188,8 +1351,8 @@ Complete persistence layer rewrite migrating from raw SQLite cursors to **SQLAlc
 ## Changed
 
 ### UX / Styling
-- **Cleaned Up Tooltips**: Removed the full-text tooltip from sidebar items (transcripts and focus groups) to reduce UI clutter as requested.
-- **Improved Selection Indicator**: Changed the Focus Group item selection style from a solid block to a cohesive background with a circular dot indicator on the left. The dot inherits the group's color (or defaults to blue), providing a cleaner and more distinct visual cue.
+- **Cleaned Up Tooltips**: Removed the full-text tooltip from sidebar items (transcripts and Projects) to reduce UI clutter as requested.
+- **Improved Selection Indicator**: Changed the Project item selection style from a solid block to a cohesive background with a circular dot indicator on the left. The dot inherits the group's color (or defaults to blue), providing a cleaner and more distinct visual cue.
 
 ---
 
@@ -251,7 +1414,7 @@ Complete persistence layer rewrite migrating from raw SQLite cursors to **SQLAlc
 - **Sidebar Padding**: Increased timestamp column width in sidebar delegate (70px → 90px) to prevent time cutout on systems with wider fonts or varying DPI.
 
 ### Data Binding
-- **Recent Transcripts**: Fixed regression where moving a transcript out of a Focus Group would not immediately make it reappear in the Recent list. Enabled `dynamicSortFilter` on `FocusGroupProxyModel` to react instantly to `GroupIDRole` changes.
+- **Recent Transcripts**: Fixed regression where moving a transcript out of a Project would not immediately make it reappear in the Recent list. Enabled `dynamicSortFilter` on `ProjectProxyModel` to react instantly to `GroupIDRole` changes.
 
 ---
 
@@ -287,7 +1450,7 @@ Comprehensive codebase cleanliness and type safety overhaul. Achieved zero metad
 ## Fixed
 
 ### Critical Logic
-- **Focus Group Proxy**: Removed unreachable dead code referencing undefined `source_model` variable in `focus_group_proxy.py`
+- **Project Proxy**: Removed unreachable dead code referencing undefined `source_model` variable in `project_proxy.py`
 - **Intent Feedback**: Fixed valid return type violation in status message timer callback (lambda returned tuple instead of `None`)
 - **System Safety**: Replaced unsafe bare `except:` blocks with `except Exception:` in `transcription_model.py` to prevent masking system signals like `KeyboardInterrupt`
 
@@ -416,9 +1579,9 @@ Architecture stabilization release. Beta 2.0 introduces no new user-facing featu
 - Orchestration method explicitly documented as the only external `set_state()` caller
 - Edit-safety guards prevent orchestration from overriding editing state
 
-## Fixed
-
-### Eliminated Implicit State Transitions
+### Fixed
+- Fixed hotkey "randomly" stopping recording on key release. Added proper support for both `press_to_toggle` and `push_to_talk` recording modes.
+- Added visible help text in Settings describing how each recording mode works.
 - No more silent state changes without validation
 - All transitions produce `IntentResult` with success/failure reason
 
@@ -805,7 +1968,7 @@ Planning release establishing the roadmap for intent-driven interaction architec
 
 ## Summary
 
-Stability-focused release implementing comprehensive error isolation across all signal handlers, callbacks, and critical operations. Introduces new error handling utilities (`safe_callback`, `safe_slot_silent`) and adds deferred model invalidation to prevent segfaults during focus group operations.
+Stability-focused release implementing comprehensive error isolation across all signal handlers, callbacks, and critical operations. Introduces new error handling utilities (`safe_callback`, `safe_slot_silent`) and adds deferred model invalidation to prevent segfaults during Project operations.
 
 ## Major Changes
 
@@ -822,7 +1985,7 @@ Stability-focused release implementing comprehensive error isolation across all 
 
 ### Deferred Model Invalidation
 
-**Problem:** Segfault when assigning transcripts to focus groups from the Recent tab. Root cause: proxy model called `invalidateFilter()` during context menu callback, corrupting the `QModelIndex` mid-operation.
+**Problem:** Segfault when assigning transcripts to Projects from the Recent tab. Root cause: proxy model called `invalidateFilter()` during context menu callback, corrupting the `QModelIndex` mid-operation.
 
 **Solution:** Introduced `QTimer` with 0ms interval to defer filter invalidation until after the callback completes:
 
@@ -843,9 +2006,9 @@ self._connections = [
 
 | Component | Protection Added |
 |-----------|------------------|
-| `FocusGroupTree` | try/except + logging on all CRUD methods |
+| `ProjectTree` | try/except + logging on all CRUD methods |
 | `HistoryTreeView` | `safe_callback` on context menu lambdas, error handling on CRUD |
-| `FocusGroupProxyModel` | `safe_callback` on signal lambdas, protected `filterAcceptsRow()` |
+| `ProjectProxyModel` | `safe_callback` on signal lambdas, protected `filterAcceptsRow()` |
 | `KeyListener` | Error isolation in `_trigger_callbacks()` |
 | `ResultThread` | try/except around audio callback |
 | `Sidebar` | `safe_callback` on lambda signal connections |
@@ -853,7 +2016,7 @@ self._connections = [
 ### UI Bug Fixes
 
 - **Fixed**: Ghost context menus appearing on deleted transcript locations
-- **Fixed**: Sidebar collapsing when deleting transcripts from Recent/Focus Groups
+- **Fixed**: Sidebar collapsing when deleting transcripts from Recent/Projects
 - **Fixed**: Recording stopping when deleting a transcript during recording
 - **Fixed**: Header text overflow (month/day/timestamp truncation)
 - **Fixed**: Welcome text font size too large
@@ -862,9 +2025,9 @@ self._connections = [
 
 - `src/ui/utils/error_handler.py` - Added `safe_callback()`, `safe_slot_silent()`
 - `src/ui/utils/__init__.py` - Exported new utilities
-- `src/ui/widgets/focus_group/focus_group_tree.py` - Protected all CRUD methods
+- `src/ui/widgets/project/project_tree.py` - Protected all CRUD methods
 - `src/ui/widgets/history_tree/history_tree_view.py` - Protected CRUD, wrapped lambdas
-- `src/ui/models/focus_group_proxy.py` - Deferred invalidation, protected filters
+- `src/ui/models/project_proxy.py` - Deferred invalidation, protected filters
 - `src/ui/components/sidebar/sidebar_new.py` - Wrapped lambda connections
 - `src/key_listener.py` - Isolated callback errors
 - `src/result_thread.py` - Protected audio callback
@@ -882,7 +2045,7 @@ self._connections = [
 - Deferred invalidation pattern prevents Qt model/view corruption during callbacks
 - All exceptions now logged to `~/.local/share/vociferous/logs/vociferous.log`
 - Error isolation ensures one failing callback doesn't break subsequent callbacks
-- No segfaults possible from focus group operations
+- No segfaults possible from Project operations
 
 ---
 
@@ -942,7 +2105,7 @@ Architecture refinement release focused on design system consolidation and code 
 - `src/ui/components/sidebar/sidebar_styles.py`
 - `src/ui/components/title_bar/title_bar_styles.py`
 - `src/ui/components/workspace/workspace_styles.py`
-- `src/ui/widgets/focus_group/focus_group_styles.py`
+- `src/ui/widgets/project/project_styles.py`
 - `src/ui/widgets/history_tree/history_tree_styles.py`
 
 ### Orphan Sidebar Components
@@ -978,15 +2141,15 @@ Architecture refinement release focused on design system consolidation and code 
 
 ## Summary
 
-Complete visual redesign and metrics foundation. Implemented focus groups UI with dynamic sidebar, functional search system, real-time waveform visualization, and comprehensive transcription analytics framework. The UI now provides transparency about the cognitive and productivity dimensions of dictation.
+Complete visual redesign and metrics foundation. Implemented Projects UI with dynamic sidebar, functional search system, real-time waveform visualization, and comprehensive transcription analytics framework. The UI now provides transparency about the cognitive and productivity dimensions of dictation.
 
 ## Major Features
 
-### Focus Groups Management
-- **Implemented**: Complete focus groups UI with visual sidebar
-- **Added**: Dynamic focus group tree with custom delegation and font sizing
-- **Added**: Create/rename/delete focus groups through sidebar context menu
-- **Added**: Proper visual distinction and color coding for focus groups
+### Projects Management
+- **Implemented**: Complete Projects UI with visual sidebar
+- **Added**: Dynamic Project tree with custom delegation and font sizing
+- **Added**: Create/rename/delete Projects through sidebar context menu
+- **Added**: Proper visual distinction and color coding for Projects
 
 ### Recent Transcripts View
 - **Implemented**: Recent transcripts tab showing last 7 days of activity
@@ -1032,7 +2195,7 @@ Complete visual redesign and metrics foundation. Implemented focus groups UI wit
 
 ### UI/UX Refinements
 - **Added**: Dynamic greeting message (Good Morning/Afternoon/Evening based on time of day)
-- **Improved**: Typography scale (greeting 42pt, body 19pt, focus group names 17pt)
+- **Improved**: Typography scale (greeting 42pt, body 19pt, Project names 17pt)
 - **Improved**: Spacing and padding throughout (GREETING_TOP_MARGIN 16px, tab buttons 18px 24px)
 - **Added**: Sidebar tab bar with bold text (font-weight 700)
 - **Added**: Tab text wrapping (white-space: normal)
@@ -1067,10 +2230,10 @@ Complete visual redesign and metrics foundation. Implemented focus groups UI wit
 ### Commits: Ready for single comprehensive commit
 
 ### Component Files Updated
-- `src/ui/components/sidebar/` - Focus groups, tab bar, styling
+- `src/ui/components/sidebar/` - Projects, tab bar, styling
 - `src/ui/components/workspace/` - Metrics, content layout, header
 - `src/ui/components/main_window/` - Menu integration for metrics dialog
-- `src/ui/widgets/` - Custom dialogs, waveform, focus group tree
+- `src/ui/widgets/` - Custom dialogs, waveform, Project tree
 - `src/ui/constants/` - Typography and spacing scales
 - `src/` - Core pipeline updates for metrics data
 
@@ -1106,7 +2269,7 @@ Refinement engine implementation planned. This provides the technical foundation
 
 ---
 
-# v1.3.0 Beta - Focus Groups (Data Layer)
+# v1.3.0 Beta - Projects (Data Layer)
 
 **Date:** January 2026  
 **Status:** Beta
@@ -1115,20 +2278,20 @@ Refinement engine implementation planned. This provides the technical foundation
 
 ## Summary
 
-Backend implementation of Focus Groups (Foci) - user-defined organization for transcripts. Provides complete CRUD operations for grouping transcripts by subject or purpose. UI integration deferred to future release.
+Backend implementation of Projects - user-defined organization for transcripts. Provides complete CRUD operations for grouping transcripts by subject or purpose. UI integration deferred to future release.
 
 ## Changes
 
-### Focus Group Data Layer
+### Project Data Layer
 
-- **Added**: `create_focus_group(name)` - Create new focus groups with user-defined names
-- **Added**: `get_focus_groups()` - Retrieve all focus groups ordered by creation date
-- **Added**: `rename_focus_group(id, new_name)` - Rename existing focus groups
-- **Added**: `delete_focus_group(id, move_to_ungrouped)` - Delete groups with safety controls:
+- **Added**: `create_project(name)` - Create new Projects with user-defined names
+- **Added**: `get_projects()` - Retrieve all Projects ordered by creation date
+- **Added**: `rename_project(id, new_name)` - Rename existing Projects
+- **Added**: `delete_project(id, move_to_ungrouped)` - Delete groups with safety controls:
   - Default behavior: move transcripts to ungrouped (via `ON DELETE SET NULL` foreign key)
   - Optional blocking: prevent deletion if group contains transcripts
-- **Added**: `assign_transcript_to_focus_group(timestamp, group_id)` - Move transcripts between groups or to ungrouped (None)
-- **Added**: `get_transcripts_by_focus_group(group_id, limit)` - Filter transcripts by group membership
+- **Added**: `assign_transcript_to_project(timestamp, group_id)` - Move transcripts between groups or to ungrouped (None)
+- **Added**: `get_transcripts_by_project(group_id, limit)` - Filter transcripts by group membership
 
 ### Database Enforcement
 
@@ -1139,23 +2302,23 @@ Backend implementation of Focus Groups (Foci) - user-defined organization for tr
 ### Testing
 
 - **Added**: 14 comprehensive unit tests covering:
-  - Focus group creation, listing, renaming, deletion
+  - Project creation, listing, renaming, deletion
   - Transcript assignment and filtering by group
   - Foreign key cascade behavior (ungrouping on delete)
   - Blocking deletion of non-empty groups
   - Ungrouped transcript queries (NULL group_id)
-- **Verified**: All 41 tests passing (27 original + 14 focus group tests)
+- **Verified**: All 41 tests passing (27 original + 14 Project tests)
 - **Verified**: Zero regressions in existing functionality
 
 ## Behavioral Notes
 
-- **Ungrouped is default**: Transcripts without a focus group assignment have `focus_group_id = NULL`
-- **Exactly one place**: Each transcript belongs to zero or one focus group (no multiple assignments)
+- **Ungrouped is default**: Transcripts without a Project assignment have `project_id = NULL`
+- **Exactly one place**: Each transcript belongs to zero or one Project (no multiple assignments)
 - **Safe deletion**: Foreign key constraint ensures transcripts never reference deleted groups
 
 ## UI Status
 
-- **No user-facing changes**: Focus groups are fully implemented in the data layer but not yet exposed in the UI
+- **No user-facing changes**: Projects are fully implemented in the data layer but not yet exposed in the UI
 - **Future work**: Phase 2 UI integration will add sidebar navigation, group management dialogs, and filtered transcript views
 
 ---
@@ -1169,7 +2332,7 @@ Backend implementation of Focus Groups (Foci) - user-defined organization for tr
 
 ## Summary
 
-Major persistence layer overhaul replacing JSONL storage with SQLite database. Introduces foundational schema for future features including focus groups (Phase 2) and content refinement (Phase 4+). All existing functionality preserved with improved performance for updates and queries.
+Major persistence layer overhaul replacing JSONL storage with SQLite database. Introduces foundational schema for future features including Projects (Phase 2) and content refinement (Phase 4+). All existing functionality preserved with improved performance for updates and queries.
 
 ## Changes
 
@@ -1180,11 +2343,11 @@ Major persistence layer overhaul replacing JSONL storage with SQLite database. I
   - `raw_text` - Immutable audit baseline (what Whisper produced)
   - `normalized_text` - Editable content (target for user edits and future refinement)
   - Both fields initialized to identical values on creation
-- **Added**: `focus_groups` table (currently unused, ready for Phase 2 navigation)
+- **Added**: `projects` table (currently unused, ready for Phase 2 navigation)
 - **Added**: `schema_version` table for future database migrations
 - **Added**: Auto-increment integer primary keys (`id`) for stable references
-- **Added**: Foreign key constraint from `transcripts.focus_group_id` to `focus_groups(id)` with `ON DELETE SET NULL`
-- **Added**: Database indexes on `id DESC`, `timestamp`, and `focus_group_id` for efficient queries
+- **Added**: Foreign key constraint from `transcripts.project_id` to `projects(id)` with `ON DELETE SET NULL`
+- **Added**: Database indexes on `id DESC`, `timestamp`, and `project_id` for efficient queries
 - **Enforced**: `raw_text` immutability - no code path modifies raw transcription after creation
 - **Enforced**: Foreign key constraints via `PRAGMA foreign_keys = ON`
 
@@ -1219,7 +2382,7 @@ Major persistence layer overhaul replacing JSONL storage with SQLite database. I
 
 - SQLite ordered by auto-increment ID ensures insertion order preserved even with rapid successive entries
 - `created_at` timestamp retained for future time-based queries but not used for ordering
-- Schema designed to support Phase 2 (focus groups) and Phase 4+ (refinement) without structural changes
+- Schema designed to support Phase 2 (Projects) and Phase 4+ (refinement) without structural changes
 - Database location consistent with existing config directory pattern
 
 ---

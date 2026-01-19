@@ -3,18 +3,20 @@ WorkspaceContent - Content display area that adapts to workspace state.
 
 Displays:
 - IDLE: Welcome message
-- RECORDING: Waveform visualization
+- RECORDING: Spectral Halo visualization
 - VIEWING: Read-only transcript
 - EDITING: Editable transcript
 """
 
 from __future__ import annotations
 
+import logging
 from enum import IntEnum
 
 from PyQt6.QtCore import QPoint, Qt, pyqtSignal, pyqtSlot
-from PyQt6.QtGui import QCursor, QKeySequence, QShortcut
+from PyQt6.QtGui import QCursor, QFont, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMenu,
@@ -27,9 +29,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.constants import Colors, Typography
-from ui.utils.clipboard_utils import copy_text
-from ui.widgets.waveform_visualizer import WaveformVisualizer
+import src.ui.constants.colors as c
+from src.ui.constants import Spacing, Typography
+from src.ui.utils.clipboard_utils import copy_text
+from src.core.config_manager import ConfigManager
+from src.ui.widgets.visualizers import BarSpectrumVisualizer, WaveformVisualizer
+
+logger = logging.getLogger(__name__)
 
 
 class ContentPage(IntEnum):
@@ -39,6 +45,24 @@ class ContentPage(IntEnum):
     RECORDING = 1
     VIEWING = 2
     EDITING = 3
+
+
+def create_visualizer(
+    parent: QWidget | None = None,
+) -> BarSpectrumVisualizer | WaveformVisualizer:
+    """
+    Create the appropriate visualizer based on configuration.
+
+    Returns:
+        Either BarSpectrumVisualizer or WaveformVisualizer depending on config setting.
+    """
+    visualizer_type = ConfigManager.get_config_value("visualization", "visualizer_type")
+
+    if visualizer_type == "waveform":
+        return WaveformVisualizer(parent)
+    else:
+        # Default to bar_spectrum
+        return BarSpectrumVisualizer(parent)
 
 
 class WorkspaceContent(QWidget):
@@ -54,10 +78,10 @@ class WorkspaceContent(QWidget):
         deleteRequested(): Emitted when delete action is triggered
     """
 
-    textChanged = pyqtSignal()
-    copyRequested = pyqtSignal()
-    editRequested = pyqtSignal()
-    deleteRequested = pyqtSignal()
+    text_changed = pyqtSignal()
+    copy_requested = pyqtSignal()
+    edit_requested = pyqtSignal()
+    delete_requested = pyqtSignal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -79,50 +103,32 @@ class WorkspaceContent(QWidget):
         self.carousel_container.setObjectName("carouselContainer")
         self.carousel_container.hide()
 
-        # Carousel Styling
-        self.carousel_container.setStyleSheet(f"""
-            QWidget#carouselContainer {{
-                background-color: {Colors.BACKGROUND};
-                border-bottom: 1px solid {Colors.BORDER_DEFAULT};
-            }}
-            QPushButton {{
-                background: transparent;
-                border: none;
-                font-weight: bold;
-                color: {Colors.TEXT_PRIMARY};
-                border-radius: 4px;
-            }}
-            QPushButton:hover {{
-                background: {Colors.SURFACE_ALT};
-            }}
-            QPushButton:disabled {{
-                color: {Colors.TEXT_TERTIARY};
-            }}
-        """)
+        # Carousel Styling handled in unified_stylesheet.py (QWidget#carouselContainer)
 
         carousel_layout = QHBoxLayout(self.carousel_container)
-        carousel_layout.setContentsMargins(12, 4, 12, 4)
-        carousel_layout.setSpacing(8)
+        carousel_layout.setContentsMargins(
+            Spacing.S2, Spacing.S0, Spacing.S2, Spacing.S0
+        )
+        carousel_layout.setSpacing(Spacing.MINOR_GAP)
         carousel_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.btn_prev_variant = QPushButton("<")
         self.btn_prev_variant.setFixedSize(24, 24)
         self.btn_prev_variant.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.btn_prev_variant.setToolTip("Previous Version")
         self.btn_prev_variant.clicked.connect(self.prev_variant)
 
         self.lbl_variant_info = QLabel("Raw")
+        self.lbl_variant_info.setObjectName("variantInfoLabel")
         self.lbl_variant_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         info_font = self.lbl_variant_info.font()
         info_font.setPointSize(Typography.SMALL_SIZE)
         info_font.setBold(True)
         self.lbl_variant_info.setFont(info_font)
-        self.lbl_variant_info.setStyleSheet(f"color: {Colors.TEXT_SECONDARY};")
+        # self.lbl_variant_info.setStyleSheet(f"color: {Colors.TEXT_SECONDARY};") # Handled by parent selector or object name
 
         self.btn_next_variant = QPushButton(">")
         self.btn_next_variant.setFixedSize(24, 24)
         self.btn_next_variant.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.btn_next_variant.setToolTip("Next Version")
         self.btn_next_variant.clicked.connect(self.next_variant)
 
         carousel_layout.addWidget(self.btn_prev_variant)
@@ -156,17 +162,32 @@ class WorkspaceContent(QWidget):
         self.status_label.setContentsMargins(16, 0, 16, 0)
         self.stack.addWidget(self.status_label)  # Index 0
 
-        # Page 1: RECORDING - Waveform visualizer
-        self.waveform = WaveformVisualizer()
-        self.waveform.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-        )
-        self.waveform.setFixedHeight(130)
-        self.stack.addWidget(self.waveform)  # Index 1
+        # Page 1: RECORDING - Spectrum visualization + Live Text
+        self.recording_container = QWidget()
+        recording_layout = QVBoxLayout(self.recording_container)
+        recording_layout.setContentsMargins(0, 0, 0, 0)
+        recording_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.visualizer = create_visualizer(self.recording_container)
+        recording_layout.addWidget(self.visualizer)
+
+        self.live_text_label = QLabel()
+        self.live_text_label.setObjectName("liveTextLabel")
+        self.live_text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.live_text_label.setWordWrap(True)
+        live_font = QFont()
+        live_font.setPointSize(Typography.FONT_SIZE_LG)
+        self.live_text_label.setFont(live_font)
+        # Style can be handled in stylesheet, or here for now
+        self.live_text_label.setStyleSheet(f"color: {c.GRAY_4};")
+        recording_layout.addWidget(self.live_text_label)
+
+        self.stack.addWidget(self.recording_container)  # Index 1
 
         # Page 2: VIEWING - Transcript viewer (QTextBrowser for better text selection)
         self.transcript_view = QTextBrowser()
         self.transcript_view.setObjectName("transcriptView")
+        self.transcript_view.setFrameShape(QFrame.Shape.NoFrame)
         self.transcript_view.setReadOnly(True)
         self.transcript_view.setOpenExternalLinks(False)
         self.transcript_view.setSizePolicy(
@@ -182,6 +203,7 @@ class WorkspaceContent(QWidget):
         # Page 3: EDITING - Transcript editor
         self.transcript_editor = QTextEdit()
         self.transcript_editor.setObjectName("transcriptEditor")
+        self.transcript_editor.setFrameShape(QFrame.Shape.NoFrame)
         self.transcript_editor.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -193,14 +215,35 @@ class WorkspaceContent(QWidget):
         self.transcript_editor.customContextMenuRequested.connect(
             self._show_context_menu
         )
-        self.transcript_editor.textChanged.connect(self.textChanged.emit)
+        self.transcript_editor.textChanged.connect(self.text_changed.emit)
         self.stack.addWidget(self.transcript_editor)  # Index 3
 
         layout.addWidget(self.stack)
 
+    def scroll_to_top(self) -> None:
+        """Scroll current content to top."""
+        if self.stack.currentIndex() == ContentPage.VIEWING:
+            self.transcript_view.verticalScrollBar().setValue(0)
+        elif self.stack.currentIndex() == ContentPage.EDITING:
+            self.transcript_editor.verticalScrollBar().setValue(0)
+
+    def set_audio_level(self, level: float) -> None:
+        """Update audio level (legacy API)."""
+        # Deprecated: The new visualizer uses spectrum, but we can map level to spectrum[0]
+        # if spectrum isn't available, or ignore.
+        pass
+
+    def set_audio_spectrum(self, bands: list[float]) -> None:
+        """Update visualizer FFT spectrum."""
+        self.visualizer.add_spectrum(bands)
+
+    def set_live_text(self, text: str) -> None:
+        """Update live transcription text."""
+        self.live_text_label.setText(text)
+
     def update_for_idle(self) -> None:
         """Show welcome message."""
-        self.waveform.stop()
+        self.visualizer.stop()
         self.carousel_container.hide()
         self.status_label.setText(
             "Press your hotkey to start recording,\n"
@@ -208,15 +251,24 @@ class WorkspaceContent(QWidget):
         )
         self.stack.setCurrentIndex(ContentPage.IDLE)
 
+    def update_for_transcribing(self) -> None:
+        """Show transcribing status while Whisper processes audio."""
+        self.visualizer.stop()
+        self.carousel_container.hide()
+        self.status_label.setText(
+            "Please wait while the Whisper engine\nprocesses your audio..."
+        )
+        self.stack.setCurrentIndex(ContentPage.IDLE)
+
     def update_for_recording(self) -> None:
         """Show waveform visualization during recording."""
-        self.waveform.start()
+        self.visualizer.start()
         self.carousel_container.hide()
         self.stack.setCurrentIndex(ContentPage.RECORDING)
 
     def update_for_viewing(self) -> None:
         """Show transcript in read-only view."""
-        self.waveform.stop()
+        self.visualizer.stop()
         # Restore carousel if we have variants
         self._update_carousel_ui()
         self.transcript_view.setPlainText(self._current_text)
@@ -224,7 +276,7 @@ class WorkspaceContent(QWidget):
 
     def update_for_editing(self) -> None:
         """Show transcript in editor."""
-        self.waveform.stop()
+        self.visualizer.stop()
         self.carousel_container.hide()  # Hide carousel during editing
         self.transcript_editor.setPlainText(self._current_text)
         self.stack.setCurrentIndex(ContentPage.EDITING)
@@ -383,12 +435,12 @@ class WorkspaceContent(QWidget):
         if self.stack.currentIndex() == ContentPage.VIEWING:
             menu.addSeparator()
             edit_action = menu.addAction("Edit")
-            edit_action.triggered.connect(self.editRequested.emit)
+            edit_action.triggered.connect(self.edit_requested.emit)
 
         # Delete action
         menu.addSeparator()
         delete_action = menu.addAction("Delete Entry")
-        delete_action.triggered.connect(self.deleteRequested.emit)
+        delete_action.triggered.connect(self.delete_requested.emit)
 
         menu.exec(QCursor.pos())
 
@@ -398,13 +450,40 @@ class WorkspaceContent(QWidget):
         text = self.get_text()
         if text:
             copy_text(text)
-            self.copyRequested.emit()
+            self.copy_requested.emit()
 
     def add_audio_level(self, level: float) -> None:
         """
-        Add audio level to waveform visualization.
+        Add audio level to visualization.
 
         Args:
             level: Normalized amplitude (0.0 to 1.0)
         """
-        self.waveform.add_level(level)
+        if hasattr(self.visualizer, "add_level"):
+            self.visualizer.add_level(level)
+        elif hasattr(self.visualizer, "add_spectrum"):
+            # Shim: for spectrum visualizers, just show the first band as the level
+            # This is better than nothing until frequency data is sent from the engine.
+            self.visualizer.add_spectrum([level] * 64)
+
+    def reload_visualizer(self) -> None:
+        """Reload the visualizer based on current config setting."""
+        # Stop the old visualizer
+        self.visualizer.stop()
+
+        # Remove from layout
+        recording_layout = self.recording_container.layout()
+        if recording_layout:
+            recording_layout.removeWidget(self.visualizer)
+
+        # Delete old visualizer
+        self.visualizer.deleteLater()
+
+        # Create new visualizer based on current config
+        self.visualizer = create_visualizer(self.recording_container)
+
+        # Add to layout
+        if recording_layout:
+            recording_layout.addWidget(self.visualizer)
+
+        logger.info("Visualizer reloaded successfully")

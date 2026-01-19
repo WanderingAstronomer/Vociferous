@@ -14,13 +14,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.utils.keycode_mapping import (
+from src.ui.utils.keycode_mapping import (
     keycodes_to_strings,
     normalize_hotkey_string,
 )
 
 if TYPE_CHECKING:
-    from input_handler import InputEvent, KeyCode, KeyListener
+    from src.input_handler import InputEvent, KeyCode, KeyListener
 
 
 class HotkeyWidget(QWidget):
@@ -41,26 +41,29 @@ class HotkeyWidget(QWidget):
 
     def _setup_ui(self) -> None:
         """Create widget layout."""
+
         self.display = QLineEdit(self)
         self.display.setObjectName("hotkeyInput")
         self.display.setReadOnly(True)
         self.display.setPlaceholderText("Press Change to set hotkey")
-        self.display.setToolTip("Current activation hotkey")
+        self.display.setFixedHeight(56)
 
         self.change_button = QPushButton("Change...", self)
         self.change_button.setObjectName("hotkeyChangeBtn")
-        self.change_button.setToolTip("Click to capture a new hotkey")
         self.change_button.clicked.connect(self._start_capture)
+        self.change_button.setFixedHeight(56)
 
         self.validation_label = QLabel(self)
         self.validation_label.setObjectName("hotkeyValidation")
         self.validation_label.setVisible(False)
 
         row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(self.display)
         row.addWidget(self.change_button)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.addLayout(row)
         layout.addWidget(self.validation_label)
         self.setLayout(layout)
@@ -81,7 +84,7 @@ class HotkeyWidget(QWidget):
 
     def _on_capture_event(self, key: KeyCode, event_type: InputEvent) -> None:
         """Handle captured key events. Defensive against widget deletion."""
-        from input_handler import InputEvent
+        from src.input_handler import InputEvent
 
         try:
             if event_type == InputEvent.KEY_PRESS:
@@ -106,7 +109,7 @@ class HotkeyWidget(QWidget):
         display, config = keycodes_to_strings(self.pressed_keys)
         normalized = normalize_hotkey_string(config)
 
-        valid, error = self._validate_hotkey(normalized)
+        valid, error = self.validate_hotkey(normalized)
         if not valid:
             self.display.setProperty("invalid", True)
             self.display.style().unpolish(self.display)
@@ -122,8 +125,12 @@ class HotkeyWidget(QWidget):
         self.display.setText(display)
         self.hotkeyChanged.emit(normalized)
 
-    def _validate_hotkey(self, hotkey: str) -> tuple[bool, str]:
-        """Validate the hotkey - allow single keys, reject only dangerous combos."""
+    @staticmethod
+    def validate_hotkey(hotkey: str) -> tuple[bool, str]:
+        """
+        Validate the hotkey - allow single keys, reject only dangerous combos.
+        Public static method to allow logic testing.
+        """
         parts = [p for p in hotkey.split("+") if p]
         if not parts:
             return False, "No keys captured"
@@ -135,7 +142,7 @@ class HotkeyWidget(QWidget):
 
     def _parse_hotkey_string(self, hotkey: str) -> set[KeyCode]:
         """Best-effort parse of a config hotkey string into KeyCodes for display."""
-        from input_handler import KeyCode
+        from src.input_handler import KeyCode
 
         lookup: dict[str, KeyCode] = {code.name.lower(): code for code in KeyCode}
         result: set[KeyCode] = set()
@@ -167,7 +174,8 @@ class HotkeyWidget(QWidget):
     def cleanup(self) -> None:
         """Clean up capture mode if still active."""
         try:
-            self.key_listener.disable_capture_mode()
+            if self.key_listener:
+                self.key_listener.disable_capture_mode()
             self.change_button.setEnabled(True)
         except RuntimeError:
             # Widget already deleted

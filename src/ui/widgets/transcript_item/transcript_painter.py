@@ -2,7 +2,7 @@
 Unified transcript entry painting.
 
 This module provides the SINGLE SOURCE OF TRUTH for how transcript entries
-are visually rendered. Both FocusGroupDelegate and TreeHoverDelegate use
+are visually rendered. Both ProjectDelegate and TreeHoverDelegate use
 this to ensure consistent appearance across the entire application.
 
 Visual specification:
@@ -18,7 +18,8 @@ from PyQt6.QtCore import QRect, Qt
 from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PyQt6.QtWidgets import QStyle, QStyleOptionViewItem
 
-from ui.constants import Colors, Typography
+import src.ui.constants.colors as c
+from src.ui.constants import Typography
 
 
 def paint_transcript_entry_background(
@@ -33,9 +34,9 @@ def paint_transcript_entry_background(
         option: The style option with state flags.
     """
     if option.state & QStyle.StateFlag.State_Selected:
-        painter.fillRect(option.rect, QColor(Colors.HOVER_BG_SECTION))
+        painter.fillRect(option.rect, QColor(c.GRAY_7))
     elif option.state & QStyle.StateFlag.State_MouseOver:
-        painter.fillRect(option.rect, QColor(Colors.HOVER_BG_ITEM))
+        painter.fillRect(option.rect, QColor(c.GRAY_7))
 
 
 def paint_transcript_entry(
@@ -49,7 +50,7 @@ def paint_transcript_entry(
     Paint a complete transcript entry row.
 
     This is the SINGLE SOURCE OF TRUTH for transcript entry rendering.
-    Both Focus Groups and Ungrouped Transcripts use this function.
+    Both Projects and Unassigned Transcripts use this function.
 
     Layout:
         [Preview text (left-aligned)]  ...gap...  [Time (right-aligned, blue)]
@@ -85,7 +86,7 @@ def paint_transcript_entry(
     )
 
     painter.setFont(time_font)
-    painter.setPen(QColor(Colors.ACCENT_BLUE))
+    painter.setPen(QColor(c.BLUE_4))
     painter.drawText(
         time_rect,
         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
@@ -105,7 +106,7 @@ def paint_transcript_entry(
     )
 
     painter.setFont(preview_font)
-    painter.setPen(QColor(Colors.TEXT_PRIMARY))
+    painter.setPen(QColor(c.GRAY_4))
 
     # Elide preview text if too long
     preview_metrics = QFontMetrics(preview_font)

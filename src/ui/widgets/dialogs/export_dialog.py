@@ -23,9 +23,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.components.title_bar import DialogTitleBar
-from ui.constants import MAJOR_GAP, MINOR_GAP, Colors, Dimensions, Typography
-from ui.widgets.styled_button import ButtonStyle, StyledButton
+from src.ui.components.title_bar import DialogTitleBar
+from src.ui.constants import MAJOR_GAP, MINOR_GAP
+from src.ui.widgets.styled_button import ButtonStyle, StyledButton
 
 
 class ExportDialog(QDialog):
@@ -92,7 +92,7 @@ class ExportDialog(QDialog):
 
         # Custom title bar (draggable)
         self.title_bar = DialogTitleBar("Export History", self)
-        self.title_bar.closeRequested.connect(self.reject)
+        self.title_bar.close_requested.connect(self.reject)
         frame_layout.addWidget(self.title_bar)
 
         # Content area
@@ -265,46 +265,13 @@ class ExportDialog(QDialog):
 
                     # Style Choose/Open button (AcceptRole)
                     if role == QDialogButtonBox.ButtonRole.AcceptRole:
-                        button.setStyleSheet(f"""
-                            QPushButton {{
-                                background-color: {Colors.PRIMARY};
-                                color: {Colors.TEXT_ON_ACCENT};
-                                border: none;
-                                border-radius: {Dimensions.BORDER_RADIUS}px;
-                                padding: 12px 24px;
-                                font-size: {Typography.BODY_SIZE}pt;
-                                font-weight: {Typography.FONT_WEIGHT_MEDIUM};
-                                min-width: 100px;
-                            }}
-                            QPushButton:hover {{
-                                background-color: {Colors.PRIMARY_HOVER};
-                            }}
-                            QPushButton:pressed {{
-                                background-color: {Colors.PRIMARY_PRESSED};
-                            }}
-                        """)
+                        button.setProperty("role", "accept")
+                        button.style().polish(button)
 
                     # Style Cancel button (RejectRole)
                     elif role == QDialogButtonBox.ButtonRole.RejectRole:
-                        button.setStyleSheet(f"""
-                            QPushButton {{
-                                background-color: {Colors.BG_TERTIARY};
-                                color: {Colors.TEXT_PRIMARY};
-                                border: 1px solid {Colors.BORDER_DEFAULT};
-                                border-radius: {Dimensions.BORDER_RADIUS}px;
-                                padding: 12px 24px;
-                                font-size: {Typography.BODY_SIZE}pt;
-                                font-weight: {Typography.FONT_WEIGHT_MEDIUM};
-                                min-width: 100px;
-                            }}
-                            QPushButton:hover {{
-                                background-color: {Colors.HOVER_BG_ITEM};
-                                border-color: {Colors.ACCENT_PRIMARY};
-                            }}
-                            QPushButton:pressed {{
-                                background-color: {Colors.BG_SECONDARY};
-                            }}
-                        """)
+                        button.setProperty("role", "reject")
+                        button.style().polish(button)
 
         # Apply configuration after dialog is shown
         QTimer.singleShot(0, configure_dialog)
@@ -330,3 +297,16 @@ class ExportDialog(QDialog):
         """Return (full_path, format) tuple."""
         full_path = self._save_directory / f"{self._filename}.{self._selected_format}"
         return (full_path, self._selected_format)
+
+    def cleanup(self) -> None:
+        """
+        Clean up export dialog resources.
+
+        Per Vociferous cleanup protocol, all widgets should implement cleanup().
+        ExportDialog has no persistent file handles or threads.
+
+        This method is idempotent and safe to call multiple times.
+        """
+        # Ensure dialog is closed
+        if self.isVisible():
+            self.reject()

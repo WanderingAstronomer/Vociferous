@@ -14,19 +14,21 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
+from src.core.intents import InteractionIntent as CoreIntent
+
 
 class IntentSource(Enum):
     """Origin of an intent (for observability, not routing)."""
 
     CONTROLS = auto()  # Workspace control buttons
-    SIDEBAR = auto()  # Sidebar transcript list
+    ICON_RAIL = auto()  # Icon Rail navigation
     HOTKEY = auto()  # Global hotkey
     CONTEXT_MENU = auto()  # Right-click menu
     INTERNAL = auto()  # System-initiated (e.g., post-transcription)
 
 
 @dataclass(frozen=True, slots=True)
-class InteractionIntent:
+class InteractionIntent(CoreIntent):
     """
     Base class for semantic interaction intents.
 
@@ -35,6 +37,13 @@ class InteractionIntent:
     """
 
     source: IntentSource = IntentSource.CONTROLS
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class NavigateIntent(InteractionIntent):
+    """User desires to switch the active view."""
+
+    target_view_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,15 +78,16 @@ class ViewTranscriptIntent(InteractionIntent):
         ""  # Transcript identifier (required but has default for inheritance)
     )
     text: str = ""  # Transcript content (required but has default for inheritance)
-    source: IntentSource = field(default=IntentSource.SIDEBAR)
+    source: IntentSource = field(default=IntentSource.ICON_RAIL)
     variants: list = field(default_factory=list)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class EditTranscriptIntent(InteractionIntent):
-    """User desires to enter edit mode for the current transcript."""
+    """User desires to enter edit mode for a transcript."""
 
-    pass
+    transcript_id: str
+    return_view_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,3 +113,10 @@ class DeleteTranscriptIntent(InteractionIntent):
         ""  # Transcript identifier (required but has default for inheritance)
     )
     source: IntentSource = field(default=IntentSource.CONTROLS)
+
+
+@dataclass(frozen=True, slots=True)
+class ToggleRecordingIntent(InteractionIntent):
+    """User desires to toggle the recording state (Start/Stop)."""
+
+    source: IntentSource = field(default=IntentSource.HOTKEY)

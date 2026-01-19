@@ -1,11 +1,10 @@
 import logging
 from collections.abc import Callable
 
-from utils import ConfigManager
+from src.core.config_manager import ConfigManager
+from src.core.plugins import PluginLoader
 
 from .backends.base import InputBackend
-from .backends.evdev import EvdevBackend
-from .backends.pynput import PynputBackend
 from .chord import KeyChord
 from .types import InputEvent, KeyCode
 
@@ -32,8 +31,9 @@ class KeyListener:
 
     def initialize_backends(self) -> None:
         """Initialize available input backends."""
-        backend_classes: list[type[InputBackend]] = [EvdevBackend, PynputBackend]  # type: ignore[list-item]
-        self.backends = [cls() for cls in backend_classes if cls.is_available()]
+        PluginLoader.discover_plugins()
+        available_classes = PluginLoader.get_available_backends()
+        self.backends = [cls() for cls in available_classes]
 
     def select_backend_from_config(self) -> None:
         """Select the active backend based on configuration."""
@@ -41,18 +41,24 @@ class KeyListener:
             "recording_options", "input_backend"
         )
 
-        match preferred_backend:
-            case "auto":
-                self.select_active_backend()
-            case "evdev":
-                self._try_set_backend(EvdevBackend)
-            case "pynput":
-                self._try_set_backend(PynputBackend)
-            case _:
-                logger.warning(
-                    f"Unknown backend '{preferred_backend}'. Falling back to auto."
-                )
-                self.select_active_backend()
+        if preferred_backend == "auto":
+            self.select_active_backend()
+            return
+
+        # Try to find registered backend by name
+        backend_cls = PluginLoader.get_backend_by_name(preferred_backend)
+        if backend_cls and backend_cls.is_available():
+            # Find the instance in self.backends
+            for instance in self.backends:
+                if isinstance(instance, backend_cls):
+                    self.active_backend = instance
+                    logger.info(f"Selected configured backend: {preferred_backend}")
+                    return
+
+        logger.warning(
+            f"Configured backend '{preferred_backend}' not available. Falling back to auto."
+        )
+        self.select_active_backend()
 
     def _try_set_backend(self, backend_class: type) -> None:
         """Try to set a specific backend, fall back to auto if unavailable."""
@@ -137,7 +143,7 @@ class KeyListener:
 
     def on_input_event(self, event: tuple[KeyCode, InputEvent]) -> None:
         """Handle input events and trigger callbacks for key chord changes."""
-        if not self.key_chord or not self.active_backend:
+        if not self.key_chord:
             return
 
         key, event_type = event
@@ -185,3 +191,7 @@ class KeyListener:
     def update_activation_keys(self) -> None:
         """Update activation keys from the current configuration."""
         self.load_activation_keys()
+
+    def trigger_callbacks_for_tests(self, event_name: str) -> None:
+        """Expose trigger mechanism for testing."""
+        self._trigger_callbacks(event_name)

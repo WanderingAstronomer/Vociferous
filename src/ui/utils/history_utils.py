@@ -32,20 +32,6 @@ def group_entries_by_day(entries: list) -> list[tuple[str, datetime, list]]:
     return result
 
 
-def initial_collapsed_days(day_keys: list[str], exclude_day: str) -> set[str]:
-    """
-    Determine which days should be initially collapsed.
-
-    Args:
-        day_keys: List of day keys (YYYY-MM-DD format)
-        exclude_day: Day key to exclude from collapsing (typically today)
-
-    Returns:
-        Set of day keys that should be collapsed
-    """
-    return set(day_keys) - {exclude_day}
-
-
 def format_day_header(dt: datetime, include_year: bool = False) -> str:
     """
     Format a date as 'Month DDth' with ordinal suffix.
@@ -109,7 +95,7 @@ def format_time_compact(timestamp: str | datetime) -> str:
 
 def format_preview(text: str, max_length: int = 50) -> str:
     """
-    Truncate text with ellipsis if too long.
+    Truncate text with ellipsis if too long, respecting word boundaries.
 
     Args:
         text: Text to format
@@ -120,4 +106,13 @@ def format_preview(text: str, max_length: int = 50) -> str:
     """
     if len(text) <= max_length:
         return text
-    return text[:max_length] + ELLIPSIS
+
+    # Truncate to limit
+    truncated = text[:max_length]
+
+    # Try to find the last space to avoid cutting words
+    last_space = truncated.rfind(" ")
+    if last_space > 0:
+        truncated = truncated[:last_space]
+
+    return truncated + ELLIPSIS

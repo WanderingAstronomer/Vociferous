@@ -4,7 +4,7 @@ Timing and animation constants.
 Durations for animations, delays for input simulation, and polling intervals.
 
 Usage:
-    from ui.constants import Timing
+    from src.ui.constants import Timing
     QTimer.singleShot(Timing.UI_TRANSITION_MS, callback)
 
 Timer Types (from Qt documentation):
@@ -50,22 +50,11 @@ class _TimerType:
 TimerType: _TimerType = _TimerType()
 
 
-class AnimationDurations:
-    """Animation timing constants in milliseconds."""
-
-    PULSE_CYCLE = 800  # Recording indicator pulse
-    UI_TRANSITION = 220  # Sidebar/button animations
-    PREVIEW_RESTORE = 1000  # History tree preview reset
-    STATUS_MESSAGE = 2500  # Status bar message display
-    COPY_FEEDBACK = 1000  # Copy confirmation checkmark
-    DEBOUNCE_FILE_RELOAD = 200  # File watcher debounce
-
-
 class Timing:
     """Application timing constants."""
 
     # UI animations (milliseconds)
-    UI_TRANSITION_MS = 220  # Sidebar/button animations
+    UI_TRANSITION_MS = 220  # UI animations
     PULSE_CYCLE_MS = 800  # Recording indicator pulse cycle
     PREVIEW_RESTORE_MS = 1000  # History tree preview reset
     STATUS_MESSAGE_MS = 2500  # Status bar message display
@@ -117,7 +106,7 @@ def defer_call(callback, delay_ms: int = 0) -> None:
         delay_ms: Delay in milliseconds (default 0 = next event loop iteration)
 
     Example:
-        from ui.constants import defer_call
+        from src.ui.constants import defer_call
         defer_call(self._finish_initialization)
     """
     from PyQt6.QtCore import QTimer

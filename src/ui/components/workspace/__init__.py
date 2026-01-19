@@ -4,14 +4,14 @@ Workspace component for Vociferous.
 State-driven content canvas with header, controls, and content areas.
 """
 
-from ui.components.workspace.content import WorkspaceContent
-from ui.components.workspace.controls import WorkspaceControls
-from ui.components.workspace.header import WorkspaceHeader
-from ui.components.workspace.workspace import MainWorkspace
+from src.ui.components.workspace.content import WorkspaceContent
+from src.ui.components.workspace.footer import BatchStatusFooter
+from src.ui.components.workspace.header import WorkspaceHeader
+from src.ui.components.workspace.workspace import MainWorkspace
 
 __all__ = [
     "MainWorkspace",
     "WorkspaceContent",
-    "WorkspaceControls",
+    "BatchStatusFooter",
     "WorkspaceHeader",
 ]

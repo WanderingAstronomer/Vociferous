@@ -3,7 +3,7 @@ TranscriptionModel - Single source of truth for transcription data.
 
 Wraps HistoryManager and provides Qt Model/View interface for:
 - Day-grouped hierarchical display (day headers as parents, entries as children)
-- Multiple simultaneous views (history list, focus group trees, search results)
+- Multiple simultaneous views (history list, Project trees, search results)
 - Efficient updates via dataChanged signals instead of full reloads
 
 Tree structure:
@@ -18,20 +18,20 @@ Tree structure:
 from __future__ import annotations
 
 import logging
-import sys
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import QAbstractItemModel, QModelIndex, QObject, Qt, pyqtSignal
 
-from ui.utils.history_utils import (
+from src.database.events import ChangeAction, EntityChange
+from src.ui.utils.history_utils import (
     format_day_header,
     format_preview,
     group_entries_by_day,
 )
 
 if TYPE_CHECKING:
-    from history_manager import HistoryEntry, HistoryManager
+    from src.database.history_manager import HistoryEntry, HistoryManager
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +49,8 @@ class TranscriptionModel(QAbstractItemModel):
     - IsHeaderRole: True for day headers, False for entries
     - TimestampRole: ISO timestamp for entries
     - FullTextRole: Complete transcription text
-    - GroupIDRole: Focus group ID (or None)
-    - ColorRole: Focus group color (or None)
+    - ProjectIDRole: Project ID (or None)
+    - ColorRole: Project color (or None)
     """
 
     # Custom roles
@@ -58,8 +58,9 @@ class TranscriptionModel(QAbstractItemModel):
     IsHeaderRole = Qt.ItemDataRole.UserRole + 2
     TimestampRole = Qt.ItemDataRole.UserRole + 3
     FullTextRole = Qt.ItemDataRole.UserRole + 4
-    GroupIDRole = Qt.ItemDataRole.UserRole + 5
+    ProjectIDRole = Qt.ItemDataRole.UserRole + 5
     ColorRole = Qt.ItemDataRole.UserRole + 6
+    IdRole = Qt.ItemDataRole.UserRole + 7
 
     # Signals for UI updates
     entryAdded = pyqtSignal(str)  # timestamp
@@ -72,13 +73,13 @@ class TranscriptionModel(QAbstractItemModel):
         super().__init__(parent)
         self._history_manager = history_manager
         self._days: list[tuple[str, datetime, list[HistoryEntry]]] = []
-        self._group_colors: dict[int, str | None] = {}
+        self._project_colors: dict[int, str | None] = {}
         try:
             self._refresh_data()
         except Exception as e:
-            print(f"Error initializing TranscriptionModel: {e}", file=sys.stderr)
+            logger.error(f"Error initializing TranscriptionModel: {e}")
             self._days = []
-            self._group_colors = {}
+            self._project_colors = {}
 
     def _make_index_data(
         self, is_day_header: bool, day_idx: int, entry_idx: int = 0
@@ -109,7 +110,7 @@ class TranscriptionModel(QAbstractItemModel):
         """Reload data from HistoryManager."""
         entries = self._history_manager.get_recent(limit=1000)
         self._days = group_entries_by_day(entries)
-        self._group_colors = self._history_manager.get_focus_group_colors()
+        self._project_colors = self._history_manager.get_project_colors()
 
     def refresh_from_manager(self) -> None:
         """Public API for external refresh."""
@@ -117,12 +118,12 @@ class TranscriptionModel(QAbstractItemModel):
         self._refresh_data()
         self.endResetModel()
 
-    def refresh_group_colors(self) -> None:
-        """Refresh focus group colors and notify views."""
+    def refresh_project_colors(self) -> None:
+        """Refresh Project colors and notify views."""
         if not self._history_manager:
             return
 
-        self._group_colors = self._history_manager.get_focus_group_colors()
+        self._project_colors = self._history_manager.get_project_colors()
 
         for day_idx, (_day_key, _day_dt, entries) in enumerate(self._days):
             if not entries:
@@ -133,8 +134,85 @@ class TranscriptionModel(QAbstractItemModel):
             if top_left.isValid() and bottom_right.isValid():
                 self.dataChanged.emit(top_left, bottom_right, [self.ColorRole])
 
+    def handle_database_change(self, change: EntityChange) -> None:
+        """
+        Handle incoming database change events.
+
+        Surgically updates the model for transcriptions, or triggers reloads.
+        """
+        if change.entity_type != "transcription":
+            return
+
+        if change.reload_required:
+            self.refresh_from_manager()
+            return
+
+        match change.action:
+            case ChangeAction.CREATED:
+                for entry_id in change.ids:
+                    entry = self._history_manager.get_entry(entry_id)
+                    if entry:
+                        self.add_entry(entry)
+
+            case ChangeAction.UPDATED:
+                for entry_id in change.ids:
+                    entry = self._history_manager.get_entry(entry_id)
+                    if entry:
+                        self.update_entry_from_object(entry)
+
+            case ChangeAction.DELETED:
+                for entry_id in change.ids:
+                    # Need to find timestamp for delete_entry, or use ID-based delete
+                    result = self._find_entry_by_id(entry_id)
+                    if result:
+                        _, _, entry = result
+                        self.delete_entry(entry.timestamp)
+
+            case ChangeAction.BATCH_COMPLETED:
+                # Batch processing completed, but individual items were likely handled
+                pass
+
+    def update_entry_group(self, timestamp: str, project_id: int | None) -> None:
+        """Update the project assignment for an entry locally."""
+        # Find entry
+        if not hasattr(self, "_days"):
+            return
+
+        for day_idx, (_day_key, _day_dt, entries) in enumerate(self._days):
+            for entry_idx, entry in enumerate(entries):
+                if entry.timestamp == timestamp:
+                    # Update data
+                    entry.project_id = project_id
+
+                    # Notify views
+                    # Construct index for this entry
+                    # Parent is the day header (row=day_idx, col=0)
+                    # But index() method handles this structure.
+
+                    # We need the index of the ENTRY.
+                    # Row = entry_idx, Parent = index(day_idx, 0)
+
+                    day_model_index = self.index(day_idx, 0)
+                    entry_model_index = self.index(entry_idx, 0, day_model_index)
+
+                    if entry_model_index.isValid():
+                        # We changed ProjectID and Color roles
+                        self.dataChanged.emit(
+                            entry_model_index,
+                            entry_model_index,
+                            [self.ProjectIDRole, self.ColorRole],
+                        )
+                    return
+
     def add_entry(self, entry: HistoryEntry) -> None:
         """Add a new entry to the model."""
+        # Idempotency check: Don't add if already present in the model
+        if self._find_entry_by_id(entry.id) is not None:
+            logger.debug(
+                f"Target entry {entry.id} already in model; skipping duplicate add."
+            )
+            return
+
         dt = datetime.fromisoformat(entry.timestamp)
         day_key = dt.date().isoformat()
 
@@ -168,6 +246,47 @@ class TranscriptionModel(QAbstractItemModel):
                     self.entryUpdated.emit(timestamp)
                     return
 
+    def update_entry_from_object(self, entry: HistoryEntry) -> None:
+        """Update an entry from a fresh HistoryEntry object."""
+        result = self._find_entry_by_id(entry.id)
+        if not result:
+            return
+
+        day_idx, entry_idx, old_entry = result
+
+        # Check for day change (timestamp date part changed)
+        # This is rare but possible if timestamp itself moved days.
+        # For now, assume it stays in the same day for simplicity in surgery,
+        # or just update the content if it's the same day.
+
+        old_day = datetime.fromisoformat(old_entry.timestamp).date()
+        new_day = datetime.fromisoformat(entry.timestamp).date()
+
+        if old_day != new_day:
+            # Full move required, easier to delete and re-add or just refresh
+            self.delete_entry(old_entry.timestamp)
+            self.add_entry(entry)
+            return
+
+        # Update the reference in self._days
+        self._days[day_idx][2][entry_idx] = entry
+
+        day_model_index = self.index(day_idx, 0)
+        entry_model_index = self.index(entry_idx, 0, day_model_index)
+
+        if entry_model_index.isValid():
+            self.dataChanged.emit(
+                entry_model_index,
+                entry_model_index,
+                [
+                    Qt.ItemDataRole.DisplayRole,
+                    self.FullTextRole,
+                    self.ProjectIDRole,
+                    self.ColorRole,
+                ],
+            )
+            self.entryUpdated.emit(entry.timestamp)
+
     def delete_entry(self, timestamp: str) -> None:
         """Remove an entry from the model."""
         for day_idx, (day_key, day_dt, entries) in enumerate(self._days):
@@ -186,21 +305,13 @@ class TranscriptionModel(QAbstractItemModel):
                     self.entryDeleted.emit(timestamp)
                     return
 
-    def update_entry_group(self, timestamp: str, group_id: int | None) -> None:
-        """Update an entry's focus group membership."""
-        for day_idx, (day_key, day_dt, entries) in enumerate(self._days):
+    def _find_entry_by_id(self, entry_id: int) -> tuple[int, int, HistoryEntry] | None:
+        """Find the day_idx and entry_idx for a given entry ID."""
+        for day_idx, (_, _, entries) in enumerate(self._days):
             for entry_idx, entry in enumerate(entries):
-                if entry.timestamp == timestamp:
-                    entry.focus_group_id = group_id
-                    day_model_index = self.index(day_idx, 0)
-                    entry_model_index = self.index(entry_idx, 0, day_model_index)
-                    self.dataChanged.emit(
-                        entry_model_index,
-                        entry_model_index,
-                        [self.GroupIDRole, self.ColorRole],
-                    )
-                    self.entryUpdated.emit(timestamp)
-                    return
+                if entry.id == entry_id:
+                    return day_idx, entry_idx, entry
+        return None
 
     def _find_day_index(self, day_key: str) -> int | None:
         """Find the index of a day header by its key."""
@@ -254,10 +365,10 @@ class TranscriptionModel(QAbstractItemModel):
 
             return QModelIndex()
         except Exception as e:
-            print(f"Exception in index(): {e}", file=sys.stderr)
+            logger.error(f"Exception in index(): {e}")
             return QModelIndex()
 
-    def parent(self, index: QModelIndex | None = None) -> QModelIndex:  # type: ignore[override]
+    def parent(self, index: QModelIndex | None = None) -> QModelIndex:
         """Get the parent of an index."""
         try:
             if index is None:
@@ -281,7 +392,7 @@ class TranscriptionModel(QAbstractItemModel):
 
             return QModelIndex()
         except Exception as e:
-            print(f"Error in parent(): {e}", file=sys.stderr)
+            logger.error(f"Error in parent(): {e}")
             return QModelIndex()
 
     def rowCount(self, parent: QModelIndex | None = None) -> int:
@@ -321,7 +432,7 @@ class TranscriptionModel(QAbstractItemModel):
             return 0
 
         except Exception as e:
-            print(f"Error in rowCount(): {e}", file=sys.stderr)
+            logger.error(f"Error in rowCount(): {e}")
             return 0
 
     def columnCount(self, parent: QModelIndex | None = None) -> int:
@@ -365,7 +476,7 @@ class TranscriptionModel(QAbstractItemModel):
             else:
                 return self._entry_data(day_idx, entry_idx, column, role)
         except Exception as e:
-            print(f"Error in data(): {e}", file=sys.stderr)
+            logger.error(f"Error in data(): {e}")
             return None
 
     def _day_header_data(self, day_idx: int, column: int, role: int) -> Any:
@@ -402,20 +513,30 @@ class TranscriptionModel(QAbstractItemModel):
 
         match role:
             case Qt.ItemDataRole.DisplayRole:
-                # Single column: return preview text (time rendered by delegate)
-                return format_preview(entry.text, max_length=60)
+                # Primary Label Logic:
+                # 1. Use display_name if present
+                # 2. Key off implicit fallback (first 30 chars of body)
+                if entry.display_name and entry.display_name.strip():
+                    return entry.display_name
+
+                # Fallback: Derived from body text (whitespace collapsed)
+                # Increased limit to 120 chars to allow dynamic sizing in wide views
+                return format_preview(entry.text, max_length=120)
+
             case self.TimestampRole:
                 return entry.timestamp
             case self.FullTextRole:
                 return entry.text
             case self.IsHeaderRole:
                 return False
-            case self.GroupIDRole:
-                return entry.focus_group_id
+            case self.ProjectIDRole:
+                return entry.project_id
             case self.ColorRole:
-                if entry.focus_group_id is not None:
-                    return self._group_colors.get(entry.focus_group_id)
+                if entry.project_id is not None:
+                    return self._project_colors.get(entry.project_id)
                 return None
+            case self.IdRole:
+                return entry.id
             case _:
                 return None
 
@@ -433,7 +554,7 @@ class TranscriptionModel(QAbstractItemModel):
 
             return Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
         except Exception as e:
-            print(f"Error in flags(): {e}", file=sys.stderr)
+            logger.error(f"Error in flags(): {e}")
             return Qt.ItemFlag.NoItemFlags
 
     def headerData(
