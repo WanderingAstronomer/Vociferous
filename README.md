@@ -1,444 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Vociferous — Privacy-First Speech-to-Text for Linux</title>
+</head>
+<body>
+
 <div align="center">
-
-Vociferous  Privacy-First Speech-to-Text for Linux
-
-Your voice. Your machine. Your data.
-
-<img src="docs/images/transcribe_view.png" width="700" alt="Vociferous Main Interface">  Features • Installation • Quick Start • Documentation • Architecture
-
-</div>    
----  🎯 What is Vociferous?
-
-Vociferous is a production-grade, local-first dictation system that transforms speech into text entirely on your machine. Built with architectural rigor and attention to user experience, it leverages OpenAI's Whisper for state-of-the-art transcription and offers optional AI-powered refinement to polish your text with grammar correction and formatting.
-
-Unlike cloud-based alternatives, Vociferous processes everything locally—your voice never leaves your computer. No subscriptions, no usage limits, no privacy compromises.
-
-
----
-
-✨ Features
-
-Core Capabilities
-
-🔒 Complete Privacy — All transcription and refinement happens on-device using local models
-
-🎯 Whisper ASR — OpenAI's state-of-the-art speech recognition via faster-whisper
-
-✨ AI Refinement — Optional SLM-powered text improvement (grammar, punctuation, formatting)
-
-🐧 Native Linux Support — First-class Wayland integration with global hotkey support
-
-📚 Persistent History — SQLite-backed transcript storage with full-text search and organization
-
-⚡ GPU Acceleration — CUDA support for real-time transcription and refinement
-
-🎨 Modern UI — Sleek PyQt6 interface with polished design system
-
-Technical Highlights
-
-Intent-Driven Architecture — Clean separation between user intent and execution logic
-
-Dual-Text Model — Preserves raw Whisper output while allowing user edits
-
-Pluggable Backends — Modular input handling (evdev/pynput), model selection, and audio processing
-
-Production-Ready — Comprehensive test suite, type safety, and architectural guardrails
-
-Fully Offline — No internet connection required after initial model download
-
-
----
-
-🖼️ Screenshots
-
-<details>    
-<summary><b>📸 View Gallery (Click to expand)</b></summary>  <table>    
-<tr>    
-<td align="center">    
-<img src="docs/images/transcribe_view.png" width="400" alt="Transcribe View"><br>    
-<em>Transcribe View — Live dictation and recording</em>    
-</td>    
-<td align="center">    
-<img src="docs/images/history_view.png" width="400" alt="History View"><br>    
-<em>History View — Browse and manage transcripts</em>    
-</td>    
-</tr>    
-<tr>    
-<td align="center">    
-<img src="docs/images/search_and_manage_view.png" width="400" alt="Search View"><br>    
-<em>Search & Manage — Filter and organize</em>    
-</td>    
-<td align="center">    
-<img src="docs/images/refinement_view.png" width="400" alt="Refine View"><br>    
-<em>Refine View — AI-powered text improvement</em>    
-</td>    
-</tr>    
-<tr>    
-<td align="center">    
-<img src="docs/images/settings_view.png" width="400" alt="Settings View"><br>    
-<em>Settings View — Configure transcription and refinement</em>    
-</td>    
-<td align="center">    
-<img src="docs/images/user_view.png" width="400" alt="User View"><br>    
-<em>User View — Metrics and documentation</em>    
-</td>    
-</tr>    
-</table>  Onboarding Experience  <table>    
-<tr>    
-<td align="center">    
-<img src="docs/images/onboarding_welcome.png" width="300" alt="Onboarding Welcome"><br>    
-<em>Welcome screen</em>    
-</td>    
-<td align="center">    
-<img src="docs/images/onboarding_transcription_model_choice.png" width="300" alt="Model Selection"><br>    
-<em>Model selection</em>    
-</td>    
-<td align="center">    
-<img src="docs/images/onboarding_choose_hotkey.png" width="300" alt="Hotkey Setup"><br>    
-<em>Hotkey configuration</em>    
-</td>    
-</tr>    
-</table>  </details>    
----  🚀 Installation
-
-Prerequisites
-
-Requirement	Minimum	Recommended
-
-OS	Linux (X11/Wayland)	Linux (Wayland)
-Python	3.12+	3.12
-RAM	4 GB	8 GB
-GPU	None (CPU mode)	NVIDIA CUDA
-VRAM	N/A	4+ GB (for refinement)
-
-Wayland Setup
-
-For global hotkeys on Wayland, add your user to the input group:
-
-sudo usermod -a -G input $USER
-
-Log out and back in for changes to take effect
-
-Install Steps
-
-1. Clone the repository
-
-
-
-git clone https://github.com/yourusername/Vociferous.git
-cd Vociferous
-
-2. Create virtual environment
-
-
-
-python3 -m venv .venv
-
-3. Install dependencies
-
-
-
-.venv/bin/pip install -r requirements.txt
-
-4. Launch Vociferous
-
-
-
-./vociferous
-
-> ⚠️ Important: Always use the ./vociferous launcher script. Running python src/main.py directly bypasses GPU library configuration.
-
-
-
-
----
-
-🎬 Quick Start
-
-Your First Recording
-
-1. Launch the application with ./vociferous
-
-
-2. Press Right Alt (default hotkey) to start recording
-
-
-3. Speak clearly into your microphone
-
-
-4. Press Right Alt again to stop recording
-
-
-5. Wait for Whisper to transcribe your speech
-
-
-6. Review your transcript in the main panel
-
-
-
-Default Configuration
-
-Setting	Default Value
-
-Whisper Model	distil-large-v3 (~1.5 GB)
-Device	Auto-detect (GPU if available)
-Language	English (en)
-Recording Mode	Push-to-talk
-Hotkey	Right Alt
-Refinement	Disabled (optional)
-
-Available Actions
-
-After transcription completes:
-
-Copy — Copy text to clipboard
-
-Edit — Modify the transcript
-
-Delete — Remove the transcript
-
-Refine — Polish with AI (if enabled)
-
-Save — Persist to history database
-
-
----
-
-🧠 Optional AI Refinement
-
-Vociferous includes an optional text refinement system powered by local language models.
-
-What Does Refinement Do?
-
-Fixes grammar and punctuation errors
-
-Improves sentence structure and flow
-
-Applies consistent formatting
-
-Preserves original intent and meaning
-
-Enabling Refinement
-
-1. Open Settings (⚙️ icon)
-
-
-2. Toggle Enable AI Refinement to ON
-
-
-3. Select your preferred SLM Model (e.g., Qwen3-4B-Instruct)
-
-
-4. Click Apply
-
-
-
-On first use, Vociferous will download and convert the model (~4 GB). This happens once per model and takes several minutes.
-
-GPU Requirements
-
-Refinement models require:
-
-CUDA-capable NVIDIA GPU with 4+ GB VRAM (recommended)
-
-CPU fallback supported (slower, ~8+ GB RAM recommended)
-
-
----
-
-📚 Documentation
-
-Comprehensive documentation is available in the project wiki:
-
-Core Concepts
-
-Architecture — System design, threading model, component boundaries
-
-Design System — Colors, typography, spacing tokens
-
-Data & Persistence — Database schema, dual-text invariant
-
-User Guides
-
-Getting Started — Installation and first-run guide
-
-UI Views Overview — View architecture and capabilities
-
-View Documentation
-
-Transcribe View — Live recording and dictation
-
-History View — Browse and manage past transcripts
-
-Search View — Filter and find transcripts
-
-Refine View — AI-powered text refinement
-
-Settings View — Configure application options
-
-User View — Metrics, about, and documentation
-
-Advanced Topics
-
-Refinement System — SLM service, model provisioning, prompt engineering
-
-Testing Philosophy — Test tiers, fixtures, CI strategy
-
-
----
-
-🏗️ Architecture
-
-Vociferous is built with architectural rigor and follows strict design principles to ensure maintainability and extensibility.
-
-Intent-Driven Design
-
-All user interactions follow a strict Intent Pattern:
-
-User Action → Intent (immutable dataclass) → Signal → Controller → Execution
-
-This ensures:
-
-Clean separation between UI and business logic
-
-Testable and predictable behavior
-
-No spaghetti code or hidden side effects
-
-Technology Stack
-
-Layer	Technology
-
-Language	Python 3.12+
-UI Framework	PyQt6 6.7.0+
-Speech Recognition	faster-whisper (CTranslate2)
-Text Refinement	CTranslate2 + Qwen3-4B-Instruct
-Database	SQLAlchemy 2.0+ (SQLite)
-Input Handling	evdev (Wayland) / pynput (X11)
-GPU Acceleration	CUDA (optional)
-
-Component Overview
-
-┌─────────────────────────────────────────────────────┐
-│                    UI Layer (PyQt6)                 │
-├─────────────────────────────────────────────────────┤
-│              Application Coordinator                │
-│    (Composition root, signal wiring, lifecycle)     │
-├─────────────────────────────────────────────────────┤
-│  Services Layer                                     │
-│  • TranscriptionService    • SLMService             │
-│  • AudioService           • VoiceCalibration        │
-├─────────────────────────────────────────────────────┤
-│  Core Runtime (Background Engine)                   │
-│  • Whisper Inference      • Audio Capture           │
-│  • State Management       • IPC Protocol            │
-├─────────────────────────────────────────────────────┤
-│  Database Layer (SQLAlchemy + SQLite)               │
-│  • HistoryManager         • Models & DTOs           │
-│  • Repositories           • Signal Bridge           │
-└─────────────────────────────────────────────────────┘
-
-
----
-
-🔧 Development
-
-Requirements
-
-Python 3.12+
-
-Virtual environment (.venv/)
-
-Development tools: ruff, mypy, pytest
-
-Running Tests
-
-Full test suite
-
-VOCIFEROUS_TEST_IGNORE_RUNNING=1 ./scripts/check.sh
-
-Individual test categories
-
-.venv/bin/pytest tests/unit/
-.venv/bin/pytest tests/integration/
-.venv/bin/pytest tests/contracts/
-
-Code Quality
-
-Linting
-
-.venv/bin/ruff check .
-
-Type checking
-
-.venv/bin/mypy .
-
-Auto-formatting
-
-.venv/bin/ruff format .
-
-Project Structure
-
-vociferous/
-├── src/
-│   ├── core/              # Application coordination, config, exceptions
-│   ├── core_runtime/      # Background engine and IPC
-│   ├── database/          # SQLAlchemy models and persistence
-│   ├── services/          # Business logic (transcription, SLM, audio)
-│   ├── ui/                # PyQt6 views, components, styles
-│   └── input_handler/     # Keyboard/input backends
-├── tests/                 # Comprehensive test suite
-├── docs/wiki/             # User and developer documentation
-└── assets/                # Icons, sounds, resources
-
-
----
-
-🤝 Contributing
-
-Vociferous is built with high standards for code quality and architectural integrity. Before contributing:
-
-1. Read the Architecture documentation
-
-
-2. Review the Testing Philosophy
-
-
-3. Ensure all tests pass: ./scripts/check.sh
-
-
-4. Follow the intent-driven design pattern
-
-
-5. Update documentation for any behavioral changes
-
-
-
-
----
-
-📜 License
-
-This project is licensed under the MIT License — see the LICENSE file for details.
-
-
----
-
-🙏 Acknowledgments
-
-OpenAI Whisper — Foundation of the transcription engine
-
-faster-whisper — CTranslate2-based Whisper inference
-
-PyQt6 — Powerful cross-platform GUI framework
-
-SQLAlchemy — The Python SQL toolkit
-
-Qwen Team — High-quality open-source language models
-
-
----
-
-<div align="center">  Built with ❤️ for the Linux community  ⬆ Back to Top
-
+    <h1>Vociferous</h1>
+    <p><strong>Privacy-First Speech-to-Text for Linux</strong></p>
+    <p>Your voice. Your machine. Your data.</p>
+
+    <img src="docs/images/transcribe_view.png" width="700" alt="Vociferous Main Interface">
+
+    <p>
+        Features • Installation • Quick Start • Documentation • Architecture
+    </p>
 </div>
+
+<hr>
+
+<h2>🎯 What is Vociferous?</h2>
+
+<p>
+    Vociferous is a production-grade, local-first dictation system that transforms speech into text entirely on your machine.
+    Built with architectural rigor and attention to user experience, it leverages OpenAI's Whisper for state-of-the-art
+    transcription and offers optional AI-powered refinement to polish your text with grammar correction and formatting.
+</p>
+
+<p>
+    Unlike cloud-based alternatives, Vociferous processes everything locally—your voice never leaves your computer.
+    No subscriptions, no usage limits, no privacy compromises.
+</p>
+
+<hr>
+
+<h2>✨ Features</h2>
+
+<h3>Core Capabilities</h3>
+<ul>
+    <li>🔒 <strong>Complete Privacy</strong> — All transcription and refinement happens on-device using local models</li>
+    <li>🎯 <strong>Whisper ASR</strong> — OpenAI's state-of-the-art speech recognition via faster-whisper</li>
+    <li>✨ <strong>AI Refinement</strong> — Optional SLM-powered text improvement (grammar, punctuation, formatting)</li>
+    <li>🐧 <strong>Native Linux Support</strong> — First-class Wayland integration with global hotkey support</li>
+    <li>📚 <strong>Persistent History</strong> — SQLite-backed transcript storage with full-text search and organization</li>
+    <li>⚡ <strong>GPU Acceleration</strong> — CUDA support for real-time transcription and refinement</li>
+    <li>🎨 <strong>Modern UI</strong> — Sleek PyQt6 interface with polished design system</li>
+</ul>
+
+<h3>Technical Highlights</h3>
+<ul>
+    <li><strong>Intent-Driven Architecture</strong> — Clean separation between user intent and execution logic</li>
+    <li><strong>Dual-Text Model</strong> — Preserves raw Whisper output while allowing user edits</li>
+    <li><strong>Pluggable Backends</strong> — Modular input handling, model selection, and audio processing</li>
+    <li><strong>Production-Ready</strong> — Comprehensive test suite, type safety, and architectural guardrails</li>
+    <li><strong>Fully Offline</strong> — No internet connection required after initial model download</li>
+</ul>
+
+<hr>
+
+<h2>🖼️ Screenshots</h2>
+
+<details>
+    <summary><strong>📸 View Gallery (Click to expand)</strong></summary>
+
+    <table>
+        <tr>
+            <td align="center">
+                <img src="docs/images/transcribe_view.png" width="400" alt="Transcribe View"><br>
+                <em>Transcribe View — Live dictation and recording</em>
+            </td>
+            <td align="center">
+                <img src="docs/images/history_view.png" width="400" alt="History View"><br>
+                <em>History View — Browse and manage transcripts</em>
+            </td>
+        </tr>
+        <tr>
+            <td align="center">
+                <img src="docs/images/search_and_manage_view.png" width="400" alt="Search View"><br>
+                <em>Search &amp; Manage — Filter and organize</em>
+            </td>
+            <td align="center">
+                <img src="docs/images/refinement_view.png" width="400" alt="Refine View"><br>
+                <em>Refine View — AI-powered text improvement</em>
+            </td>
+        </tr>
+        <tr>
+            <td align="center">
+                <img src="docs/images/settings_view.png" width="400" alt="Settings View"><br>
+                <em>Settings View — Configure transcription and refinement</em>
+            </td>
+            <td align="center">
+                <img src="docs/images/user_view.png" width="400" alt="User View"><br>
+                <em>User View — Metrics and documentation</em>
+            </td>
+        </tr>
+    </table>
+
+    <h4>Onboarding Experience</h4>
+
+    <table>
+        <tr>
+            <td align="center">
+                <img src="docs/images/onboarding_welcome.png" width="300" alt="Onboarding Welcome"><br>
+                <em>Welcome screen</em>
+            </td>
+            <td align="center">
+                <img src="docs/images/onboarding_transcription_model_choice.png" width="300" alt="Model Selection"><br>
+                <em>Model selection</em>
+            </td>
+            <td align="center">
+                <img src="docs/images/onboarding_choose_hotkey.png" width="300" alt="Hotkey Setup"><br>
+                <em>Hotkey configuration</em>
+            </td>
+        </tr>
+    </table>
+</details>
+
+<hr>
+
+<h2>🚀 Installation</h2>
+
+<h3>Prerequisites</h3>
+
+<table border="1" cellpadding="6" cellspacing="0">
+    <tr>
+        <th>Requirement</th>
+        <th>Minimum</th>
+        <th>Recommended</th>
+    </tr>
+    <tr>
+        <td>OS</td>
+        <td>Linux (X11/Wayland)</td>
+        <td>Linux (Wayland)</td>
+    </tr>
+    <tr>
+        <td>Python</td>
+        <td>3.12+</td>
+        <td>3.12</td>
+    </tr>
+    <tr>
+        <td>RAM</td>
+        <td>4 GB</td>
+        <td>8 GB</td>
+    </tr>
+    <tr>
+        <td>GPU</td>
+        <td>None (CPU mode)</td>
+        <td>NVIDIA CUDA</td>
+    </tr>
+    <tr>
+        <td>VRAM</td>
+        <td>N/A</td>
+        <td>4+ GB (for refinement)</td>
+    </tr>
+</table>
+
+<h3>Wayland Setup</h3>
+
+<p>For global hotkeys on Wayland, add your user to the input group:</p>
+
+<pre><code>sudo usermod -a -G input $USER</code></pre>
+
+<p>Log out and back in for changes to take effect.</p>
+
+<h3>Install Steps</h3>
+
+<ol>
+    <li>
+        Clone the repository
+        <pre><code>git clone https://github.com/yourusername/Vociferous.git
+cd Vociferous</code></pre>
+    </li>
+    <li>
+        Create virtual environment
+        <pre><code>python3 -m venv .venv</code></pre>
+    </li>
+    <li>
+        Install dependencies
+        <pre><code>.venv/bin/pip install -r requirements.txt</code></pre>
+    </li>
+    <li>
+        Launch Vociferous
+        <pre><code>./vociferous</code></pre>
+    </li>
+</ol>
+
+<blockquote>
+    ⚠️ <strong>Important:</strong> Always use the <code>./vociferous</code> launcher script.
+    Running <code>python src/main.py</code> directly bypasses GPU library configuration.
+</blockquote>
+
+<hr>
+
+<h2>🎬 Quick Start</h2>
+
+<h3>Your First Recording</h3>
+
+<ol>
+    <li>Launch the application with <code>./vociferous</code></li>
+    <li>Press Right Alt (default hotkey) to start recording</li>
+    <li>Speak clearly into your microphone</li>
+    <li>Press Right Alt again to stop recording</li>
+    <li>Wait for Whisper to transcribe your speech</li>
+    <li>Review your transcript in the main panel</li>
+</ol>
+
+<h3>Default Configuration</h3>
+
+<table border="1" cellpadding="6" cellspacing="0">
+    <tr>
+        <th>Setting</th>
+        <th>Default Value</th>
+    </tr>
+    <tr>
+        <td>Whisper Model</td>
+        <td>distil-large-v3 (~1.5 GB)</td>
+    </tr>
+    <tr>
+        <td>Device</td>
+        <td>Auto-detect (GPU if available)</td>
+    </tr>
+    <tr>
+        <td>Language</td>
+        <td>English (en)</td>
+    </tr>
+    <tr>
+        <td>Recording Mode</td>
+        <td>Push-to-talk</td>
+    </tr>
+    <tr>
+        <td>Hotkey</td>
+        <td>Right Alt</td>
+    </tr>
+    <tr>
+        <td>Refinement</td>
+        <td>Disabled (optional)</td>
+    </tr>
+</table>
+
+<h3>Available Actions</h3>
+
+<ul>
+    <li>Copy — Copy text to clipboard</li>
+    <li>Edit — Modify the transcript</li>
+    <li>Delete — Remove the transcript</li>
+    <li>Refine — Polish with AI (if enabled)</li>
+    <li>Save — Persist to history database</li>
+</ul>
+
+<hr>
+
+<h2>🧠 Optional AI Refinement</h2>
+
+<p>
+    Vociferous includes an optional text refinement system powered by local language models.
+</p>
+
+<h3>What Does Refinement Do?</h3>
+
+<ul>
+    <li>Fixes grammar and punctuation errors</li>
+    <li>Improves sentence structure and flow</li>
+    <li>Applies consistent formatting</li>
+    <li>Preserves original intent and meaning</li>
+</ul>
+
+<h3>Enabling Refinement</h3>
+
+<ol>
+    <li>Open Settings (⚙️ icon)</li>
+    <li>Toggle Enable AI Refinement to ON</li>
+    <li>Select your preferred SLM Model (e.g., Qwen3-4B-Instruct)</li>
+    <li>Click Apply</li>
+</ol>
+
+<p>
+    On first use, Vociferous will download and convert the model (~4 GB).
+    This happens once per model and takes several minutes.
+</p>
+
+<h3>GPU Requirements</h3>
+
+<ul>
+    <li>CUDA-capable NVIDIA GPU with 4+ GB VRAM (recommended)</li>
+    <li>CPU fallback supported (slower, ~8+ GB RAM recommended)</li>
+</ul>
+
+<hr>
+
+<h2>📜 License</h2>
+
+<p>
+    This project is licensed under the MIT License — see the LICENSE file for details.
+</p>
+
+<hr>
+
+<div align="center">
+    <p><strong>Built with ❤️ for the Linux community</strong></p>
+    <p>⬆ Back to Top</p>
+</div>
+
+</body>
+</html>
