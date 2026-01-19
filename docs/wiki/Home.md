@@ -5,7 +5,7 @@
   <p>
     <a href="https://github.com/WanderingAstronomer/Vociferous/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/version-3.0.0-blue.svg" alt="Version 3.0.0"/></a>
     <img src="https://img.shields.io/badge/platform-Linux-green.svg" alt="Platform Linux"/>
-    <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="License MIT"/>
+    <img src="https://img.shields.io/badge/license-AGPL%20v3-blue.svg" alt="AGPL-3.0"/>
   </p>
 
   <br/>

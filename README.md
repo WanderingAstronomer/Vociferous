@@ -11,7 +11,7 @@
         <img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+">
     </a>
     <a href="LICENSE">
-        <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License">
+        <img src="https://img.shields.io/badge/License-AGPL%20v3-blue.svg" alt="AGPL-3.0">
     </a>
     <a href="https://www.riverbankcomputing.com/software/pyqt/">
         <img src="https://img.shields.io/badge/GUI-PyQt6-green.svg" alt="PyQt6">
@@ -234,7 +234,7 @@ cd Vociferous</code></pre>
 <h2>License</h2>
 
 <p>
-    This project is licensed under the <strong>MIT License</strong>.
+    This project is licensed under the <strong>AGPL-3.0</strong>.
 </p>
 
 <hr>
