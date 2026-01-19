@@ -2,9 +2,9 @@
 Stylesheet definitions for MainWindow component.
 """
 
-import ui.constants.colors as c
-from ui.constants import Spacing, Typography
-from ui.constants.dimensions import BORDER_RADIUS_LG, BORDER_RADIUS_SM
+import src.ui.constants.colors as c
+from src.ui.constants import Spacing, Typography
+from src.ui.constants.dimensions import BORDER_RADIUS_LG, BORDER_RADIUS_SM
 
 # About dialog styles
 ABOUT_DIALOG_STYLE = f"""

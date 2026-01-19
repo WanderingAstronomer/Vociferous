@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from history_manager import HistoryEntry, HistoryManager
+from src.database.history_manager import HistoryEntry, HistoryManager
 
 
 @pytest.fixture
@@ -277,7 +277,7 @@ class TestDeleteEntry:
     """Test deleting entries."""
 
     def test_delete_entry_removes_from_database(self, history_manager, temp_db):
-        """Entry should be removed from database."""
+        """Entry should be removed from src.database."""
         entry = history_manager.add_entry("To be deleted")
         success = history_manager.delete_entry(entry.timestamp)
 
@@ -338,15 +338,17 @@ class TestRotation:
     def test_rotation_removes_oldest_entries(self, temp_db):
         """When exceeding limit, oldest entries should be removed."""
         from unittest.mock import patch
-        
+
         # Patch ConfigManager.get_config_value to return 3 for max_history_entries
-        with patch("utils.ConfigManager.get_config_value") as mock_config:
+        with patch(
+            "src.core.config_manager.ConfigManager.get_config_value"
+        ) as mock_config:
             # We need to handle the call signature. get_config_value(section, key)
             def side_effect(section, key, default=None):
                 if section == "output_options" and key == "max_history_entries":
                     return 3
                 return default
-            
+
             mock_config.side_effect = side_effect
 
             # Create new history manager with clean database
@@ -449,9 +451,7 @@ class TestProjects:
 
         # Verify in database
         with sqlite3.connect(temp_db) as conn:
-            cursor = conn.execute(
-                "SELECT name FROM projects WHERE id = ?", (focus_id,)
-            )
+            cursor = conn.execute("SELECT name FROM projects WHERE id = ?", (focus_id,))
             name = cursor.fetchone()[0]
 
         assert name == "Work"
@@ -577,9 +577,7 @@ class TestProjects:
         history_manager.assign_transcript_to_project(entry.timestamp, focus_id)
 
         # Move back to unassigned
-        success = history_manager.assign_transcript_to_project(
-            entry.timestamp, None
-        )
+        success = history_manager.assign_transcript_to_project(entry.timestamp, None)
         assert success is True
 
         # Verify unassigned
@@ -612,9 +610,7 @@ class TestProjects:
 
         history_manager.assign_transcript_to_project(work1.timestamp, work_id)
         history_manager.assign_transcript_to_project(work2.timestamp, work_id)
-        history_manager.assign_transcript_to_project(
-            personal1.timestamp, personal_id
-        )
+        history_manager.assign_transcript_to_project(personal1.timestamp, personal_id)
 
         # Get work transcripts
         work_entries = history_manager.get_transcripts_by_project(work_id)

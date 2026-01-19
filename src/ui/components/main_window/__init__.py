@@ -7,7 +7,7 @@ Components:
     MainWindow: Primary application window
 """
 
-from ui.components.main_window.main_window import MainWindow
+from src.ui.components.main_window.main_window import MainWindow
 
 __all__ = [
     "MainWindow",

@@ -57,11 +57,12 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "3. MyPy (Type Checking)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-ERROR_COUNT=$("$PYTHON" -m mypy src/ --no-error-summary 2>&1 | grep -c "error:" || true)
-if [ "$ERROR_COUNT" -lt 350 ]; then
-    print_result 0 "MyPy type checking passed ($ERROR_COUNT errors - mostly Qt false positives)"
+MYPY_OUTPUT=$("$PYTHON" -m mypy src/ 2>&1)
+if echo "$MYPY_OUTPUT" | grep -q "Success: no issues found"; then
+    print_result 0 "MyPy type checking passed"
 else
-    print_result 1 "MyPy type checking failed ($ERROR_COUNT errors)"
+    echo "$MYPY_OUTPUT" | tail -20
+    print_result 1 "MyPy type checking failed"
 fi
 echo ""
 

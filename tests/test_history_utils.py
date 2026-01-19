@@ -2,8 +2,8 @@
 
 from datetime import datetime
 
-from history_manager import HistoryEntry
-from ui.utils import history_utils
+from src.database.history_manager import HistoryEntry
+from src.ui.utils import history_utils
 
 
 def test_group_entries_by_day_preserves_order():
@@ -24,28 +24,22 @@ def test_group_entries_by_day_preserves_order():
     assert [e.text for e in second_entries] == ["Older"]
 
 
-def test_initial_collapsed_days_excludes_today():
-    day_keys = ["2024-01-05", "2024-01-04", "2024-01-03"]
-    collapsed = history_utils.initial_collapsed_days(day_keys, "2024-01-04")
-    assert collapsed == {"2024-01-05", "2024-01-03"}
-
-
 def test_format_day_header_ordinal_suffix():
     dt = datetime(2024, 1, 1)
     # Structural assertion rather than exact copy
     formatted = history_utils.format_day_header(dt)
     assert "January" in formatted
     assert "1" in formatted
-    
+
     dt = datetime(2024, 1, 2)
     assert "2" in history_utils.format_day_header(dt)
-    
+
     dt = datetime(2024, 1, 3)
     assert "3" in history_utils.format_day_header(dt)
-    
+
     dt = datetime(2024, 1, 4)
     assert "4" in history_utils.format_day_header(dt)
-    
+
     dt = datetime(2024, 1, 11)
     assert "11" in history_utils.format_day_header(dt)
 

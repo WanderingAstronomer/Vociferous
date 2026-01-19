@@ -23,9 +23,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.components.title_bar import DialogTitleBar
-from ui.constants import MAJOR_GAP, MINOR_GAP
-from ui.widgets.styled_button import ButtonStyle, StyledButton
+from src.ui.components.title_bar import DialogTitleBar
+from src.ui.constants import MAJOR_GAP, MINOR_GAP
+from src.ui.widgets.styled_button import ButtonStyle, StyledButton
 
 
 class ExportDialog(QDialog):
@@ -92,7 +92,7 @@ class ExportDialog(QDialog):
 
         # Custom title bar (draggable)
         self.title_bar = DialogTitleBar("Export History", self)
-        self.title_bar.closeRequested.connect(self.reject)
+        self.title_bar.close_requested.connect(self.reject)
         frame_layout.addWidget(self.title_bar)
 
         # Content area
@@ -301,10 +301,10 @@ class ExportDialog(QDialog):
     def cleanup(self) -> None:
         """
         Clean up export dialog resources.
-        
+
         Per Vociferous cleanup protocol, all widgets should implement cleanup().
         ExportDialog has no persistent file handles or threads.
-        
+
         This method is idempotent and safe to call multiple times.
         """
         # Ensure dialog is closed

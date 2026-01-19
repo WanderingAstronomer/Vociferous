@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSlot
 
-from ui.interaction import (
+from src.ui.interaction import (
     BeginRecordingIntent,
     CancelRecordingIntent,
     CommitEditsIntent,
@@ -137,6 +137,18 @@ class IntentFeedbackHandler(QObject):
         # appropriate UI for gathering additional input.
         pass
 
+    def show_message(self, message: str, duration_ms: int | None = None) -> None:
+        """Public API to show a message.
+
+        This serves as a compatibility alias and a direct way to trigger
+        status bar feedback from outside the intent system.
+        """
+        self._show_status_message(message, duration_ms)
+
+    def on_refinement_status_message(self, message: str) -> None:
+        """Handle refinement status messages from SLM service."""
+        self.show_message(message, 3000)
+
     def _get_rejection_message(self, result: IntentResult) -> str | None:
         """Map a rejected intent to a user-friendly message.
 
@@ -193,8 +205,11 @@ class IntentFeedbackHandler(QObject):
                 # Unknown intent type - show generic message
                 return f"Action not available: {reason}" if reason else None
 
-    def _show_status_message(self, message: str) -> None:
+    def _show_status_message(
+        self, message: str, duration_ms: int | None = None
+    ) -> None:
         """Display a message in the status bar."""
+        duration = duration_ms or self.MESSAGE_DURATION_MS
         # Use custom centered label if available, otherwise fallback to showMessage
         parent = self._status_bar.parent()
         if hasattr(parent, "_status_label"):
@@ -206,9 +221,9 @@ class IntentFeedbackHandler(QObject):
                 parent._status_label.setText("")
                 self._status_bar.hide()
 
-            QTimer.singleShot(self.MESSAGE_DURATION_MS, clear_status)
+            QTimer.singleShot(duration, clear_status)
         else:
             # Fallback to default behavior
             self._status_bar.show()
-            self._status_bar.showMessage(message, self.MESSAGE_DURATION_MS)
-            QTimer.singleShot(self.MESSAGE_DURATION_MS, self._status_bar.hide)
+            self._status_bar.showMessage(message, duration)
+            QTimer.singleShot(duration, self._status_bar.hide)

@@ -4,9 +4,9 @@ Onboarding Pages - Content for each step of the onboarding wizard.
 
 from __future__ import annotations
 
+from src.core.resource_manager import ResourceManager
 import os
 import subprocess
-from pathlib import Path
 from PyQt6.QtCore import Qt, pyqtSignal, QThread, QObject
 from PyQt6.QtGui import QPainter, QColor, QBrush
 from PyQt6.QtWidgets import (
@@ -20,13 +20,13 @@ from PyQt6.QtWidgets import (
     QAbstractButton,
     QSizePolicy,
 )
-from core.config_manager import ConfigManager, get_model_cache_dir
-from ui.widgets.hotkey_widget.hotkey_widget import HotkeyWidget
-from services.voice_calibration import VoiceCalibrator
-from services.slm_service import MODELS, ProvisioningWorker
-from ui.constants import Typography, Spacing
-from ui.constants.dimensions import BORDER_RADIUS_SM
-import ui.constants.colors as c
+from src.core.config_manager import ConfigManager, get_model_cache_dir
+from src.ui.widgets.hotkey_widget.hotkey_widget import HotkeyWidget
+from src.services.voice_calibration import VoiceCalibrator
+from src.services.slm_service import MODELS, ProvisioningWorker
+from src.ui.constants import Typography, Spacing
+from src.ui.constants.dimensions import BORDER_RADIUS_SM
+import src.ui.constants.colors as c
 
 
 class ToggleSwitch(QAbstractButton):
@@ -65,7 +65,7 @@ class ToggleSwitch(QAbstractButton):
 class BasePage(QWidget):
     """Base class for onboarding pages."""
 
-    completenessChanged = pyqtSignal(bool)
+    completeness_changed = pyqtSignal(bool)
 
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent)
@@ -187,7 +187,7 @@ class IdentityPage(BasePage):
 
 class RefinementPage(BasePage):
     def setup_ui(self, **kwargs):
-        from ui.widgets.toggle_pill import TogglePill
+        from src.ui.widgets.toggle_pill import TogglePill
 
         title = QLabel("AI Refinement Setup")
         title.setStyleSheet(
@@ -216,7 +216,7 @@ class RefinementPage(BasePage):
         self.layout.addWidget(models_label)
 
         # Import service to get models
-        from services.slm_service import SLMService
+        from src.services.slm_service import SLMService
 
         models = SLMService.get_supported_models()
 
@@ -272,7 +272,7 @@ class RefinementPage(BasePage):
             self.info_label.setText("")
             return
 
-        from services.slm_service import MODELS
+        from src.services.slm_service import MODELS
 
         info_parts = []
         total_vram = 0
@@ -296,7 +296,7 @@ class RefinementPage(BasePage):
         else:
             self.validation_label.setText("")
 
-        self.completenessChanged.emit(is_valid)
+        self.completeness_changed.emit(is_valid)
 
     def is_complete(self):
         return len(self.selected_models) > 0
@@ -418,18 +418,18 @@ class SetupPage(BasePage):
         self._worker = SetupWorker(
             self.toggle_desktop.isChecked(), refinement_enabled, models_to_download
         )
-        
+
         # Move worker to thread
         self._worker.moveToThread(self._thread)
-        
+
         # Connect signals BEFORE starting thread
         self._thread.started.connect(self._worker.do_work)
-        self._worker.progressUpdate.connect(self.status.setText)
+        self._worker.progress_update.connect(self.status.setText)
         self._worker.finished.connect(self._on_finished)
         self._worker.finished.connect(self._thread.quit)
         self._worker.finished.connect(self._worker.deleteLater)
         self._thread.finished.connect(self._thread.deleteLater)
-        
+
         # Start thread
         self._thread.start()
 
@@ -444,22 +444,22 @@ class SetupPage(BasePage):
             self.toggle_desktop.setEnabled(True)
             self.btn_run.setText("Retry")
             self._complete = False
-            self.completenessChanged.emit(False)
+            self.completeness_changed.emit(False)
         else:
             self.progress.setRange(0, 100)
             self.progress.setValue(100)
             self.status.setText("Setup & Integration Complete!")
-            self.status.setStyleSheet(f"color: {c.SUCCESS_BRIGHT}; font-weight: bold;")
+            self.status.setStyleSheet(f"color: {c.GREEN_3}; font-weight: bold;")
             self.btn_run.setText("Configured")
             self._complete = True
-            self.completenessChanged.emit(True)
+            self.completeness_changed.emit(True)
 
     def is_complete(self):
         return self._complete
 
     def cleanup(self):
         """Clean up thread resources if still running."""
-        if hasattr(self, '_thread') and self._thread.isRunning():
+        if hasattr(self, "_thread") and self._thread.isRunning():
             self._thread.quit()
             self._thread.wait()
 
@@ -467,19 +467,20 @@ class SetupPage(BasePage):
 class SetupWorker(QObject):
     """
     Worker for background onboarding setup tasks.
-    
+
     Uses Qt6 moveToThread pattern instead of QThread subclass.
     This is the recommended approach per Qt6 threading documentation.
-    
+
     Signals:
         finished(bool, str): Emitted when setup completes (success, message)
-        progressUpdate(str): Emitted during progress updates
-    
+        progress_update(str): Emitted during progress updates
+
     References:
         - Qt6 Threading: https://doc.qt.io/qt-6/threads-qobject.html
     """
+
     finished = pyqtSignal(bool, str)
-    progressUpdate = pyqtSignal(str)
+    progress_update = pyqtSignal(str)
 
     def __init__(self, install_desktop, refinement_enabled, models_to_download):
         super().__init__()
@@ -490,9 +491,9 @@ class SetupWorker(QObject):
     def do_work(self):
         # 1. Desktop Integration
         if self.install_desktop:
-            self.progressUpdate.emit("Configuring desktop integration...")
+            self.progress_update.emit("Configuring desktop integration...")
             try:
-                project_root = Path(__file__).resolve().parents[4]
+                project_root = ResourceManager.get_app_root()
                 script_path = project_root / "scripts" / "install-desktop-entry.sh"
 
                 if not script_path.exists():
@@ -528,10 +529,10 @@ class SetupWorker(QObject):
                         continue
 
                     model = MODELS[model_id]
-                    self.progressUpdate.emit(f"Downloading model: {model.name}...")
+                    self.progress_update.emit(f"Downloading model: {model.name}...")
 
                     worker = ProvisioningWorker(model, cache_dir)
-                    worker.signals.progress.connect(self.progressUpdate.emit)
+                    worker.signals.progress.connect(self.progress_update.emit)
 
                     success = False
                     error_msg = ""
@@ -636,7 +637,7 @@ class CalibrationPage(BasePage):
         self.thread = CalibrationWorker(self.calibrator)
         self.thread.progress.connect(self.output_log.setText)
         self.thread.finished.connect(self._on_finished)
-        self.thread.errorOccurred.connect(self._on_error)
+        self.thread.error_occurred.connect(self._on_error)
         self.thread.start()
 
     def _on_error(self, error_msg):
@@ -649,7 +650,7 @@ class CalibrationPage(BasePage):
         self.btn_skip.show()
 
         self._complete = False
-        self.completenessChanged.emit(False)
+        self.completeness_changed.emit(False)
 
     def skip_calibration(self):
         self.output_log.setText("Calibration skipped. Using default settings.")
@@ -659,7 +660,7 @@ class CalibrationPage(BasePage):
         self.btn_start.setEnabled(True)
         self.btn_skip.hide()
         self._complete = True
-        self.completenessChanged.emit(True)
+        self.completeness_changed.emit(True)
 
     def _on_finished(self, results):
         self.calibrator.save_calibration(results)
@@ -667,13 +668,13 @@ class CalibrationPage(BasePage):
         self.output_log.setText(
             f"Calibration Saved!\nFundamental: {results.get('fundamental_freq', 0):.0f}Hz"
         )
-        self.output_log.setStyleSheet(f"color: {c.SUCCESS_BRIGHT}; margin-top: 10px;")
+        self.output_log.setStyleSheet(f"color: {c.GREEN_3}; margin-top: 10px;")
 
         self.btn_start.setText("Recalibrate")
         self.btn_start.setEnabled(True)
 
         self._complete = True
-        self.completenessChanged.emit(True)
+        self.completeness_changed.emit(True)
 
     def is_complete(self):
         return self._complete
@@ -681,7 +682,7 @@ class CalibrationPage(BasePage):
 
 class CalibrationWorker(QThread):
     progress = pyqtSignal(object)
-    errorOccurred = pyqtSignal(str)
+    error_occurred = pyqtSignal(str)
 
     def __init__(self, calibrator):
         super().__init__()
@@ -692,5 +693,5 @@ class CalibrationWorker(QThread):
             results = self.calibrator.calibrate(on_progress=self.progress.emit)
             self.finished.emit(results)
         except Exception as e:
-            self.errorOccurred.emit(str(e))
+            self.error_occurred.emit(str(e))
             self.progress.emit(f"Error: {e}")

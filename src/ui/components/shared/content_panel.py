@@ -19,11 +19,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.utils.history_utils import format_day_header, format_preview, format_time
-import ui.constants.dimensions as d
+from src.ui.utils.history_utils import format_day_header, format_preview, format_time
+import src.ui.constants.dimensions as d
 
 if TYPE_CHECKING:
-    from database.history_manager import HistoryEntry
+    from src.database.history_manager import HistoryEntry
 
 
 class ContentPanel(QWidget):

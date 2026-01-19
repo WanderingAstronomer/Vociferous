@@ -20,22 +20,22 @@ mkdir -p "$ICONS_DIR/192x192/apps"
 mkdir -p "$ICONS_DIR/48x48/apps"
 
 # Copy icons
-if [ -f "$PROJECT_DIR/icons/512x512.png" ]; then
-    cp "$PROJECT_DIR/icons/512x512.png" "$ICONS_DIR/512x512/apps/vociferous.png"
+if [ -f "$PROJECT_DIR/assets/icons/512x512.png" ]; then
+    cp "$PROJECT_DIR/assets/icons/512x512.png" "$ICONS_DIR/512x512/apps/vociferous.png"
     echo "  ✓ Installed 512x512 icon"
 fi
 
-if [ -f "$PROJECT_DIR/icons/192x192.png" ]; then
-    cp "$PROJECT_DIR/icons/192x192.png" "$ICONS_DIR/192x192/apps/vociferous.png"
+if [ -f "$PROJECT_DIR/assets/icons/192x192.png" ]; then
+    cp "$PROJECT_DIR/assets/icons/192x192.png" "$ICONS_DIR/192x192/apps/vociferous.png"
     echo "  ✓ Installed 192x192 icon"
 fi
 
 # Create 48x48 from 192x192 if ImageMagick is available
-if command -v convert &> /dev/null && [ -f "$PROJECT_DIR/icons/192x192.png" ]; then
-    convert "$PROJECT_DIR/icons/192x192.png" -resize 48x48 "$ICONS_DIR/48x48/apps/vociferous.png"
+if command -v convert &> /dev/null && [ -f "$PROJECT_DIR/assets/icons/192x192.png" ]; then
+    convert "$PROJECT_DIR/assets/icons/192x192.png" -resize 48x48 "$ICONS_DIR/48x48/apps/vociferous.png"
     echo "  ✓ Created 48x48 icon"
-elif [ -f "$PROJECT_DIR/icons/192x192.png" ]; then
-    cp "$PROJECT_DIR/icons/192x192.png" "$ICONS_DIR/48x48/apps/vociferous.png"
+elif [ -f "$PROJECT_DIR/assets/icons/192x192.png" ]; then
+    cp "$PROJECT_DIR/assets/icons/192x192.png" "$ICONS_DIR/48x48/apps/vociferous.png"
     echo "  ✓ Installed 48x48 icon (from 192x192)"
 fi
 
@@ -45,7 +45,7 @@ cat > "$APPLICATIONS_DIR/vociferous.desktop" << EOF
 Type=Application
 Name=Vociferous
 Comment=Speech-to-text dictation using Whisper
-Exec=$PROJECT_DIR/vociferous.sh
+Exec=$PROJECT_DIR/vociferous
 Icon=vociferous
 Terminal=false
 Categories=AudioVideo;Audio;Utility;

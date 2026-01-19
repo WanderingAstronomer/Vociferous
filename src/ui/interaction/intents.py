@@ -14,6 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
+from src.core.intents import InteractionIntent as CoreIntent
+
 
 class IntentSource(Enum):
     """Origin of an intent (for observability, not routing)."""
@@ -26,7 +28,7 @@ class IntentSource(Enum):
 
 
 @dataclass(frozen=True, slots=True)
-class InteractionIntent:
+class InteractionIntent(CoreIntent):
     """
     Base class for semantic interaction intents.
 
@@ -81,21 +83,6 @@ class ViewTranscriptIntent(InteractionIntent):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class OpenOverlayIntent(InteractionIntent):
-    """User desires to open a modal overlay."""
-
-    overlay_id: str
-    props: dict = field(default_factory=dict)
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class CloseOverlayIntent(InteractionIntent):
-    """User desires to close an active overlay."""
-
-    overlay_id: str
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
 class EditTranscriptIntent(InteractionIntent):
     """User desires to enter edit mode for a transcript."""
 
@@ -126,3 +113,10 @@ class DeleteTranscriptIntent(InteractionIntent):
         ""  # Transcript identifier (required but has default for inheritance)
     )
     source: IntentSource = field(default=IntentSource.CONTROLS)
+
+
+@dataclass(frozen=True, slots=True)
+class ToggleRecordingIntent(InteractionIntent):
+    """User desires to toggle the recording state (Start/Stop)."""
+
+    source: IntentSource = field(default=IntentSource.HOTKEY)

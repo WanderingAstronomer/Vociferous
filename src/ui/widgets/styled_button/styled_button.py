@@ -1,7 +1,7 @@
 """
 Styled buttons for Vociferous dialogs.
 
-Uses central stylesheet via object names instead of inline styles.
+Uses central stylesheet via styleClass attribute selector pattern.
 """
 
 from enum import Enum
@@ -18,7 +18,7 @@ class ButtonStyle(Enum):
 
 
 class StyledButton(QPushButton):
-    """Common button with Primary/Secondary/Destructive variations via object names."""
+    """Common button with Primary/Secondary/Destructive variations via styleClass attribute."""
 
     def __init__(
         self,
@@ -28,19 +28,18 @@ class StyledButton(QPushButton):
     ) -> None:
         super().__init__(text, parent)
         self.style_type = style
-        self.setFixedHeight(36)
-        self.setMinimumWidth(80)
+        self.setMinimumHeight(44)
+        self.setMinimumWidth(100)
 
-        # Styles are applied at app level via generate_unified_stylesheet()
-
+        # Styles are applied via unified_stylesheet using styleClass attribute
         self._apply_style()
 
     def _apply_style(self) -> None:
-        """Apply style via object name for stylesheet matching."""
+        """Apply style via styleClass attribute for stylesheet matching."""
         match self.style_type:
             case ButtonStyle.PRIMARY:
-                self.setObjectName("styledPrimary")
+                self.setProperty("styleClass", "primaryButton")
             case ButtonStyle.DESTRUCTIVE:
-                self.setObjectName("styledDestructive")
+                self.setProperty("styleClass", "destructiveButton")
             case ButtonStyle.SECONDARY:
-                self.setObjectName("styledSecondary")
+                self.setProperty("styleClass", "secondaryButton")

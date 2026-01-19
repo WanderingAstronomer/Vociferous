@@ -3,6 +3,90 @@
 ## [Unreleased]
 
 ### Added
+- **Speech Quality Metrics**: Added three new metric cards to the User View: Vocabulary (lexical complexity), Avg. Pauses (silence detection), and Filler Words (um, uh, like, you know tracking).
+- **Total Silence Metric**: Added a new "Total Silence" metric card to the Usage & Activity section showing accumulated pauses across all transcriptions.
+- **Speech Quality Calculation Details**: Added comprehensive explanations in the User View's "Calculation Details" section describing how Vocabulary, Average Pauses, Total Silence, and Filler Words metrics are calculated.
+- **Self-Healing SLM Runtime**: The `SLMService` now automatically detects and installs missing conversion dependencies (`transformers`, `torch`, `ctranslate2`) in the background if they are absent during model provisioning.
+- **Multi-Model Support**: Unified Whisper model registry in `src/core/model_registry.py` with support for `large-v3-turbo`.
+- **Hot-Swappable Engine**: Implemented `UPDATE_CONFIG` protocol for real-time model switching without application restarts.
+- **VRAM Indicators**: Added VRAM requirement metadata to model selection UI in Settings.
+- **Download Transparency**: Integrated a "Loading Model" status bridge that shows a blocking UI overlay during model downloads/initialization.
+
+### Changed
+- **Settings View Layout Standardization**: Completely restructured the Settings view to use a unified card-based layout with consistent form-style row grammar (label next to control) across all sections. All settings sections now use `QFrame#settingsCard` containers with proper borders, backgrounds, and padding for visual cohesion.
+- **Settings View Responsiveness**: Replaced fixed 900px width with min/max constraints (800px-1200px) for better adaptation to different screen sizes.
+- **Settings View Content Anchoring**: Removed top vertical stretch to anchor settings content to the top of the scroll area, providing a more natural reading flow.
+- **Input Field Styling**: Added consistent baseline styles for all input fields (QLineEdit, QSpinBox, QDoubleSpinBox) with hover and focus states. Blue borders now appear only on focus/hover rather than being permanently visible, reducing visual noise.
+
+### Fixed
+- **QComboBox Popup Styling**: Fixed a long-standing issue where combo box popups displayed an ugly white background at the top and bottom. Set `combobox-popup: 0` to use stylized popups and normalized padding on the item view to ensure the background covers the entire popup area.
+- **System Tray Window Restoration**: Fixed system tray icon toggle behavior where clicking to hide and then restore the window would fail to show the window again. The system tray manager now uses explicit state tracking instead of relying on `isVisible()` to work around unreliable visibility reporting on some window managers (particularly Wayland).
+- **Missing Application Icon**: Set application-wide window icon using `QApplication.setWindowIcon()` to ensure proper icon display in taskbar/dock instead of showing as a generic gear cog placeholder.
+- **SLM Multi-Turn Leaks**: Resolved an issue where Llama 3-based models (like NeuralDaredevil) would leak chat tokens (`<|im_end|>`) and continue generating into subsequent turns. Added robust stop-token detection for multiple prompt formats (ChatML, Llama 3) and implemented literal string truncation as a second-tier safeguard.
+- **GPU Runaway Generation**: Reduced the maximum generation length for refinement tasks from 32,768 to 2,048 tokens. This prevents models from running into infinite loops that cause high GPU utilization and system "whining" when stop tokens are missed.
+- **Settings State Persistence**: Resolved a bug where changes in the settings menu would persist in the UI even if the user navigated away without clicking "Apply". The Settings view now automatically refreshes all widgets from the current configuration every time it is entered, ensuring a clean state and clear visual feedback for discarded changes.
+- **Dependency Persistence**: Removed aggressive cleanup logic in `scripts/setup_refinement.py` that was force-uninstalling `torch` and `transformers` after every conversion, ensuring the environment remains stable for future use.
+- **Refinement Gridlock**: Resolved a critical signal signature mismatch in `ApplicationCoordinator` that caused the UI to get stuck on "Refining..." indefinitely after a successful backend generation.
+- **Model Resolution Bug**: Corrected a critical argument mismatch in the engine server's `ConfigManager.set_config_value` call, which caused model selection updates to be applied to wrong keys (ignoring the user's choice).
+- **Settings UI Layout**: Switched both Whisper and Refinement model dropdowns to `AdjustToContents` mode. This ensures they auto-expand to fit long model names and VRAM indicators without manual width overrides.
+- **Startup Crash**: Resolved `NameError: name 'entry' is not defined` in `main_window.py` caused by orphaned logic during architectural refactoring.
+- **MOTD Layout and Wrapping**: Relaxed the Message of the Day word-balancing thresholds and increased the allowed horizontal span to 820px. This prevents the MOTD from being forced into a narrow column on wide screens and ensures it spans the workspace area as intended.
+- **MOTD Text Wrapping**: Fixed Message of the Day text wrapping to balance words equally across lines when the text is long enough to wrap. Enabled word wrapping on the subtext label and added text balancing logic. (Refined in latest update)
+- **User View Metrics Layout**: Removed confusing empty "ALL TIME" badge, improved insight text generation to be more meaningful, and cleaned up the metrics section header.
+- **Transcribing State Hint Text**: During the transcribing state, the content area now shows "Please wait while the Whisper engine processes your audio..." instead of the misleading idle message.
+- **Language Field Width Conflict**: Fixed stylesheet/code mismatch where language field had conflicting width declarations (120px vs 200px).
+- **Settings Visual Inconsistency**: Eliminated mixed layout patterns (centered columns vs inline rows vs form grids) that created a "whack" feeling. All settings now follow a consistent form-style layout pattern.
+- **Project and Subproject Styling**: Fixed reversed styling hierarchy where subprojects were displaying with the same large, bold styling as top-level projects. Now top-level projects display with full-width colored headers and markers, while subprojects use smaller, simpler styling similar to transcript items with small color indicators. Also adjusted font sizes and row heights so subprojects are visually distinguished and smaller than their parent projects.
+- **Main Window Background Color**: Fixed jet-black background issue by setting the central widget background color to match the main window color (GRAY_8). The background is now properly visible instead of appearing transparent/black.
+- **Delete Button in Transcribe View**: Fixed `AttributeError` when deleting a transcript from the Transcribe View's complete state. The delete handler now correctly calls `workspace.clear_transcript()` instead of the non-existent `workspace.clear()` method.
+
+### Changed
+- **User View Stylesheet**: Applied professional Qt UI engineering improvements including normalized spacing scale (20px/32px instead of 24px/40px), added min-height (96px) to metric cards for layout stability, improved button accessibility with vertical padding (6px 24px), removed unsupported CSS line-height property, and refined hover states to only emphasize borders for calmer visual feedback.
+- **User View Icons**: Updated all metric cards to use new appropriately named user_view-specific icons (time_saved, words_captured, transcriptions, time_recorded, avg_length, total_silence, vocabulary, pauses, filler_words) and doubled their size from 24x24 to 48x48 pixels for better visibility.
+- **User View Layout**: Repositioned the tagline "Solid efficiency gains from dictation over typing" to appear directly beneath the "Lifetime Statistics" header as a subheader for improved visual hierarchy.
+- **About Section**: Expanded the footer description to provide more comprehensive information about Vociferous's privacy-first architecture, local processing capabilities, and AI-powered features.
+- **Creator Attribution Styling**: Styled the "Created by Andrew Brown" text at the bottom of the User View with BLUE_3 color for improved visual prominence.
+- **Refine View Layout**: Moved the "Refine" button from the view footer to the ActionDock with proper purple styling. Stacked the strength slider controls vertically with the hint text above the slider for better readability. The slider now spans the full width of its container.
+- **Dynamic Refinement Scaling**: Replaced the hardcoded generation limit with a sliding scale mechanism. The maximum allowed output now scales proportionally with the input length (providing ~50% headroom and a 150-token minimum buffer), capped at 16,384 tokens (~1 hour of speech). This ensures that long transcripts are not prematurely truncated while maintaining a safety ceiling for small inputs.
+- **Improved UI Responsiveness**: Refinement engine now calculates dynamic limits per-request, reducing GPU overhead for short snippets.
+- **Refinement Workflow**: Clicking "Refine" now navigates to the Refine view in "Draft" mode, allowing you to adjust instructions and profiles before manually triggering the generation with the "Refine" button. This prevents accidental immediate consumption of GPU resources.
+- **Duplicate UI Entries**: Hardened `TranscriptionModel` with ID-based idempotency to prevent duplicate entries when receiving multiple change signals.
+- **Test Suite Hang**: Fixed a race condition in `test_restart_application_closes_window` by ensuring strict cleanup of `ConfigManager` and `SettingsView` between test runs.
+- **Test Infrastructure**: Resolved `ModuleNotFoundError` in `test_ui_scenarios.py` by correcting mock paths to `src.database.history_manager`.
+
+### Changed
+- **Transcription Flow**: Optimized the handoff between the transcription engine and UI by passing the saved `HistoryEntry` directly to `MainWindow`, ensuring immediate metric updates.
+
+### Changed
+- **Tooltip Removal**: Universally removed all hover-over tooltip text pop-ups from the UI and deleted all related prohibition tests to reduce cognitive noise and maintain architectural purity.
+- **Refinement Architecture**: Re-engineered the prompt engine to use a 4-layer enforcement model (Global Invariants, Role definition, Permitted/Prohibited actions, and Primary Directive). This significantly improved instruction following and cognitive posture.
+- **Refinement Profiles**: Replaced flat strings with stratified Levels 0-4 (Literal, Structural, Neutral, Intent, and Overkill).
+- **Prompt Engineering**: Moved global invariants into the system message to enforce semantic fidelity and prevent "AI-flavored" fluff.
+- **Inference Optimization**: Optimized ChatML prompt structure to maintain high-quality results while using `/no_think` mode for fast (2s) local inference.
+- **ASR Model**: Updated default model configuration to large-v3-turbo for higher transcription accuracy (user-configurable via config.yaml).
+
+### Fixed
+- **Engine Server Syntax**: Fixed a `SyntaxError` in `src/core_runtime/server.py` and implemented the missing `_ensure_model_loaded` method for thread-safe model loading.
+- **SLM Provisioning Errors**: Fixed startup error spam when refinement is enabled but model conversion dependencies (`transformers`, `torch`) are not installed. The SLM service now gracefully detects missing build-time dependencies and shows a clear warning directing users to run `scripts/setup_refinement.py` instead of throwing errors.
+- **Icon Rail Width Constant**: Corrected `RAIL_WIDTH` constant from 120 to 142 to match actual layout requirements (button width 110 + margins 32).
+- **Blocking Overlay Test**: Fixed test mock assertion to match actual `show_message(message, title=)` signature.
+- **Type Annotation**: Added missing type annotation for `state` parameter in `MainWindow.update_refinement_state`.
+- **Baseline Dependency Tests**: Rewrote `test_baseline_dependency_contract.py` to correctly test conversion dependency detection behavior (these are build-time deps, not baseline runtime deps).
+- **Accessibility Tests**: Skip focus-related tests on Wayland/offscreen platforms where focus handling is unreliable.
+- **IntentFeedbackHandler API**: Aligned MainWindow.on_refinement_status_message with IntentFeedbackHandler's public method name by adding on_refinement_status_message method to the handler.
+- **QThread Lifecycle**: Ensured deterministic shutdown in ApplicationCoordinator tests by calling cleanup() to prevent "Destroyed while thread is still running" warnings.
+- **Shutdown Idempotency**: Confirmed ApplicationCoordinator.cleanup() is already idempotent with early return guard.
+- **Engine Respawn**: Verified engine client does not respawn during intentional shutdown by checking running flag in connection loss handler.
+
+### Added
+- **Unit Test**: Added test_refinement_status_message_handling to verify MainWindow calls IntentFeedbackHandler correctly.
+- **Shutdown Test**: Added test_engine_no_respawn_during_shutdown to assert no respawn loop during shutdown.
+
+### Changed
+- **Refinement UI**: Enhanced Settings View to provide real-time status feedback (Downloading, Ready, Error) and disable conflicting actions during model provisioning.
+- **Installation Documentation**: Restructured README.md to provide clear baseline install flow and separate "enable refinement" flow, with explicit dependency separation.
+
+### Added
 - **Plugin Ecosystem (Epoch 3)**: Implemented pluggable input backend system:
   - Added `PluginLoader` (`src/core/plugins/loader.py`) for dynamic discovery of input backends via `vociferous.plugins.input` entry points
   - Refactored `KeyListener` to use `PluginLoader` for backend selection instead of hardcoded list
@@ -65,6 +149,8 @@
 - **Widget sizing test suite**: Created comprehensive `test_widget_sizing.py` with 29 tests validating sizeHint compliance across all custom widgets
 
 ### Fixed
+- **Authoritative Resource Resolution**: Unified asset resolution across production and testing environments using `ResourceManager`. Removed relative path traversal antipatterns (`Path(__file__).parents[...]`) in `TitleBar`, `Onboarding`, and Application Restart logic.
+- **Asset Verification Hardening**: Updated `scripts/verify_assets.py` to perform comprehensive, non-zero-exiting checks on all critical icons (IconRail, TitleBar), unified stylesheet integrity, and font/sound directories.
 - **Refinement model echoing**: Fixed an issue where 8B and 14B models (and some 4B variants) would echo the original transcript instead of refining it. Shifted default SLM model definitions to use Instruct variants instead of Base variants, added explicit stop token support to `RefinementEngine`, and improved `_parse_output` to strip accidentally echoed transcript markers.
 - **Thinking model support**: Enhanced robust parsing of `<think>` blocks to handle both complete and truncated reasoning, ensuring that AI "thoughts" are correctly logged but removed from the final refined output.
 - **SLM reasoning output filtering**: Added automatic stripping of `<think>` reasoning blocks from SLM outputs (Refinement and MOTD). This ensures that models which generate internal thoughts (like Qwen2.5-14B) do not pollute the final user-visible text with reasoning tags.
@@ -952,9 +1038,9 @@ Architecture stabilization release. Beta 2.0 introduces no new user-facing featu
 - Orchestration method explicitly documented as the only external `set_state()` caller
 - Edit-safety guards prevent orchestration from overriding editing state
 
-## Fixed
-
-### Eliminated Implicit State Transitions
+### Fixed
+- Fixed hotkey "randomly" stopping recording on key release. Added proper support for both `press_to_toggle` and `push_to_talk` recording modes.
+- Added visible help text in Settings describing how each recording mode works.
 - No more silent state changes without validation
 - All transitions produce `IntentResult` with success/failure reason
 

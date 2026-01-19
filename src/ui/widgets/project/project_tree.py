@@ -19,6 +19,7 @@ from PyQt6.QtGui import (
     QFont,
     QIcon,
     QPixmap,
+    QKeySequence,
 )
 from PyQt6.QtWidgets import (
     QAbstractItemView,
@@ -30,11 +31,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.constants import Colors, Dimensions, ProjectColors, Typography
-from ui.widgets.dialogs import ConfirmationDialog, CreateProjectDialog, InputDialog
-from ui.widgets.dialogs.error_dialog import show_error_dialog
-from ui.widgets.project.project_delegate import ProjectDelegate
-from ui.widgets.transcript_item import (
+import src.ui.constants.colors as c
+from src.ui.constants import ProjectColors, Typography
+from src.ui.constants.dimensions import PROJECT_ROW_HEIGHT, TRANSCRIPT_ROW_HEIGHT
+from src.ui.widgets.dialogs import ConfirmationDialog, CreateProjectDialog, InputDialog
+from src.ui.widgets.dialogs.error_dialog import show_error_dialog
+from src.ui.widgets.project.project_delegate import ProjectDelegate
+from src.ui.widgets.transcript_item import (
     ROLE_FULL_TEXT,
     ROLE_TIMESTAMP_ISO,
     ROLE_ENTRY_ID,
@@ -42,7 +45,7 @@ from ui.widgets.transcript_item import (
 )
 
 if TYPE_CHECKING:
-    from history_manager import HistoryManager
+    from src.database.history_manager import HistoryManager
 
 logger = logging.getLogger(__name__)
 
@@ -58,20 +61,20 @@ class ProjectTreeWidget(QTreeWidget):
     - Project 2
 
     Signals:
-        entrySelected(str, str): Emitted when a transcript child is clicked
-        projectCreated(int, str): Emitted when a new project is created
-        projectRenamed(int, str): Emitted when a project is renamed
-        projectDeleted(int): Emitted when a project is deleted
-        projectColorChanged(int, str): Emitted when a project color changes
+        entry_selected(str, str): Emitted when a transcript child is clicked
+        project_created(int, str): Emitted when a new project is created
+        project_renamed(int, str): Emitted when a project is renamed
+        project_deleted(int): Emitted when a project is deleted
+        project_color_changed(int, str): Emitted when a project color changes
     """
 
     # Signals
-    entrySelected = pyqtSignal(str, str)  # text, timestamp
-    entryAssignmentChanged = pyqtSignal()  # Emitted when entries are moved/assigned
-    projectCreated = pyqtSignal(int, str)
-    projectRenamed = pyqtSignal(int, str)
-    projectDeleted = pyqtSignal(int)
-    projectColorChanged = pyqtSignal(int, str)
+    entry_selected = pyqtSignal(str, str)  # text, timestamp
+    entry_assignment_changed = pyqtSignal()  # Emitted when entries are moved/assigned
+    project_created = pyqtSignal(int, str)
+    project_renamed = pyqtSignal(int, str)
+    project_deleted = pyqtSignal(int)
+    project_color_changed = pyqtSignal(int, str)
 
     # Custom roles for item data
     ROLE_IS_PROJECT = Qt.ItemDataRole.UserRole + 10
@@ -143,7 +146,7 @@ class ProjectTreeWidget(QTreeWidget):
             # Skip projects
             if item.data(0, self.ROLE_IS_PROJECT):
                 continue
-            
+
             entry_id = item.data(0, ROLE_ENTRY_ID)
             if entry_id is not None:
                 ids.append(entry_id)
@@ -153,6 +156,28 @@ class ProjectTreeWidget(QTreeWidget):
         """Connect internal signals."""
         self.itemClicked.connect(self._on_item_clicked)
         self.customContextMenuRequested.connect(self._show_context_menu)
+
+    def keyPressEvent(self, event) -> None:
+        """Handle keyboard actions."""
+        item = self.currentItem()
+        if not item:
+            super().keyPressEvent(event)
+            return
+
+        is_project = item.data(0, self.ROLE_IS_PROJECT)
+
+        # Standard Copy (Ctrl+C) to copy the body (FullTextRole) instead of DisplayRole
+        if event.matches(QKeySequence.StandardKey.Copy):
+            if not is_project:
+                text = item.data(0, ROLE_FULL_TEXT) or ""
+                if text:
+                    from src.ui.utils.clipboard_utils import copy_text
+
+                    copy_text(text)
+                event.accept()
+                return
+
+        super().keyPressEvent(event)
 
     def startDrag(self, supportedActions: Qt.DropAction) -> None:
         """Handle start of drag operation."""
@@ -286,6 +311,15 @@ class ProjectTreeWidget(QTreeWidget):
             parent_id = project_data[project_id][2]
 
             if parent_id is not None and parent_id in project_items:
+                # This is a subproject - use smaller height and font
+                item.setSizeHint(0, QSize(-1, TRANSCRIPT_ROW_HEIGHT))
+                # Reset font to smaller size for subprojects
+                subproject_font = QFont()
+                subproject_font.setPointSize(Typography.TRANSCRIPT_ITEM_SIZE)
+                subproject_font.setWeight(QFont.Weight.Normal)
+                item.setFont(0, subproject_font)
+                # Reset text color to gray instead of project color
+                item.setForeground(0, QColor(c.GRAY_4))
                 project_items[parent_id].addChild(item)
             else:
                 self.addTopLevelItem(item)
@@ -302,7 +336,9 @@ class ProjectTreeWidget(QTreeWidget):
                 item.addChild(child_item)
 
             # Update label count
-            self._update_project_label(item, project_data[project_id][0], len(transcripts))
+            self._update_project_label(
+                item, project_data[project_id][0], len(transcripts)
+            )
 
     def _create_project_item(
         self, project_id: int, name: str, color: str | None
@@ -317,7 +353,10 @@ class ProjectTreeWidget(QTreeWidget):
         item.setData(0, self.ROLE_COLOR, color)
         item.setData(0, self.ROLE_COUNT, 0)
 
-        item.setSizeHint(0, QSize(-1, Dimensions.PROJECT_ROW_HEIGHT))
+        # Top-level projects get larger height; subprojects use transcript height
+        # This is determined during tree building, so we default to PROJECT_ROW_HEIGHT
+        # and reduce it later if needed when building hierarchy.
+        item.setSizeHint(0, QSize(-1, PROJECT_ROW_HEIGHT))
 
         # Styling - project headers are larger than transcript rows
         font = QFont()
@@ -325,12 +364,14 @@ class ProjectTreeWidget(QTreeWidget):
         font.setWeight(QFont.Weight.DemiBold)
         item.setFont(0, font)
         # Use project color for text if available, otherwise primary color
-        text_color = QColor(color) if color else QColor(Colors.TEXT_PRIMARY)
+        text_color = QColor(color) if color else QColor(c.GRAY_4)
         item.setForeground(0, text_color)
 
         return item
 
-    def _update_project_label(self, item: QTreeWidgetItem, name: str, count: int) -> None:
+    def _update_project_label(
+        self, item: QTreeWidgetItem, name: str, count: int
+    ) -> None:
         """Update project label (count stored but not displayed)."""
         item.setText(0, name)
         item.setData(0, self.ROLE_COUNT, count)
@@ -347,7 +388,7 @@ class ProjectTreeWidget(QTreeWidget):
                 text = item.data(0, ROLE_FULL_TEXT)
                 timestamp = item.data(0, ROLE_TIMESTAMP_ISO)
                 if text and timestamp:
-                    self.entrySelected.emit(text, timestamp)
+                    self.entry_selected.emit(text, timestamp)
         except Exception:
             logger.exception("Error handling item click")
 
@@ -356,6 +397,16 @@ class ProjectTreeWidget(QTreeWidget):
         try:
             item = self.itemAt(position)
             if not item:
+                # Clicked on empty space - show tree-level actions
+                menu = QMenu(self)
+
+                expand_action = menu.addAction("Expand All")
+                expand_action.triggered.connect(lambda: self.expandAll())
+
+                collapse_action = menu.addAction("Collapse All")
+                collapse_action.triggered.connect(lambda: self.collapseAll())
+
+                menu.exec(self.viewport().mapToGlobal(position))
                 return
 
             is_project = item.data(0, self.ROLE_IS_PROJECT)
@@ -406,6 +457,14 @@ class ProjectTreeWidget(QTreeWidget):
             lambda checked: self._delete_project(project_id, project_name)
         )
 
+        # Tree-level actions
+        menu.addSeparator()
+        expand_action = menu.addAction("Expand All")
+        expand_action.triggered.connect(lambda: self.expandAll())
+
+        collapse_action = menu.addAction("Collapse All")
+        collapse_action.triggered.connect(lambda: self.collapseAll())
+
         menu.exec(self.viewport().mapToGlobal(position))
 
     def _show_transcript_context_menu(self, item: QTreeWidgetItem, position) -> None:
@@ -427,7 +486,9 @@ class ProjectTreeWidget(QTreeWidget):
             projects = self._history_manager.get_projects()
             if projects:
                 menu_label = (
-                    "Move to project" if count == 1 else f"Move {count} items to project"
+                    "Move to project"
+                    if count == 1
+                    else f"Move {count} items to project"
                 )
                 move_menu = menu.addMenu(menu_label)
 
@@ -456,7 +517,9 @@ class ProjectTreeWidget(QTreeWidget):
 
         # Remove from project
         remove_label = (
-            "Remove from project" if count == 1 else f"Remove {count} items from project"
+            "Remove from project"
+            if count == 1
+            else f"Remove {count} items from project"
         )
         remove_action = menu.addAction(remove_label)
         remove_action.triggered.connect(
@@ -473,6 +536,14 @@ class ProjectTreeWidget(QTreeWidget):
         delete_action.triggered.connect(
             lambda checked, items=selected_items: self._delete_transcripts(items)
         )
+
+        # Tree-level actions
+        menu.addSeparator()
+        expand_action = menu.addAction("Expand All")
+        expand_action.triggered.connect(lambda: self.expandAll())
+
+        collapse_action = menu.addAction("Collapse All")
+        collapse_action.triggered.connect(lambda: self.collapseAll())
 
         menu.exec(self.viewport().mapToGlobal(position))
 
@@ -528,7 +599,7 @@ class ProjectTreeWidget(QTreeWidget):
                 )
                 QTimer.singleShot(0, self.load_projects)
                 # Notify assignment changed
-                self.entryAssignmentChanged.emit()
+                self.entry_assignment_changed.emit()
         except Exception as e:
             logger.exception("Error moving transcript to project")
             show_error_dialog(
@@ -549,7 +620,7 @@ class ProjectTreeWidget(QTreeWidget):
                         )
                 QTimer.singleShot(0, self.load_projects)
                 # Notify assignment changed (moved to unassigned)
-                self.entryAssignmentChanged.emit()
+                self.entry_assignment_changed.emit()
         except Exception:
             logger.exception("Error removing items from project")
 
@@ -560,7 +631,7 @@ class ProjectTreeWidget(QTreeWidget):
                 self._history_manager.assign_transcript_to_project(timestamp, None)
                 QTimer.singleShot(0, self.load_projects)
                 # Notify that an assignment changed (item moved to unassigned)
-                self.entryAssignmentChanged.emit()
+                self.entry_assignment_changed.emit()
         except Exception as e:
             logger.exception("Error removing transcript from project")
             show_error_dialog(
@@ -596,7 +667,7 @@ class ProjectTreeWidget(QTreeWidget):
                             self._history_manager.delete_entry(timestamp)
                     QTimer.singleShot(0, self.load_projects)
                     # Notify deletions
-                    self.entryAssignmentChanged.emit()
+                    self.entry_assignment_changed.emit()
         except Exception:
             logger.exception("Error deleting transcripts")
 
@@ -616,7 +687,7 @@ class ProjectTreeWidget(QTreeWidget):
                     self._history_manager.delete_entry(timestamp)
                     QTimer.singleShot(0, self.load_projects)
                     # Notify deletion
-                    self.entryAssignmentChanged.emit()
+                    self.entry_assignment_changed.emit()
         except Exception as e:
             logger.exception("Error deleting transcript")
             show_error_dialog(
@@ -640,12 +711,11 @@ class ProjectTreeWidget(QTreeWidget):
             if dialog.exec():
                 new_name = dialog.get_text()
                 if new_name and new_name != current_name:
-                    if (
-                        self._history_manager
-                        and self._history_manager.rename_project(project_id, new_name)
+                    if self._history_manager and self._history_manager.rename_project(
+                        project_id, new_name
                     ):
                         self.load_projects()
-                        self.projectRenamed.emit(project_id, new_name)
+                        self.project_renamed.emit(project_id, new_name)
         except Exception as e:
             logger.exception("Error renaming project")
             show_error_dialog(
@@ -661,7 +731,7 @@ class ProjectTreeWidget(QTreeWidget):
                 project_id, color
             ):
                 self.load_projects()
-                self.projectColorChanged.emit(project_id, color)
+                self.project_color_changed.emit(project_id, color)
         except Exception:
             logger.exception("Error changing project color")
 
@@ -681,7 +751,7 @@ class ProjectTreeWidget(QTreeWidget):
                     project_id
                 ):
                     self.load_projects()
-                    self.projectDeleted.emit(project_id)
+                    self.project_deleted.emit(project_id)
         except Exception as e:
             logger.exception("Error deleting project")
             show_error_dialog(
@@ -689,6 +759,41 @@ class ProjectTreeWidget(QTreeWidget):
                 message=f"Failed to delete project: {e}",
                 parent=self,
             )
+
+    def create_new_project(self) -> None:
+        """Open dialog to create a new project (wrapper for action dispatch)."""
+        dialog = CreateProjectDialog(self)
+        if dialog.exec():
+            name, color = dialog.get_result()
+            if name:
+                self.create_project(name, color)
+
+    def delete_selected(self) -> None:
+        """Handle global delete action for selected items."""
+        items = self.selectedItems()
+        if not items:
+            return
+
+        projects = []
+        transcripts = []
+
+        for item in items:
+            if item.data(0, self.ROLE_IS_PROJECT):
+                projects.append(item)
+            else:
+                if item.data(0, ROLE_TIMESTAMP_ISO):
+                    transcripts.append(item)
+
+        # Handle transcript deletions first (multi-delete confirmation)
+        if transcripts:
+            self._delete_transcripts(transcripts)
+
+        # Handle project deletions (individual confirmations)
+        if projects:
+            for item in projects:
+                p_id = item.data(0, self.ROLE_PROJECT_ID)
+                name = item.text(0)
+                self._delete_project(p_id, name)
 
     def create_project(
         self, name: str, color: str | None = None, parent_id: int | None = None
@@ -721,7 +826,7 @@ class ProjectTreeWidget(QTreeWidget):
                             break
                         iterator += 1
 
-                self.projectCreated.emit(project_id, name)
+                self.project_created.emit(project_id, name)
 
             return project_id
         except Exception as e:

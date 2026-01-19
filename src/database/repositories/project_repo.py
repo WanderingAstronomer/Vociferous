@@ -1,9 +1,10 @@
 import logging
 from sqlalchemy import delete, select, update, func
-from database.core import DatabaseCore
-from database.models import Project, Transcript
+from src.database.core import DatabaseCore
+from src.database.models import Project, Transcript
 
 logger = logging.getLogger(__name__)
+
 
 class ProjectRepository:
     def __init__(self, db_core: DatabaseCore):
@@ -64,17 +65,13 @@ class ProjectRepository:
         try:
             with self.db.get_session() as session:
                 stmt = (
-                    update(Project)
-                    .where(Project.id == project_id)
-                    .values(color=color)
+                    update(Project).where(Project.id == project_id).values(color=color)
                 )
                 result = session.execute(stmt)
                 session.commit()
 
                 if result.rowcount > 0:
-                    logger.info(
-                        f"Updated Project {project_id} color to '{color}'"
-                    )
+                    logger.info(f"Updated Project {project_id} color to '{color}'")
                     return True
                 else:
                     logger.warning(f"Project {project_id} not found")
@@ -84,9 +81,7 @@ class ProjectRepository:
             logger.error(f"Failed to update Project color: {e}")
             return False
 
-    def delete(
-        self, project_id: int, move_to_unassigned: bool = True
-    ) -> bool:
+    def delete(self, project_id: int, move_to_unassigned: bool = True) -> bool:
         """Delete a Project."""
         try:
             with self.db.get_session() as session:

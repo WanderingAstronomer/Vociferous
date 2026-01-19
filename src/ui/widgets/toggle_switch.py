@@ -5,12 +5,19 @@ Modern alternative to checkboxes for boolean settings.
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, pyqtProperty, pyqtSignal, QSize
+from PyQt6.QtCore import (
+    Qt,
+    QPropertyAnimation,
+    QEasingCurve,
+    pyqtProperty,
+    pyqtSignal,
+    QSize,
+)
 from PyQt6.QtGui import QPainter, QColor
 from PyQt6.QtWidgets import QCheckBox
 
-import ui.constants.colors as c
-import ui.constants.dimensions as d
+import src.ui.constants.colors as c
+import src.ui.constants.dimensions as d
 
 
 class ToggleSwitch(QCheckBox):
@@ -48,13 +55,13 @@ class ToggleSwitch(QCheckBox):
     def sizeHint(self) -> QSize:
         """
         Return preferred size for the toggle switch.
-        
+
         Per Qt6 layout documentation, custom widgets must implement sizeHint()
         even when using setFixedSize() for proper layout integration.
-        
+
         Returns:
             QSize: Fixed size of 50x24 pixels
-        
+
         References:
             - layout.html § "Custom Widgets in Layouts"
         """
@@ -63,7 +70,7 @@ class ToggleSwitch(QCheckBox):
     def minimumSizeHint(self) -> QSize:
         """
         Return minimum size for the toggle switch.
-        
+
         Returns:
             QSize: Minimum size equals fixed size (50x24)
         """
@@ -131,11 +138,11 @@ class ToggleSwitch(QCheckBox):
     def cleanup(self) -> None:
         """
         Clean up animation resources.
-        
+
         Stops and deletes the toggle animation to prevent resource leaks.
         Per Vociferous cleanup protocol, all stateful widgets must implement
         cleanup() and release timers, animations, and external connections.
-        
+
         This method is idempotent and safe to call multiple times.
         """
         if hasattr(self, "animation") and self.animation is not None:

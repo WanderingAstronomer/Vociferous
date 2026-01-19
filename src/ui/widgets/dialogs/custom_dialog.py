@@ -20,9 +20,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.components.title_bar import DialogTitleBar
-from ui.constants import MAJOR_GAP, MINOR_GAP
-from ui.widgets.styled_button import ButtonStyle, StyledButton
+from src.ui.components.title_bar import DialogTitleBar
+from src.ui.constants import MAJOR_GAP, MINOR_GAP
+from src.ui.widgets.styled_button import ButtonStyle, StyledButton
 
 
 class StyledDialog(QDialog):
@@ -66,7 +66,7 @@ class StyledDialog(QDialog):
 
         # Custom title bar (draggable)
         self.title_bar = DialogTitleBar(title, self)
-        self.title_bar.closeRequested.connect(self.reject)
+        self.title_bar.close_requested.connect(self.reject)
         self._frame_layout.addWidget(self.title_bar)
 
         # Background container
@@ -91,6 +91,7 @@ class StyledDialog(QDialog):
         # Button row placeholder
         self.button_container = QWidget()
         self.button_container.setObjectName("dialogButtonContainer")
+        self.button_container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.button_layout = QHBoxLayout(self.button_container)
         # Taller margins around buttons for better visual breathing room
         self.button_layout.setContentsMargins(MAJOR_GAP, 16, MAJOR_GAP, 16)
@@ -118,13 +119,7 @@ class StyledDialog(QDialog):
 
         btn = StyledButton(text, style)
 
-        # Configure default button behavior for primary/destructive actions
-        if role in ("primary", "destructive"):
-            btn.setDefault(True)
-            btn.setAutoDefault(True)
-
         btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn.setMinimumHeight(40)  # Ensure buttons have adequate vertical size
 
         if callback:
             btn.clicked.connect(callback)

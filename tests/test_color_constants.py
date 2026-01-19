@@ -71,7 +71,11 @@ class TestColorConstantCoverage:
                 line_num = content[: match.start()].count("\n") + 1
                 # Extract the full rgba(...) for context
                 end_idx = content.find(")", match.start())
-                rgba_str = content[match.start() : end_idx + 1] if end_idx > 0 else match.group()
+                rgba_str = (
+                    content[match.start() : end_idx + 1]
+                    if end_idx > 0
+                    else match.group()
+                )
                 violations.append(
                     f"{filepath.relative_to(SRC_DIR)}:{line_num} -> {rgba_str}"
                 )
@@ -87,27 +91,46 @@ class TestColorConstantCompleteness:
 
     def test_semantic_tokens_for_toggle_switch(self):
         """Toggle switch should have semantic color tokens defined."""
-        from ui.constants import colors as c
+        from src.ui.constants import colors as c
 
         # Toggle circle when ON should use white
         assert hasattr(c, "TOGGLE_CIRCLE_ON"), "Missing TOGGLE_CIRCLE_ON constant"
-        assert c.TOGGLE_CIRCLE_ON == c.GRAY_0, "TOGGLE_CIRCLE_ON should be white (GRAY_0)"
+        assert c.TOGGLE_CIRCLE_ON == c.GRAY_0, (
+            "TOGGLE_CIRCLE_ON should be white (GRAY_0)"
+        )
 
     def test_semantic_tokens_for_hover_overlays(self):
         """Hover overlay colors should be defined as constants."""
-        from ui.constants import colors as c
+        from src.ui.constants import colors as c
 
         # Light hover overlay (used on dark backgrounds)
         assert hasattr(c, "HOVER_OVERLAY_LIGHT"), "Missing HOVER_OVERLAY_LIGHT constant"
-        assert "rgba" in c.HOVER_OVERLAY_LIGHT.lower(), "HOVER_OVERLAY_LIGHT should be rgba"
+
+    def test_semantic_tokens_for_shell_and_content(self):
+        """Shell and Content semantic tokens should be defined."""
+        from src.ui.constants import colors as c
+
+        assert hasattr(c, "SHELL_BACKGROUND"), "Missing SHELL_BACKGROUND constant"
+        assert hasattr(c, "SHELL_BORDER"), "Missing SHELL_BORDER constant"
+        assert hasattr(c, "CONTENT_BACKGROUND"), "Missing CONTENT_BACKGROUND constant"
+        assert hasattr(c, "CONTENT_BORDER"), "Missing CONTENT_BORDER constant"
+
+        # Verify default mappings
+        assert c.SHELL_BACKGROUND == c.GRAY_9
+        assert c.CONTENT_BACKGROUND == c.GRAY_8
+        assert "rgba" in c.HOVER_OVERLAY_LIGHT.lower(), (
+            "HOVER_OVERLAY_LIGHT should be rgba"
+        )
 
         # Blue hover overlay (tree/table views)
         assert hasattr(c, "HOVER_OVERLAY_BLUE"), "Missing HOVER_OVERLAY_BLUE constant"
-        assert "rgba" in c.HOVER_OVERLAY_BLUE.lower(), "HOVER_OVERLAY_BLUE should be rgba"
+        assert "rgba" in c.HOVER_OVERLAY_BLUE.lower(), (
+            "HOVER_OVERLAY_BLUE should be rgba"
+        )
 
     def test_semantic_tokens_for_overlay_backdrop(self):
         """Modal/loading overlay backdrop should be defined."""
-        from ui.constants import colors as c
+        from src.ui.constants import colors as c
 
         assert hasattr(c, "OVERLAY_BACKDROP"), "Missing OVERLAY_BACKDROP constant"
         assert "rgba" in c.OVERLAY_BACKDROP.lower(), "OVERLAY_BACKDROP should be rgba"
@@ -122,7 +145,7 @@ class TestColorConstantUsage:
         content = toggle_path.read_text()
 
         # Should NOT contain hardcoded #FFFFFF
-        assert '#FFFFFF' not in content, (
+        assert "#FFFFFF" not in content, (
             "toggle_switch.py contains hardcoded #FFFFFF - use c.TOGGLE_CIRCLE_ON"
         )
 
@@ -153,7 +176,9 @@ class TestColorConstantUsage:
 
     def test_main_window_styles_uses_hover_constant(self):
         """Main window styles should use HOVER_OVERLAY_LIGHT constant."""
-        styles_path = SRC_DIR / "ui" / "components" / "main_window" / "main_window_styles.py"
+        styles_path = (
+            SRC_DIR / "ui" / "components" / "main_window" / "main_window_styles.py"
+        )
         content = styles_path.read_text()
 
         # Should NOT contain inline rgba(255, 255, 255, ...)
@@ -167,7 +192,7 @@ class TestColorPaletteIntegrity:
 
     def test_no_duplicate_color_values(self):
         """Each color value should have at most one canonical name."""
-        from ui.constants import colors as c
+        from src.ui.constants import colors as c
 
         # Get all color constants (excluding classes and functions)
         color_map: dict[str, list[str]] = {}
@@ -175,7 +200,9 @@ class TestColorPaletteIntegrity:
             if name.startswith("_") or name[0].islower():
                 continue
             value = getattr(c, name)
-            if isinstance(value, str) and (value.startswith("#") or value.startswith("rgba")):
+            if isinstance(value, str) and (
+                value.startswith("#") or value.startswith("rgba")
+            ):
                 normalized = value.lower()
                 if normalized not in color_map:
                     color_map[normalized] = []
@@ -195,7 +222,7 @@ class TestColorPaletteIntegrity:
 
     def test_all_grays_defined(self):
         """Gray scale should have complete range from GRAY_0 to GRAY_9."""
-        from ui.constants import colors as c
+        from src.ui.constants import colors as c
 
         for i in range(10):
             name = f"GRAY_{i}"
@@ -203,23 +230,25 @@ class TestColorPaletteIntegrity:
 
     def test_color_naming_convention(self):
         """Color constants should follow FAMILY_INDEX or SEMANTIC naming."""
-        from ui.constants import colors as c
+        from src.ui.constants import colors as c
 
         # Regex patterns for valid names
         family_pattern = re.compile(r"^(GRAY|BLUE|GREEN|RED|ORANGE|PURPLE)_\d$")
         semantic_pattern = re.compile(
-            r"^(SUCCESS|DANGER|TOGGLE|HOVER|OVERLAY|FOCUS)_[A-Z_]+$"
+            r"^(SUCCESS|DANGER|TOGGLE|HOVER|OVERLAY|FOCUS|SHELL|CONTENT|TEXT)_[A-Z_]+$"
         )
 
         for name in dir(c):
             if name.startswith("_") or name[0].islower():
                 continue
             value = getattr(c, name)
-            if isinstance(value, str) and (value.startswith("#") or value.startswith("rgba")):
+            if isinstance(value, str) and (
+                value.startswith("#") or value.startswith("rgba")
+            ):
                 valid = (
                     family_pattern.match(name)
                     or semantic_pattern.match(name)
-                    or name in ("SUCCESS_BRIGHT", "DANGER_BRIGHT")  # Legacy
+                    or name in ("GREEN_3", "DANGER_BRIGHT")  # Legacy
                 )
                 assert valid, (
                     f"Color constant '{name}' doesn't follow naming convention. "

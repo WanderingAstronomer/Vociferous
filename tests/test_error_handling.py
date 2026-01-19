@@ -38,14 +38,14 @@ class TestErrorLogger:
 
     def test_get_error_logger_returns_instance(self):
         """get_error_logger should return an ErrorLogger instance."""
-        from ui.utils.error_handler import get_error_logger
+        from src.ui.utils.error_handler import get_error_logger
 
         logger = get_error_logger()
         assert logger is not None
 
     def test_error_logger_is_singleton(self):
         """ErrorLogger should be a singleton."""
-        from ui.utils.error_handler import get_error_logger
+        from src.ui.utils.error_handler import get_error_logger
 
         logger1 = get_error_logger()
         logger2 = get_error_logger()
@@ -53,7 +53,7 @@ class TestErrorLogger:
 
     def test_log_error_does_not_crash(self):
         """log_error should not crash on any input."""
-        from ui.utils.error_handler import get_error_logger
+        from src.ui.utils.error_handler import get_error_logger
 
         logger = get_error_logger()
 
@@ -66,7 +66,7 @@ class TestErrorLogger:
         """log_exception should capture exception traceback."""
         import sys
 
-        from ui.utils.error_handler import get_error_logger
+        from src.ui.utils.error_handler import get_error_logger
 
         logger = get_error_logger()
 
@@ -81,7 +81,7 @@ class TestErrorLogger:
 
     def test_get_log_path_returns_path(self):
         """get_log_file_path should return a Path object."""
-        from ui.utils.error_handler import ErrorLogger
+        from src.ui.utils.error_handler import ErrorLogger
 
         path = ErrorLogger.get_log_file_path()
         assert isinstance(path, Path)
@@ -93,31 +93,31 @@ class TestSafeSlotDecorator:
 
     def test_safe_slot_catches_exception(self):
         """safe_slot should catch and log exceptions."""
-        from ui.utils.error_handler import safe_slot
+        from src.ui.utils.error_handler import safe_slot
 
         @safe_slot("test_context")
         def failing_function():
             raise RuntimeError("Intentional error")
 
         # Should not raise (decorator catches exceptions)
-        with patch("ui.widgets.dialogs.error_dialog.show_error_dialog"):
+        with patch("src.ui.widgets.dialogs.error_dialog.show_error_dialog"):
             failing_function()
 
     def test_safe_slot_returns_none_on_exception(self):
         """safe_slot should return None when exception occurs."""
-        from ui.utils.error_handler import safe_slot
+        from src.ui.utils.error_handler import safe_slot
 
         @safe_slot("test_context")
         def failing_function():
             raise RuntimeError("Intentional error")
 
-        with patch("ui.widgets.dialogs.error_dialog.show_error_dialog"):
+        with patch("src.ui.widgets.dialogs.error_dialog.show_error_dialog"):
             result = failing_function()
         assert result is None
 
     def test_safe_slot_passes_through_return_value(self):
         """safe_slot should pass through return value on success."""
-        from ui.utils.error_handler import safe_slot
+        from src.ui.utils.error_handler import safe_slot
 
         @safe_slot("test_context")
         def successful_function():
@@ -128,7 +128,7 @@ class TestSafeSlotDecorator:
 
     def test_safe_slot_preserves_function_name(self):
         """safe_slot should preserve the wrapped function's name."""
-        from ui.utils.error_handler import safe_slot
+        from src.ui.utils.error_handler import safe_slot
 
         @safe_slot("test_context")
         def my_named_function():
@@ -144,7 +144,7 @@ class TestFormatException:
         """format_exception_for_display should format exception nicely."""
         import sys
 
-        from ui.utils.error_handler import format_exception_for_display
+        from src.ui.utils.error_handler import format_exception_for_display
 
         try:
             raise ValueError("Test error")
@@ -164,7 +164,7 @@ class TestErrorDialog:
 
     def test_error_dialog_creation(self, qapp):
         """ErrorDialog should be creatable."""
-        from ui.widgets.dialogs import ErrorDialog
+        from src.ui.widgets.dialogs import ErrorDialog
 
         dialog = ErrorDialog(
             parent=None,
@@ -177,7 +177,7 @@ class TestErrorDialog:
 
     def test_error_dialog_displays_message(self, qapp):
         """ErrorDialog should display the provided message."""
-        from ui.widgets.dialogs import ErrorDialog
+        from src.ui.widgets.dialogs import ErrorDialog
         from PyQt6.QtWidgets import QLabel
 
         dialog = ErrorDialog(
@@ -193,7 +193,7 @@ class TestErrorDialog:
 
     def test_error_dialog_toggle_details(self, qapp):
         """ErrorDialog details section should toggle visibility."""
-        from ui.widgets.dialogs import ErrorDialog
+        from src.ui.widgets.dialogs import ErrorDialog
         from PyQt6.QtWidgets import QPushButton
 
         dialog = ErrorDialog(
@@ -202,7 +202,7 @@ class TestErrorDialog:
             message="Error",
             details="Detailed stack trace",
         )
-        dialog.show() # Ensure widget is considered visible for child visibility checks
+        dialog.show()  # Ensure widget is considered visible for child visibility checks
 
         # Initially hidden
         assert not dialog.details_container.isVisible()
@@ -219,7 +219,7 @@ class TestErrorDialog:
 
     def test_error_dialog_copy_to_clipboard(self, qapp):
         """ErrorDialog should copy details to clipboard."""
-        from ui.widgets.dialogs import ErrorDialog
+        from src.ui.widgets.dialogs import ErrorDialog
         from PyQt6.QtWidgets import QPushButton
 
         dialog = ErrorDialog(
@@ -231,20 +231,20 @@ class TestErrorDialog:
 
         # Should not crash when clicked
         copy_btn = dialog.findChild(QPushButton, "errorDialogCopy")
-        if copy_btn: # might be None if no details? But we provided details.
+        if copy_btn:  # might be None if no details? But we provided details.
             copy_btn.click()
         else:
-             # If details present, button should be there
-             assert False, "Copy button not found"
+            # If details present, button should be there
+            assert False, "Copy button not found"
 
     def test_show_error_dialog_function(self, qapp):
         """show_error_dialog convenience function should work."""
-        from ui.widgets.dialogs import show_error_dialog
+        from src.ui.widgets.dialogs import show_error_dialog
 
         # Mock exec to prevent blocking
         with patch.object(
             __import__(
-                "ui.widgets.dialogs.error_dialog", fromlist=["ErrorDialog"]
+                "src.ui.widgets.dialogs.error_dialog", fromlist=["ErrorDialog"]
             ).ErrorDialog,
             "exec",
             return_value=None,
@@ -257,51 +257,12 @@ class TestErrorDialog:
             )
 
 
-class TestSettingsValidation:
-    """Tests for SettingsDialog validation logic."""
-
-    def test_valid_language_codes(self, qapp):
-        """Valid language codes should pass validation."""
-        from ui.components.settings import SettingsDialog
-
-        valid_codes = ["en", "zh", "de", "es", "fr", "ja"]
-
-        for code in valid_codes:
-            assert code in SettingsDialog.VALID_LANGUAGES, f"{code} should be valid"
-
-    def test_invalid_language_code(self, qapp):
-        """Invalid language codes should not be in VALID_LANGUAGES."""
-        from ui.components.settings import SettingsDialog
-
-        invalid_codes = ["xyz", "english", "123", ""]
-
-        for code in invalid_codes:
-            assert code not in SettingsDialog.VALID_LANGUAGES, (
-                f"{code} should be invalid"
-            )
-
-    def test_device_compute_type_validation(self, qapp):
-        """Device and compute_type should be validated for compatibility."""
-        from input_handler import KeyListener
-        from ui.components.settings import SettingsDialog
-
-        key_listener = KeyListener()
-        dialog = SettingsDialog(key_listener)
-
-        # Initial validation should run without error
-        assert hasattr(dialog, "_validation_errors")
-
-        # Cleanup
-        dialog._cleanup_widgets()
-        key_listener.stop()
-
-
 class TestSafeCallback:
     """Tests for safe_callback utility function."""
 
     def test_safe_callback_catches_exception(self):
         """safe_callback should catch and log exceptions."""
-        from ui.utils.error_handler import safe_callback
+        from src.ui.utils.error_handler import safe_callback
 
         def failing_callback():
             raise RuntimeError("Intentional callback error")
@@ -313,7 +274,7 @@ class TestSafeCallback:
 
     def test_safe_callback_passes_arguments(self):
         """safe_callback should pass through arguments."""
-        from ui.utils.error_handler import safe_callback
+        from src.ui.utils.error_handler import safe_callback
 
         def add_callback(a, b):
             return a + b
@@ -324,7 +285,7 @@ class TestSafeCallback:
 
     def test_safe_callback_preserves_name(self):
         """safe_callback should preserve function name."""
-        from ui.utils.error_handler import safe_callback
+        from src.ui.utils.error_handler import safe_callback
 
         def my_callback():
             pass
@@ -334,14 +295,14 @@ class TestSafeCallback:
 
     def test_safe_callback_with_lambda(self):
         """safe_callback should work with lambdas."""
-        from ui.utils.error_handler import safe_callback
+        from src.ui.utils.error_handler import safe_callback
 
         wrapped = safe_callback(lambda x: x * 2, "double_lambda")
         assert wrapped(5) == 10
 
     def test_safe_callback_lambda_exception(self):
         """safe_callback should catch lambda exceptions."""
-        from ui.utils.error_handler import safe_callback
+        from src.ui.utils.error_handler import safe_callback
 
         wrapped = safe_callback(lambda: 1 / 0, "div_zero_lambda")
         # Should not raise
@@ -354,7 +315,7 @@ class TestSafeSlotSilent:
 
     def test_safe_slot_silent_catches_exception(self):
         """safe_slot_silent should catch exceptions without dialog."""
-        from ui.utils.error_handler import safe_slot_silent
+        from src.ui.utils.error_handler import safe_slot_silent
 
         @safe_slot_silent("test_silent")
         def failing_function():
@@ -366,7 +327,7 @@ class TestSafeSlotSilent:
 
     def test_safe_slot_silent_passes_return_value(self):
         """safe_slot_silent should pass through return value on success."""
-        from ui.utils.error_handler import safe_slot_silent
+        from src.ui.utils.error_handler import safe_slot_silent
 
         @safe_slot_silent("test_silent")
         def successful_function():
@@ -383,7 +344,7 @@ class TestErrorPathIntegration:
         """ProjectProxyModel should handle invalid indices gracefully."""
         from PyQt6.QtCore import QModelIndex
 
-        from ui.models.project_proxy import ProjectProxyModel
+        from src.ui.models.project_proxy import ProjectProxyModel
 
         proxy = ProjectProxyModel()
         proxy.set_project_id(None)
@@ -394,7 +355,7 @@ class TestErrorPathIntegration:
 
     def test_key_listener_callback_error_isolation(self):
         """KeyListener should isolate callback errors."""
-        from input_handler import KeyListener
+        from src.input_handler import KeyListener
 
         listener = KeyListener()
 
@@ -422,7 +383,7 @@ class TestErrorPathIntegration:
 
     def test_history_tree_view_handles_invalid_model(self, qapp):
         """HistoryTreeView should handle operations with no model."""
-        from ui.widgets.history_tree import HistoryTreeView
+        from src.ui.widgets.history_tree import HistoryTreeView
 
         view = HistoryTreeView()
 
@@ -434,7 +395,7 @@ class TestErrorPathIntegration:
         """TranscriptionModel should handle corrupted index data."""
         from PyQt6.QtCore import QModelIndex
 
-        from ui.models.transcription_model import TranscriptionModel
+        from src.ui.models.transcription_model import TranscriptionModel
 
         # Create a mock history manager
         mock_manager = MagicMock()

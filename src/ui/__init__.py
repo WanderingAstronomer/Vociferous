@@ -12,10 +12,10 @@ Structure:
     components/    High-level composed components
 
 Usage:
-    from ui import constants
-    from ui.components.main_window import MainWindow
-    from ui.widgets.styled_button import StyledButton
-    from ui.styles import generate_unified_stylesheet
+    from src.ui import constants
+    from src.ui.components.main_window import MainWindow
+    from src.ui.widgets.styled_button import StyledButton
+    from src.ui.styles import generate_unified_stylesheet
 """
 
 # NOTE: No eager imports! Many modules import Qt at module level.

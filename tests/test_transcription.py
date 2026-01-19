@@ -12,37 +12,43 @@ class TestTranscriptionFunctions:
 
     def test_post_process_adds_trailing_space(self, config_manager):
         """Post-processing should add trailing space when configured."""
-        from transcription import post_process_transcription
+        from src.services.transcription_service import post_process_transcription
 
         # Preserve original value
-        original_value = config_manager.get_config_value("output_options", "add_trailing_space")
-        
+        original_value = config_manager.get_config_value(
+            "output_options", "add_trailing_space"
+        )
+
         try:
             # Ensure trailing space is enabled
-            config_manager.set_config_value(True, "output_options", "add_trailing_space")
+            config_manager.set_config_value(
+                True, "output_options", "add_trailing_space"
+            )
             result = post_process_transcription("hello world")
             assert result.endswith(" ")
         finally:
             # Restore original value
-            config_manager.set_config_value(original_value, "output_options", "add_trailing_space")
+            config_manager.set_config_value(
+                original_value, "output_options", "add_trailing_space"
+            )
 
     def test_post_process_strips_whitespace(self):
         """Post-processing should strip leading/trailing whitespace."""
-        from transcription import post_process_transcription
+        from src.services.transcription_service import post_process_transcription
 
         result = post_process_transcription("  hello world  ")
         assert result.startswith("hello")  # Leading space removed
 
     def test_post_process_empty_string(self):
         """Post-processing should handle empty strings."""
-        from transcription import post_process_transcription
+        from src.services.transcription_service import post_process_transcription
 
         result = post_process_transcription("")
         assert result == ""
 
     def test_post_process_none_returns_empty(self):
         """Post-processing should handle None-like input."""
-        from transcription import post_process_transcription
+        from src.services.transcription_service import post_process_transcription
 
         result = post_process_transcription(None)
         assert result == ""
@@ -53,15 +59,15 @@ class TestTranscribeFunction:
 
     def test_transcribe_none_returns_empty_tuple(self):
         """Transcribing None should return empty string and zero duration."""
-        from transcription import transcribe
+        from src.services.transcription_service import transcribe
 
         result = transcribe(None, MagicMock())
         assert result == ("", 0)
 
-    @patch("transcription.create_local_model")
+    @patch("src.services.transcription_service.create_local_model")
     def test_transcribe_silent_audio(self, mock_create_model):
         """Transcribing silence should return empty or minimal text."""
-        from transcription import transcribe
+        from src.services.transcription_service import transcribe
 
         # Mock the model to return empty text for silence
         mock_model = MagicMock()
@@ -87,7 +93,7 @@ class TestModelLoading:
     @patch("faster_whisper.WhisperModel")
     def test_model_loads(self, mock_whisper_model):
         """Model should load successfully (mocked)."""
-        from transcription import create_local_model
+        from src.services.transcription_service import create_local_model
 
         model = create_local_model()
         assert model is not None
@@ -96,7 +102,7 @@ class TestModelLoading:
     @patch("faster_whisper.WhisperModel")
     def test_model_has_transcribe_method(self, mock_whisper_model):
         """Loaded model should have transcribe method."""
-        from transcription import create_local_model
+        from src.services.transcription_service import create_local_model
 
         # Ensure the mock instance has transcribe
         mock_instance = mock_whisper_model.return_value

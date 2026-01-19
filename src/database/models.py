@@ -96,11 +96,10 @@ class Transcript(Base):
     timestamp: Mapped[str] = mapped_column(
         String, unique=True, nullable=False, index=True
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=utc_now, index=True
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now, index=True)
     raw_text: Mapped[str] = mapped_column(String, nullable=False)
     normalized_text: Mapped[str] = mapped_column(String, nullable=False)
+    display_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     speech_duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     project_id: Mapped[Optional[int]] = mapped_column(
@@ -110,9 +109,7 @@ class Transcript(Base):
         Integer, ForeignKey("transcript_variants.id"), nullable=True
     )
 
-    project: Mapped[Optional[Project]] = relationship(
-        back_populates="transcripts"
-    )
+    project: Mapped[Optional[Project]] = relationship(back_populates="transcripts")
 
     current_variant: Mapped[Optional[TranscriptVariant]] = relationship(
         foreign_keys=[current_variant_id], post_update=True
@@ -130,13 +127,6 @@ class Transcript(Base):
         if self.current_variant:
             return self.current_variant.text
         return self.normalized_text
-
-    @text.setter
-    def text(self, value: str) -> None:
-        # Note: Setters on hybrid properties or proxies can be tricky.
-        # For now, we update normalized_text as fallback, but the HistoryManager
-        # should prefer creating variants.
-        self.normalized_text = value
 
     def to_display_string(self, max_length: int = 80) -> str:
         """Format for display in list widget: [HH:MM:SS] text preview..."""

@@ -1,0 +1,20 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.0.2, pluggy-1.6.0 -- /media/drew/Coding/Programming Projects/Vociferous/.venv/bin/python
+cachedir: .pytest_cache
+PyQt6 6.10.2 -- Qt runtime 6.10.1 -- Qt compiled 6.10.0
+rootdir: /media/drew/Coding/Programming Projects/Vociferous
+configfile: pyproject.toml
+plugins: timeout-2.4.0, anyio-4.12.1, qt-4.5.0
+collecting ... collected 13 items
+
+tests/test_restart_application.py::TestRestartLogic::test_restart_button_emits_signal PASSED [  7%]
+tests/test_restart_application.py::TestRestartLogic::test_restart_signal_exists PASSED [ 15%]
+tests/test_restart_application.py::TestRestartLogic::test_restart_application_method_exists PASSED [ 23%]
+tests/test_restart_application.py::TestRestartLogic::test_restart_application_calls_subprocess PASSED [ 30%]
+tests/test_restart_application.py::TestRestartLogic::test_restart_application_prefers_run_script PASSED [ 38%]
+tests/test_restart_application.py::TestRestartLogic::test_restart_application_fallback_to_main_py PASSED [ 46%]
+tests/test_restart_application.py::TestRestartLogic::test_restart_application_closes_window PASSED [ 53%]
+tests/test_restart_application.py::TestRestartLogic::test_restart_application_starts_new_session PASSED [ 61%]
+tests/test_restart_application.py::TestRestartLogic::test_restart_application_handles_error PASSED [ 69%]
+tests/test_restart_application.py::TestRestartIntegration::test_settings_restart_button_has_text PASSED [ 76%]
+tests/test_restart_application.py::TestRestartIntegration::test_restart_signal_not_confused_with_exit 

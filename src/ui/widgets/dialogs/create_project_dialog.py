@@ -20,8 +20,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.components.title_bar import DialogTitleBar
-from ui.constants import MAJOR_GAP, MINOR_GAP, Colors, ProjectColors
+from src.ui.components.title_bar import DialogTitleBar
+from src.ui.constants import MAJOR_GAP, MINOR_GAP
+import src.ui.constants.colors as c
+from src.ui.constants import ProjectColors
 
 # Use colors and names from constants (2 rows x 3 columns)
 PROJECT_COLORS = [
@@ -42,7 +44,6 @@ class ColorSwatch(QPushButton):
         self.setFixedSize(48, 48)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setCheckable(True)
-        self.setToolTip(label)
         self._update_style()
 
     def set_selected(self, selected: bool) -> None:
@@ -53,15 +54,11 @@ class ColorSwatch(QPushButton):
 
     def _update_style(self) -> None:
         """Apply styling based on selection state."""
-        border = (
-            f"3px solid {Colors.ACCENT_BLUE}"
-            if self._selected
-            else f"2px solid {Colors.BORDER_DEFAULT}"
-        )
+        border = f"3px solid {c.BLUE_4}" if self._selected else f"2px solid {c.GRAY_7}"
         # Use single-line formatting to avoid style enforcement violations
         style = (
             f"QPushButton {{ background-color: {self.color}; border: {border}; border-radius: 8px; }} "
-            f"QPushButton:hover {{ border-color: {Colors.ACCENT_BLUE}; }}"
+            f"QPushButton:hover {{ border-color: {c.BLUE_4}; }}"
         )
         self.setStyleSheet(style)
 
@@ -118,7 +115,7 @@ class CreateProjectDialog(QDialog):
 
         # Custom title bar (draggable)
         self.title_bar = DialogTitleBar(self._title, self)
-        self.title_bar.closeRequested.connect(self.reject)
+        self.title_bar.close_requested.connect(self.reject)
         frame_layout.addWidget(self.title_bar)
 
         # Content area

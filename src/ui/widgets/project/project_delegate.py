@@ -18,10 +18,10 @@ from PyQt6.QtWidgets import (
     QStyleOptionViewItem,
 )
 
-from ui.constants import Colors, Typography
-from ui.utils.history_utils import format_time_compact
-from ui.widgets.transcript_item import (
-    ROLE_FULL_TEXT,
+import src.ui.constants.colors as c
+from src.ui.constants import Typography
+from src.ui.utils.history_utils import format_time_compact
+from src.ui.widgets.transcript_item import (
     ROLE_TIMESTAMP_ISO,
     paint_transcript_entry,
 )
@@ -73,12 +73,19 @@ class ProjectDelegate(QStyledItemDelegate):
         self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex
     ) -> None:
         """Paint a Project header row."""
+        # Check if this is a top-level project or a subproject
+        is_top_level = not index.parent().isValid()
         color = index.data(self.ROLE_COLOR)
 
-        if color:
-            self._paint_colored_group_header(painter, option, index, color)
+        if is_top_level:
+            # Top-level projects get full styling with color marker
+            if color:
+                self._paint_colored_group_header(painter, option, index, color)
+            else:
+                self._paint_default_group_header(painter, option, index)
         else:
-            self._paint_default_group_header(painter, option, index)
+            # Subprojects get simpler styling (smaller text, no background bar)
+            self._paint_subproject_header(painter, option, index, color)
 
     def _paint_colored_group_header(
         self,
@@ -100,7 +107,7 @@ class ProjectDelegate(QStyledItemDelegate):
         rect = QRectF(option.rect)
 
         # Header background
-        painter.setBrush(QColor(Colors.BG_HEADER))
+        painter.setBrush(QColor(c.GRAY_9))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRoundedRect(rect, 4, 4)
 
@@ -114,9 +121,9 @@ class ProjectDelegate(QStyledItemDelegate):
         text_rect = rect.adjusted(6 + marker_w + 10, 0, -12, 0)
 
         # Subgroups (nested groups) use secondary text color
-        text_color = QColor(Colors.TEXT_PRIMARY)
+        text_color = QColor(c.GRAY_4)
         if index.parent().isValid():
-            text_color = QColor(Colors.TEXT_SECONDARY)
+            text_color = QColor(c.GRAY_4)
 
         painter.setPen(text_color)
         painter.drawText(
@@ -132,21 +139,72 @@ class ProjectDelegate(QStyledItemDelegate):
     ) -> None:
         """Paint a group header without color."""
         if option.state & QStyle.StateFlag.State_Selected:
-            painter.fillRect(option.rect, QColor(Colors.HOVER_BG_SECTION))
+            painter.fillRect(option.rect, QColor(c.GRAY_7))
         elif option.state & QStyle.StateFlag.State_MouseOver:
-            painter.fillRect(option.rect, QColor(Colors.HOVER_BG_SECTION))
+            painter.fillRect(option.rect, QColor(c.GRAY_7))
         else:
-            painter.fillRect(option.rect, QColor(Colors.BG_TERTIARY))
+            painter.fillRect(option.rect, QColor(c.GRAY_8))
 
         # Manually draw text since we might be bypassing super().paint
         text = index.data(0) or ""
         painter.save()
-        painter.setPen(QColor(Colors.TEXT_PRIMARY))
+        painter.setPen(QColor(c.GRAY_4))
         # Add basic padding
         text_rect = QRectF(option.rect).adjusted(8, 0, -8, 0)
         painter.drawText(
             text_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text
         )
+        painter.restore()
+
+    def _paint_subproject_header(
+        self,
+        painter: QPainter,
+        option: QStyleOptionViewItem,
+        index: QModelIndex,
+        color: str | None,
+    ) -> None:
+        """Paint a subproject header with smaller, simpler styling."""
+        text = index.data(0) or ""  # Column 0 has name
+        font = QFont(option.font)
+        font.setPointSize(Typography.TRANSCRIPT_ITEM_SIZE)  # Smaller than project name
+        font.setWeight(QFont.Weight.Medium)
+
+        painter.save()
+        painter.setFont(font)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = QRectF(option.rect)
+
+        # Subtle background on hover/select
+        if option.state & QStyle.StateFlag.State_Selected:
+            painter.fillRect(rect, QColor(c.GRAY_7))
+        elif option.state & QStyle.StateFlag.State_MouseOver:
+            painter.fillRect(rect, QColor(c.GRAY_8))
+        else:
+            painter.fillRect(rect, QColor(c.GRAY_9))
+
+        # Small indicator dot (left side, colored)
+        if color:
+            dot_size = 6
+            dot_x = rect.left() + 8
+            dot_y = rect.center().y() - (dot_size / 2)
+            painter.setBrush(QColor(color))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawEllipse(QRectF(dot_x, dot_y, dot_size, dot_size))
+            text_start = 8 + dot_size + 8
+        else:
+            text_start = 8
+
+        # Text, with color if available
+        text_rect = rect.adjusted(text_start, 0, -12, 0)
+        text_color = QColor(color) if color else QColor(c.GRAY_4)
+        painter.setPen(text_color)
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+            text,
+        )
+
         painter.restore()
 
     def _paint_transcript_item(
@@ -162,9 +220,9 @@ class ProjectDelegate(QStyledItemDelegate):
         # Use simple hover/selection background (subtle)
         # We removed the "bright solid rectangular blue square" effect by using standard hover colors
         if option.state & QStyle.StateFlag.State_Selected:
-            painter.fillRect(option.rect, QColor(Colors.HOVER_BG_SECTION))
+            painter.fillRect(option.rect, QColor(c.GRAY_7))
         elif option.state & QStyle.StateFlag.State_MouseOver:
-            painter.fillRect(option.rect, QColor(Colors.HOVER_BG_ITEM))
+            painter.fillRect(option.rect, QColor(c.GRAY_7))
         elif group_color:
             # Very subtle tint for static state if group has color
             color = QColor(group_color)
@@ -178,9 +236,7 @@ class ProjectDelegate(QStyledItemDelegate):
             painter.setPen(Qt.PenStyle.NoPen)
 
             # Use group color if available, else standard accent
-            dot_color = (
-                QColor(group_color) if group_color else QColor(Colors.ACCENT_PRIMARY)
-            )
+            dot_color = QColor(group_color) if group_color else QColor(c.BLUE_4)
             painter.setBrush(dot_color)
 
             # Position dot on the left side
@@ -193,7 +249,9 @@ class ProjectDelegate(QStyledItemDelegate):
             painter.restore()
 
         # Get data
-        preview_text = index.data(ROLE_FULL_TEXT) or index.data(0) or ""
+        # Use DisplayRole (column 0) for the label/name, as per Naming Model.
+        # Do NOT fallback to ROLE_FULL_TEXT for the label.
+        preview_text = index.data(Qt.ItemDataRole.DisplayRole) or ""
         timestamp = index.data(ROLE_TIMESTAMP_ISO)
         time_text = ""
         if timestamp:

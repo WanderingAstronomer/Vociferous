@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, Tuple
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import QWidget
 
-from ui.models import ProjectProxyModel, TranscriptionModel
-from ui.widgets.history_tree.history_tree_view import HistoryTreeView
+from src.ui.models import ProjectProxyModel, TranscriptionModel
+from src.ui.widgets.history_tree.history_tree_view import HistoryTreeView
 
 if TYPE_CHECKING:
     pass
@@ -26,7 +26,7 @@ class HistoryList(HistoryTreeView):
     Adds consistent selection API for Views.
     """
 
-    selectionChanged = pyqtSignal(tuple)  # Tuple[int, ...] (selected IDs)
+    selection_changed = pyqtSignal(tuple)  # Tuple[int, ...] (selected IDs)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent=parent)
@@ -48,7 +48,7 @@ class HistoryList(HistoryTreeView):
     def _on_selection_changed(self, selected, deselected) -> None:
         """Handle selection changes from the model."""
         ids = self.get_selected_ids()
-        self.selectionChanged.emit(ids)
+        self.selection_changed.emit(ids)
 
     def get_selected_ids(self) -> Tuple[int, ...]:
         """Return list of selected transcript IDs (database IDs)."""

@@ -13,14 +13,13 @@ from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import (
     QAbstractItemModel,
-    QFileSystemWatcher,
     QModelIndex,
     Qt,
     QTimer,
     QSize,
     pyqtSignal,
 )
-from PyQt6.QtGui import QColor, QIcon, QPixmap
+from PyQt6.QtGui import QColor, QIcon, QPixmap, QKeySequence
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -29,15 +28,15 @@ from PyQt6.QtWidgets import (
     QTreeView,
 )
 
-from ui.models import ProjectProxyModel, TranscriptionModel
-from ui.utils.clipboard_utils import copy_text
-from ui.utils.error_handler import safe_callback
-from ui.widgets.dialogs.custom_dialog import ConfirmationDialog
-from ui.widgets.dialogs.error_dialog import show_error_dialog
-from ui.widgets.history_tree.history_tree_delegate import TreeHoverDelegate
+from src.ui.models import ProjectProxyModel, TranscriptionModel
+from src.ui.utils.clipboard_utils import copy_text
+from src.ui.utils.error_handler import safe_callback
+from src.ui.widgets.dialogs.custom_dialog import ConfirmationDialog
+from src.ui.widgets.dialogs.error_dialog import show_error_dialog
+from src.ui.widgets.history_tree.history_tree_delegate import TreeHoverDelegate
 
 if TYPE_CHECKING:
-    from database.history_manager import HistoryManager
+    from src.database.history_manager import HistoryManager
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +58,11 @@ class HistoryTreeView(QTreeView):
         dataChanged(): Emitted when entries are modified (deleted, grouped, etc)
     """
 
-    entrySelected = pyqtSignal(str, str)  # text, timestamp
-    entryDoubleClicked = pyqtSignal(str)  # text (for copy)
-    countChanged = pyqtSignal(int)
-    entryGroupChanged = pyqtSignal(str, object)  # timestamp, group_id
-    historyContentChanged = pyqtSignal()
+    entry_selected = pyqtSignal(str, str)  # text, timestamp
+    entry_double_clicked = pyqtSignal(str)  # text (for copy)
+    count_changed = pyqtSignal(int)
+    entry_group_changed = pyqtSignal(str, object)  # timestamp, group_id
+    history_content_changed = pyqtSignal()
 
     def __init__(
         self,
@@ -77,12 +76,6 @@ class HistoryTreeView(QTreeView):
         self._enter_copies = enter_copies
         self._history_manager: HistoryManager | None = None
         self._expanded_day_keys: set[str] = set()  # Track expanded day headers
-
-        # File watcher for external changes
-        self._file_watcher = QFileSystemWatcher(self)
-        self._debounce_timer = QTimer(self)
-        self._debounce_timer.setSingleShot(True)
-        self._debounce_timer.timeout.connect(self._reload_from_file)
 
         self._setup_ui()
         self._setup_connections()
@@ -98,13 +91,13 @@ class HistoryTreeView(QTreeView):
     def sizeHint(self) -> QSize:
         """
         Return preferred size for the history tree view.
-        
+
         Per Qt6 layout documentation, custom widgets must implement sizeHint()
         to provide layout engines with sizing information.
-        
+
         Returns:
             QSize: Preferred size of 300x400 pixels (vertical preference)
-        
+
         References:
             - layout.html § "Custom Widgets in Layouts"
         """
@@ -113,7 +106,7 @@ class HistoryTreeView(QTreeView):
     def minimumSizeHint(self) -> QSize:
         """
         Return minimum acceptable size for the tree view.
-        
+
         Returns:
             QSize: Minimum size of 150x200 pixels
         """
@@ -151,9 +144,8 @@ class HistoryTreeView(QTreeView):
         self.customContextMenuRequested.connect(self._show_context_menu)
 
     def set_history_manager(self, manager: HistoryManager) -> None:
-        """Set the history manager for file watching and operations."""
+        """Set the history manager for operations."""
         self._history_manager = manager
-        self._reset_file_watch()
 
     def setModel(self, model: QAbstractItemModel | None) -> None:
         """Override to track model changes and connect signals."""
@@ -240,7 +232,7 @@ class HistoryTreeView(QTreeView):
 
         text = index.data(TranscriptionModel.FullTextRole) or ""
         timestamp = index.data(TranscriptionModel.TimestampRole) or ""
-        self.entrySelected.emit(text, timestamp)
+        self.entry_selected.emit(text, timestamp)
 
     def _on_item_double_clicked(self, index: QModelIndex) -> None:
         """Handle double-click to copy."""
@@ -253,7 +245,7 @@ class HistoryTreeView(QTreeView):
 
         text = index.data(TranscriptionModel.FullTextRole) or ""
         self._copy_entry(index, text)
-        self.entryDoubleClicked.emit(text)
+        self.entry_double_clicked.emit(text)
 
     def _show_context_menu(self, position) -> None:
         """Show context menu for entries."""
@@ -457,8 +449,8 @@ class HistoryTreeView(QTreeView):
                 if source_model:
                     source_model.update_entry_group(timestamp, group_id)
 
-                self.entryGroupChanged.emit(timestamp, group_id)
-                self.historyContentChanged.emit()
+                self.entry_group_changed.emit(timestamp, group_id)
+                self.history_content_changed.emit()
                 self._emit_count()
 
                 # Force viewport update to ensure proper geometry (fixes ghost hits)
@@ -525,7 +517,7 @@ class HistoryTreeView(QTreeView):
                     has_deleted = True
 
             if has_deleted:
-                self.historyContentChanged.emit()
+                self.history_content_changed.emit()
 
             self._emit_count()
             self.updateGeometry()
@@ -587,7 +579,7 @@ class HistoryTreeView(QTreeView):
                 self.setCurrentIndex(candidate_index)
                 self._on_item_clicked(candidate_index)
             else:
-                self.entrySelected.emit("", "")
+                self.entry_selected.emit("", "")
 
             self._emit_count()
 
@@ -630,37 +622,7 @@ class HistoryTreeView(QTreeView):
 
     def _emit_count(self) -> None:
         """Emit current entry count."""
-        self.countChanged.emit(self.entry_count())
-
-    def _reset_file_watch(self) -> None:
-        """Reset file watcher to current history file."""
-        if not self._history_manager:
-            return
-
-        path = getattr(self._history_manager, "history_file", None)
-        if not path:
-            return
-
-        with suppress(Exception):
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.touch(exist_ok=True)
-
-        with suppress(TypeError):
-            self._file_watcher.fileChanged.disconnect(self._on_file_changed)
-
-        existing_paths = self._file_watcher.files()
-        if existing_paths:
-            self._file_watcher.removePaths(existing_paths)
-        self._file_watcher.addPath(str(path))
-        self._file_watcher.fileChanged.connect(self._on_file_changed)
-
-    def _on_file_changed(self, _) -> None:
-        """Debounce file change reload."""
-        self._debounce_timer.start(200)
-
-    def _reload_from_file(self) -> None:
-        """Reload model after external change."""
-        self._reset_file_watch()
+        self.count_changed.emit(self.entry_count())
 
     def _save_expansion_state(self) -> None:
         """Save which day headers are expanded before model reset."""
@@ -738,6 +700,14 @@ class HistoryTreeView(QTreeView):
             return
 
         is_header = index.data(TranscriptionModel.IsHeaderRole)
+
+        # Explicitly handle Ctrl+C to copy the body (FullTextRole) instead of DisplayRole
+        if event.matches(QKeySequence.StandardKey.Copy):
+            if not is_header:
+                text = index.data(TranscriptionModel.FullTextRole) or ""
+                self._copy_entry(index, text)
+                event.accept()
+                return
 
         match event.key():
             case Qt.Key.Key_Return | Qt.Key.Key_Enter:

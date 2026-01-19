@@ -1,6 +1,6 @@
 """Keycode mapping utilities for hotkey display and configuration."""
 
-from input_handler import KeyCode
+from src.input_handler import KeyCode
 
 # Display names for keys (user-facing)
 KEY_DISPLAY_NAMES = {
@@ -178,18 +178,3 @@ def normalize_hotkey_string(hotkey: str) -> str:
     parts.sort(key=lambda x: (modifier_order.get(x, 99), x))
 
     return "+".join(parts)
-
-
-def qt_key_to_evdev(qt_key: int) -> int | None:
-    """
-    Convert Qt key code to evdev key code.
-
-    Args:
-        qt_key: Qt.Key enum value
-
-    Returns:
-        evdev key code or None if no mapping
-    """
-    # This would need a full mapping table
-    # Placeholder for now
-    return None

@@ -9,7 +9,7 @@ import logging
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QWidget
 
-from ui.contracts.capabilities import ActionId, Capabilities, SelectionState
+from src.ui.contracts.capabilities import ActionId, Capabilities, SelectionState
 
 
 class BaseView(QWidget):
@@ -21,7 +21,11 @@ class BaseView(QWidget):
 
     # Signal emitted when internal state changes (selection, mode)
     # prompting ActionGrid to re-query capabilities.
-    capabilitiesChanged = pyqtSignal()
+    capabilities_changed = pyqtSignal()
+
+    def cleanup(self) -> None:
+        """Clean up resources. Subclasses should call super().cleanup()."""
+        pass
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """

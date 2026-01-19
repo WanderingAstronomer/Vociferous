@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QColor, QFont
 
-from ui.constants import Typography
+from src.ui.constants import Typography
 
 
 class TranscriptPreviewOverlay(QFrame):
@@ -72,13 +72,13 @@ class TranscriptPreviewOverlay(QFrame):
     def sizeHint(self) -> QSize:
         """
         Return preferred size for the transcript preview overlay.
-        
+
         Per Qt6 layout documentation, custom widgets must implement sizeHint()
         to provide layout engines with sizing information.
-        
+
         Returns:
             QSize: Preferred size of 400x300 pixels
-        
+
         References:
             - layout.html § "Custom Widgets in Layouts"
         """
@@ -87,7 +87,7 @@ class TranscriptPreviewOverlay(QFrame):
     def minimumSizeHint(self) -> QSize:
         """
         Return minimum acceptable size for the overlay.
-        
+
         Returns:
             QSize: Minimum size of 200x150 pixels
         """
@@ -114,10 +114,10 @@ class TranscriptPreviewOverlay(QFrame):
     def cleanup(self) -> None:
         """
         Clean up overlay resources.
-        
+
         Per Vociferous cleanup protocol, all widgets should implement cleanup().
         TranscriptPreviewOverlay has no persistent timers or threads.
-        
+
         This method is idempotent and safe to call multiple times.
         """
         # Clear any displayed text and hide

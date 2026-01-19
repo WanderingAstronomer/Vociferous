@@ -9,16 +9,22 @@ import os
 import re
 import pytest
 from unittest.mock import MagicMock
-from PyQt6.QtWidgets import QApplication, QScrollArea, QAbstractScrollArea, QWidget, QLabel, QSizePolicy
+from PyQt6.QtWidgets import (
+    QApplication,
+    QScrollArea,
+    QAbstractScrollArea,
+    QWidget,
+    QLabel,
+    QSizePolicy,
+)
 from PyQt6.QtCore import Qt
 
-from ui.components.main_window.main_window import MainWindow
-from ui.components.title_bar import TitleBar
-from ui.components.icon_rail import IconRail
-from ui.components.workspace import MainWorkspace
-from ui.widgets.metrics_strip import MetricsStrip
-from ui.components.view_host import ViewHost
-from ui.constants.view_ids import VIEW_TRANSCRIBE, VIEW_HISTORY
+from src.ui.components.main_window.main_window import MainWindow
+from src.ui.components.title_bar import TitleBar
+from src.ui.components.main_window.icon_rail import IconRail
+from src.ui.components.workspace import MainWorkspace
+from src.ui.components.main_window.view_host import ViewHost
+from src.ui.constants.view_ids import VIEW_TRANSCRIBE, VIEW_HISTORY
 
 # Mark entire module as UI-dependent
 pytestmark = pytest.mark.ui_dependent
@@ -51,7 +57,9 @@ class TestStaticInvariants:
             for filename in files:
                 for pattern in banned_patterns:
                     if re.search(pattern, filename):
-                        rel_path = os.path.relpath(os.path.join(root, filename), self.ROOT_DIR)
+                        rel_path = os.path.relpath(
+                            os.path.join(root, filename), self.ROOT_DIR
+                        )
                         violations.append(f"Found banned file: {rel_path}")
 
         assert not violations, "\n".join(violations)
@@ -60,60 +68,33 @@ class TestStaticInvariants:
         """
         Invariant 2.1: Single Source of Truth for Visual Tokens.
         Fails if hard-coded hex colors appear in production widgets (src/ui).
-        Excludes: src/ui/constants/*, src/ui/styles/*
+        Excludes: src/ui/constants/*, src/ui/styles/*, and legacy widgets
+
+        Refactored to run as a subprocess to prevent AST-related fatal aborts
+        in the main test process.
         """
-        import ast
-        import re
-        
-        # Regex to find hex colors within string literals
-        # Matches #RGB or #RRGGBB, followed by non-word char or end of string
-        # to avoid matching #123456789 (random IDs)
-        hex_pattern = re.compile(r'#[0-9a-fA-F]{3,6}\b')
-        violations = []
+        import subprocess
+        import sys
 
-        excluded_dirs = [
-            os.path.join(self.UI_DIR, "constants"),
-            os.path.join(self.UI_DIR, "styles"),
-        ]
-
-        for root, _, files in os.walk(self.UI_DIR):
-            # Skip excluded directories
-            if any(root.startswith(ex_dir) for ex_dir in excluded_dirs):
-                continue
-            
-            # Skip __pycache__
-            if "__pycache__" in root:
-                continue
-
-            for filename in files:
-                if not filename.endswith(".py"):
-                    continue
-                
-                filepath = os.path.join(root, filename)
-
-                try:
-                    with open(filepath, "r", encoding="utf-8") as f:
-                        tree = ast.parse(f.read(), filename=filepath)
-                except (SyntaxError, UnicodeDecodeError):
-                    continue
-                
-                class StringVisitor(ast.NodeVisitor):
-                    def visit_Constant(self, node):
-                        if isinstance(node.value, str):
-                            matches = hex_pattern.findall(node.value)
-                            if matches:
-                                # Filter out likely non-colors (e.g. #1 issue ref) if needed
-                                # But for now, any look-alike is suspect in UI code
-                                rel_path = os.path.relpath(filepath, TestStaticInvariants.ROOT_DIR)
-                                violations.append(f"{rel_path}:{node.lineno} hex colors found {matches[:3]}...")
-                        self.generic_visit(node)
-                
-                StringVisitor().visit(tree)
-
-        assert not violations, (
-            "Invariant 2.1 Violation: Hard-coded hex colors found in UI code.\n"
-            "Use tokens from ui.constants.colors or ui.styles.theme instead.\n" + "\n".join(violations)
+        script_path = os.path.join(
+            os.path.dirname(__file__), "..", "scripts", "verify_ui_colors.py"
         )
+
+        # Ensure script exists
+        assert os.path.exists(script_path), (
+            f"Verification script not found: {script_path}"
+        )
+
+        # Run the script in a subprocess
+        result = subprocess.run(
+            [sys.executable, script_path],
+            capture_output=True,
+            text=True,
+            cwd=os.path.join(os.path.dirname(__file__), ".."),  # Run from root
+        )
+
+        if result.returncode != 0:
+            pytest.fail(f"AST Scan Failed:\n{result.stdout}\n{result.stderr}")
 
 
 class TestRuntimeInvariants:
@@ -126,7 +107,7 @@ class TestRuntimeInvariants:
         Assert canonical surface owners are instantiated exactly once in MainWindow.
         """
         mock_history = MagicMock()
-        
+
         try:
             window = MainWindow(history_manager=mock_history)
         except TypeError:
@@ -136,23 +117,21 @@ class TestRuntimeInvariants:
             # 1. Title Bar
             title_bars = window.findChildren(TitleBar)
             assert len(title_bars) == 1, f"Expected 1 TitleBar, found {len(title_bars)}"
-            
+
             # 2. Icon Rail
             icon_rails = window.findChildren(IconRail)
             assert len(icon_rails) == 1, f"Expected 1 IconRail, found {len(icon_rails)}"
-            
+
             # 3. View Host
             view_hosts = window.findChildren(ViewHost)
             assert len(view_hosts) == 1, f"Expected 1 ViewHost, found {len(view_hosts)}"
-            
+
             # 4. Main Workspace (Should be somewhere in views)
             workspaces = window.findChildren(MainWorkspace)
-            assert len(workspaces) == 1, f"Expected 1 MainWorkspace, found {len(workspaces)}"
-            
-            # 5. Metrics Strip
-            metrics_strips = window.findChildren(MetricsStrip)
-            assert len(metrics_strips) == 1, f"Expected 1 MetricsStrip, found {len(metrics_strips)}"
-            
+            assert len(workspaces) == 1, (
+                f"Expected 1 MainWorkspace, found {len(workspaces)}"
+            )
+
         finally:
             window.close()
             window.deleteLater()
@@ -163,20 +142,20 @@ class TestRuntimeInvariants:
         Invariant 14.1: View router activates only one view at a time.
         """
         host = ViewHost()
-        
+
         # create mock views
         view1 = QLabel("View 1")
         view2 = QLabel("View 2")
-        
+
         host.register_view(view1, VIEW_TRANSCRIBE)
         host.register_view(view2, VIEW_HISTORY)
-        
+
         # Activate view 1
         host.switch_to_view(VIEW_TRANSCRIBE)
         assert host.currentWidget() == view1
         # StackedWidget hides others automatically, but let's verify logic
         assert host.count() == 2
-        
+
         # Activate view 2
         host.switch_to_view(VIEW_HISTORY)
         assert host.currentWidget() == view2
@@ -187,9 +166,9 @@ class TestRuntimeInvariants:
         Nested scroll areas are prohibited in the workspace content path.
         """
         workspace = MainWorkspace()
-        
+
         scroll_areas = workspace.findChildren(QScrollArea)
-        
+
         for sa in scroll_areas:
             content = sa.widget()
             if content:
@@ -197,8 +176,10 @@ class TestRuntimeInvariants:
                 if nested_sas:
                     real_nested = [n for n in nested_sas if n is not sa]
                     if real_nested:
-                        pytest.fail(f"Invariant 3.2 Violation: Nested scroll area found inside {sa.objectName()} -> {real_nested[0].objectName()}")
-        
+                        pytest.fail(
+                            f"Invariant 3.2 Violation: Nested scroll area found inside {sa.objectName()} -> {real_nested[0].objectName()}"
+                        )
+
         workspace.close()
         workspace.deleteLater()
 
@@ -209,38 +190,67 @@ class TestRuntimeInvariants:
         """
         workspace = MainWorkspace()
         workspace.resize(800, 600)
-        
+
         long_text = "Line\n" * 1000
         timestamp = "2023-01-01_12-00-00"
-        
+
         workspace.load_transcript(long_text, timestamp)
-        
+
         # Find the content display widget (QAbstractScrollArea covers QTextEdit, QScrollArea, etc.)
         scroll_areas = workspace.findChildren(QAbstractScrollArea)
-        
-        assert len(scroll_areas) > 0, "MainWorkspace should have a ScrollArea (or QTextEdit)"
-        
+
+        assert len(scroll_areas) > 0, (
+            "MainWorkspace should have a ScrollArea (or QTextEdit)"
+        )
+
         # Heuristic: The largest one is likely the content
-        main_scroll = max(scroll_areas, key=lambda w: w.height() * w.width() if w.isVisible() else 0)
-        
+        main_scroll = max(
+            scroll_areas, key=lambda w: w.height() * w.width() if w.isVisible() else 0
+        )
+
         if isinstance(main_scroll, QScrollArea):
             assert main_scroll.widgetResizable(), "Scroll area must be resizable"
             content_widget = main_scroll.widget()
         else:
             # QTextEdit/Browser
             content_widget = main_scroll
-            
+
         assert content_widget is not None, "Scroll area must have a content widget"
-        
+
         # Check size policy to ensure it expands
         policy_enum = content_widget.sizePolicy().verticalPolicy()
         allowed_policies = [
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
             QSizePolicy.Policy.MinimumExpanding,
-            QSizePolicy.Policy.Ignored
+            QSizePolicy.Policy.Ignored,
         ]
-        assert policy_enum in allowed_policies, f"Content widget must have vertical expansion policy. Got {policy_enum}"
-        
+        assert policy_enum in allowed_policies, (
+            f"Content widget must have vertical expansion policy. Got {policy_enum}"
+        )
+
         workspace.close()
         workspace.deleteLater()
+
+    def test_refinement_status_message_handling(self, qapp):
+        """Test that MainWindow.on_refinement_status_message calls IntentFeedbackHandler correctly."""
+        from unittest.mock import MagicMock
+
+        # Create MainWindow with mocked dependencies
+        mock_history = MagicMock()
+        window = MainWindow(history_manager=mock_history)
+
+        # Mock the intent_feedback to verify the call
+        window._intent_feedback = MagicMock()
+
+        # Call the method
+        test_message = "Test refinement status"
+        window.on_refinement_status_message(test_message)
+
+        # Assert that the handler's method was called with the message
+        window._intent_feedback.on_refinement_status_message.assert_called_once_with(
+            test_message
+        )
+
+        window.close()
+        window.deleteLater()

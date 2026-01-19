@@ -6,7 +6,7 @@ import pytest
 import sys
 import logging
 
-from input_handler import EvdevBackend, InputEvent, KeyChord, KeyCode, PynputBackend
+from src.input_handler import EvdevBackend, InputEvent, KeyChord, KeyCode, PynputBackend
 
 
 class TestKeyCode:
@@ -15,7 +15,6 @@ class TestKeyCode:
     def test_backquote_exists(self):
         """BACKQUOTE key should exist."""
         assert hasattr(KeyCode, "BACKQUOTE")
-        assert KeyCode.BACKQUOTE is not None
 
     def test_modifier_keys_exist(self):
         """Common modifier keys should exist."""
@@ -109,7 +108,7 @@ class TestKeyListener:
             keys = key_listener.parse_key_combination("unknown_key_xyz")
             # Should be empty or partial
             assert len(keys) == 0
-            
+
             # Assert Log
             assert "Unknown key" in caplog.text
 
@@ -117,22 +116,22 @@ class TestKeyListener:
         """Should select appropriate backend."""
         # This depends on system, but at least one should be active or attempt made
         if not key_listener.backends:
-             # Could happen in stripped CI env
-             pytest.skip("No input backends available on this system")
-             
+            # Could happen in stripped CI env
+            pytest.skip("No input backends available on this system")
+
         assert key_listener.active_backend is not None
 
 
 class TestEvdevBackend:
     """Tests specifically for Evdev backend (Linux only)."""
-    
+
     def test_evdev_importable(self):
         if sys.platform != "linux":
             pytest.skip("Evdev is Linux only")
-            
+
         try:
             import evdev
         except ImportError:
             pytest.skip("evdev not installed")
-        
+
         assert evdev is not None

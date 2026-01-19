@@ -48,7 +48,6 @@ class TestToggleSwitchCleanup:
         toggle.setChecked(True)
         qtbot.wait(10)  # Let animation start
 
-
         # Call cleanup
         toggle.cleanup()
 

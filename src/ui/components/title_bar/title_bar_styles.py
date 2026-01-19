@@ -2,7 +2,8 @@
 Title bar styles.
 """
 
-from ui.constants import Colors, Dimensions
+import src.ui.constants.colors as c
+from src.ui.constants.dimensions import BORDER_RADIUS_SMALL
 
 
 def get_title_bar_styles() -> str:
@@ -15,12 +16,12 @@ def get_title_bar_styles() -> str:
     return f"""
         /* Main window title bar */
         QWidget#titleBar {{
-            background-color: {Colors.BG_HEADER};
-            border-bottom: 1px solid {Colors.BORDER_COLOR};
+            background-color: {c.GRAY_9};
+
         }}
 
         QLabel#titleBarLabel {{
-            color: {Colors.TEXT_PRIMARY};
+            color: {c.GRAY_4};
             font-weight: 600;
         }}
 
@@ -28,40 +29,40 @@ def get_title_bar_styles() -> str:
         QToolButton#titleBarControl {{
             background-color: transparent;
             border: none;
-            border-radius: {Dimensions.BORDER_RADIUS_SMALL}px;
+            border-radius: {BORDER_RADIUS_SMALL}px;
         }}
 
         QToolButton#titleBarControl:hover {{
-            background-color: {Colors.HOVER_BG_ITEM};
+            background-color: {c.GRAY_7};
         }}
 
         QToolButton#titleBarControl:pressed {{
-            background-color: {Colors.HOVER_BG_SECTION};
+            background-color: {c.GRAY_7};
         }}
 
         /* Close button */
         QToolButton#titleBarClose {{
             background-color: transparent;
             border: none;
-            border-radius: {Dimensions.BORDER_RADIUS_SMALL}px;
+            border-radius: {BORDER_RADIUS_SMALL}px;
         }}
 
         QToolButton#titleBarClose:hover {{
-            background-color: {Colors.ACCENT_DESTRUCTIVE};
+            background-color: {c.RED_5};
         }}
 
         QToolButton#titleBarClose:pressed {{
-            background-color: {Colors.DESTRUCTIVE_PRESSED};
+            background-color: {c.RED_7};
         }}
 
         /* Dialog title bar */
         QWidget#dialogTitleBar {{
-            background-color: {Colors.BG_HEADER};
-            border-bottom: 1px solid {Colors.BORDER_COLOR};
+            background-color: {c.GRAY_9};
+            border-bottom: 1px solid {c.GRAY_7};
         }}
 
         QLabel#dialogTitleLabel {{
-            color: {Colors.TEXT_PRIMARY};
+            color: {c.GRAY_4};
             font-weight: 600;
         }}
     """

@@ -2,13 +2,15 @@ import logging
 from datetime import datetime, timedelta
 
 from sqlalchemy import delete, desc, func, select, update
+from sqlalchemy.orm import joinedload
 
-from database.core import DatabaseCore
-from database.dtos import HistoryEntry
-from database.models import Transcript, TranscriptVariant
-from utils import ConfigManager
+from src.database.core import DatabaseCore
+from src.database.dtos import HistoryEntry
+from src.database.models import Transcript, TranscriptVariant
+from src.core.config_manager import ConfigManager
 
 logger = logging.getLogger(__name__)
+
 
 class TranscriptRepository:
     def __init__(self, db_core: DatabaseCore):
@@ -22,6 +24,8 @@ class TranscriptRepository:
             duration_ms=transcript.duration_ms,
             speech_duration_ms=transcript.speech_duration_ms,
             project_id=transcript.project_id,
+            project_name=transcript.project.name if transcript.project else None,
+            display_name=transcript.display_name,
             id=transcript.id,
         )
 
@@ -44,7 +48,7 @@ class TranscriptRepository:
                 )
                 session.add(transcript)
                 session.commit()
-                
+
                 # Check rotation
                 self._rotate_if_needed(session)
 
@@ -64,7 +68,11 @@ class TranscriptRepository:
         """Get a single entry by its timestamp."""
         try:
             with self.db.get_session() as session:
-                stmt = select(Transcript).where(Transcript.timestamp == timestamp)
+                stmt = (
+                    select(Transcript)
+                    .options(joinedload(Transcript.project))
+                    .where(Transcript.timestamp == timestamp)
+                )
                 transcript = session.execute(stmt).scalar_one_or_none()
 
                 if transcript:
@@ -79,7 +87,12 @@ class TranscriptRepository:
         """Get a single entry by its ID."""
         try:
             with self.db.get_session() as session:
-                transcript = session.get(Transcript, transcript_id)
+                stmt = (
+                    select(Transcript)
+                    .options(joinedload(Transcript.project))
+                    .where(Transcript.id == transcript_id)
+                )
+                transcript = session.execute(stmt).scalar_one_or_none()
                 if transcript:
                     return self._to_history_entry(transcript)
                 return None
@@ -191,9 +204,13 @@ class TranscriptRepository:
 
                     MAX_REFINEMENTS = 3
                     if len(refined_ids) >= MAX_REFINEMENTS:
-                        ids_to_delete = refined_ids[: len(refined_ids) - MAX_REFINEMENTS + 1]
+                        ids_to_delete = refined_ids[
+                            : len(refined_ids) - MAX_REFINEMENTS + 1
+                        ]
                         if ids_to_delete:
-                            logger.info(f"Enforcing limit: deleting old refined variants {ids_to_delete}")
+                            logger.info(
+                                f"Enforcing limit: deleting old refined variants {ids_to_delete}"
+                            )
                             session.execute(
                                 delete(TranscriptVariant).where(
                                     TranscriptVariant.id.in_(ids_to_delete)
@@ -219,12 +236,16 @@ class TranscriptRepository:
                 result = session.execute(stmt)
 
                 if result.rowcount == 0:
-                    logger.warning(f"Transcript ID {transcript_id} not found during variant update")
+                    logger.warning(
+                        f"Transcript ID {transcript_id} not found during variant update"
+                    )
                     session.rollback()
                     return False
 
                 session.commit()
-                logger.info(f"Added variant {variant.id} ({kind}) to transcript {transcript_id}")
+                logger.info(
+                    f"Added variant {variant.id} ({kind}) to transcript {transcript_id}"
+                )
                 return True
 
         except Exception as e:
@@ -235,7 +256,12 @@ class TranscriptRepository:
         """Get most recent entries (newest first)."""
         try:
             with self.db.get_session() as session:
-                stmt = select(Transcript).order_by(desc(Transcript.id)).limit(limit)
+                stmt = (
+                    select(Transcript)
+                    .options(joinedload(Transcript.project))
+                    .order_by(desc(Transcript.id))
+                    .limit(limit)
+                )
                 transcripts = session.execute(stmt).scalars().all()
                 return [self._to_history_entry(t) for t in transcripts]
 
@@ -243,15 +269,19 @@ class TranscriptRepository:
             logger.error(f"Failed to read history: {e}")
             return []
 
-    def search(self, query: str, scope: str = "all", limit: int = 100) -> list[HistoryEntry]:
+    def search(
+        self, query: str, scope: str = "all", limit: int = 100
+    ) -> list[HistoryEntry]:
         """Search transcripts by text content."""
         if not query.strip():
             return []
 
         try:
             with self.db.get_session() as session:
-                stmt = select(Transcript).where(
-                    Transcript.normalized_text.ilike(f"%{query}%")
+                stmt = (
+                    select(Transcript)
+                    .options(joinedload(Transcript.project))
+                    .where(Transcript.normalized_text.ilike(f"%{query}%"))
                 )
 
                 match scope:
@@ -347,9 +377,7 @@ class TranscriptRepository:
             session.commit()
             logger.info(f"Rotated history: removed {to_remove} old entries")
 
-    def assign_to_project(
-        self, timestamp: str, project_id: int | None
-    ) -> bool:
+    def assign_to_project(self, timestamp: str, project_id: int | None) -> bool:
         """Assign a transcript to a Project."""
         try:
             with self.db.get_session() as session:
@@ -381,9 +409,7 @@ class TranscriptRepository:
         """Get transcripts belonging to a specific Project."""
         try:
             with self.db.get_session() as session:
-                stmt = select(Transcript).where(
-                    Transcript.project_id == project_id
-                )
+                stmt = select(Transcript).where(Transcript.project_id == project_id)
                 stmt = stmt.order_by(desc(Transcript.id)).limit(limit)
 
                 transcripts = session.execute(stmt).scalars().all()

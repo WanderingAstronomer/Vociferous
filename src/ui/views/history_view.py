@@ -11,14 +11,16 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import pyqtSlot, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QFrame, QVBoxLayout
 
-from ui.components.shared import HistoryList, ContentPanel
-from ui.constants.view_ids import VIEW_HISTORY
-from ui.contracts.capabilities import Capabilities, SelectionState, ActionId
-from ui.views.base_view import BaseView
-from ui.models import TranscriptionModel, ProjectProxyModel
+from src.database.signal_bridge import DatabaseSignalBridge
+from src.database.events import ChangeAction, EntityChange
+from src.ui.components.shared import HistoryList, ContentPanel
+from src.ui.constants.view_ids import VIEW_HISTORY
+from src.ui.contracts.capabilities import Capabilities, SelectionState, ActionId
+from src.ui.views.base_view import BaseView
+from src.ui.models import TranscriptionModel, ProjectProxyModel
 
 if TYPE_CHECKING:
-    from database.history_manager import HistoryManager
+    from src.database.history_manager import HistoryManager, HistoryEntry
 
 
 class HistoryView(BaseView):
@@ -29,10 +31,18 @@ class HistoryView(BaseView):
         [ History List ] | [ Content Panel ]
     """
 
-    editRequested = pyqtSignal(int)
-    deleteRequested = pyqtSignal(int)
-    refineRequested = pyqtSignal(int)
-    dataChanged = pyqtSignal()  # For propagating changes to MainWindow
+    edit_requested = pyqtSignal(int)
+    delete_requested = pyqtSignal(list)  # Unified multi-delete
+    refine_requested = pyqtSignal(int)
+    data_changed = pyqtSignal()  # For propagating changes to MainWindow
+
+    def cleanup(self) -> None:
+        """Disconnect global signals."""
+        try:
+            DatabaseSignalBridge().data_changed.disconnect(self._handle_data_changed)
+        except (TypeError, RuntimeError):
+            pass
+        super().cleanup()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -46,6 +56,12 @@ class HistoryView(BaseView):
         """Reload the model state."""
         if self._model:
             self._model.refresh_from_manager()
+        self.content_panel.clear()
+
+    def add_entry(self, entry: HistoryEntry) -> None:
+        """Add a single entry to the model (more efficient than refresh)."""
+        if self._model:
+            self._model.add_entry(entry)
 
     def _setup_ui(self) -> None:
         """Initialize the master-detail layout."""
@@ -63,8 +79,8 @@ class HistoryView(BaseView):
 
         self.history_list = HistoryList()
         # Signals: selectionChanged emits tuple[int, ...]
-        self.history_list.selectionChanged.connect(self._on_selection_changed)
-        self.history_list.historyContentChanged.connect(self.dataChanged.emit)
+        self.history_list.selection_changed.connect(self._on_selection_changed)
+        self.history_list.history_content_changed.connect(self.data_changed.emit)
         list_layout.addWidget(self.history_list)
 
         # Right Pane: Content Panel
@@ -91,7 +107,7 @@ class HistoryView(BaseView):
     def _on_selection_changed(self, selected_ids: tuple[int, ...]) -> None:
         """Handle selection update from list."""
         # Notify BaseView -> ActionDock
-        self.capabilitiesChanged.emit()
+        self.capabilities_changed.emit()
 
         if not selected_ids:
             self.content_panel.clear()
@@ -115,43 +131,47 @@ class HistoryView(BaseView):
     def dispatch_action(self, action_id: ActionId) -> None:
         """Handle actions from ActionDock."""
         selection = self.get_selection()
-        if not selection.has_selection or selection.primary_id is None:
+        if not selection.has_selection:
             return
 
         transcript_id = selection.primary_id
 
         if action_id == ActionId.EDIT:
-            self.editRequested.emit(transcript_id)
+            if transcript_id is not None:
+                self.edit_requested.emit(transcript_id)
 
         elif action_id == ActionId.DELETE:
-            self.deleteRequested.emit(transcript_id)
+            self.delete_requested.emit(list(selection.selected_ids))
 
         elif action_id == ActionId.REFINE:
-            self.refineRequested.emit(transcript_id)
+            if transcript_id is not None:
+                self.refine_requested.emit(transcript_id)
 
         elif action_id == ActionId.COPY:
-            entry = self._history_manager.get_entry(transcript_id)
-            if entry:
-                from ui.utils.clipboard_utils import copy_text
+            if transcript_id is not None and self._history_manager:
+                entry = self._history_manager.get_entry(transcript_id)
+                if entry:
+                    from src.ui.utils.clipboard_utils import copy_text
 
-                copy_text(entry.text)
+                    copy_text(entry.text)
 
     def get_view_id(self) -> str:
         return VIEW_HISTORY
 
     def get_capabilities(self) -> Capabilities:
         """Return capabilities based on current selection."""
-        from core.config_manager import ConfigManager
+        from src.core.config_manager import ConfigManager
 
         selection = self.get_selection()
-        has_selection = bool(selection.selected_ids)
+        count = len(selection.selected_ids)
+        has_selection = count > 0
         refinement_enabled = ConfigManager.get_config_value("refinement", "enabled")
 
         return Capabilities(
-            can_edit=has_selection,
+            can_edit=count == 1,
             can_delete=has_selection,
-            can_refine=has_selection and refinement_enabled,
-            can_copy=has_selection,
+            can_refine=count == 1 and refinement_enabled,
+            can_copy=count == 1,
             can_move_to_project=has_selection,
         )
 
@@ -170,3 +190,33 @@ class HistoryView(BaseView):
 
         self.history_list.setModel(self._model)
         self.history_list.set_history_manager(manager)
+
+        # Connect to surgical database updates
+        DatabaseSignalBridge().data_changed.connect(self._handle_data_changed)
+
+    @pyqtSlot(EntityChange)
+    def _handle_data_changed(self, change: EntityChange) -> None:
+        """Handle incoming surgical updates from the database."""
+        if not self._model:
+            return
+
+        if change.entity_type == "transcription":
+            self._model.handle_database_change(change)
+
+            # If the currently displayed entry was deleted, clear the panel
+            selection = self.get_selection()
+            if (
+                change.action == ChangeAction.DELETED
+                and selection.primary_id in change.ids
+            ):
+                self.content_panel.clear()
+
+            # If the currently displayed entry was updated, reload it
+            elif (
+                change.action == ChangeAction.UPDATED
+                and selection.primary_id in change.ids
+                and self._history_manager
+            ):
+                entry = self._history_manager.get_entry(selection.primary_id)
+                if entry:
+                    self.content_panel.set_entry(entry)

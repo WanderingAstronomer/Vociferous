@@ -10,19 +10,21 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QLabel,
     QWidget,
-    QPushButton,
     QFrame,
     QPlainTextEdit,
     QSlider,
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 
-import ui.constants.colors as c
-from ui.constants.view_ids import VIEW_REFINE
-from ui.constants import Spacing
-from ui.views.base_view import BaseView
-from ui.contracts.capabilities import Capabilities, ActionId
-from ui.components.shared import ContentPanel
+import src.ui.constants.colors as c
+from src.ui.constants.view_ids import VIEW_REFINE
+from src.ui.constants import Spacing
+from src.ui.views.base_view import BaseView
+from src.ui.contracts.capabilities import Capabilities, ActionId
+from src.ui.components.shared import ContentPanel
+
+
+from src.ui.views.refine_view_styles import get_refine_view_stylesheet
 
 
 class RefineView(BaseView):
@@ -35,9 +37,9 @@ class RefineView(BaseView):
     """
 
     # Signals for routing back to controller/orchestrator
-    refinementAccepted = pyqtSignal(int, str)  # transcript_id, refined_text
-    refinementDiscarded = pyqtSignal()  # No args needed - just return to history
-    refinementRerunRequested = pyqtSignal(
+    refinement_accepted = pyqtSignal(int, str)  # transcript_id, refined_text
+    refinement_discarded = pyqtSignal()  # No args needed - just return to history
+    refinement_rerun_requested = pyqtSignal(
         int, str, str
     )  # transcript_id, profile, user_instruct
 
@@ -47,7 +49,7 @@ class RefineView(BaseView):
         self._original_text = ""
         self._refined_text = ""
         self._is_loading = False
-        self._profiles = ["MINIMAL", "BALANCED", "STRONG"]
+        self._profiles = ["MINIMAL", "BALANCED", "STRONG", "OVERKILL"]
 
         self._setup_ui()
 
@@ -82,76 +84,75 @@ class RefineView(BaseView):
         # --- Footer Area (Controls + Input) ---
         footer_layout = QHBoxLayout()
         footer_layout.setContentsMargins(0, 0, 0, 0)
-        footer_layout.setSpacing(
-            Spacing.S2
-        )  # Reduced spacing (margins) for tighter integration
+        footer_layout.setSpacing(Spacing.S4)  # Gap between Input and Action Strip
 
-        # 1. Strength Controls (Left of input)
+        # 1. User Prompt Input (Left/Center - Expanding)
+        self._user_prompt_input = QPlainTextEdit()
+        self._user_prompt_input.setPlaceholderText(
+            "Add specific instructions (e.g., 'Make it bullet points', 'Fix technical jargon')..."
+        )
+        self._user_prompt_input.setMinimumHeight(80)
+        self._user_prompt_input.setMaximumHeight(120)
+        self._user_prompt_input.setStyleSheet(
+            f"border: 1px solid {c.GRAY_6}; border-radius: 4px; padding: 6px; background: {c.GRAY_8}; margin: 0px;"
+        )
+        footer_layout.addWidget(self._user_prompt_input, 1)
+
+        # 2. Refinement Action Strip (Right - Strength Slider Group)
+        action_strip = QWidget()
+        strip_layout = QVBoxLayout(action_strip)
+        strip_layout.setContentsMargins(0, 0, 0, 0)
+        strip_layout.setSpacing(4)
+        strip_layout.setAlignment(Qt.AlignmentFlag.AlignBottom)
+
+        # Microcopy FIRST (top of the stack)
+        self._lbl_microcopy = QLabel("Controls how aggressively the text is rewritten")
+        self._lbl_microcopy.setStyleSheet(
+            f"color: {c.GRAY_5}; font-size: 10px; font-style: italic;"
+        )
+        self._lbl_microcopy.setAlignment(Qt.AlignmentFlag.AlignRight)
+        strip_layout.addWidget(self._lbl_microcopy)
+
+        # Strength Group (Label + Slider) - full width now
         strength_container = QWidget()
         strength_layout = QVBoxLayout(strength_container)
         strength_layout.setContentsMargins(0, 0, 0, 0)
         strength_layout.setSpacing(2)
 
-        strength_layout.addStretch()  # Center vertically
+        # Label Row
+        lbl_layout = QHBoxLayout()
+        lbl_layout.setSpacing(4)
+        lbl_layout.addStretch()  # Center the labels
 
-        # Label
-        lbl_strength = QLabel("Strength")
-        lbl_strength.setStyleSheet(
-            f"color: {c.GRAY_4}; font-size: 10px; font-weight: bold;"
-        )
-        strength_layout.addWidget(lbl_strength)
+        lbl_strength_title = QLabel("Strength:")
+        lbl_strength_title.setStyleSheet(f"color: {c.GRAY_5}; font-size: 10px;")
 
-        # Slider
-        self.slider_strength = QSlider(Qt.Orientation.Horizontal)
-        self.slider_strength.setRange(0, 2)
-        self.slider_strength.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.slider_strength.setTickInterval(1)
-        self.slider_strength.setValue(1)
-        self.slider_strength.setFixedWidth(120)  # Increased width
-        self.slider_strength.valueChanged.connect(self._update_strength_label)
-        strength_layout.addWidget(self.slider_strength)
-
-        # Value Label
         self._lbl_strength_value = QLabel("BALANCED")
         self._lbl_strength_value.setStyleSheet(
             f"color: {c.BLUE_3}; font-size: 10px; font-weight: bold;"
         )
-        strength_layout.addWidget(self._lbl_strength_value)
 
-        strength_layout.addStretch()  # Center vertically
+        lbl_layout.addWidget(lbl_strength_title)
+        lbl_layout.addWidget(self._lbl_strength_value)
+        lbl_layout.addStretch()
 
-        footer_layout.addWidget(strength_container)
+        strength_layout.addLayout(lbl_layout)
 
-        # 2. User Prompt Input (Center)
-        self._user_prompt_input = QPlainTextEdit()
-        self._user_prompt_input.setPlaceholderText(
-            "Add specific instructions (e.g., 'Make it bullet points', 'Fix technical jargon')..."
-        )
-        # Taller input box for more text visibility
-        self._user_prompt_input.setMinimumHeight(100)
-        self._user_prompt_input.setMaximumHeight(150)
-        # Margin 0 to ensure no extra whitespace pushes neighbors
-        self._user_prompt_input.setStyleSheet(
-            f"border: 1px solid {c.GRAY_6}; border-radius: 4px; padding: 4px; background: {c.GRAY_8}; margin: 0px;"
-        )
-        footer_layout.addWidget(self._user_prompt_input, 1)
+        # Slider (Muted track color, accent thumb) - wider now
+        self.slider_strength = QSlider(Qt.Orientation.Horizontal)
+        self.slider_strength.setRange(0, 3)
+        self.slider_strength.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.slider_strength.setTickInterval(1)
+        self.slider_strength.setValue(1)
+        self.slider_strength.setMinimumWidth(180)  # Wider than before
+        self.slider_strength.valueChanged.connect(self._update_strength_label)
+        # Apply specific styling to subordinate visual dominance
+        self.slider_strength.setStyleSheet(get_refine_view_stylesheet())
+        strength_layout.addWidget(self.slider_strength)
 
-        # 3. Rerun Button (Right of input)
-        # Wrap in layout/widget to align it properly (e.g. center vertical)
-        rerun_container = QWidget()
-        rerun_layout = QVBoxLayout(rerun_container)
-        rerun_layout.setContentsMargins(0, 0, 0, 0)
-        rerun_layout.addStretch()  # Push button to vertical center
+        strip_layout.addWidget(strength_container)
 
-        self.btn_rerun = QPushButton("Retry?")
-        self.btn_rerun.clicked.connect(self._on_rerun_clicked)
-        self.btn_rerun.setFixedWidth(100)  # Increased width
-        self.btn_rerun.setStyleSheet("padding: 8px; font-weight: bold;")
-
-        rerun_layout.addWidget(self.btn_rerun)
-        rerun_layout.addStretch()
-
-        footer_layout.addWidget(rerun_container)
+        footer_layout.addWidget(action_strip)
 
         main_layout.addLayout(footer_layout)
 
@@ -167,6 +168,29 @@ class RefineView(BaseView):
         super().resizeEvent(event)
         self._lbl_loading.resize(self.size())
 
+    def _update_controls_state(self) -> None:
+        """Update visual state of controls based on context."""
+        has_transcript = self._current_transcript_id is not None
+        can_interact = has_transcript and not self._is_loading
+
+        self.slider_strength.setEnabled(can_interact)
+        self._user_prompt_input.setEnabled(can_interact)
+
+        # Microcopy visibility
+        self._lbl_microcopy.setVisible(can_interact)
+
+        # Visual styling for strength label
+        if can_interact:
+            # Wake up slider visual
+            self._lbl_strength_value.setStyleSheet(
+                f"color: {c.BLUE_3}; font-size: 10px; font-weight: bold;"
+            )
+        else:
+            # Mute slider visual
+            self._lbl_strength_value.setStyleSheet(
+                f"color: {c.GRAY_5}; font-size: 10px;"
+            )
+
     def _update_strength_label(self, value: int) -> None:
         if 0 <= value < len(self._profiles):
             self._lbl_strength_value.setText(self._profiles[value])
@@ -175,21 +199,8 @@ class RefineView(BaseView):
         """Set loading state."""
         self._is_loading = is_loading
         self._lbl_loading.setVisible(is_loading)
-        self.capabilitiesChanged.emit()
-
-    def _on_rerun_clicked(self) -> None:
-        """Handle re-run button click."""
-        if self._current_transcript_id is not None:
-            user_instructions = self._user_prompt_input.toPlainText().strip()
-            # Map slider value to profile string
-            val = self.slider_strength.value()
-            profile = (
-                self._profiles[val] if 0 <= val < len(self._profiles) else "BALANCED"
-            )
-
-            self.refinementRerunRequested.emit(
-                self._current_transcript_id, profile, user_instructions
-            )
+        self._update_controls_state()
+        self.capabilities_changed.emit()
 
     def _make_dummy_entry(self, text: str, title: str):
         """Create a duck-typed object that resembles HistoryEntry for ContentPanel."""
@@ -215,6 +226,7 @@ class RefineView(BaseView):
 
         # Reset loading state (caller will set it if they start engine immediately)
         self.set_loading(False)
+        self._update_controls_state()
 
     def set_comparison(self, transcript_id: int, original: str, refined: str) -> None:
         """Load data for comparison."""
@@ -229,6 +241,7 @@ class RefineView(BaseView):
         self._panel_refined.set_entry(
             self._make_dummy_entry(refined, "Refined / AI Suggestion")
         )
+        self._update_controls_state()
 
     def load_transcript(self, text: str, timestamp: str | None = None) -> None:
         """
@@ -245,12 +258,13 @@ class RefineView(BaseView):
         self._panel_refined.set_entry(
             self._make_dummy_entry("", "Refinement Pending...")
         )
+        self._update_controls_state()
 
     def _on_accept(self) -> None:
         """Handle acceptance of refinement (via dispatch_action)."""
         if self._current_transcript_id is not None:
             # Emit both ID and TEXT
-            self.refinementAccepted.emit(
+            self.refinement_accepted.emit(
                 self._current_transcript_id, self._refined_text
             )
             self._panel_refined.set_entry(None)
@@ -259,7 +273,7 @@ class RefineView(BaseView):
         """Handle discard of refinement (via dispatch_action)."""
         self._panel_original.set_entry(None)
         self._panel_refined.set_entry(None)
-        self.refinementDiscarded.emit()
+        self.refinement_discarded.emit()
 
     def get_view_id(self) -> str:
         return VIEW_REFINE
@@ -272,10 +286,13 @@ class RefineView(BaseView):
         if self._is_loading:
             return Capabilities()  # No actions while loading
 
-        has_content = bool(self._refined_text)
+        has_transcript = self._current_transcript_id is not None
+        has_refined_content = bool(self._refined_text)
+
         return Capabilities(
-            can_copy=has_content,
-            can_save=has_content,  # Accept refinement (uses SAVE semantically)
+            can_refine=has_transcript,  # Can run refinement if transcript loaded
+            can_copy=has_refined_content,
+            can_save=has_refined_content,  # Accept refinement (uses SAVE semantically)
             can_discard=True,  # Always allow discard (exit)
         )
 
@@ -285,12 +302,28 @@ class RefineView(BaseView):
         if self._is_loading:
             return
 
-        if action_id == ActionId.SAVE:
+        if action_id == ActionId.REFINE:
+            self._on_refine_clicked()
+        elif action_id == ActionId.SAVE:
             self._on_accept()
         elif action_id == ActionId.DISCARD:
             self._on_discard()
         elif action_id == ActionId.COPY:
             # Copy refined text to clipboard
-            from ui.utils.clipboard_utils import copy_text
+            from src.ui.utils.clipboard_utils import copy_text
 
             copy_text(self._refined_text)
+
+    def _on_refine_clicked(self) -> None:
+        """Handle Refine button click from ActionDock."""
+        if self._current_transcript_id is not None:
+            user_instructions = self._user_prompt_input.toPlainText().strip()
+            # Map slider value to profile string
+            val = self.slider_strength.value()
+            profile = (
+                self._profiles[val] if 0 <= val < len(self._profiles) else "BALANCED"
+            )
+
+            self.refinement_rerun_requested.emit(
+                self._current_transcript_id, profile, user_instructions
+            )

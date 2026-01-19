@@ -13,21 +13,28 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent
 SRC_ROOT = PROJECT_ROOT / "src"
 
+
 class RecursiveAttributeVisitor(ast.NodeVisitor):
     def __init__(self):
         self.violations = []
         # Forbidden: self.main_window.workspace.<forbidden>
         # We look for Attribute nodes that construct this chain.
         # But specifically, we want to catch if someone goes DEEPER than workspace.xxx
-        # Actually the instruction is: fail if it contains `self.main_window.workspace.` 
+        # Actually the instruction is: fail if it contains `self.main_window.workspace.`
         # followed by anything other than a strict allowlist.
-        
+
         self.allowlist = {
-            "show", "hide", "close", "set_state", "load_transcript", 
-            "set_history_manager", "set_audio_level", "set_live_text",
-            "content_panel", # required for geometry tests occasionally, but really shouldn't be here?
+            "show",
+            "hide",
+            "close",
+            "set_state",
+            "load_transcript",
+            "set_history_manager",
+            "set_audio_level",
+            "set_live_text",
+            "content_panel",  # required for geometry tests occasionally, but really shouldn't be here?
             # Orchestrator uses signals mostly.
-            # If main.py says `self.main_window.workspace.content.transcript_view`, that is 
+            # If main.py says `self.main_window.workspace.content.transcript_view`, that is
             # `Attribute(Attribute(Attribute(..., 'workspace'), 'content'), 'transcript_view')`
         }
 
@@ -38,40 +45,41 @@ class RecursiveAttributeVisitor(ast.NodeVisitor):
         while isinstance(curr, ast.Attribute):
             chain.append(curr.attr)
             curr = curr.value
-        
+
         if isinstance(curr, ast.Name) and curr.id == "self":
             chain.append("self")
             # chain is reversed: ['transcript_view', 'content', 'workspace', 'main_window', 'self']
-            
+
             full_path = ".".join(reversed(chain))
             prefix = "self.main_window.workspace"
-            
+
             if full_path.startswith(prefix):
-                 if full_path == prefix:
-                     # Just accessing workspace is fine
-                     pass
-                 else:
-                     remaining = full_path[len(prefix)+1:] # part after workspace.
-                     first_component = remaining.split(".")[0]
-                     
-                     # If they access something not in allowlist
-                     # OR if they access DEEPER than one level (dotted)
-                     if first_component not in self.allowlist:
-                         self.violations.append(
-                             f"Line {node.lineno}: Forbidden access to `{full_path}`. "
-                             f"`{first_component}` is not in allowlist of public workspace methods."
-                         )
-                     elif "." in remaining:
-                         # e.g. workspace.content.something
-                         # Even if 'content' was allowed, reaching through it is not? 
-                         # The prompt says: "fail if it contains the forbidden prefix ... followed by anything other than a strict allowlist"
-                         # And "It will not catch deeper traversal ... because the .attr becomes transcript_view"
-                         # With this visitor, we check the FULL path of every attribute node.
-                         # If we are visiting `workspace.content.view`, we catch it.
-                         # If we are visiting `workspace.content`, we catch it (if content not in allowlist).
-                         pass
+                if full_path == prefix:
+                    # Just accessing workspace is fine
+                    pass
+                else:
+                    remaining = full_path[len(prefix) + 1 :]  # part after workspace.
+                    first_component = remaining.split(".")[0]
+
+                    # If they access something not in allowlist
+                    # OR if they access DEEPER than one level (dotted)
+                    if first_component not in self.allowlist:
+                        self.violations.append(
+                            f"Line {node.lineno}: Forbidden access to `{full_path}`. "
+                            f"`{first_component}` is not in allowlist of public workspace methods."
+                        )
+                    elif "." in remaining:
+                        # e.g. workspace.content.something
+                        # Even if 'content' was allowed, reaching through it is not?
+                        # The prompt says: "fail if it contains the forbidden prefix ... followed by anything other than a strict allowlist"
+                        # And "It will not catch deeper traversal ... because the .attr becomes transcript_view"
+                        # With this visitor, we check the FULL path of every attribute node.
+                        # If we are visiting `workspace.content.view`, we catch it.
+                        # If we are visiting `workspace.content`, we catch it (if content not in allowlist).
+                        pass
 
         self.generic_visit(node)
+
 
 class TestOrchestratorDecoupling:
     """Enforce separation between Orchestrator and UI details."""
@@ -86,13 +94,13 @@ class TestOrchestratorDecoupling:
             pytest.skip("main.py not found, skipping architecture check")
 
         tree = ast.parse(main_py.read_text(encoding="utf-8"))
-        
+
         visitor = RecursiveAttributeVisitor()
         visitor.visit(tree)
-        
+
         # Filter duplicates
         unique_violations = sorted(list(set(visitor.violations)))
-        
+
         if unique_violations:
             pytest.fail("\n".join(unique_violations))
 
@@ -106,22 +114,23 @@ class TestOrchestratorDecoupling:
             pytest.skip("main.py not found")
 
         tree = ast.parse(main_py.read_text(encoding="utf-8"))
-        
+
         # Allowlist of modules that can be imported from `ui.`
         allowed_ui_modules = {
-            "ui.components.main_window",
-            "ui.components.system_tray",
-            "ui.components.settings", # Currently used in main
-            "ui.utils.clipboard_utils",
-            "ui.styles.unified_stylesheet",
-            "ui.utils.error_handler",
-            "ui.widgets.dialogs.error_dialog",
+            "src.ui.components.main_window",
+            "src.ui.components.main_window.system_tray",
+            "src.ui.components.settings",  # Currently used in main
+            "src.ui.constants.view_ids",  # Used in show_settings()
+            "src.ui.utils.clipboard_utils",
+            "src.ui.styles.unified_stylesheet",
+            "src.ui.utils.error_handler",
+            "src.ui.widgets.dialogs.error_dialog",
         }
 
         violations = []
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
-                if node.module and node.module.startswith("ui."):
+                if node.module and node.module.startswith("src.ui."):
                     if node.module not in allowed_ui_modules:
                         violations.append(
                             f"Line {node.lineno}: Forbidden import `from {node.module} ...`. "
@@ -129,12 +138,12 @@ class TestOrchestratorDecoupling:
                         )
             elif isinstance(node, ast.Import):
                 for alias in node.names:
-                    if alias.name.startswith("ui."):
-                         if alias.name not in allowed_ui_modules:
+                    if alias.name.startswith("src.ui."):
+                        if alias.name not in allowed_ui_modules:
                             violations.append(
                                 f"Line {node.lineno}: Forbidden import `import {alias.name}`. "
                                 "Main.py should only import top-level composition boundaries."
                             )
-        
+
         if violations:
             pytest.fail("\n".join(violations))

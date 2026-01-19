@@ -36,10 +36,16 @@ BLUE_8 = "#2d3d4d"
 BLUE_9 = "#1a252e"
 
 # Greens
+GREEN_0 = "#e6fae6"
+GREEN_1 = "#ccf5cc"
+GREEN_2 = "#a8e6a8"
+GREEN_3 = "#7ee37e"
 GREEN_4 = "#5bc95f"
 GREEN_5 = "#4caf50"
+GREEN_6 = "#3e7d3e"
 GREEN_7 = "#3d8b40"
-SUCCESS_BRIGHT = "#50fa7b"  # Onboarding Finish
+GREEN_8 = "#2a522a"
+GREEN_9 = "#1a351a"
 
 # Reds
 RED_4 = "#ff8585"
@@ -69,10 +75,26 @@ TOGGLE_CIRCLE_ON = GRAY_0  # White circle when toggle is ON
 
 # Hover Overlays (semi-transparent overlays for interactive states)
 HOVER_OVERLAY_LIGHT = "rgba(255, 255, 255, 0.08)"  # Light overlay on dark backgrounds
-HOVER_OVERLAY_BLUE = "rgba(59, 130, 246, 0.08)"  # Blue-tinted hover for tree/table views
+HOVER_OVERLAY_BLUE = (
+    "rgba(59, 130, 246, 0.08)"  # Blue-tinted hover for tree/table views
+)
 
 # Modal/Loading Overlays
 OVERLAY_BACKDROP = "rgba(0, 0, 0, 0.5)"  # Semi-transparent black for modal backdrops
+
+# Shell Elements (TitleBar, IconRail)
+SHELL_BACKGROUND = GRAY_9
+SHELL_BORDER = GRAY_7
+
+# Content Surfaces
+CONTENT_BACKGROUND = GRAY_8
+CONTENT_BORDER = BLUE_4
+
+# Text Hierarchy
+TEXT_PRIMARY = GRAY_2
+TEXT_SECONDARY = GRAY_4
+TEXT_TERTIARY = GRAY_5
+# Removed TEXT_ACCENT because #5a9fd4 already has BLUE_4 and CONTENT_BORDER names (3 max names limit in tests)
 
 
 class ProjectColors:

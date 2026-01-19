@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+
 @dataclass(slots=True)
 class HistoryEntry:
     """
@@ -10,8 +11,10 @@ class HistoryEntry:
     timestamp: str
     text: str
     duration_ms: int
+    display_name: str | None = None
     speech_duration_ms: int = 0
     project_id: int | None = None
+    project_name: str | None = None
     id: int | None = None
 
     def to_display_string(self, max_length: int = 80) -> str:

@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from input_handler import InputEvent, KeyCode
+from src.input_handler import InputEvent, KeyCode
 
 
 class TestKeycodeMapping:
@@ -18,7 +18,7 @@ class TestKeycodeMapping:
 
     def test_keycodes_to_strings_single_key(self):
         """Test converting a single keycode to strings."""
-        from ui.utils.keycode_mapping import keycodes_to_strings
+        from src.ui.utils.keycode_mapping import keycodes_to_strings
 
         display, config = keycodes_to_strings({KeyCode.SPACE})
         assert display == "Space"
@@ -26,7 +26,7 @@ class TestKeycodeMapping:
 
     def test_keycodes_to_strings_combo(self):
         """Test converting a key combination to strings."""
-        from ui.utils.keycode_mapping import keycodes_to_strings
+        from src.ui.utils.keycode_mapping import keycodes_to_strings
 
         display, config = keycodes_to_strings({KeyCode.CTRL_LEFT, KeyCode.A})
         # Should be sorted: modifiers first
@@ -37,7 +37,7 @@ class TestKeycodeMapping:
 
     def test_keycodes_to_strings_modifier_order(self):
         """Test that modifiers are sorted in correct order (ctrl, shift, alt, meta)."""
-        from ui.utils.keycode_mapping import keycodes_to_strings
+        from src.ui.utils.keycode_mapping import keycodes_to_strings
 
         display, config = keycodes_to_strings(
             {KeyCode.ALT_LEFT, KeyCode.CTRL_LEFT, KeyCode.SHIFT_LEFT}
@@ -46,7 +46,7 @@ class TestKeycodeMapping:
         assert config == "ctrl+shift+alt"
 
     def test_normalize_hotkey_string(self):
-        from ui.utils.keycode_mapping import normalize_hotkey_string
+        from src.ui.utils.keycode_mapping import normalize_hotkey_string
 
         assert normalize_hotkey_string("shift+ctrl+a") == "ctrl+shift+a"
         assert normalize_hotkey_string("alt+ctrl+shift") == "ctrl+shift+alt"
@@ -60,14 +60,14 @@ class TestHotkeyWidgetLogic:
 
     def test_validate_hotkey_empty(self):
         """Empty hotkey should be invalid."""
-        from ui.widgets.hotkey_widget.hotkey_widget import HotkeyWidget
-        
+        from src.ui.widgets.hotkey_widget.hotkey_widget import HotkeyWidget
+
         valid, _ = HotkeyWidget.validate_hotkey("")
         assert not valid
 
     def test_validate_hotkey_modifier_only(self):
         """Modifier-only hotkeys should be invalid."""
-        # This test logic in original file was simulating checks. 
+        # This test logic in original file was simulating checks.
         # The HotkeyWidget.validate_hotkey assumes "inputs" are valid strings from keycodes_to_strings.
         # It splits by "+".
         # Let's verify what validate_hotkey actually does.
@@ -78,39 +78,39 @@ class TestHotkeyWidgetLogic:
         # if not parts: return False, "No keys captured"
         # if hotkey.lower() in dangerous: return False...
         # return True
-        
+
         # So "ctrl" is VALID according to current implementation?
         # If so, the test claiming "Modifier-only hotkeys should be invalid" is WRONG about the code.
         # Or I missed something.
-        
-        from ui.widgets.hotkey_widget.hotkey_widget import HotkeyWidget
-        
+
+        from src.ui.widgets.hotkey_widget.hotkey_widget import HotkeyWidget
+
         # Current implementation allows single keys including modifiers unless restricted elsewhere.
         # If the test expects failure, the implementation is buggy or the test is assuming future logic.
         # Given "Refactor suite to be correct", I should match implementation.
         # If implementation allows "ctrl", test should assert True or I should FIX implementation.
         # But "modifier only" usually implies no action key.
         # InputHandler might ignore it, but Widget allows it?
-        
+
         # Let's check if the widget blocks it.
         # In _on_capture_event:
         # if event_type == InputEvent.KEY_RELEASE and self.pressed_keys:
         #    _finalize_capture()
-        
+
         # If I press Ctrl, then release Ctrl, keys are {CTRL_LEFT}.
         # keycodes_to_strings({CTRL_LEFT}) -> "Ctrl", "ctrl"
         # validate_hotkey("ctrl") -> parts=["ctrl"]. Not in dangerous. Returns True.
-        
+
         # So the OLD test code:
         # parts = ["ctrl"]; is_modifier_only = len(parts)==1 and parts[0] in modifiers; assert is_modifier_only
         # It was asserting that it IS modifier only. It didn't assert result of validation!
         # It seems `TestHotkeyWidgetLogic` was just testing "can I detect a modifier".
-        
+
         # If the Requirement is "Modifier only hotkeys should be invalid", then Implementation is missing it.
         # But for now I will strictly test the CURRENT implementation or skip if ambiguous.
         # I'll update the test to verify `validate_hotkey("ctrl")` behaves as code does (True).
         # Or I can add the check to `validate_hotkey`.
-        
+
         # Adding check to validate_hotkey seems robust.
         # Use read_file to check if I can modify HotkeyWidget again easily.
         # I'll stick to updating the test to call the method, and assert True (since code allows it).
@@ -119,11 +119,11 @@ class TestHotkeyWidgetLogic:
 
     def test_validate_hotkey_reserved(self):
         """Reserved system shortcuts should be blocked."""
-        from ui.widgets.hotkey_widget.hotkey_widget import HotkeyWidget
-        
+        from src.ui.widgets.hotkey_widget.hotkey_widget import HotkeyWidget
+
         valid, _ = HotkeyWidget.validate_hotkey("alt+f4")
         assert not valid
-        
+
         valid, _ = HotkeyWidget.validate_hotkey("ctrl+space")
         assert valid
 
@@ -132,14 +132,14 @@ class TestConfigChangedSignal:
     """Tests for config change signal emission."""
 
     def test_set_config_emits_signal(self, config_manager):
-        """Setting a config value should emit configChanged."""
+        """Setting a config value should emit config_changed."""
         signal_received = []
 
         def on_changed(section, key, value):
             signal_received.append((section, key, value))
 
         try:
-            config_manager.instance().configChanged.connect(on_changed)
+            config_manager.instance().config_changed.connect(on_changed)
         except RuntimeError:
             # ConfigManager QObject may be deleted if test runs after QApplication cleanup
             pytest.skip("ConfigManager unavailable (QObject deleted)")
@@ -159,7 +159,7 @@ class TestConfigChangedSignal:
             )
         finally:
             try:
-                config_manager.instance().configChanged.disconnect(on_changed)
+                config_manager.instance().config_changed.disconnect(on_changed)
                 # Restore original value
                 config_manager.set_config_value(
                     original, "output_options", "add_trailing_space"
@@ -175,7 +175,7 @@ class TestConfigChangedSignal:
             signal_received.append((section, key, value))
 
         try:
-            config_manager.instance().configChanged.connect(on_changed)
+            config_manager.instance().config_changed.connect(on_changed)
         except RuntimeError:
             # ConfigManager QObject may be deleted if test runs after QApplication cleanup
             pytest.skip("ConfigManager unavailable (QObject deleted)")
@@ -192,7 +192,7 @@ class TestConfigChangedSignal:
             assert signal_received[0][1] == "add_trailing_space"
         finally:
             try:
-                config_manager.instance().configChanged.disconnect(on_changed)
+                config_manager.instance().config_changed.disconnect(on_changed)
                 config_manager.set_config_value(
                     original, "output_options", "add_trailing_space"
                 )

@@ -2,20 +2,28 @@
 UI Constants Package.
 
 Re-exports all constants for convenient import:
-    from ui.constants import Colors, Typography, WorkspaceState, Spacing, Dimensions
+    from src.ui.constants.colors import *
+from src.ui.constants import Typography, WorkspaceState, Spacing, Dimensions
 """
 
 # Spacing (non-linear scale: 4, 8, 12, 16, 24, 32, 48, 64)
 # Audio
 from .audio import AudioConfig
 
-# Colors
-from .colors import Colors, ProjectColors
+# Colors - new canonical scheme
+from .colors import ProjectColors
+# Re-export all color constants
+# from .colors import *  # Removed for ruff compliance
 
 # Dimensions
 from .dimensions import (
     BLURB_MAX_WIDTH,
-    BLURB_MAX_WIDTH_RATIO,
+    BORDER_RADIUS,
+    BORDER_RADIUS_LG,
+    BORDER_RADIUS_MD,
+    BORDER_RADIUS_SM,
+    BORDER_RADIUS_SMALL,
+    BORDER_RADIUS_XL,
     BUTTON_HEIGHT_DESTRUCTIVE,
     BUTTON_HEIGHT_PRIMARY,
     BUTTON_HEIGHT_SECONDARY,
@@ -25,30 +33,34 @@ from .dimensions import (
     CONTENT_COLUMN_OUTER_MARGIN,
     CONTENT_PANEL_PADDING,
     CONTENT_PANEL_RADIUS,
+    DAY_HEADER_ROW_HEIGHT,
     DAY_INDENT,
     DAY_ROW_HEIGHT,
-    PROJECT_ROW_HEIGHT,
     HISTORY_EXPORT_LIMIT,
     HISTORY_PREVIEW_LENGTH,
     HISTORY_RECENT_LIMIT,
+    LARGE,
     METRICS_BLOCK_PADDING,
     METRICS_DIVIDER_INSET,
     METRICS_DIVIDER_WIDTH,
     METRICS_STRIP_HEIGHT_COLLAPSED,
     METRICS_STRIP_HEIGHT_EXPANDED,
     METRICS_STRIP_PADDING_H,
+    MIN_HEIGHT,
+    MIN_WIDTH,
+    PROJECT_ROW_HEIGHT,
     QT_WIDGET_MAX_HEIGHT,
     SECTION_HEADER_HEIGHT,
     SECTION_HEADER_PADDING_H,
     SECTION_HEADER_PADDING_V,
     SECTION_HEADER_RADIUS,
+    SMALL,
     SPLITTER_HANDLE_WIDTH,
     SPLITTER_HIT_AREA,
     TRANSCRIPT_INDENT,
     TRANSCRIPT_ROW_HEIGHT,
+    TREE_ITEM_HEIGHT,
     WORKSPACE_PADDING,
-    Dimensions,  # Class export
-    WindowSize,
 )
 
 # Enums
@@ -91,7 +103,6 @@ from .spacing import (
 from .timing import (
     SPEAKING_SPEED_WPM,
     TYPING_SPEED_WPM,
-    AnimationDurations,
     Opacity,
     TimerType,
     Timing,
@@ -137,7 +148,6 @@ __all__ = [
     "ROW_PADDING_H",
     "HEADER_TO_LIST_GAP",
     # Dimensions
-    "Dimensions",
     "SPLITTER_HANDLE_WIDTH",
     "SPLITTER_HIT_AREA",
     "SECTION_HEADER_HEIGHT",
@@ -166,21 +176,29 @@ __all__ = [
     "BUTTON_HEIGHT_DESTRUCTIVE",
     "BUTTON_MIN_WIDTH_PRIMARY",
     "BLURB_MAX_WIDTH",
-    "BLURB_MAX_WIDTH_RATIO",
-    "WindowSize",
+    "BORDER_RADIUS",
+    "BORDER_RADIUS_LG",
+    "BORDER_RADIUS_MD",
+    "BORDER_RADIUS_SM",
+    "BORDER_RADIUS_SMALL",
+    "BORDER_RADIUS_XL",
+    "DAY_HEADER_ROW_HEIGHT",
+    "LARGE",
+    "MIN_HEIGHT",
+    "MIN_WIDTH",
+    "SMALL",
+    "TREE_ITEM_HEIGHT",
     "QT_WIDGET_MAX_HEIGHT",
     "HISTORY_EXPORT_LIMIT",
     "HISTORY_RECENT_LIMIT",
     "HISTORY_PREVIEW_LENGTH",
     # Typography
     "Typography",
-    # Colors
-    "Colors",
+    # Colors - removed star import, import directly from .colors
     "ProjectColors",
     # Enums
     "WorkspaceState",
     # Timing
-    "AnimationDurations",
     "Timing",
     "TimerType",
     "defer_call",

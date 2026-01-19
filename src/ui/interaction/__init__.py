@@ -9,7 +9,7 @@ Note: This layer is deliberately inert. Intents do not execute actions;
 they name them. Execution remains in existing handlers until Phase 3.
 """
 
-from ui.interaction.intents import (
+from src.ui.interaction.intents import (
     BeginRecordingIntent,
     CancelRecordingIntent,
     CommitEditsIntent,
@@ -19,9 +19,10 @@ from ui.interaction.intents import (
     IntentSource,
     InteractionIntent,
     StopRecordingIntent,
+    ToggleRecordingIntent,
     ViewTranscriptIntent,
 )
-from ui.interaction.results import IntentOutcome, IntentResult
+from src.ui.interaction.intent_results import IntentOutcome, IntentResult
 
 __all__ = [
     # Intent types
@@ -35,6 +36,7 @@ __all__ = [
     "DiscardEditsIntent",
     "DeleteTranscriptIntent",
     "CancelRecordingIntent",
+    "ToggleRecordingIntent",
     # Outcome types
     "IntentOutcome",
     "IntentResult",

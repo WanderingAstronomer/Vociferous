@@ -24,9 +24,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.constants import MINOR_GAP, Typography
-from ui.widgets.dialogs.custom_dialog import StyledDialog
-from ui.widgets.styled_button import ButtonStyle, StyledButton
+from src.ui.constants import MINOR_GAP, Typography
+from src.ui.widgets.dialogs.custom_dialog import StyledDialog
+from src.ui.widgets.styled_button import ButtonStyle, StyledButton
 
 
 class ErrorDialog(StyledDialog):
@@ -218,7 +218,7 @@ class ErrorDialog(StyledDialog):
     def _view_logs(self) -> None:
         """Open the log file in the system editor."""
         try:
-            from ui.utils.error_handler import ErrorLogger
+            from src.ui.utils.error_handler import ErrorLogger
 
             ErrorLogger.open_log_file()
         except Exception:
@@ -238,7 +238,7 @@ class ErrorDialog(StyledDialog):
     def _log_error(self) -> None:
         """Log the error when the dialog is shown."""
         try:
-            from ui.utils.error_handler import get_error_logger
+            from src.ui.utils.error_handler import get_error_logger
 
             error_logger = get_error_logger()
             error_logger.log_error(

@@ -99,8 +99,8 @@ Persistence is implemented using **SQLAlchemy 2.0+**.
 
 * **Engine**: SQLite
 * **Location**: `~/.config/vociferous/vociferous.db`
-* **Schema Definitions**: `src/models.py`
-* **Access Layer**: `src/history_manager.py`
+* **Schema Definitions**: `src/database/models.py`
+* **Access Layer**: `src/database/history_manager.py`
 
 ### 3.2 Dual-Text Invariant (Critical)
 
@@ -173,7 +173,7 @@ Violations will result in UI instability and undefined behavior.
 
 ### 4.3 Input Backends
 
-* Defined in `src/key_listener.py`
+* Defined in `src/input_handler/`
 * Follow the `InputBackend` protocol
 
 Supported backends:
@@ -227,7 +227,7 @@ Documentation drift is treated as a **critical defect**, not a cosmetic issue.
 For non-trivial tasks, agents MUST create one or more Markdown files under:
 
 ```
-docs/agent_resources/agent_reports/
+docs/agent_reports/
 ```
 
 These files serve as **living system intelligence**.
@@ -283,6 +283,23 @@ Partial success is not success.
 
 ---
 
+## 5.7 Stewardship & The Clean Exit Protocol (Mandatory)
+
+Whenever you edit the codebase, you must exercise **active stewardship**. The "Revolving Door" rule applies: You must leave the code cleaner than you found it.
+
+#### The Decommissioning Protocol
+When removing a widget, component, or feature, you **MUST** perform a full lifecycle sweep:
+
+1.  **Remove the Code**: Delete the implementation files.
+2.  **Remove the Styles**: Check `src/ui/styles/` or local styles and delete orphaned QSS.
+3.  **Remove the Tests**: Delete tests that target the removed code. Do NOT just `@skip` them.
+4.  **Remove the Config**: Check `src/config_schema.yaml` and `src/config.yaml` for stale keys.
+5.  **Remove Imports**: grep for the component name and purge imports from `__init__.py` or other consumers.
+
+**Dead Code is Forbidden**: Commented-out code blocks must be deleted. Unreachable code must be removed.
+
+---
+
 ## 6. Execution Environment
 
 ### 6.1 Virtual Environment (Critical)
@@ -301,13 +318,14 @@ System Python is forbidden.
 
 ### 6.2 Running the Application
 
-The application MUST be launched using the wrapper script:
+The application MUST be launched using the root entry point:
 
 ```bash
-python scripts/run.py
+./vociferous
 ```
 
-This ensures correct GPU and library configuration.
+This ensures correct GPU and library configuration (LD_LIBRARY_PATH).
+Do NOT use `python scripts/run.py` (deprecated) or `python src/main.py` (bypasses GPU setup).
 
 ---
 
@@ -344,7 +362,7 @@ This ensures correct GPU and library configuration.
 
 ### 8.2 GPU
 
-* Managed exclusively via `scripts/run.py`
+* Managed exclusively via the `./vociferous` entry point wrapper.
 
 ---
 
@@ -353,6 +371,46 @@ This ensures correct GPU and library configuration.
 * `src/config_schema.yaml` is the **single source of truth**
 * Access configuration only via `ConfigManager`
 * Never hardcode config values
+
+---
+
+## 11. Directory and Structure Invariants
+
+### 11.1 Root Directory Hygiene
+The root directory is restricted. You may NOT create new top-level directories without explicit user approval.
+Allowed root items: `src`, `tests`, `docs`, `assets`, `scripts`, `vociferous`, `pyproject.toml`, `requirements.txt`, `README.md`, `LICENSE`, `CHANGELOG.md`.
+
+*   **Config Files**: Standalone config files (e.g., `mypy.ini`, `pytest.ini`) are FORBIDDEN. Use `pyproject.toml`.
+*   **Assets**: All runtime assets (icons, sounds) MUST live in `assets/`.
+
+### 11.2 Source Partitioning
+The `src/` directory layout is semantic and binding:
+
+*   `core/`: Exceptions, basic types, truly fundamental utilities.
+*   `database/`: ORM, models, migrations, history logic.
+*   `services/`: Business logic (transcription, audio, SLM).
+*   `ui/`: Qt widgets, views, and view logic.
+*   `input_handler/`: Keyboard/Input backends.
+*   `main.py`: Entry point only.
+
+### 11.3 Path Resolution Invariant
+**Do not hardcode relative path traversal** (e.g., `parents[4]`) in feature code.
+If a resource path is needed:
+1.  Define it once in a constant (e.g., `IconsDir` in a constants file).
+2.  Or use a centralized resource loader.
+3.  Do NOT scatter `Path(__file__).parent.parent...` logic throughout the UI.
+
+---
+
+## 12. External Knowledge and Documentation
+
+To ensure high-fidelity implementation of UI components and system integrations, agents should reference the comprehensive, searchable documentation available at the following project-relative paths:
+
+*   **Qt 6 / PyQt6 Documentation**: `docs/agent_resources/ai_docs/qt6_docs/doc.qt.io/`
+*   **UI Design Resources**: `docs/agent_resources/ai_docs/ui_design/`
+*   **Mermaid Diagram Documentation**: `docs/agent_resources/ai_docs/mermaid_docs/`
+
+These directories contain the definitive technical specifications for the framework's classes, signals, methods, and design best practices.
 
 ---
 

@@ -11,13 +11,14 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont
 from PyQt6.QtWidgets import QTreeWidgetItem
 
-from ui.constants import Colors, Typography
-from ui.utils.history_utils import (
+import src.ui.constants.colors as c
+from src.ui.constants import Typography
+from src.ui.utils.history_utils import (
     format_preview,
 )
 
 if TYPE_CHECKING:
-    from history_manager import HistoryEntry
+    from src.database.history_manager import HistoryEntry
 
 # Item Data Roles (Must match usages in widgets)
 ROLE_DAY_KEY = Qt.ItemDataRole.UserRole + 1
@@ -43,9 +44,14 @@ def create_transcript_item(
     """
     # dt = datetime.fromisoformat(entry.timestamp)
     # time_str = format_time_compact(dt)
-    preview = format_preview(entry.text, preview_length)
 
-    item = QTreeWidgetItem([preview])
+    # Naming Model: Display Name > 30-char fallback
+    if entry.display_name and entry.display_name.strip():
+        label = entry.display_name
+    else:
+        label = format_preview(entry.text, max_length=30)  # Match History View fallback
+
+    item = QTreeWidgetItem([label])
     item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
 
     # Store Data
@@ -63,12 +69,6 @@ def create_transcript_item(
     preview_font = QFont()
     preview_font.setPointSize(Typography.TRANSCRIPT_ITEM_SIZE)
     item.setFont(0, preview_font)
-    item.setForeground(0, QColor(Colors.TEXT_PRIMARY))
-
-    # Set tooltip (Disabled requested by user choice)
-    # dt = datetime.fromisoformat(entry.timestamp)
-    # full_date = format_day_header(dt, include_year=True)
-    # full_time = format_time(dt)
-    # item.setToolTip(0, f"{full_date} at {full_time}\n\n{entry.text}")
+    item.setForeground(0, QColor(c.GRAY_4))
 
     return item

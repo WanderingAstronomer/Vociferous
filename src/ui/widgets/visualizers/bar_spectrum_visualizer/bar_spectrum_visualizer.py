@@ -15,8 +15,8 @@ from PyQt6.QtCore import QRectF, QTimer, Qt, QPointF, QSize
 from PyQt6.QtGui import QColor, QPainter, QLinearGradient
 from PyQt6.QtWidgets import QSizePolicy, QWidget
 
-import ui.constants.colors as c
-from core.config_manager import ConfigManager
+import src.ui.constants.colors as c
+from src.core.config_manager import ConfigManager
 
 
 class BarSpectrumVisualizer(QWidget):
@@ -64,7 +64,7 @@ class BarSpectrumVisualizer(QWidget):
         self._cache_config()
 
         try:
-            ConfigManager.instance().configChanged.connect(self._on_config_changed)
+            ConfigManager.instance().config_changed.connect(self._on_config_changed)
         except Exception:
             pass
 
@@ -102,13 +102,13 @@ class BarSpectrumVisualizer(QWidget):
     def sizeHint(self) -> QSize:
         """
         Return preferred size for the bar spectrum visualizer.
-        
+
         Per Qt6 layout documentation, custom widgets must implement sizeHint()
         to provide layout engines with sizing information.
-        
+
         Returns:
             QSize: Preferred size of 200x100 pixels
-        
+
         References:
             - layout.html § "Custom Widgets in Layouts"
         """
@@ -117,7 +117,7 @@ class BarSpectrumVisualizer(QWidget):
     def minimumSizeHint(self) -> QSize:
         """
         Return minimum acceptable size for the visualizer.
-        
+
         Returns:
             QSize: Minimum size of 100x50 pixels
         """
@@ -304,7 +304,7 @@ class BarSpectrumVisualizer(QWidget):
         # Colors (Deep Blue to Light Blue gradient)
         # 0.0 (Bottom): Deep Blue
         # 1.0 (Top): Very Light Blue
-        color_start = QColor(c.BLUE_8)
+        color_start = QColor(c.BLUE_9)
         color_mid = QColor(c.BLUE_6)
         color_end = QColor(c.BLUE_3)
 

@@ -28,8 +28,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
 )
 
-from core.constants import ICONS_DIR
-from ui.constants.view_ids import (
+from src.ui.constants.view_ids import (
     VIEW_TRANSCRIBE,
     VIEW_HISTORY,
     VIEW_PROJECTS,
@@ -38,13 +37,14 @@ from ui.constants.view_ids import (
     VIEW_SETTINGS,
     VIEW_USER,
 )
-from ui.interaction.intents import InteractionIntent, NavigateIntent, IntentSource
-from core.config_manager import ConfigManager
+from src.ui.interaction.intents import InteractionIntent, NavigateIntent, IntentSource
+from src.core.config_manager import ConfigManager
+from src.core.resource_manager import ResourceManager
 
 
 # Rail constants
-# Increased height and icon sizing to prevent label clipping
-RAIL_WIDTH: Final = 110
+# Width = button_width(110) + left_margin(16) + right_margin(16) = 142
+RAIL_WIDTH: Final = 142
 BUTTON_HEIGHT: Final = 110
 ICON_SIZE: Final = 48
 
@@ -57,7 +57,7 @@ class RailButton(QToolButton):
     Enforces Invariant 7.5 (View Switch Blink) via blink() method.
     """
 
-    blinkFinished = pyqtSignal()
+    blink_finished = pyqtSignal()
 
     def __init__(
         self, view_id: str, icon_name: str, label: str, parent: QWidget | None = None
@@ -65,8 +65,8 @@ class RailButton(QToolButton):
         super().__init__(parent)
         self.view_id = view_id
 
-        icon_path = ICONS_DIR / f"{icon_name}.svg"
-        self.setIcon(QIcon(str(icon_path)))
+        icon_path = ResourceManager.get_icon_path(icon_name)
+        self.setIcon(QIcon(icon_path))
         # Adjusted for smaller rail
         self.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
 
@@ -89,13 +89,13 @@ class RailButton(QToolButton):
     def sizeHint(self) -> QSize:
         """
         Return preferred size for the rail button.
-        
+
         Per Qt6 layout documentation, custom widgets must implement sizeHint()
         to provide layout engines with sizing information.
-        
+
         Returns:
             QSize: Square dimensions of 110x110 pixels
-        
+
         References:
             - layout.html § "Custom Widgets in Layouts"
         """
@@ -104,7 +104,7 @@ class RailButton(QToolButton):
     def minimumSizeHint(self) -> QSize:
         """
         Return minimum size for the rail button.
-        
+
         Returns:
             QSize: Minimum size equals preferred size (110x110)
         """
@@ -122,16 +122,16 @@ class RailButton(QToolButton):
     def _reset_blink(self) -> None:
         self.setProperty("blink", "inactive")
         self.style().polish(self)
-        self.blinkFinished.emit()
+        self.blink_finished.emit()
 
     def cleanup(self) -> None:
         """
         Clean up any resources used by the button.
-        
+
         Per Vociferous cleanup protocol, stops any pending QTimer.singleShot
         callbacks. Note: QTimer.singleShot timers auto-cleanup when fired,
         but this ensures consistency.
-        
+
         This method is idempotent and safe to call multiple times.
         """
         # QTimer.singleShot cleans up automatically, but we reset state
@@ -179,7 +179,7 @@ class IconRail(QWidget):
 
     def _build_inventory(self) -> None:
         """Construct the rail buttons based on canonical view list."""
-        # View defs: ID, IconName, Tooltip
+        # View defs: ID, IconName, Label
         views = [
             (VIEW_TRANSCRIBE, "rail_icon-transcribe_view", "Transcribe"),
             (VIEW_HISTORY, "rail_icon-history_view", "History"),

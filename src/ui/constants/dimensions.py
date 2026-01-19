@@ -4,7 +4,7 @@ Dimension constants for widgets and layout.
 Covers workspace, metrics strip, buttons, and content area sizing.
 
 Usage:
-    from ui.constants.dimensions import SPLITTER_HANDLE_WIDTH, etc.
+    from src.ui.constants.dimensions import SPLITTER_HANDLE_WIDTH, etc.
 """
 
 from .spacing import Spacing
@@ -74,8 +74,7 @@ BUTTON_HEIGHT_DESTRUCTIVE = 40
 BUTTON_MIN_WIDTH_PRIMARY = 240
 
 # Blurb text constraints
-BLURB_MAX_WIDTH = 560
-BLURB_MAX_WIDTH_RATIO = 0.75
+BLURB_MAX_WIDTH = 1000
 
 # =================================================================
 # BORDER RADII (consolidated scale: 4, 8, 12, 16)

@@ -12,5 +12,7 @@ class WorkspaceState(Enum):
 
     IDLE = "idle"  # No transcript selected, not recording
     RECORDING = "recording"  # Actively recording audio
+    TRANSCRIBING = "transcribing"  # Recording finished, engine is processing
+    READY = "ready"  # Transcription completed, waiting for action
     VIEWING = "viewing"  # Transcript selected, read-only
     EDITING = "editing"  # Explicit edit mode

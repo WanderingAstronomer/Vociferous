@@ -19,7 +19,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from ui.interaction import (
+from src.ui.interaction import (
     BeginRecordingIntent,
     CancelRecordingIntent,
     CommitEditsIntent,
@@ -32,7 +32,7 @@ from ui.interaction import (
     StopRecordingIntent,
     ViewTranscriptIntent,
 )
-from ui.interaction.intents import IntentSource
+from src.ui.interaction.intents import IntentSource
 
 
 class TestIntentConstruction:
@@ -184,7 +184,7 @@ class TestHandleIntentPassthrough:
     @pytest.fixture
     def workspace(self, qapp_session):
         """Create MainWorkspace instance for testing."""
-        from ui.components.workspace import MainWorkspace
+        from src.ui.components.workspace import MainWorkspace
 
         w = MainWorkspace()
         return w
@@ -233,11 +233,11 @@ class TestHandleIntentPassthrough:
         assert isinstance(result, IntentResult)
 
     def test_intent_processed_signal_emitted(self, workspace):
-        """intentProcessed signal is emitted after handling."""
+        """intent_processed signal is emitted after handling."""
         intent = BeginRecordingIntent()
 
         received_results = []
-        workspace.intentProcessed.connect(lambda r: received_results.append(r))
+        workspace.intent_processed.connect(lambda r: received_results.append(r))
 
         workspace.handle_intent(intent)
 
@@ -255,15 +255,15 @@ class TestEditIntentStateAssertions:
     @pytest.fixture
     def workspace(self, qapp_session):
         """Create MainWorkspace instance for testing."""
-        from ui.components.workspace import MainWorkspace
-        from ui.constants import WorkspaceState
+        from src.ui.components.workspace import MainWorkspace
+        from src.ui.constants import WorkspaceState
 
         w = MainWorkspace()
         return w
 
     def test_edit_rejected_in_idle_no_transcript(self, workspace):
         """EditTranscriptIntent must be rejected in IDLE (no transcript)."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         assert workspace.get_state() == WorkspaceState.IDLE
 
@@ -275,11 +275,11 @@ class TestEditIntentStateAssertions:
 
     def test_edit_rejected_in_recording(self, workspace):
         """EditTranscriptIntent must be rejected in RECORDING state."""
-        from ui.constants import WorkspaceState
-        
+        from src.ui.constants import WorkspaceState
+
         # Enter valid recording state
         workspace.handle_intent(BeginRecordingIntent())
-        
+
         # Ensure we are actually recording to validate test setup
         assert workspace.get_state() == WorkspaceState.RECORDING
 
@@ -290,50 +290,59 @@ class TestEditIntentStateAssertions:
         assert workspace.get_state() == WorkspaceState.RECORDING  # State unchanged
 
     def test_edit_accepted_in_viewing_with_transcript(self, workspace):
-        """EditTranscriptIntent must be accepted in VIEWING with transcript loaded."""
-        from ui.constants import WorkspaceState
+        """EditTranscriptIntent must be accepted in VIEWING and emit edit_requested signal."""
+        from src.ui.constants import WorkspaceState
+        from unittest.mock import Mock
 
         # Load a transcript (puts workspace in VIEWING state)
         workspace.load_transcript("Test transcript", "2026-01-11T12:00:00")
         assert workspace.get_state() == WorkspaceState.VIEWING
 
+        # Connect signal spy
+        signal_spy = Mock()
+        workspace.edit_requested.connect(signal_spy)
+
         intent = EditTranscriptIntent(transcript_id="test_id")
         result = workspace.handle_intent(intent)
 
         assert result.outcome == IntentOutcome.ACCEPTED
-        assert workspace.get_state() == WorkspaceState.EDITING  # State changed
+        assert (
+            workspace.get_state() == WorkspaceState.VIEWING
+        )  # Delegates to external view
+        signal_spy.assert_called_once()  # Should emit edit_requested signal
 
-    def test_begin_recording_rejected_in_editing(self, workspace):
-        """BeginRecordingIntent must be rejected in EDITING (Invariant 2)."""
-        from ui.constants import WorkspaceState
+    def test_begin_recording_accepted_after_edit_delegation(self, workspace):
+        """BeginRecordingIntent is accepted after EditIntent delegation (workspace stays in VIEWING)."""
+        from src.ui.constants import WorkspaceState
 
-        # Load transcript and enter editing
+        # Load transcript and delegate to edit view
         workspace.load_transcript("Test transcript", "2026-01-11T12:00:00")
         workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
-        
-        # Verify setup
-        assert workspace.get_state() == WorkspaceState.EDITING
 
+        # Workspace remains in VIEWING (editing happens in external EditView)
+        assert workspace.get_state() == WorkspaceState.VIEWING
+
+        # Recording is still possible from VIEWING state
         intent = BeginRecordingIntent()
         result = workspace.handle_intent(intent)
 
-        assert result.outcome == IntentOutcome.REJECTED
-        assert "editing" in result.reason.lower()
-        assert workspace.get_state() == WorkspaceState.EDITING  # State unchanged
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.RECORDING
 
-    def test_edit_no_op_when_already_editing(self, workspace):
-        """EditTranscriptIntent should be NO_OP when already in EDITING."""
-        from ui.constants import WorkspaceState
+    def test_edit_can_be_requested_multiple_times(self, workspace):
+        """EditTranscriptIntent can be requested multiple times (delegates to external view)."""
+        from src.ui.constants import WorkspaceState
 
-        # Load transcript and enter editing
+        # Load transcript and delegate to edit view
         workspace.load_transcript("Test transcript", "2026-01-11T12:00:00")
         workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
 
+        # Can request again (will emit signal again)
         intent = EditTranscriptIntent(transcript_id="test_id")
         result = workspace.handle_intent(intent)
 
-        assert result.outcome == IntentOutcome.NO_OP
-        assert workspace.get_state() == WorkspaceState.EDITING
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.VIEWING
 
 
 class TestCommitIntentStateAssertions:
@@ -342,32 +351,33 @@ class TestCommitIntentStateAssertions:
     @pytest.fixture
     def workspace(self, qapp_session):
         """Create MainWorkspace instance for testing."""
-        from ui.components.workspace import MainWorkspace
+        from src.ui.components.workspace import MainWorkspace
 
         w = MainWorkspace()
         return w
 
-    def test_commit_accepted_in_editing(self, workspace):
-        """CommitEditsIntent must be accepted in EDITING and transition to VIEWING."""
-        from ui.constants import WorkspaceState
+    def test_commit_rejected_in_viewing(self, workspace):
+        """CommitEditsIntent is rejected in VIEWING (editing happens in external EditView)."""
+        from src.ui.constants import WorkspaceState
 
-        # Load transcript and enter editing
+        # Load transcript (workspace stays in VIEWING)
         workspace.load_transcript("Original text", "2026-01-11T12:00:00")
-        edit_result = workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
+        edit_result = workspace.handle_intent(
+            EditTranscriptIntent(transcript_id="test_id")
+        )
         assert edit_result.outcome == IntentOutcome.ACCEPTED
-        assert workspace.get_state() == WorkspaceState.EDITING
+        assert workspace.get_state() == WorkspaceState.VIEWING  # Editing delegated
 
-        # Now commit
+        # Commit should be rejected (not in edit mode in workspace)
         intent = CommitEditsIntent(content="Edited text")
         result = workspace.handle_intent(intent)
 
-        assert result.outcome == IntentOutcome.ACCEPTED
-        assert workspace.get_state() == WorkspaceState.VIEWING
-        assert not workspace.has_unsaved_changes()
+        assert result.outcome == IntentOutcome.REJECTED
+        assert "Not in edit mode" in result.reason
 
     def test_commit_rejected_when_not_editing(self, workspace):
         """CommitEditsIntent must be rejected when not in EDITING state."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         # Start in IDLE
         assert workspace.get_state() == WorkspaceState.IDLE
@@ -378,39 +388,24 @@ class TestCommitIntentStateAssertions:
         assert result.outcome == IntentOutcome.REJECTED
         assert workspace.get_state() == WorkspaceState.IDLE
 
-    def test_commit_rejected_in_viewing(self, workspace):
-        """CommitEditsIntent must be rejected in VIEWING state."""
-        from ui.constants import WorkspaceState
+    def test_commit_not_applicable_after_edit_delegation(self, workspace):
+        """CommitEditsIntent is not applicable after EditIntent delegation."""
+        from src.ui.constants import WorkspaceState
 
-        # Load transcript (goes to VIEWING)
-        workspace.load_transcript("Test text", "2026-01-11T12:00:00")
-        assert workspace.get_state() == WorkspaceState.VIEWING
-
-        intent = CommitEditsIntent(content="Edited text")
-        result = workspace.handle_intent(intent)
-
-        assert result.outcome == IntentOutcome.REJECTED
-        assert workspace.get_state() == WorkspaceState.VIEWING
-
-    def test_commit_emits_save_requested_signal(self, workspace):
-        """CommitEditsIntent should emit saveRequested signal with content."""
-        from ui.constants import WorkspaceState
-
-        # Load transcript and enter editing
+        # Load transcript and delegate editing
         workspace.load_transcript("Original", "2026-01-11T12:00:00")
         workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
 
-        # Track signal
+        # Track signal - should not be called
         saved_content = []
-        workspace.saveRequested.connect(lambda text: saved_content.append(text))
+        workspace.save_requested.connect(lambda text: saved_content.append(text))
 
-        # Commit with new text
+        # Commit should be rejected (not in edit mode in workspace)
         intent = CommitEditsIntent(content="New content")
         result = workspace.handle_intent(intent)
 
-        assert result.outcome == IntentOutcome.ACCEPTED
-        assert len(saved_content) == 1
-        assert saved_content[0] == "New content"
+        assert result.outcome == IntentOutcome.REJECTED
+        assert len(saved_content) == 0
 
 
 class TestDiscardIntentStateAssertions:
@@ -419,32 +414,33 @@ class TestDiscardIntentStateAssertions:
     @pytest.fixture
     def workspace(self, qapp_session):
         """Create MainWorkspace instance for testing."""
-        from ui.components.workspace import MainWorkspace
+        from src.ui.components.workspace import MainWorkspace
 
         w = MainWorkspace()
         return w
 
-    def test_discard_accepted_in_editing(self, workspace):
-        """DiscardEditsIntent must be accepted in EDITING and transition to VIEWING."""
-        from ui.constants import WorkspaceState
+    def test_discard_no_op_after_edit_delegation(self, workspace):
+        """DiscardEditsIntent is NO_OP after EditIntent delegation."""
+        from src.ui.constants import WorkspaceState
 
-        # Load transcript and enter editing
+        # Load transcript and delegate editing
         workspace.load_transcript("Original text", "2026-01-11T12:00:00")
-        edit_result = workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
+        edit_result = workspace.handle_intent(
+            EditTranscriptIntent(transcript_id="test_id")
+        )
         assert edit_result.outcome == IntentOutcome.ACCEPTED
-        assert workspace.get_state() == WorkspaceState.EDITING
+        assert workspace.get_state() == WorkspaceState.VIEWING  # Not EDITING
 
-        # Now discard
+        # Discard should be NO_OP
         intent = DiscardEditsIntent()
         result = workspace.handle_intent(intent)
 
-        assert result.outcome == IntentOutcome.ACCEPTED
+        assert result.outcome == IntentOutcome.NO_OP
         assert workspace.get_state() == WorkspaceState.VIEWING
-        assert not workspace.has_unsaved_changes()
 
     def test_discard_no_op_when_not_editing(self, workspace):
         """DiscardEditsIntent should be NO_OP when not in EDITING state."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         # Start in IDLE
         assert workspace.get_state() == WorkspaceState.IDLE
@@ -457,7 +453,7 @@ class TestDiscardIntentStateAssertions:
 
     def test_discard_no_op_in_viewing(self, workspace):
         """DiscardEditsIntent should be NO_OP in VIEWING state."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         # Load transcript (goes to VIEWING)
         workspace.load_transcript("Test text", "2026-01-11T12:00:00")
@@ -469,23 +465,23 @@ class TestDiscardIntentStateAssertions:
         assert result.outcome == IntentOutcome.NO_OP
         assert workspace.get_state() == WorkspaceState.VIEWING
 
-    def test_discard_does_not_emit_save_signal(self, workspace):
-        """DiscardEditsIntent should NOT emit saveRequested signal."""
-        from ui.constants import WorkspaceState
+    def test_discard_no_op_does_not_emit_save_signal(self, workspace):
+        """DiscardEditsIntent should NOT emit save_requested signal (NO_OP in VIEWING)."""
+        from src.ui.constants import WorkspaceState
 
-        # Load transcript and enter editing
+        # Load transcript and delegate editing
         workspace.load_transcript("Original", "2026-01-11T12:00:00")
         workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
 
         # Track signal - should not be called
         saved_content = []
-        workspace.saveRequested.connect(lambda text: saved_content.append(text))
+        workspace.save_requested.connect(lambda text: saved_content.append(text))
 
-        # Discard
+        # Discard returns NO_OP (not in EDITING in workspace)
         intent = DiscardEditsIntent()
         result = workspace.handle_intent(intent)
 
-        assert result.outcome == IntentOutcome.ACCEPTED
+        assert result.outcome == IntentOutcome.NO_OP
         assert len(saved_content) == 0  # Signal should NOT fire
 
 
@@ -495,14 +491,14 @@ class TestViewIntentStateAssertions:
     @pytest.fixture
     def workspace(self, qapp_session):
         """Create MainWorkspace instance for testing."""
-        from ui.components.workspace import MainWorkspace
+        from src.ui.components.workspace import MainWorkspace
 
         w = MainWorkspace()
         return w
 
     def test_view_accepted_in_idle_transitions_to_viewing(self, workspace):
         """ViewTranscriptIntent in IDLE with text transitions to VIEWING."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         assert workspace.get_state() == WorkspaceState.IDLE
 
@@ -515,7 +511,7 @@ class TestViewIntentStateAssertions:
 
     def test_view_accepted_in_viewing_switches_transcript(self, workspace):
         """ViewTranscriptIntent in VIEWING switches to different transcript."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         # First view
         workspace.handle_intent(
@@ -532,7 +528,7 @@ class TestViewIntentStateAssertions:
 
     def test_view_rejected_in_recording(self, workspace):
         """ViewTranscriptIntent must be rejected in RECORDING state."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         # Enter recording
         workspace.handle_intent(BeginRecordingIntent())
@@ -544,26 +540,25 @@ class TestViewIntentStateAssertions:
         assert result.outcome == IntentOutcome.REJECTED
         assert workspace.get_state() == WorkspaceState.RECORDING
 
-    def test_view_rejected_in_editing_with_unsaved_changes(self, workspace):
-        """ViewTranscriptIntent rejected in EDITING with unsaved changes (Invariant 3)."""
-        from ui.constants import WorkspaceState
+    def test_view_accepted_after_edit_delegation(self, workspace):
+        """ViewTranscriptIntent accepted after EditIntent delegation (workspace stays VIEWING)."""
+        from src.ui.constants import WorkspaceState
 
-        # Load transcript and enter editing
+        # Load transcript and delegate editing
         workspace.load_transcript("Original", "2026-01-11T12:00:00")
         workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
-        assert workspace.get_state() == WorkspaceState.EDITING
-        # Qt textChanged fires, so has_unsaved_changes is True
+        assert workspace.get_state() == WorkspaceState.VIEWING  # Not EDITING
 
-        # Try to view different transcript
+        # Try to view different transcript - should work
         intent = ViewTranscriptIntent(timestamp="2026-01-11T13:00:00", text="Other")
         result = workspace.handle_intent(intent)
 
-        assert result.outcome == IntentOutcome.REJECTED
-        assert workspace.get_state() == WorkspaceState.EDITING
+        assert result.outcome == IntentOutcome.ACCEPTED
+        assert workspace.get_state() == WorkspaceState.VIEWING
 
     def test_view_with_empty_text_stays_idle(self, workspace):
         """ViewTranscriptIntent with empty text results in IDLE state."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         intent = ViewTranscriptIntent(timestamp="2026-01-11T12:00:00", text="")
         result = workspace.handle_intent(intent)
@@ -585,14 +580,14 @@ class TestDeleteIntentStateAssertions:
     @pytest.fixture
     def workspace(self, qapp_session):
         """Create MainWorkspace instance for testing."""
-        from ui.components.workspace import MainWorkspace
+        from src.ui.components.workspace import MainWorkspace
 
         w = MainWorkspace()
         return w
 
     def test_delete_accepted_in_viewing_emits_signal(self, workspace):
-        """DeleteTranscriptIntent in VIEWING emits deleteRequested signal."""
-        from ui.constants import WorkspaceState
+        """DeleteTranscriptIntent in VIEWING emits delete_requested signal."""
+        from src.ui.constants import WorkspaceState
 
         # Load transcript to enter VIEWING
         workspace.load_transcript("Test text", "2026-01-11T12:00:00")
@@ -600,7 +595,7 @@ class TestDeleteIntentStateAssertions:
 
         # Track signal
         delete_requested = []
-        workspace.deleteRequested.connect(lambda: delete_requested.append(True))
+        workspace.delete_requested.connect(lambda: delete_requested.append(True))
 
         intent = DeleteTranscriptIntent(timestamp="2026-01-11T12:00:00")
         result = workspace.handle_intent(intent)
@@ -612,7 +607,7 @@ class TestDeleteIntentStateAssertions:
 
     def test_delete_rejected_in_idle(self, workspace):
         """DeleteTranscriptIntent rejected in IDLE state."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         assert workspace.get_state() == WorkspaceState.IDLE
 
@@ -624,7 +619,7 @@ class TestDeleteIntentStateAssertions:
 
     def test_delete_rejected_in_recording(self, workspace):
         """DeleteTranscriptIntent rejected in RECORDING state."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         workspace.handle_intent(BeginRecordingIntent())
         assert workspace.get_state() == WorkspaceState.RECORDING
@@ -635,23 +630,28 @@ class TestDeleteIntentStateAssertions:
         assert result.outcome == IntentOutcome.REJECTED
         assert workspace.get_state() == WorkspaceState.RECORDING
 
-    def test_delete_rejected_in_editing(self, workspace):
-        """DeleteTranscriptIntent rejected in EDITING state."""
-        from ui.constants import WorkspaceState
+    def test_delete_accepted_after_edit_delegation(self, workspace):
+        """DeleteTranscriptIntent accepted after EditIntent delegation (workspace in VIEWING)."""
+        from src.ui.constants import WorkspaceState
+        from unittest.mock import Mock
 
         workspace.load_transcript("Test", "2026-01-11T12:00:00")
         workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
-        assert workspace.get_state() == WorkspaceState.EDITING
+        assert workspace.get_state() == WorkspaceState.VIEWING  # Not EDITING
+
+        # Track signal
+        signal_spy = Mock()
+        workspace.delete_requested.connect(signal_spy)
 
         intent = DeleteTranscriptIntent(timestamp="2026-01-11T12:00:00")
         result = workspace.handle_intent(intent)
 
-        assert result.outcome == IntentOutcome.REJECTED
-        assert workspace.get_state() == WorkspaceState.EDITING
+        assert result.outcome == IntentOutcome.ACCEPTED
+        signal_spy.assert_called_once()
 
     def test_clear_transcript_transitions_to_idle(self, workspace):
         """clear_transcript() transitions to IDLE after confirmed delete."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         workspace.load_transcript("Test", "2026-01-11T12:00:00")
         assert workspace.get_state() == WorkspaceState.VIEWING
@@ -677,54 +677,34 @@ class TestPhase4StoppingCondition:
     @pytest.fixture
     def workspace(self, qapp_session):
         """Create MainWorkspace instance for testing."""
-        from ui.components.workspace import MainWorkspace
+        from src.ui.components.workspace import MainWorkspace
 
         w = MainWorkspace()
         return w
 
-    def test_only_terminal_intents_exit_editing(self, workspace):
-        """Only CommitEditsIntent and DiscardEditsIntent can exit EDITING."""
-        from ui.constants import WorkspaceState
+    def test_edit_delegation_does_not_trap_workspace(self, workspace):
+        """EditIntent delegates to external view and does not trap workspace in EDITING."""
+        from src.ui.constants import WorkspaceState
 
-        # Setup: enter editing
+        # Setup: delegate editing
         workspace.load_transcript("Test text", "2026-01-11T12:00:00")
-        workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
-        assert workspace.get_state() == WorkspaceState.EDITING
-
-        # Try BeginRecordingIntent - should be REJECTED
-        result = workspace.handle_intent(BeginRecordingIntent())
-        assert result.outcome == IntentOutcome.REJECTED
-        assert workspace.get_state() == WorkspaceState.EDITING
-
-        # Try ViewTranscriptIntent - should be REJECTED (unsaved changes)
-        result = workspace.handle_intent(
-            ViewTranscriptIntent(timestamp="other", text="Other")
+        edit_result = workspace.handle_intent(
+            EditTranscriptIntent(transcript_id="test_id")
         )
-        assert result.outcome == IntentOutcome.REJECTED
-        assert workspace.get_state() == WorkspaceState.EDITING
+        assert edit_result.outcome == IntentOutcome.ACCEPTED
+        initial_state = workspace.get_state()
+        assert initial_state == WorkspaceState.VIEWING  # Not trapped in EDITING
 
-        # Try EditTranscriptIntent - should be NO_OP
-        result = workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
-        assert result.outcome == IntentOutcome.NO_OP
-        assert workspace.get_state() == WorkspaceState.EDITING
-
-        # CommitEditsIntent exits to VIEWING
-        result = workspace.handle_intent(CommitEditsIntent(content="text"))
+        # BeginRecordingIntent should be ACCEPTED (workspace is in VIEWING, not trapped)
+        result = workspace.handle_intent(BeginRecordingIntent())
         assert result.outcome == IntentOutcome.ACCEPTED
-        assert workspace.get_state() == WorkspaceState.VIEWING
-
-        # Re-enter editing and test discard
-        workspace.handle_intent(EditTranscriptIntent(transcript_id="test_id"))
-        assert workspace.get_state() == WorkspaceState.EDITING
-
-        # DiscardEditsIntent exits to VIEWING
-        result = workspace.handle_intent(DiscardEditsIntent())
-        assert result.outcome == IntentOutcome.ACCEPTED
-        assert workspace.get_state() == WorkspaceState.VIEWING
+        # After begin recording, workspace transitions to RECORDING
+        final_state = workspace.get_state()
+        assert final_state == WorkspaceState.RECORDING
 
     def test_invariant_5_unsaved_changes_cleared_by_terminal(self, workspace):
         """Terminal intents must clear _has_unsaved_changes."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         # Setup: enter editing and simulate text change
         workspace.load_transcript("Original", "2026-01-11T12:00:00")
@@ -752,14 +732,14 @@ class TestPhase5AuthorityConsolidation:
     @pytest.fixture
     def workspace(self, qapp_session):
         """Create MainWorkspace instance for testing."""
-        from ui.components.workspace import MainWorkspace
+        from src.ui.components.workspace import MainWorkspace
 
         w = MainWorkspace()
         return w
 
     def test_view_intent_is_authoritative(self, workspace):
         """ViewTranscriptIntent controls all view transitions."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         # IDLE → VIEWING via intent
         result = workspace.handle_intent(
@@ -777,7 +757,7 @@ class TestPhase5AuthorityConsolidation:
 
     def test_delete_intent_validates_but_defers_state_change(self, workspace):
         """DeleteTranscriptIntent validates but doesn't change state directly."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         workspace.load_transcript("Test", "2026-01-11T12:00:00")
         assert workspace.get_state() == WorkspaceState.VIEWING
@@ -795,14 +775,14 @@ class TestPhase5AuthorityConsolidation:
 
     def test_all_destructive_click_routes_through_intents(self, workspace):
         """_on_destructive_click routes all cases through intent layer."""
-        from ui.constants import WorkspaceState
+        from src.ui.constants import WorkspaceState
 
         # RECORDING → cancel via intent
         workspace.handle_intent(BeginRecordingIntent())
         assert workspace.get_state() == WorkspaceState.RECORDING
 
         cancel_emitted = []
-        workspace.cancelRequested.connect(lambda: cancel_emitted.append(True))
+        workspace.cancel_requested.connect(lambda: cancel_emitted.append(True))
         workspace._on_destructive_click()
 
         assert len(cancel_emitted) == 1
@@ -815,7 +795,7 @@ class TestPhase5AuthorityConsolidation:
         assert workspace.get_state() == WorkspaceState.VIEWING
 
         delete_emitted = []
-        workspace.deleteRequested.connect(lambda: delete_emitted.append(True))
+        workspace.delete_requested.connect(lambda: delete_emitted.append(True))
         workspace._on_destructive_click()
 
         assert len(delete_emitted) == 1

@@ -220,7 +220,9 @@ class TestRailButtonSizing:
         """Widget must implement sizeHint() method."""
         from src.ui.components.main_window.icon_rail import RailButton
 
-        button = RailButton(view_id="transcribe", icon_name="transcribe", label="Transcribe")
+        button = RailButton(
+            view_id="transcribe", icon_name="transcribe", label="Transcribe"
+        )
         qtbot.addWidget(button)
 
         assert hasattr(button, "sizeHint")
@@ -230,7 +232,9 @@ class TestRailButtonSizing:
         """sizeHint() must return QSize instance."""
         from src.ui.components.main_window.icon_rail import RailButton
 
-        button = RailButton(view_id="transcribe", icon_name="transcribe", label="Transcribe")
+        button = RailButton(
+            view_id="transcribe", icon_name="transcribe", label="Transcribe"
+        )
         qtbot.addWidget(button)
 
         size_hint = button.sizeHint()
@@ -242,7 +246,9 @@ class TestRailButtonSizing:
         """RailButton should return square dimensions."""
         from src.ui.components.main_window.icon_rail import RailButton
 
-        button = RailButton(view_id="transcribe", icon_name="transcribe", label="Transcribe")
+        button = RailButton(
+            view_id="transcribe", icon_name="transcribe", label="Transcribe"
+        )
         qtbot.addWidget(button)
 
         size_hint = button.sizeHint()
@@ -255,7 +261,9 @@ class TestRailButtonSizing:
         """Widget should implement minimumSizeHint() method."""
         from src.ui.components.main_window.icon_rail import RailButton
 
-        button = RailButton(view_id="transcribe", icon_name="transcribe", label="Transcribe")
+        button = RailButton(
+            view_id="transcribe", icon_name="transcribe", label="Transcribe"
+        )
         qtbot.addWidget(button)
 
         assert hasattr(button, "minimumSizeHint")

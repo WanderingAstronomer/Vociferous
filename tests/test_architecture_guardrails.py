@@ -78,18 +78,21 @@ class TestSetStateGuardrails:
 
         # Parse into AST to find function locations
         tree = ast.parse(content)
-        
+
         # Visitor to find method calls to .set_state
         class SetStateVisitor(ast.NodeVisitor):
             def __init__(self):
-                self.calls = [] # List of (lineno, func_name_context)
+                self.calls = []  # List of (lineno, func_name_context)
 
             def visit_Call(self, node):
                 # Check for .set_state()
-                if isinstance(node.func, ast.Attribute) and node.func.attr == "set_state":
+                if (
+                    isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "set_state"
+                ):
                     self.calls.append(node.lineno)
                 self.generic_visit(node)
-        
+
         # Visitor to map lines to function names
         class MethodFinder(ast.NodeVisitor):
             def __init__(self):
@@ -102,7 +105,7 @@ class TestSetStateGuardrails:
 
         method_finder = MethodFinder()
         method_finder.visit(tree)
-        
+
         call_visitor = SetStateVisitor()
         call_visitor.visit(tree)
 
@@ -119,7 +122,9 @@ class TestSetStateGuardrails:
             # Authorized methods in MainWindow that can call set_state
             # Currently only one: sync_recording_status_from_engine
             if owner_func not in ("sync_recording_status_from_engine",):
-                 violations.append(f"  Line {line_num} in '{owner_func}' calls set_state()")
+                violations.append(
+                    f"  Line {line_num} in '{owner_func}' calls set_state()"
+                )
 
         if violations:
             msg = (
@@ -173,7 +178,7 @@ class TestFeedbackLayerIsolation:
             pytest.fail(msg)
 
     def test_feedback_handler_only_imports_from_interaction(self) -> None:
-        """Feedback handler should only import intent types from ui.interaction."""
+        """Feedback handler should only import intent types from src.ui.interaction."""
         feedback_path = SRC_ROOT / "ui/components/main_window/intent_feedback.py"
         content = feedback_path.read_text(encoding="utf-8")
 
@@ -181,7 +186,7 @@ class TestFeedbackLayerIsolation:
 
         # Check for imports from workspace module
         workspace_import_patterns = [
-            r"from\s+ui\.components\.workspace",
+            r"from\s+(src\.)?ui\.components\.workspace",
             r"import\s+.*workspace",
             r"from\s+\.\.workspace",
         ]
@@ -194,7 +199,7 @@ class TestFeedbackLayerIsolation:
         if violations:
             msg = (
                 "ARCHITECTURE VIOLATION: IntentFeedbackHandler imports from workspace module.\n"
-                "The feedback layer should only import from ui.interaction (intents, results).\n\n"
+                "The feedback layer should only import from src.ui.interaction (intents, results).\n\n"
                 "Violations:\n" + "\n".join(violations)
             )
             pytest.fail(msg)
@@ -208,6 +213,7 @@ class TestIntentCatalogGuardrails:
         "BeginRecordingIntent",
         "StopRecordingIntent",
         "CancelRecordingIntent",
+        "ToggleRecordingIntent",
         "ViewTranscriptIntent",
         "EditTranscriptIntent",
         "CommitEditsIntent",
@@ -268,7 +274,7 @@ class TestIntentCatalogGuardrails:
             msg = (
                 "ARCHITECTURE VIOLATION: Intent catalog does not match exports.\n"
                 "The catalog (docs/dev/intent-catalog.md) must be kept in sync with\n"
-                "the actual exports from ui.interaction.__init__.py.\n\n"
+                "the actual exports from src.ui.interaction.__init__.py.\n\n"
                 "Mismatches:\n" + "\n".join(violations) + "\n\n"
                 "Fix: Update the catalog or exports to match."
             )
@@ -298,7 +304,7 @@ class TestIntentCatalogGuardrails:
 
         if unknown:
             msg = (
-                "ARCHITECTURE VIOLATION: Unknown types exported from ui.interaction.\n"
+                "ARCHITECTURE VIOLATION: Unknown types exported from src.ui.interaction.\n"
                 f"Found: {unknown}\n\n"
                 "If this is a new intent type:\n"
                 "  1. Add to CATALOGED_INTENTS in this test\n"
@@ -360,26 +366,31 @@ class TestOrchestrationPrivilege:
         content = main_window_path.read_text(encoding="utf-8")
 
         tree = ast.parse(content)
-        
+
         class OrchestrationGuardVisitor(ast.NodeVisitor):
             def __init__(self):
                 self.in_orchestration = False
                 self.checks_state = False
-            
+
             def visit_FunctionDef(self, node):
                 if node.name == "sync_recording_status_from_engine":
                     self.in_orchestration = True
                     self.generic_visit(node)
                     self.in_orchestration = False
                 # Do not recurse into other functions
-            
+
             def visit_Compare(self, node):
                 if self.in_orchestration:
                     # Look for comparisons involving WorkspaceState.IDLE or RECORDING
                     for comparator in node.comparators + [node.left]:
-                        if isinstance(comparator, ast.Attribute) and comparator.attr in ("IDLE", "RECORDING"):
+                        if isinstance(
+                            comparator, ast.Attribute
+                        ) and comparator.attr in ("IDLE", "RECORDING"):
                             # Assuming it comes from WorkspaceState.IDLE
-                            if isinstance(comparator.value, ast.Name) and "WorkspaceState" in comparator.value.id:
+                            if (
+                                isinstance(comparator.value, ast.Name)
+                                and "WorkspaceState" in comparator.value.id
+                            ):
                                 self.checks_state = True
                 self.generic_visit(node)
 

@@ -22,7 +22,7 @@ from PyQt6.QtCore import (
     QTimer,
 )
 
-from ui.models.transcription_model import TranscriptionModel
+from src.ui.models.transcription_model import TranscriptionModel
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +85,9 @@ class ProjectProxyModel(QSortFilterProxyModel):
         - Day headers: Return False (let Qt include them if children match)
         - Entries: Return True if group_id matches
         """
+        if self._project_id is None:
+            return True
+
         try:
             source_model = self.sourceModel()
             if source_model is None:
@@ -105,7 +108,3 @@ class ProjectProxyModel(QSortFilterProxyModel):
         except Exception:
             logger.exception("Error in filterAcceptsRow")
             return True  # Default to showing row on error
-
-    def _has_matching_children(self, parent_index: QModelIndex) -> bool:
-        """Deprecated: Recursive filtering handles this."""
-        return False

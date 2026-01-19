@@ -7,8 +7,6 @@ Works on both X11 and Wayland via platform-specific dragging methods.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from PyQt6.QtCore import QPoint, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QGuiApplication, QIcon
 from PyQt6.QtWidgets import (
@@ -17,6 +15,8 @@ from PyQt6.QtWidgets import (
     QToolButton,
     QWidget,
 )
+
+from src.core.resource_manager import ResourceManager
 
 
 class DialogTitleBar(QWidget):
@@ -29,12 +29,12 @@ class DialogTitleBar(QWidget):
     - Draggable
 
     Signals:
-        closeRequested(): Emitted when close button is clicked
-        minimizeRequested(): Emitted when minimize is requested
+        close_requested(): Emitted when close button is clicked
+        minimize_requested(): Emitted when minimize is requested
     """
 
-    closeRequested = pyqtSignal()
-    minimizeRequested = pyqtSignal()
+    close_requested = pyqtSignal()
+    minimize_requested = pyqtSignal()
 
     def __init__(self, title: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -57,18 +57,14 @@ class DialogTitleBar(QWidget):
         self.title_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-
-        # Close button
-        icons_dir = Path(__file__).parents[4] / "assets" / "icons"
         self.close_btn = QToolButton(self)
-        self.close_btn.setIcon(QIcon(str(icons_dir / "title_bar-close.svg")))
+        self.close_btn.setIcon(QIcon(ResourceManager.get_icon_path("title_bar-close")))
         self.close_btn.setIconSize(QSize(16, 16))
         self.close_btn.setObjectName("titleBarClose")
         self.close_btn.setFixedSize(QSize(36, 28))
         self.close_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self.close_btn.setToolTip("Close")
         self.close_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.close_btn.clicked.connect(self.closeRequested)
+        self.close_btn.clicked.connect(self.close_requested)
 
         layout.addWidget(self.title_label, 1)
         layout.addWidget(self.close_btn)
@@ -123,10 +119,10 @@ class DialogTitleBar(QWidget):
     def cleanup(self) -> None:
         """
         Clean up title bar resources.
-        
+
         Per Vociferous cleanup protocol, all widgets should implement cleanup().
         DialogTitleBar has no persistent timers or threads.
-        
+
         This method is idempotent and safe to call multiple times.
         """
         # Reset drag state

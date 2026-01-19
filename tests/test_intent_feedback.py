@@ -13,8 +13,8 @@ from unittest.mock import MagicMock, patch, ANY
 import pytest
 from PyQt6.QtWidgets import QStatusBar, QWidget
 
-from ui.components.main_window.intent_feedback import IntentFeedbackHandler
-from ui.interaction import (
+from src.ui.components.main_window.intent_feedback import IntentFeedbackHandler
+from src.ui.interaction import (
     BeginRecordingIntent,
     CancelRecordingIntent,
     CommitEditsIntent,
@@ -36,12 +36,12 @@ class TestIntentFeedbackMapping:
         """Create a mock status bar."""
         # Use autospec to ensure we only call methods that actually exist
         mock = MagicMock(autospec=QStatusBar)
-        
+
         # Configure parent(). Ensure parent does NOT have _status_label
         # so logic falls back to showMessage()
         mock_parent = MagicMock(spec=QWidget)
         mock.parent.return_value = mock_parent
-        
+
         return mock
 
     @pytest.fixture
@@ -92,7 +92,7 @@ class TestIntentFeedbackMapping:
 
         # Assert message shown with correct duration (IntentFeedbackHandler.MESSAGE_DURATION_MS = 4000)
         mock_status_bar.showMessage.assert_called_once_with(ANY, 4000)
-        
+
         args = mock_status_bar.showMessage.call_args[0]
         message = args[0]
         assert "finish" in message.lower() or "discard" in message.lower()
@@ -190,7 +190,9 @@ class TestIntentFeedbackLogging:
             reason="Test rejection",
         )
 
-        with patch("ui.components.main_window.intent_feedback.logger") as mock_logger:
+        with patch(
+            "src.ui.components.main_window.intent_feedback.logger"
+        ) as mock_logger:
             handler.on_intent_processed(result)
             mock_logger.info.assert_called_once()
 
@@ -201,7 +203,9 @@ class TestIntentFeedbackLogging:
             intent=BeginRecordingIntent(),
         )
 
-        with patch("ui.components.main_window.intent_feedback.logger") as mock_logger:
+        with patch(
+            "src.ui.components.main_window.intent_feedback.logger"
+        ) as mock_logger:
             handler.on_intent_processed(result)
             mock_logger.debug.assert_called_once()
 
@@ -215,7 +219,9 @@ class TestIntentFeedbackLogging:
             intent=BeginRecordingIntent(),
         )
 
-        with patch("ui.components.main_window.intent_feedback.logger") as mock_logger:
+        with patch(
+            "src.ui.components.main_window.intent_feedback.logger"
+        ) as mock_logger:
             handler.on_intent_processed(result)
             mock_logger.debug.assert_not_called()
 
@@ -228,7 +234,7 @@ class TestPhase6Constraints:
         """Create a mock status bar."""
         # Use autospec=QStatusBar to ensure API compliance
         mock = MagicMock(autospec=QStatusBar)
-        
+
         # Configure parent
         mock_parent = MagicMock(spec=QWidget)
         mock.parent.return_value = mock_parent

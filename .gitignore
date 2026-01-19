@@ -71,12 +71,8 @@ __pypackages__/
 # Docs: Generated or Non-Source Material
 # =========================
 
-# Agent-generated reports (keep design docs, ignore analysis artifacts)
-docs/agent_resources/
-
 # Scraped or mirrored documentation
-docs/agent_resources/books/
-docs/agent_resources/**/static/
+docs/agent_resources/ai_docs/**/static/
 
 # =========================
 # Tests: Generated Artifacts
@@ -91,3 +87,9 @@ tests/__pycache__/
 *.prof
 *.trace
 *.stackdump
+
+# =========================
+# Dev Tools / Experimentation Directory
+# =========================
+
+dev_tools/

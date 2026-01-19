@@ -6,8 +6,8 @@ Provides:
 - ProjectTreeWidget: Tree widget with nested transcripts
 """
 
-from ui.widgets.project.project_delegate import ProjectDelegate
-from ui.widgets.project.project_tree import ProjectTreeWidget
+from src.ui.widgets.project.project_delegate import ProjectDelegate
+from src.ui.widgets.project.project_tree import ProjectTreeWidget
 
 __all__ = [
     "ProjectDelegate",

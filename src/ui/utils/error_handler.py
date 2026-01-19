@@ -2,8 +2,8 @@
 Centralized error handling and logging for Vociferous.
 
 Provides:
-- ErrorLogger: File-based logging with rotation and dynamic configuration
-- Global exception hook for uncaught exceptions with "Agentic" crash dumps
+- ErrorLogger: UI-aware wrapper for LogManager (handles ErrorSignals)
+- Global exception hook for uncaught exceptions via LogManager
 - Utility functions for safe error display
 """
 
@@ -13,71 +13,23 @@ import json
 import logging
 import os
 import platform
-import subprocess
 import sys
-import traceback
 import datetime
+import traceback
 import functools
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Tuple
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from exceptions import VociferousError
-from utils import ConfigManager
+from src.core.exceptions import VociferousError
+from src.core.log_manager import LogManager, CRASH_DUMP_DIR
 
 if TYPE_CHECKING:
     from types import TracebackType
 
-
-# Log file configuration
-LOG_DIR = Path.home() / ".local" / "share" / "vociferous" / "logs"
-LOG_FILE = LOG_DIR / "vociferous.log"
-CRASH_DUMP_DIR = LOG_DIR / "crash_dumps"
-MAX_LOG_SIZE = 5 * 1024 * 1024  # 5 MB
-BACKUP_COUNT = 3  # Keep 3 rotated log files
-
 # Module-level logger
 logger = logging.getLogger(__name__)
-
-
-class AgentFriendlyFormatter(logging.Formatter):
-    """
-    Formatter that produces structured JSON or rich text suitable for Agents.
-    """
-
-    def __init__(self, structured: bool = False):
-        self.structured = structured
-        super().__init__()
-
-    def format(self, record: logging.LogRecord) -> str:
-        if self.structured:
-            log_entry = {
-                "timestamp": self.formatTime(record),
-                "level": record.levelname,
-                "logger": record.name,
-                "message": record.getMessage(),
-                "file": record.pathname,
-                "line": record.lineno,
-            }
-            if record.exc_info:
-                log_entry["exception"] = self.formatException(record.exc_info)
-            if hasattr(record, "context"):
-                 log_entry["context"] = record.context
-            
-            return json.dumps(log_entry)
-        else:
-             # Rich text format
-            timestamp = self.formatTime(record, "%Y-%m-%d %H:%M:%S")
-            msg = f"{timestamp} | {record.levelname:<8} | {record.name}:{record.lineno} | {record.getMessage()}"
-            if hasattr(record, "context"):
-                msg += f" | Context: {record.context}"
-            if record.exc_info:
-                # Indent tracebacks for readability
-                tb = self.formatException(record.exc_info)
-                msg += "\n" + "\n".join("    " + line for line in tb.splitlines())
-            return msg
 
 
 class ErrorSignals(QObject):
@@ -89,10 +41,9 @@ class ErrorSignals(QObject):
 
 class ErrorLogger:
     """
-    Centralized error logger with file rotation.
-
-    Thread-safe logging to file with automatic rotation.
-    Also configures console output for development.
+    UI Wrapper for the Core LogManager.
+    Maintains compatibility with existing code calling get_error_logger().
+    Adds Qt signals for error display.
     """
 
     _instance: "ErrorLogger | None" = None
@@ -105,70 +56,20 @@ class ErrorLogger:
         return cls._instance
 
     def __init__(self) -> None:
-        """Initialize the error logger (only once)."""
+        """Initialize."""
         if ErrorLogger._initialized:
             return
         ErrorLogger._initialized = True
 
         self.signals = ErrorSignals()
-        self.configure_logging()
+        self.log_manager = LogManager()
 
     def configure_logging(self) -> None:
-        """Configure file and console logging handlers based on config."""
-        # Ensure log directory exists
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
-        CRASH_DUMP_DIR.mkdir(parents=True, exist_ok=True)
-
-        # Get settings from ConfigManager (if initialized, else defaults)
-        try:
-            log_level_str = ConfigManager.get_config_value("logging", "level") or "INFO"
-            log_level = getattr(logging, log_level_str.upper(), logging.INFO)
-            
-            enable_console = ConfigManager.get_config_value("logging", "console_echo")
-            if enable_console is None:
-                enable_console = True  # Default true
-
-            structured = ConfigManager.get_config_value("logging", "structured_output") or False
-        except RuntimeError:
-            # ConfigManager might not be ready yet during early startup
-            log_level = logging.INFO
-            enable_console = True
-            structured = False
-
-        # Root logger configuration
-        root_logger = logging.getLogger()
-        root_logger.setLevel(logging.DEBUG) # capture everything, handlers filter
-
-        # Remove any existing handlers to avoid duplicates
-        for handler in root_logger.handlers[:]:
-            root_logger.removeHandler(handler)
-
-        formatter = AgentFriendlyFormatter(structured=structured)
-
-        # File handler with rotation
-        try:
-            file_handler = RotatingFileHandler(
-                LOG_FILE,
-                maxBytes=MAX_LOG_SIZE,
-                backupCount=BACKUP_COUNT,
-                encoding="utf-8",
-            )
-            file_handler.setLevel(log_level)
-            file_handler.setFormatter(formatter)
-            root_logger.addHandler(file_handler)
-        except Exception as e:
-            # Fall back to stderr if file logging fails
-            print(f"Warning: Could not set up file logging: {e}", file=sys.stderr)
-
-        # Console handler
-        if enable_console:
-            console_handler = logging.StreamHandler(sys.stderr)
-            console_handler.setLevel(log_level)
-            console_handler.setFormatter(formatter)
-            root_logger.addHandler(console_handler)
-
-        logger.info(f"Error logging initialized. Level: {log_level}, Structured: {structured}")
-        logger.info(f"Log file: {LOG_FILE}")
+        """
+        Configure logging.
+        Delegates to core LogManager.
+        """
+        self.log_manager.configure_logging()
 
     def log_exception(
         self,
@@ -177,83 +78,31 @@ class ErrorLogger:
         exc_tb: "TracebackType | None",
         context: str = "",
     ) -> str:
-        """
-        Log an exception with full traceback.
-
-        Args:
-            exc_type: Exception type
-            exc_value: Exception instance
-            exc_tb: Traceback object
-            context: Optional context string (e.g., "in on_activation")
-
-        Returns:
-            Formatted traceback string for display
-        """
-        # Format the traceback
-        tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb)
-        tb_string = "".join(tb_lines)
-
-        # Build log message
-        context_str = f" {context}" if context else ""
-        log_message = f"Uncaught exception{context_str}: {exc_value}"
-
-        # Capture extra context if available
-        extra = {}
-        if isinstance(exc_value, VociferousError):
-            extra["context"] = exc_value.context
-            log_message += f" | Doc Ref: {exc_value.doc_ref}"
-
-        # Log to file
-        logger.error(log_message, exc_info=(exc_type, exc_value, exc_tb), extra=extra)
-
-        return tb_string
+        """Log exception via LogManager."""
+        return self.log_manager.log_exception(exc_type, exc_value, exc_tb, context)
 
     def log_error(self, message: str, context: str = "") -> None:
-        """Log an error message."""
-        context_str = f" [{context}]" if context else ""
-        logger.error(f"{message}{context_str}")
+        """Log error via LogManager."""
+        self.log_manager.log_error(message, context)
 
     def log_warning(self, message: str, context: str = "") -> None:
-        """Log a warning message."""
-        context_str = f" [{context}]" if context else ""
-        logger.warning(f"{message}{context_str}")
+        """Log warning via LogManager."""
+        self.log_manager.log_warning(message, context)
 
     @staticmethod
     def get_log_file_path() -> Path:
         """Return the path to the current log file."""
-        return LOG_FILE
+        return LogManager.get_log_file_path()
 
     @staticmethod
     def open_log_file() -> bool:
-        """Open the log file in the system's default text editor."""
-        return _open_path(LOG_FILE)
+        """Open the log file."""
+        return LogManager.open_log_file()
 
     @staticmethod
     def open_log_directory() -> bool:
-        """Open the log directory in the system's file manager."""
-        return _open_path(LOG_DIR)
-
-
-def _open_path(path: Path) -> bool:
-    """Helper to open a file or directory."""
-    try:
-        path = path if path.is_dir() else path.parent
-        path.mkdir(parents=True, exist_ok=True)
-        
-        target = str(path) if path.is_file() else str(path)
-
-        if sys.platform.startswith("linux"):
-            subprocess.Popen(["xdg-open", target], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", target])
-        elif sys.platform == "win32":
-            os.startfile(target)  # type: ignore
-        else:
-            return False
-        return True
-    except Exception as e:
-        logger.error(f"Failed to open {path}: {e}")
-        return False
+        """Open the log directory."""
+        return LogManager.open_log_directory()
 
 
 # Global error logger instance
@@ -285,12 +134,18 @@ def create_crash_dump(
     tb = exc_tb
     while tb:
         frame = tb.tb_frame
-        stack_info.append({
-            "filename": frame.f_code.co_filename,
-            "lineno": tb.tb_lineno,
-            "function": frame.f_code.co_name,
-            "locals": {k: str(v) for k, v in frame.f_locals.items() if not k.startswith('_')}
-        })
+        stack_info.append(
+            {
+                "filename": frame.f_code.co_filename,
+                "lineno": tb.tb_lineno,
+                "function": frame.f_code.co_name,
+                "locals": {
+                    k: str(v)
+                    for k, v in frame.f_locals.items()
+                    if not k.startswith("_")
+                },
+            }
+        )
         tb = tb.tb_next
 
     # Gather System Info
@@ -299,15 +154,21 @@ def create_crash_dump(
         "python_version": sys.version,
         "argv": sys.argv,
         "cwd": os.getcwd(),
-        "env": {k: v for k, v in os.environ.items() if "TOKEN" not in k and "KEY" not in k} # Filter secrets
+        "env": {
+            k: v for k, v in os.environ.items() if "TOKEN" not in k and "KEY" not in k
+        },  # Filter secrets
     }
-    
+
     # Gather Exception Data
     error_data = {
         "type": exc_type.__name__,
         "message": str(exc_value),
-        "doc_ref": exc_value.doc_ref if isinstance(exc_value, VociferousError) else None,
-        "context": exc_value.context if isinstance(exc_value, VociferousError) else None,
+        "doc_ref": exc_value.doc_ref
+        if isinstance(exc_value, VociferousError)
+        else None,
+        "context": exc_value.context
+        if isinstance(exc_value, VociferousError)
+        else None,
     }
 
     report = {
@@ -348,7 +209,7 @@ def install_exception_hook(
 
         # 1. Log the exception normally
         tb_string = error_logger.log_exception(exc_type, exc_value, exc_tb)
-        
+
         # 2. Create Agentic Crash Dump
         dump_path = create_crash_dump(exc_type, exc_value, exc_tb)
         logger.info(f"Crash dump saved to: {dump_path}")
@@ -358,26 +219,23 @@ def install_exception_hook(
         error_message = (
             str(exc_value) if str(exc_value) else "An unexpected error occurred"
         )
-        
+
         if isinstance(exc_value, VociferousError) and exc_value.doc_ref:
             error_message += f"\n\nSee: {exc_value.doc_ref}"
 
         title = f"Unexpected Error: {error_name}"
         message = error_message
-        details = (
-            f"Crash Dump: {dump_path}\n\n"
-            f"Traceback:\n{tb_string}"
-        )
+        details = f"Crash Dump: {dump_path}\n\nTraceback:\n{tb_string}"
 
         # 4. Display Dialog
         if error_callback:
             try:
                 error_callback(title, message, details)
             except Exception as callback_error:
-                logger.error(f"Error callback failed: {callback_error}")
-                print(f"CRITICAL: Error displaying dialog: {callback_error}", file=sys.stderr)
+                logger.critical(f"Error displaying dialog: {callback_error}")
 
     sys.excepthook = exception_hook
+
 
 def format_exception_for_display(
     exc_type: type[BaseException],
@@ -387,70 +245,77 @@ def format_exception_for_display(
     """
     Format an exception for display in the error dialog.
 
-    Args:
-        exc_type: Exception type
-        exc_value: Exception instance
-        exc_tb: Traceback object
-
     Returns:
-        Tuple of (title, message, details)
+        (title, message, details)
     """
     error_name = exc_type.__name__
-    error_message = str(exc_value) if str(exc_value) else "An unexpected error occurred"
+    error_message = str(exc_value)
 
-    # Capture extra context if available
     if isinstance(exc_value, VociferousError) and exc_value.doc_ref:
         error_message += f"\n\nSee: {exc_value.doc_ref}"
 
     tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb)
-    tb_string = "".join(tb_lines)
+    details = "".join(tb_lines)
 
-    title = f"Error: {error_name}"
-    message = error_message
-    details = f"Traceback:\n{tb_string}"
-
-    return title, message, details
+    return f"Error: {error_name}", error_message, details
 
 
-def safe_slot(context: str = "") -> Callable:
+def safe_callback(
+    func: Callable[..., Any], context: str | None = None
+) -> Callable[..., Any]:
     """
-    Decorator to wrap Qt slots with exception handling.
-    """
-    def decorator(func: Callable) -> Callable:
-        @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            try:
-                return func(*args, **kwargs)
-            except Exception:
-                # Use our robust logger
-                exc_info = sys.exc_info()
-                get_error_logger().log_exception(exc_info[0], exc_info[1], exc_info[2], context=context)
-                
-                # Show generic error if possible, but don't crash app
-                # This could catch exceptions that happen during button clicks
-                return None
-        return wrapper
-    return decorator
+    Decorator to wrap callbacks in a try/except block.
+    Logs exceptions and prevents them from crashing the app.
 
+    Args:
+        func: The function to wrap
+        context: Optional description of the context (e.g. "on_click")
+    """
 
-def safe_slot_silent(context: str = "") -> Callable:
-    """
-    Decorator to wrap Qt slots with exception handling (logging only, no propagation).
-    Same as safe_slot in this implementation as safe_slot is already silent UI-wise.
-    """
-    return safe_slot(context)
-
-
-def safe_callback(func: Callable, context: str = "") -> Callable:
-    """
-    Decorator to wrap standard callbacks with exception handling.
-    """
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return func(*args, **kwargs)
-        except Exception:
-            exc_info = sys.exc_info()
-            get_error_logger().log_exception(exc_info[0], exc_info[1], exc_info[2], context=context or "Callback")
+        except Exception as e:
+            ctx = context or func.__name__
+            get_error_logger().log_exception(
+                type(e), e, e.__traceback__, context=f"in {ctx}"
+            )
             return None
+
     return wrapper
+
+
+def safe_slot(context: str = "") -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """
+    Decorator factory for Qt slots to handle exceptions gracefully.
+    Usage: @safe_slot("MyContext")
+    """
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        return safe_callback(func, context)
+
+    return decorator
+
+
+def safe_slot_silent(
+    context: str = "",
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """
+    Decorator factory for Qt slots that suppresses errors (logs as warning only).
+    Usage: @safe_slot_silent("MyContext")
+    """
+
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                # Log as warning
+                logger.warning(f"Silenced error in {context or func.__name__}: {e}")
+                return None
+
+        return wrapper
+
+    return decorator

@@ -22,7 +22,7 @@ SRC_DIR = Path(__file__).parent.parent / "src"
 PRIORITY_FILES = [
     "ui/views/base_view.py",
     "ui/interaction/intents.py",
-    "ui/interaction/router.py",
+    # "ui/interaction/router.py", # File not found/removed
     "ui/contracts/capabilities.py",
     "ui/widgets/toggle_switch.py",
     "ui/components/shared/content_panel.py",
@@ -32,10 +32,10 @@ PRIORITY_FILES = [
 def get_missing_docstrings(filepath: Path) -> list[str]:
     """
     Parse a Python file and return list of classes/functions missing docstrings.
-    
+
     Args:
         filepath: Path to Python file to analyze
-        
+
     Returns:
         List of "line:type name" strings for items missing docstrings
     """
@@ -141,9 +141,9 @@ class TestDocstringConventions:
                 assert docstring is not None, "__init__ missing docstring"
                 # Check for Args section if there are parameters beyond self
                 if len(node.args.args) > 1:  # More than just 'self'
-                    assert "args" in docstring.lower() or "param" in docstring.lower(), (
-                        "__init__ with parameters should document them"
-                    )
+                    assert (
+                        "args" in docstring.lower() or "param" in docstring.lower()
+                    ), "__init__ with parameters should document them"
                 return
 
         pytest.fail("__init__ not found in BaseView")

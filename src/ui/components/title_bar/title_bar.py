@@ -6,8 +6,6 @@ Provides window controls, drag-to-move, and centered title.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from PyQt6.QtCore import QEvent, QPoint, QSize, Qt
 from PyQt6.QtGui import QGuiApplication, QIcon
 from PyQt6.QtWidgets import (
@@ -19,7 +17,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from ui.constants import defer_call
+from src.core.resource_manager import ResourceManager
 
 
 class TitleBar(QWidget):
@@ -32,26 +30,31 @@ class TitleBar(QWidget):
 
         self.setObjectName("titleBar")
         self.setFixedHeight(44)
+
+        # Enforce painting of background-color from stylesheet
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(8)
 
         self.title_label = QLabel("Vociferous", self)
         self.title_label.setObjectName("titleBarLabel")
-        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.title_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
         self.title_label.setMinimumWidth(0)
 
         btn_size = QSize(36, 28)
-        icons_dir = Path(__file__).parents[4] / "icons"
 
-        def make_btn(icon_name: str, obj: str, tooltip: str) -> QToolButton:
+        def make_btn(icon_name: str, obj: str) -> QToolButton:
             button = QToolButton(self)
-            button.setIcon(QIcon(str(icons_dir / f"{icon_name}.svg")))
+            icon_path = ResourceManager.get_icon_path(icon_name)
+            button.setIcon(QIcon(icon_path))
             button.setIconSize(QSize(16, 16))
             button.setObjectName(obj)
             button.setFixedSize(btn_size)
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-            button.setToolTip(tooltip)
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             return button
 
@@ -59,15 +62,15 @@ class TitleBar(QWidget):
         button_layout.setContentsMargins(0, 0, 0, 0)
         button_layout.setSpacing(6)
 
-        self.min_btn = make_btn("title_bar-minimize", "titleBarControl", "Minimize")
+        self.min_btn = make_btn("title_bar-minimize", "titleBarControl")
         self.min_btn.clicked.connect(self._window.showMinimized)
         button_layout.addWidget(self.min_btn)
 
-        self.max_btn = make_btn("title_bar-maximize", "titleBarControl", "Maximize")
+        self.max_btn = make_btn("title_bar-maximize", "titleBarControl")
         self.max_btn.clicked.connect(self._toggle_maximize)
         button_layout.addWidget(self.max_btn)
 
-        self.close_btn = make_btn("title_bar-close", "titleBarClose", "Close")
+        self.close_btn = make_btn("title_bar-close", "titleBarClose")
         self.close_btn.clicked.connect(self._window.close)
         button_layout.addWidget(self.close_btn)
 
@@ -79,13 +82,6 @@ class TitleBar(QWidget):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
 
-        # Left slot (empty spacer for symmetry)
-        self._left_slot = QWidget(self)
-        left_l = QHBoxLayout(self._left_slot)
-        left_l.setContentsMargins(0, 0, 0, 0)
-        left_l.setSpacing(0)
-        left_l.addStretch(1)
-
         # Right slot (window controls)
         self._right_slot = QWidget(self)
         right_l = QHBoxLayout(self._right_slot)
@@ -94,16 +90,13 @@ class TitleBar(QWidget):
         right_l.addStretch(1)
         right_l.addWidget(self._controls)
 
-        layout.addWidget(self._left_slot)
         layout.addWidget(self.title_label, 1)
         layout.addWidget(self._right_slot)
 
         self.title_label.installEventFilter(self)
-        defer_call(self._sync_side_slots)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        self._sync_side_slots()
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -188,11 +181,3 @@ class TitleBar(QWidget):
             elif event.type() == QEvent.Type.MouseButtonRelease:
                 self._drag_pos = None
         return super().eventFilter(source, event)
-
-    def _sync_side_slots(self) -> None:
-        """Match left/right slot widths so the title stays centered."""
-        # With no menu bar, we only need to match the control width
-        ctrl_w = self._controls.sizeHint().width()
-        self._left_slot.setFixedWidth(ctrl_w)
-        self._right_slot.setFixedWidth(ctrl_w)
-

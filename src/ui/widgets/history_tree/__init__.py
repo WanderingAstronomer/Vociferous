@@ -7,8 +7,8 @@ Provides:
 - HistoryTreeWidget: Compatibility alias for HistoryTreeView
 """
 
-from ui.widgets.history_tree.history_tree_delegate import TreeHoverDelegate
-from ui.widgets.history_tree.history_tree_view import (
+from src.ui.widgets.history_tree.history_tree_delegate import TreeHoverDelegate
+from src.ui.widgets.history_tree.history_tree_view import (
     HistoryTreeView,
     HistoryTreeWidget,
 )

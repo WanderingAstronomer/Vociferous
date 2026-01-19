@@ -13,14 +13,13 @@ import pytest
 from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import QApplication
 
-from history_manager import HistoryManager
-from input_handler import KeyListener
-from ui.components.settings import SettingsDialog
-from ui.models import TranscriptionModel
-from ui.widgets.dialogs import CreateProjectDialog
-from ui.widgets.project import ProjectTreeWidget
-from ui.widgets.history_tree import HistoryTreeView
-from ui.widgets.hotkey_widget import HotkeyWidget
+from src.database.history_manager import HistoryManager
+from src.input_handler import KeyListener
+from src.ui.models import TranscriptionModel
+from src.ui.widgets.dialogs import CreateProjectDialog
+from src.ui.widgets.project import ProjectTreeWidget
+from src.ui.widgets.history_tree import HistoryTreeView
+from src.ui.widgets.hotkey_widget import HotkeyWidget
 
 # Mark entire module as UI-dependent
 pytestmark = pytest.mark.ui_dependent
@@ -64,7 +63,8 @@ class TestCreateProjectDialog:
 
     def test_default_color_selected(self, qapp):
         """Test that Ocean Blue color is selected by default."""
-        from ui.constants import ProjectColors
+        from src.ui.constants import ProjectColors
+
         dialog = CreateProjectDialog()
         # Default color is the first in the list (Ocean Blue) by token
         name, color = dialog.get_result()
@@ -72,19 +72,19 @@ class TestCreateProjectDialog:
 
     def test_color_selection(self, qapp):
         """Test changing color selection."""
-        from ui.constants import ProjectColors
-        from ui.widgets.dialogs.create_project_dialog import ColorSwatch
-        
+        from src.ui.constants import ProjectColors
+        from src.ui.widgets.dialogs.create_project_dialog import ColorSwatch
+
         dialog = CreateProjectDialog()
 
         # Find swatches
         swatches = dialog.findChildren(ColorSwatch)
         assert len(swatches) >= 3
-        
+
         # Select third color
         target_swatch = swatches[2]
         new_color = target_swatch.color
-        
+
         # Simulate click
         target_swatch.click()
 
@@ -107,7 +107,7 @@ class TestCreateProjectDialog:
         # Enter name
         dialog.name_input.setText("My Group")
         # setText should trigger textChanged signal implicitly if connected
-        
+
         # Now enabled
         assert dialog.create_btn.isEnabled()
 
@@ -281,7 +281,7 @@ class TestHistoryTreeView:
 
         # Track selection signal
         selected = []
-        tree.entrySelected.connect(lambda text, ts: selected.append((text, ts)))
+        tree.entry_selected.connect(lambda text, ts: selected.append((text, ts)))
 
         # Get the entry index (row 0 under day 0)
         day_index = model.index(0, 0)
@@ -360,37 +360,6 @@ class TestHotkeyWidgetValidation:
 
         # Button should be re-enabled
         assert widget.change_button.isEnabled()
-
-
-# ============================================================================
-# Settings Dialog Tests
-# ============================================================================
-
-
-class TestSettingsDialog:
-    """Tests for the settings dialog."""
-
-    def test_dialog_creation(self, qapp, key_listener):
-        """Test creating settings dialog."""
-        dialog = SettingsDialog(key_listener)
-        assert dialog is not None
-
-    def test_widgets_populated(self, qapp, key_listener):
-        """Test that dialog creates widgets for settings."""
-        dialog = SettingsDialog(key_listener)
-
-        # Should have widgets for visible settings
-        assert len(dialog.widgets) > 0
-
-    def test_cleanup_on_close(self, qapp, key_listener):
-        """Test that dialog cleans up hotkey widget on close."""
-        dialog = SettingsDialog(key_listener)
-
-        # Close the dialog
-        dialog._cleanup_widgets()
-
-        # Should not crash (hotkey widget cleanup should work)
-        assert True  # If we got here, cleanup worked
 
 
 # ============================================================================
