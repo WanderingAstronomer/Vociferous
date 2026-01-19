@@ -166,7 +166,7 @@ class OnboardingWindow(QDialog):
 
     def _finish_onboarding(self):
         logger.info("=== ONBOARDING FINISH CALLED ===")
-        
+
         # Atomic commit of configuration
         if self._pending_config:
             logger.info(f"Committing pending config: {self._pending_config}")
@@ -183,19 +183,19 @@ class OnboardingWindow(QDialog):
         try:
             logger.info("Setting onboarding_completed = True in config")
             ConfigManager.set_config_value(True, "user", "onboarding_completed")
-            
+
             logger.info("Saving config to disk...")
             ConfigManager.save_config()
             logger.info("Config saved successfully")
         except Exception as e:
             logger.error(f"ERROR saving config: {e}", exc_info=True)
             raise
-        
+
         # Set flag BEFORE calling accept() to prevent confirmation dialog
         self._is_finishing = True
         logger.info("Calling self.accept()")
         self.accept()
-        
+
         logger.info("Emitting completed signal")
         self.completed.emit()
         logger.info("=== ONBOARDING FINISH COMPLETE ===")
@@ -206,7 +206,7 @@ class OnboardingWindow(QDialog):
             logger.debug("closeEvent: Finishing normally, skipping confirmation dialog")
             event.accept()
             return
-        
+
         # Stop any running background tasks (e.g., calibration threads)
         for page in self.pages:
             try:

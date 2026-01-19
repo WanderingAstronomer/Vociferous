@@ -14,6 +14,9 @@ htmlcov/
 # Mypy
 .mypy_cache/
 
+# Ruff cache
+.ruff_cache/
+
 # =========================
 # Virtual Environments
 # =========================

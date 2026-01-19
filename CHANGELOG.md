@@ -1,5 +1,12 @@
 # Vociferous Changelog
 
+## v2.9.7 - Test Warning Suppression
+
+### Fixed
+- **FutureWarning Suppression**: Added `filterwarnings = ["ignore::FutureWarning"]` to pytest configuration to suppress deprecation warnings from PyTorch's `torch.distributed.reduce_op` during test runs, ensuring clean test output without affecting functionality.
+
+---
+
 ## v2.9.6 - Onboarding UX & Layout Improvements
 
 ### Added

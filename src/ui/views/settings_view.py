@@ -1317,7 +1317,10 @@ class SettingsView(BaseView):
     def cleanup(self) -> None:
         """Clean up resources."""
         # Stop calibration thread if running
-        if hasattr(self, "_calibration_thread") and self._calibration_thread.isRunning():
+        if (
+            hasattr(self, "_calibration_thread")
+            and self._calibration_thread.isRunning()
+        ):
             self._calibration_thread.quit()
             self._calibration_thread.wait(1000)  # Wait up to 1 second
 

@@ -20,9 +20,7 @@ class TogglePill(QPushButton):
         super().__init__(text, parent)
         self.setCheckable(True)
         # Use expanding size policy to allow layout to grow when needed
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
-        )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.setMinimumWidth(200)  # Larger minimum to accommodate text growth
         self.setMinimumHeight(48)  # Use minimum instead of fixed to allow flex
         self.setCursor(Qt.CursorShape.PointingHandCursor)
