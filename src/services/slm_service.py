@@ -11,6 +11,7 @@ from typing import Optional, Any
 from PyQt6.QtCore import (
     QMutex,
     QObject,
+    QTimer,
     QWaitCondition,
     pyqtSignal,
     pyqtSlot,
@@ -138,7 +139,7 @@ class ProvisioningWorker(QRunnable):
                 shutil.rmtree(source_dir, ignore_errors=True)
 
     def _check_conversion_deps(self):
-        """Verify and attempt to install conversion tools if missing."""
+        """Verify conversion dependencies are available."""
         self.signals.progress.emit("Checking conversion dependencies...")
         required = ["ctranslate2", "transformers", "torch", "huggingface_hub"]
         if self.model.source == "ModelScope":
@@ -146,31 +147,17 @@ class ProvisioningWorker(QRunnable):
 
         missing = [dep for dep in required if importlib.util.find_spec(dep) is None]
 
-        if not missing:
-            return
-
-        self.logger.info(
-            f"Missing dependencies for conversion: {missing}. Attempting install..."
-        )
-        self.signals.progress.emit(f"Installing missing tools: {', '.join(missing)}...")
-
-        try:
-            # We use the current python executable to ensure we use the same venv
-            # We install them one by one or together? Together is safer for version resolution.
-            # Using --no-cache-dir would be bad here since the user said they are cached.
-            # Just a standard pip install.
-            subprocess.check_call(
-                [sys.executable, "-m", "pip", "install"]
-                + missing
-                + ["--no-warn-script-location"]
+        if missing:
+            missing_str = ", ".join(missing)
+            error_msg = (
+                f"Missing required dependencies for model conversion: {missing_str}. "
+                "Please install them manually before provisioning models:\n\n"
+                f"  pip install {' '.join(missing)}\n\n"
+                "Or install all dependencies:\n\n"
+                "  pip install -r requirements.txt"
             )
-            importlib.invalidate_caches()
-            self.logger.info("Dependencies installed successfully.")
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(
-                f"Failed to install missing conversion dependencies ({missing}): {e}. "
-                "Please install them manually using 'pip install -r requirements.txt'."
-            )
+            self.logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
     def _run_conversion(self, source_dir: Path, output_dir: Path):
         """Run ctranslate2 conversion."""
@@ -293,10 +280,16 @@ class SLMService(QObject):
 
         self.current_model = MODELS.get(model_id, MODELS["qwen4b"])
 
-        # Synchronization for User Input
+        # Synchronization for User Input (non-blocking GPU confirmation)
         self._gpu_wait_condition = QWaitCondition()
         self._gpu_mutex = QMutex()
         self._user_gpu_choice = False
+        # Store pending initialization state when waiting for GPU confirmation
+        self._pending_init_model_dir: Optional[Path] = None
+        self._pending_init_tokenizer_json: Optional[Path] = None
+        # Timeout for GPU confirmation (seconds)
+        self._gpu_confirmation_timeout_ms = 30000  # 30 seconds
+        self._gpu_timeout_timer: Optional[Any] = None
 
     @classmethod
     def get_supported_models(cls) -> list[SupportedModel]:
@@ -491,13 +484,72 @@ class SLMService(QObject):
             logger.warning(f"Failed to query GPU memory: {e}")
             return None
 
+    def _start_gpu_confirmation_timeout(self):
+        """Start a timeout timer for GPU confirmation dialog."""
+        # Cancel any existing timer
+        self._cancel_gpu_confirmation_timeout()
+        
+        self._gpu_timeout_timer = QTimer()
+        self._gpu_timeout_timer.setSingleShot(True)
+        self._gpu_timeout_timer.timeout.connect(self._on_gpu_confirmation_timeout)
+        self._gpu_timeout_timer.start(self._gpu_confirmation_timeout_ms)
+        logger.info(
+            f"GPU confirmation timeout started ({self._gpu_confirmation_timeout_ms}ms). "
+            "Will default to CPU if no response."
+        )
+    
+    def _cancel_gpu_confirmation_timeout(self):
+        """Cancel the GPU confirmation timeout timer."""
+        if self._gpu_timeout_timer is not None:
+            self._gpu_timeout_timer.stop()
+            self._gpu_timeout_timer.deleteLater()
+            self._gpu_timeout_timer = None
+    
+    @pyqtSlot()
+    def _on_gpu_confirmation_timeout(self):
+        """Handle GPU confirmation timeout - default to CPU."""
+        logger.warning(
+            "GPU confirmation timed out after "
+            f"{self._gpu_confirmation_timeout_ms / 1000:.0f}s. Defaulting to CPU."
+        )
+        self._gpu_timeout_timer = None
+        
+        # Only proceed if we're still waiting for confirmation
+        if self.state != SLMState.WAITING_FOR_USER:
+            return
+        
+        # Continue initialization with CPU
+        if self._pending_init_model_dir is not None and self._pending_init_tokenizer_json is not None:
+            model_dir = self._pending_init_model_dir
+            tokenizer_json = self._pending_init_tokenizer_json
+            self._pending_init_model_dir = None
+            self._pending_init_tokenizer_json = None
+            
+            self.statusMessage.emit("No response - using CPU for safety.")
+            logger.info("Continuing initialization with CPU (timeout default)...")
+            self._load_engine(model_dir, tokenizer_json, "cpu")
+
     @pyqtSlot(bool)
     def submit_gpu_choice(self, use_gpu: bool):
-        """Receive user choice from main thread."""
+        """Receive user choice from main thread and continue initialization."""
+        # Cancel timeout timer since user responded
+        self._cancel_gpu_confirmation_timeout()
+        
         self._gpu_mutex.lock()
         self._user_gpu_choice = use_gpu
         self._gpu_mutex.unlock()
         self._gpu_wait_condition.wakeAll()
+        
+        # Continue initialization if we were waiting for GPU confirmation
+        if self._pending_init_model_dir is not None and self._pending_init_tokenizer_json is not None:
+            model_dir = self._pending_init_model_dir
+            tokenizer_json = self._pending_init_tokenizer_json
+            self._pending_init_model_dir = None
+            self._pending_init_tokenizer_json = None
+            
+            device = "cuda" if use_gpu else "cpu"
+            logger.info(f"User chose: {device}. Continuing initialization...")
+            self._load_engine(model_dir, tokenizer_json, device)
 
     def _validate_artifacts(self, model_dir: Path) -> bool:
         """Check if all required model artifacts exist."""
@@ -577,27 +629,33 @@ class SLMService(QObject):
                     device = "cuda"
                     logger.info("Sufficient GPU headroom (>40%). Using CUDA.")
                 elif headroom_ratio < 0.20:
-                    # Risky -> Ask User
+                    # Risky -> Ask User (non-blocking with timeout)
                     self._set_state(SLMState.WAITING_FOR_USER)
                     logger.info(
                         "Low GPU headroom (<20%). Requesting user confirmation..."
                     )
+                    # Store pending initialization state
+                    self._pending_init_model_dir = model_dir
+                    self._pending_init_tokenizer_json = tokenizer_json
+                    
+                    # Start timeout timer - defaults to CPU if user doesn't respond
+                    self._start_gpu_confirmation_timeout()
+                    
+                    # Emit signal and return immediately (non-blocking)
                     self.askGPUConfirmation.emit(free_mb, total_mb, MODEL_SIZE_MB)
-
-                    # Wait for response
-                    self._gpu_mutex.lock()
-                    self._gpu_wait_condition.wait(self._gpu_mutex)
-                    use_gpu = self._user_gpu_choice
-                    self._gpu_mutex.unlock()
-
-                    device = "cuda" if use_gpu else "cpu"
-                    logger.info(f"User chose: {device}")
+                    # Initialization will continue in submit_gpu_choice when user responds
+                    # or in _on_gpu_confirmation_timeout if timer fires
+                    return
                 else:
                     # 20-40% -> Speed preference
                     device = "cuda"
                     logger.info(
                         "Moderate GPU headroom (20-40%). Defaulting to CUDA for speed."
                     )
+            else:
+                # No GPU info available, use CPU
+                device = "cpu"
+                logger.info("No GPU memory info available. Using CPU.")
 
             # Load Engine
             self._load_engine(model_dir, tokenizer_json, device)

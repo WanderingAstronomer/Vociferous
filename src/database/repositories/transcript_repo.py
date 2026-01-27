@@ -8,6 +8,7 @@ from src.database.core import DatabaseCore
 from src.database.dtos import HistoryEntry
 from src.database.models import Transcript, TranscriptVariant
 from src.core.config_manager import ConfigManager
+from src.core.exceptions import DatabaseError
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,9 @@ class TranscriptRepository:
     ) -> HistoryEntry:
         """
         Add new transcription to history.
+        
+        Raises:
+            DatabaseError: If the database operation fails.
         """
         timestamp = datetime.now().isoformat()
 
@@ -54,15 +58,20 @@ class TranscriptRepository:
 
                 return self._to_history_entry(transcript)
 
+        except DatabaseError:
+            # Re-raise DatabaseError as-is
+            raise
         except Exception as e:
-            logger.error(f"Failed to add history entry: {e}")
-            # return a dummy entry to prevent crashes if DB fails
-            return HistoryEntry(
-                timestamp=timestamp,
-                text=text,
-                duration_ms=duration_ms,
-                speech_duration_ms=speech_duration_ms,
-            )
+            logger.error(f"Failed to add history entry: {e}", exc_info=True)
+            raise DatabaseError(
+                f"Failed to save transcript to database: {e}",
+                context={
+                    "timestamp": timestamp,
+                    "text_length": len(text),
+                    "duration_ms": duration_ms,
+                    "speech_duration_ms": speech_duration_ms,
+                },
+            ) from e
 
     def get_entry_by_timestamp(self, timestamp: str) -> HistoryEntry | None:
         """Get a single entry by its timestamp."""

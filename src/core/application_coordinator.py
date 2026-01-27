@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import QApplication
 # Core
 from src.core.config_manager import ConfigManager
 from src.core.state_manager import StateManager
+from src.core.exceptions import DatabaseError
 from src.database.history_manager import HistoryManager
 from src.core.command_bus import CommandBus
 
@@ -448,11 +449,24 @@ class ApplicationCoordinator(QObject):
 
             # Save to history
             if self.history_manager:
-                entry = self.history_manager.add_entry(
-                    result.text, result.duration_ms, result.speech_duration_ms
-                )
-                # Ensure the UI refreshes metrics and updates list immediately
-                self.main_window.on_transcription_complete(entry)
+                try:
+                    entry = self.history_manager.add_entry(
+                        result.text, result.duration_ms, result.speech_duration_ms
+                    )
+                    # Ensure the UI refreshes metrics and updates list immediately
+                    self.main_window.on_transcription_complete(entry)
+                except DatabaseError as e:
+                    logger.error(f"Failed to save transcript: {e}")
+                    from src.ui.widgets.dialogs.error_dialog import show_error_dialog
+                    show_error_dialog(
+                        title="Failed to Save Transcript",
+                        message=(
+                            "The transcription was successful, but it could not be saved to history.\n\n"
+                            "Your transcript has been copied to the clipboard, but it will not appear in your history."
+                        ),
+                        details=str(e),
+                        parent=self.main_window,
+                    )
 
             # Sync engine status last to avoid premature state transition
             self.main_window.sync_recording_status_from_engine("idle")
@@ -551,11 +565,15 @@ class ApplicationCoordinator(QObject):
             parent=self.main_window,
             title="GPU Configuration Warning",
             message=message,
-            confirm_text="Yes",
-            cancel_text="No",
+            confirm_text="Yes, Use GPU",
+            cancel_text="No, Use CPU",
             is_destructive=True,
         )
 
-        use_gpu = dialog.exec() == 1
+        # Dialog.exec() returns 1 for Accepted (Yes), 0 for Rejected (No)
+        # If dialog is closed without clicking, it returns 0 (Rejected)
+        result = dialog.exec()
+        use_gpu = result == 1
+        
         if self.slm_service:
             self.slm_service.submit_gpu_choice(use_gpu)

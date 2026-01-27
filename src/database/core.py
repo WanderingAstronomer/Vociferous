@@ -3,6 +3,8 @@ Core database functionality: Engine creation, session management, and migrations
 """
 
 import logging
+import shutil
+from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import create_engine, text
@@ -92,23 +94,135 @@ class DatabaseCore:
             logger.warning(f"Pre-create migration failed: {e}")
 
     def _check_legacy_schema(self) -> None:
-        """Check for and remove legacy schema."""
+        """
+        Check for legacy schema_version table and handle migration safely.
+        
+        Instead of destructively dropping all tables, this method:
+        1. Creates a timestamped backup if legacy schema is detected
+        2. Attempts to migrate data if transcripts table exists
+        3. Only resets if migration is impossible
+        """
         try:
             from sqlalchemy import inspect
 
             inspector = inspect(self.engine)
-            if "schema_version" in inspector.get_table_names():
-                logger.info(
-                    "Legacy database detected. Performing complete reset (nuke) as requested."
+            table_names = inspector.get_table_names()
+            
+            if "schema_version" not in table_names:
+                # No legacy schema detected, proceed normally
+                return
+            
+            logger.info("Legacy database detected (schema_version table present).")
+            
+            # Initialize backup_path to None - will be set if backup is created
+            backup_path: Path | None = None
+            
+            # Check if we have any data to preserve
+            has_transcripts = "transcripts" in table_names
+            has_data = False
+            
+            if has_transcripts:
+                try:
+                    with self.engine.connect() as conn:
+                        count = conn.execute(text("SELECT COUNT(*) FROM transcripts")).scalar()
+                        has_data = count > 0 if count else False
+                except Exception as e:
+                    logger.warning(f"Could not check transcript count: {e}")
+                    has_data = False
+            
+            # Create backup before any destructive operation
+            if has_data or has_transcripts:
+                backup_path = self._create_backup()
+                if backup_path:
+                    logger.info(f"Created database backup: {backup_path}")
+                else:
+                    logger.warning("Failed to create backup, but proceeding with migration")
+            
+            # Try to migrate if we have transcripts table
+            if has_transcripts:
+                try:
+                    # Check if transcripts table has compatible schema
+                    columns = [c["name"] for c in inspector.get_columns("transcripts")]
+                    required_columns = ["id", "timestamp", "raw_text", "normalized_text"]
+                    has_required = all(col in columns for col in required_columns)
+                    
+                    if has_required:
+                        logger.info(
+                            "Legacy transcripts table has compatible schema. "
+                            "Migrating in place (removing schema_version only)."
+                        )
+                        # Just remove schema_version, keep the data
+                        with self.engine.connect() as conn:
+                            conn.execute(text("DROP TABLE IF EXISTS schema_version"))
+                            conn.commit()
+                        return
+                    else:
+                        logger.warning(
+                            "Legacy transcripts table has incompatible schema. "
+                            "Cannot migrate data safely."
+                        )
+                except Exception as e:
+                    logger.error(f"Error checking transcript schema: {e}")
+                    logger.warning("Cannot migrate safely, will reset database")
+            
+            # If we get here, migration is not possible or failed
+            # Only reset if we successfully created a backup or if there's no data
+            if has_data and not backup_path:
+                # Don't destroy data without backup
+                raise RuntimeError(
+                    "Legacy database detected with data, but backup creation failed. "
+                    "Please manually backup your database before upgrading. "
+                    f"Database location: {self.db_path}"
                 )
-                Base.metadata.drop_all(self.engine)
-                with self.engine.connect() as conn:
-                    conn.execute(text("DROP TABLE IF EXISTS schema_version"))
-                    conn.commit()
+            
+            logger.warning(
+                "Resetting legacy database schema. "
+                f"{'Backup created at: ' + str(backup_path) if backup_path else 'No data to preserve.'}"
+            )
+            Base.metadata.drop_all(self.engine)
+            with self.engine.connect() as conn:
+                conn.execute(text("DROP TABLE IF EXISTS schema_version"))
+                conn.commit()
+                
+        except RuntimeError:
+            # Re-raise RuntimeError (backup failure)
+            raise
         except Exception as e:
             logger.warning(
                 f"Error checking for legacy schema: {e}. Proceeding with creation."
             )
+    
+    def _create_backup(self) -> Path | None:
+        """
+        Create a timestamped backup of the database file.
+        
+        Returns:
+            Path to backup file if successful, None otherwise.
+        """
+        if not self.db_path.exists():
+            return None
+        
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_dir = self.db_path.parent / "backups"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            
+            backup_path = backup_dir / f"vociferous_backup_{timestamp}.db"
+            shutil.copy2(self.db_path, backup_path)
+            
+            # Keep only last 5 backups to avoid disk space issues
+            backups = sorted(backup_dir.glob("vociferous_backup_*.db"), reverse=True)
+            for old_backup in backups[5:]:
+                try:
+                    old_backup.unlink()
+                    logger.debug(f"Removed old backup: {old_backup}")
+                except Exception:
+                    pass
+            
+            return backup_path
+        except Exception as e:
+            logger.error(f"Failed to create database backup: {e}")
+            return None
 
     def _run_micro_migrations(self) -> None:
         """Run safe schema updates for existing databases."""
