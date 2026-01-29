@@ -35,7 +35,8 @@ from src.ui.widgets.dialogs import ConfirmationDialog, show_error_dialog
 from src.ui.styles.settings_view_styles import get_settings_view_stylesheet
 from src.core.config_manager import ConfigManager
 from src.core.model_registry import ASR_MODELS
-from src.services.slm_service import SLMState, SLMService
+from src.services.slm_service import SLMService
+from src.services.slm_types import SLMState
 
 if TYPE_CHECKING:
     from src.input_handler import KeyListener

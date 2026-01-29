@@ -26,7 +26,8 @@ from PyQt6.QtWidgets import (
 from src.core.config_manager import ConfigManager, get_model_cache_dir
 from src.ui.widgets.hotkey_widget.hotkey_widget import HotkeyWidget
 from src.services.voice_calibration import VoiceCalibrator
-from src.services.slm_service import MODELS, ProvisioningWorker
+from src.services.slm_service import MODELS
+from src.services.slm_background_workers import ProvisioningWorker
 from src.ui.constants import Typography, Spacing
 from src.ui.constants.dimensions import BORDER_RADIUS_SM
 import src.ui.constants.colors as c

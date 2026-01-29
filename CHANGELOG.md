@@ -1,4 +1,39 @@
-## Unreleased - Feature: Provisioning Isolation
+# Vociferous Changelog
+
+## v3.0.6 - Maintenance: Test Suite Recovery and Venv Integrity
+
+**Date:** 2026-01-30
+**Status:** Maintenance / Bugfix
+
+### Added
+- **Test Runner**: Added `scripts/run_tests.sh` to provide an authoritative way to execute the test suite within the project's virtual environment.
+- **Environment Discovery**: Added `pythonpath = ["src"]` to `pyproject.toml` to ensure consistent module discovery across all platforms.
+
+### Fixed
+- **Test Collection**: Resolved 14+ `ModuleNotFoundError` errors caused by legacy imports of the defunct `src.provisioning.core` module.
+- **Path Resolution**: Fixed pathing errors in test utilities that prevented script detection when run from the repository root.
+- **Legacy Tests**: Purged or updated tests targeting removed private methods (`_validate_artifacts`, `_run_conversion`) in `SLMService`.
+
+### Changed
+- **Testing Philosophy**: Updated `docs/wiki/Testing-Philosophy.md` to document the new `scripts/run_tests.sh` workflow.
+
+---
+
+## v3.0.5 - Refactor: SLM Service Decomposition
+
+**Date:** 2026-01-29
+**Status:** Refactor
+
+### Changed
+- **SLM Service Refactor**: Decomposed `src/services/slm_service.py` into focused modules:
+  - `src/services/slm_types.py`: Centralized `SLMState` and shared signals.
+  - `src/services/slm_background_workers.py`: Isolated `ProvisioningWorker` and `MOTDWorker`.
+  - `src/services/slm_utils.py`: Extracted GPU discovery and artifact validation.
+- **Deduplication**: Unified `SLMState` and `SupportedModel` definitions between `SLMService` and `SLMRuntime`.
+
+---
+
+## v3.0.4 - Feature: Provisioning Isolation
 
 **Date:** 2026-01-29
 **Status:** Feature / Refactor
@@ -13,9 +48,9 @@
 - **Runtime Isolation**: Removed inline `pip install` suggestions and subprocess conversion logic from `ProvisioningWorker`. It now delegates to the robust provisioning library.
 - **Fail Fast**: The application now hard-fails with a clear error message at startup if the environment is incomplete, rather than crashing during operation.
 
-# Vociferous Changelog
+---
 
-## Unreleased - Bugfix: Remove legacy DB detection
+## v3.0.3 - Bugfix: Remove legacy DB detection
 
 **Date:** 2026-01-28
 **Status:** Bugfix

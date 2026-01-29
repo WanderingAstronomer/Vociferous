@@ -121,7 +121,7 @@ class TestRefinementBackend:
                 slm_service, "_start_background_provisioning"
             ) as mock_provision,
             patch.object(slm_service, "_load_engine"),
-            patch.object(slm_service, "_validate_artifacts", return_value=False),
+            patch("src.services.slm_service.validate_model_artifacts", return_value=False),
         ):
             mock_get_cache.return_value = Path("/tmp/cache")
 

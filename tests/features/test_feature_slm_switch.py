@@ -70,7 +70,7 @@ class TestSLMModelSwitching:
 
         # Scenario A: Model Artifacts EXIST (Immediate Switch)
         with patch.object(service, "initialize_service") as mock_init:
-            with patch.object(service, "_validate_artifacts", return_value=True):
+            with patch("src.services.slm_service.validate_model_artifacts", return_value=True):
                 # Action: Switch to 14B
                 service.change_model("qwen14b")
 
@@ -83,7 +83,7 @@ class TestSLMModelSwitching:
 
         # Scenario B: Model Artifacts MISSING (Background Provisioning)
         with patch.object(service, "_start_background_provisioning") as mock_bg:
-            with patch.object(service, "_validate_artifacts", return_value=False):
+            with patch("src.services.slm_service.validate_model_artifacts", return_value=False):
                 # Action: Switch to 4B
                 service.change_model("qwen4b")
 
@@ -103,53 +103,3 @@ class TestSLMModelSwitching:
             service = slm_module.SLMService()
             # Assert: Picked up 4B
             assert service.current_model.id == "qwen4b"
-
-    def test_awq_conversion_logic(self, slm_module):
-        """Test that int4_awq quantization triggers the correct converter flags."""
-        # Use ProvisioningWorker directly as logic moved there
-        mock_model = slm_module.SupportedModel(
-            id="test",
-            name="T",
-            repo_id="r",
-            revision="v",
-            dir_name="d",
-            quantization="int8",
-            required_vram_mb=100,
-        )
-        worker = slm_module.ProvisioningWorker(mock_model, Path("/tmp"))
-
-        with patch("subprocess.check_call") as mock_run:
-            with patch("shutil.rmtree"):
-                # Setup paths
-                source = "source_path"
-                dest = "dest_path"
-
-                # Test Case 1: Int8 (Standard)
-                worker._run_conversion(Path(source), Path(dest))
-
-                # Check args
-                args, _ = mock_run.call_args
-                cmd = args[0]
-                assert "--quantization" in cmd
-                assert "int8" in cmd
-
-                # Test Case 2: Different int8 model
-                worker.model = slm_module.SupportedModel(
-                    id="test2",
-                    name="T2",
-                    repo_id="r",
-                    revision="main",
-                    dir_name="d",
-                    quantization="int8",
-                    required_vram_mb=100,
-                    source="HuggingFace",
-                )
-
-                worker._run_conversion(Path(source), Path(dest))
-
-                # Check args
-                args, _ = mock_run.call_args
-                cmd = args[0]
-                # Invariant: Standard int8 should have quantization flag
-                assert "--quantization" in cmd
-                assert "int8" in cmd
