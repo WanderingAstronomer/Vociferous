@@ -21,6 +21,7 @@ from PyQt6.QtCore import (
 
 from src.core.config_manager import ConfigManager, get_model_cache_dir
 from src.core.model_registry import MODELS, SupportedModel
+from src.provisioning.core import provision_model, ProvisioningError
 
 # Conditional imports to defer dependencies until needed
 try:
@@ -65,162 +66,39 @@ class ProvisioningSignals(QObject):
 
 class ProvisioningWorker(QRunnable):
     """
-    Background worker to handle model downloading, dependency installation,
-    and conversion without blocking the main (UI) thread.
+    Background worker that delegates model provisioning to src.provisioning.core.
+    Adaptor pattern to bridge core logic with Qt Signals.
     """
 
-    SOURCE_DIR_NAME = "slm-source-temp"
-
-    def __init__(self, model: SupportedModel, cache_dir: Path):
+    def __init__(
+        self, model: SupportedModel, cache_dir: Path, source_dir: Path | None = None
+    ):
         super().__init__()
         self.model = model
         self.cache_dir = cache_dir
+        self.source_dir = source_dir
         self.signals = ProvisioningSignals()
         self.logger = logger
 
-    def run(self):
-        source_dir = self.cache_dir / self.SOURCE_DIR_NAME
-        model_dir = self.cache_dir / self.model.dir_name
-
+    def run(self) -> None:
         try:
-            # 1. Check Dependencies
-            self._check_conversion_deps()
+            # Define progress callback adaptor
+            def progress_callback(msg: str):
+                self.signals.progress.emit(msg)
 
-            # 2. Download Source
-            self.signals.progress.emit(f"Downloading source: {self.model.repo_id}...")
+            # Delegate to core library
+            provision_model(
+                self.model,
+                self.cache_dir,
+                progress_callback=progress_callback,
+                source_dir=self.source_dir,
+            )
 
-            if self.model.source == "ModelScope":
-                # Re-import after potential pip install
-                from modelscope.hub.snapshot_download import snapshot_download as ms_dl
-
-                self.logger.info(f"Using ModelScope to download {self.model.repo_id}")
-
-                downloaded_path = ms_dl(
-                    model_id=self.model.repo_id,
-                    cache_dir=str(self.cache_dir),  # Store in the main cache dir
-                    revision=self.model.revision,
-                )
-                source_dir = Path(downloaded_path)
-
-            else:
-                # Re-import after potential pip install
-                from huggingface_hub import snapshot_download as hf_dl
-
-                hf_dl(
-                    repo_id=self.model.repo_id,
-                    local_dir=source_dir,
-                    revision=self.model.revision,
-                )
-
-            # 3. Convert
-            self._run_conversion(source_dir, model_dir)
-
-            # 4. Copy tokenizer.json
-            self.logger.info("Copying tokenizer artifacts...")
-            source_tokenizer = source_dir / "tokenizer.json"
-            if source_tokenizer.exists():
-                shutil.copy2(source_tokenizer, model_dir / "tokenizer.json")
-            else:
-                self.logger.warning("tokenizer.json not found in source.")
-
-            # Success
             self.signals.finished.emit(True, "Provisioning complete.")
 
         except Exception as e:
             self.logger.error(f"Provisioning worker failed: {e}")
-            # Clean up corrupted output
-            if model_dir.exists():
-                shutil.rmtree(model_dir, ignore_errors=True)
             self.signals.finished.emit(False, str(e))
-
-        finally:
-            # 5. Clean up Source
-            if source_dir.exists():
-                shutil.rmtree(source_dir, ignore_errors=True)
-
-    def _check_conversion_deps(self):
-        """Verify conversion dependencies are available."""
-        self.signals.progress.emit("Checking conversion dependencies...")
-        required = ["ctranslate2", "transformers", "torch", "huggingface_hub"]
-        if self.model.source == "ModelScope":
-            required.append("modelscope")
-
-        missing = [dep for dep in required if importlib.util.find_spec(dep) is None]
-
-        if missing:
-            missing_str = ", ".join(missing)
-            error_msg = (
-                f"Missing required dependencies for model conversion: {missing_str}. "
-                "Please install them manually before provisioning models:\n\n"
-                f"  pip install {' '.join(missing)}\n\n"
-                "Or install all dependencies:\n\n"
-                "  pip install -r requirements.txt"
-            )
-            self.logger.error(error_msg)
-            raise RuntimeError(error_msg)
-
-    def _run_conversion(self, source_dir: Path, output_dir: Path):
-        """Run ctranslate2 conversion."""
-        self.signals.progress.emit("Converting model (this may take a while)...")
-        self.logger.info(f"Converting model from {source_dir} to {output_dir}")
-
-        script_name = "ct2-transformers-converter"
-        script_path = None
-        possible_paths = [
-            Path(sys.executable).parent / script_name,
-            Path(sys.executable).parent / "Scripts" / f"{script_name}.exe",
-        ]
-        for p in possible_paths:
-            if p.exists():
-                script_path = str(p)
-                break
-
-        if not script_path:
-            script_path = script_name
-
-        # Construct command
-        if self.model.quantization == "int4_awq":
-            cmd_prefix = (
-                [script_path]
-                if Path(script_path).exists()
-                else [sys.executable, "-m", "ctranslate2.converters.transformers"]
-            )
-            cmd_args = [
-                "--model",
-                str(source_dir),
-                "--output_dir",
-                str(output_dir),
-                "--force",
-            ]
-            cmd = cmd_prefix + cmd_args
-        else:
-            cmd_prefix = (
-                [script_path]
-                if Path(script_path).exists()
-                else [sys.executable, "-m", "ctranslate2.converters.transformers"]
-            )
-            cmd_args = [
-                "--model",
-                str(source_dir),
-                "--output_dir",
-                str(output_dir),
-                "--quantization",
-                self.model.quantization,
-                "--force",
-            ]
-            cmd = cmd_prefix + cmd_args
-
-        try:
-            subprocess.check_call(cmd)
-        except subprocess.CalledProcessError:
-            # Fallback to module execution if script failed
-            self.logger.info("Script execution failed, trying module...")
-            cmd = [
-                sys.executable,
-                "-m",
-                "ctranslate2.converters.transformers",
-            ] + cmd_args
-            subprocess.check_call(cmd)
 
 
 class SLMService(QObject):
@@ -488,7 +366,7 @@ class SLMService(QObject):
         """Start a timeout timer for GPU confirmation dialog."""
         # Cancel any existing timer
         self._cancel_gpu_confirmation_timeout()
-        
+
         self._gpu_timeout_timer = QTimer()
         self._gpu_timeout_timer.setSingleShot(True)
         self._gpu_timeout_timer.timeout.connect(self._on_gpu_confirmation_timeout)
@@ -497,14 +375,14 @@ class SLMService(QObject):
             f"GPU confirmation timeout started ({self._gpu_confirmation_timeout_ms}ms). "
             "Will default to CPU if no response."
         )
-    
+
     def _cancel_gpu_confirmation_timeout(self):
         """Cancel the GPU confirmation timeout timer."""
         if self._gpu_timeout_timer is not None:
             self._gpu_timeout_timer.stop()
             self._gpu_timeout_timer.deleteLater()
             self._gpu_timeout_timer = None
-    
+
     @pyqtSlot()
     def _on_gpu_confirmation_timeout(self):
         """Handle GPU confirmation timeout - default to CPU."""
@@ -513,18 +391,21 @@ class SLMService(QObject):
             f"{self._gpu_confirmation_timeout_ms / 1000:.0f}s. Defaulting to CPU."
         )
         self._gpu_timeout_timer = None
-        
+
         # Only proceed if we're still waiting for confirmation
         if self.state != SLMState.WAITING_FOR_USER:
             return
-        
+
         # Continue initialization with CPU
-        if self._pending_init_model_dir is not None and self._pending_init_tokenizer_json is not None:
+        if (
+            self._pending_init_model_dir is not None
+            and self._pending_init_tokenizer_json is not None
+        ):
             model_dir = self._pending_init_model_dir
             tokenizer_json = self._pending_init_tokenizer_json
             self._pending_init_model_dir = None
             self._pending_init_tokenizer_json = None
-            
+
             self.statusMessage.emit("No response - using CPU for safety.")
             logger.info("Continuing initialization with CPU (timeout default)...")
             self._load_engine(model_dir, tokenizer_json, "cpu")
@@ -534,19 +415,22 @@ class SLMService(QObject):
         """Receive user choice from main thread and continue initialization."""
         # Cancel timeout timer since user responded
         self._cancel_gpu_confirmation_timeout()
-        
+
         self._gpu_mutex.lock()
         self._user_gpu_choice = use_gpu
         self._gpu_mutex.unlock()
         self._gpu_wait_condition.wakeAll()
-        
+
         # Continue initialization if we were waiting for GPU confirmation
-        if self._pending_init_model_dir is not None and self._pending_init_tokenizer_json is not None:
+        if (
+            self._pending_init_model_dir is not None
+            and self._pending_init_tokenizer_json is not None
+        ):
             model_dir = self._pending_init_model_dir
             tokenizer_json = self._pending_init_tokenizer_json
             self._pending_init_model_dir = None
             self._pending_init_tokenizer_json = None
-            
+
             device = "cuda" if use_gpu else "cpu"
             logger.info(f"User chose: {device}. Continuing initialization...")
             self._load_engine(model_dir, tokenizer_json, device)
@@ -637,10 +521,10 @@ class SLMService(QObject):
                     # Store pending initialization state
                     self._pending_init_model_dir = model_dir
                     self._pending_init_tokenizer_json = tokenizer_json
-                    
+
                     # Start timeout timer - defaults to CPU if user doesn't respond
                     self._start_gpu_confirmation_timeout()
-                    
+
                     # Emit signal and return immediately (non-blocking)
                     self.askGPUConfirmation.emit(free_mb, total_mb, MODEL_SIZE_MB)
                     # Initialization will continue in submit_gpu_choice when user responds

@@ -1,3 +1,18 @@
+## Unreleased - Feature: Provisioning Isolation
+
+**Date:** 2026-01-29
+**Status:** Feature / Refactor
+
+### Added
+- **Provisioning Library**: New `src.provisioning` package for centralized model management.
+- **CLI Tool**: `vociferous-provision` (via `scripts/provision_models.py`) now wraps the new library with improved diagnostics.
+- **Dependency Lock**: Added `requirements.lock` for deterministic environments.
+- **Startup Integrity**: Strict environment check in `src/main.py` prevents startup if critical dependencies are missing.
+
+### Changed
+- **Runtime Isolation**: Removed inline `pip install` suggestions and subprocess conversion logic from `ProvisioningWorker`. It now delegates to the robust provisioning library.
+- **Fail Fast**: The application now hard-fails with a clear error message at startup if the environment is incomplete, rather than crashing during operation.
+
 # Vociferous Changelog
 
 ## Unreleased - Bugfix: Remove legacy DB detection
