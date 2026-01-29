@@ -1,6 +1,21 @@
 # Vociferous Changelog
 
-## Unreleased - Bugfix: Remove legacy DB detection
+## v3.0.4 - Bugfix: Surface DB save/init failures (#59)
+
+**Date:** 2026-01-29
+**Status:** Bugfix
+
+### Fixed
+
+- **Safety:** Prevent silent data loss when database writes fail:
+  - On DB save failures, the application now surfaces the error to the user via a modal error dialog and provides a **Retry** button that re-attempts saving the original transcript payload. (Ref: #59)
+  - Application startup now handles `HistoryManager` initialization failures gracefully by showing a retry-capable dialog and avoiding an immediate crash.
+  - Added unit and integration tests to cover commit failure and coordinator retry behavior.
+- **Behavior:** No dummy `HistoryEntry` is returned on failure; `TranscriptRepository.add_entry` raises `DatabaseError` and the UI only updates after successful persistence.
+
+---
+
+## v3.0.3 - Bugfix: Remove legacy DB detection
 
 **Date:** 2026-01-28
 **Status:** Bugfix
