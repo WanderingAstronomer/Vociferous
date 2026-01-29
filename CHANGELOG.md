@@ -1,5 +1,17 @@
 # Vociferous Changelog
 
+## Unreleased - Bugfix: Remove legacy DB detection
+
+**Date:** 2026-01-28
+**Status:** Bugfix
+
+### Changed
+
+- **Removed** legacy schema detection and automatic reset:
+  - Removed `DatabaseCore._check_legacy_schema` and `DatabaseCore._create_backup` (no automatic backup/migration on legacy `schema_version` DBs). Users with existing legacy DBs must manually backup/migrate before upgrading. See `docs/wiki/History-Storage.md` for guidance.
+
+---
+
 ## v3.0.2 - Documentation Styling and Accessibility
 
 **Date:** January 19, 2026  

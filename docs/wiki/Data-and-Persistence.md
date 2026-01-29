@@ -139,3 +139,15 @@ class EntityChange:
     action: ChangeAction      # CREATED, UPDATED, DELETED
     ids: list[int]            # Affected entity IDs
 ```
+
+---
+
+## Legacy Schema Handling (Deprecated)
+
+Prior versions of Vociferous included detection and automatic resetting/migration for legacy databases that contained a `schema_version` table. That logic has been removed.
+
+- The application will no longer attempt automatic migration or destructive reset for legacy `schema_version` databases.
+- If you are upgrading from a very old installation and have an existing legacy database file in your config directory, **manually back up your database file** (for example, by copying `~/.config/vociferous/vociferous.db` to a safe location) before running an upgrade.
+- If you need assistance migrating data from a legacy DB, consider extracting rows via SQLite tools (`sqlite3`, `.dump`) or contacting the project maintainers.
+
+This policy avoids accidental destructive operations during automated startup and puts recovery and migration control in administrators' hands.
