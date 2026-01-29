@@ -102,37 +102,29 @@ class TestDatabaseInitialization:
         referenced_tables = [fk[2] for fk in fks]
         assert "projects" in referenced_tables
 
-    def test_removes_legacy_schema_version_table(self, temp_db):
-        """Should remove schema_version table when detected to prevent nuke loops."""
-        # 1. Create a DB with legacy schema_version and conflicting table
-        with sqlite3.connect(temp_db) as conn:
-            conn.execute("CREATE TABLE schema_version (version INTEGER)")
-            conn.execute("INSERT INTO schema_version VALUES (1)")
-            # Create old transcripts table with different schema to verify it gets reset
-            conn.execute(
-                "CREATE TABLE transcripts (id INTEGER PRIMARY KEY, old_col TEXT)"
-            )
-
-        # 2. Init HistoryManager (should trigger nuke and rebuild)
+    def test_initialization_does_not_create_legacy_artifacts(self, temp_db):
+        """Fresh initialization must not create legacy artifacts (schema_version, focus_groups)."""
+        # Initialize fresh database
         HistoryManager(history_file=temp_db)
 
-        # 3. Check tables
+        # Ensure legacy artifact tables are NOT present and modern tables ARE present
         with sqlite3.connect(temp_db) as conn:
             cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = {row[0] for row in cursor.fetchall()}
 
-        # schema_version should be GONE
         assert "schema_version" not in tables
+        assert "focus_groups" not in tables
         assert "transcripts" in tables
         assert "projects" in tables
 
-        # Verify transcripts schema is the NEW one (renovated)
+        # Verify transcripts schema contains expected modern columns
         with sqlite3.connect(temp_db) as conn:
             cursor = conn.execute("PRAGMA table_info(transcripts)")
             cols = {row[1] for row in cursor.fetchall()}
 
-        assert "old_col" not in cols
         assert "normalized_text" in cols
+
+
 
 
 class TestAddEntry:
