@@ -98,3 +98,6 @@ tests/__pycache__/
 # =========================
 
 dev_tools/
+.venv/
+src/main.egg-info/
+*.egg-info/

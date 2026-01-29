@@ -313,16 +313,13 @@ def test_handle_transcription_result_retry_callback_succeeds(coordinator, coordi
 
 def test_start_handles_history_init_failure_shows_dialog_and_retries(mock_qapp):
     """If HistoryManager initialization fails during start(), show a retry dialog that allows re-initialization."""
-    from unittest.mock import MagicMock
-    from src.core.exceptions import DatabaseError
-
     # Configure HistoryManager to fail first, then succeed
     hist_side = [Exception("init fail"), MagicMock()]
 
     with (
-        patch("src.core.application_coordinator.HistoryManager", side_effect=hist_side) as mock_hist,
+        patch("src.core.application_coordinator.HistoryManager", side_effect=hist_side),
         patch("src.ui.widgets.dialogs.error_dialog.show_error_dialog") as mock_show,
-        patch("src.core.application_coordinator.StateManager") as mock_state,
+        patch("src.core.application_coordinator.StateManager"),
     ):
         coord = ApplicationCoordinator(mock_qapp)
 

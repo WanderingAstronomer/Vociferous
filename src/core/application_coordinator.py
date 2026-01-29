@@ -510,6 +510,10 @@ class ApplicationCoordinator(QObject):
 
             db_err = DatabaseError(f"Failed to initialize history database: {e}")
 
+            # Define a retry wrapper that discards the return value
+            def retry_init() -> None:
+                self._init_core_services()
+
             # Show a modal dialog with a Retry callback that attempts to initialize again
             show_error_dialog(
                 title="Failed to Initialize History DB",
@@ -519,7 +523,7 @@ class ApplicationCoordinator(QObject):
                 ),
                 details=str(db_err),
                 parent=None,
-                retry_callback=self._init_core_services,
+                retry_callback=retry_init,
             )
             return False
 
