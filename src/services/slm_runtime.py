@@ -13,9 +13,8 @@ It DOES NOT:
 3. Convert models.
 """
 
-import enum
+from src.services.slm_types import SLMState
 import logging
-from dataclasses import dataclass
 from typing import Optional
 
 from PyQt6.QtCore import (
@@ -37,21 +36,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class SupportedModel:
-    id: str
-    name: str
-    dir_name: str
-    required_vram_mb: int
-
-
-class SLMState(enum.Enum):
-    DISABLED = "Disabled"
-    LOADING = "Loading Model"
-    READY = "Ready"
-    INFERRING = "Refining..."
-    ERROR = "Error"
 
 
 class SLMSignals(QObject):
