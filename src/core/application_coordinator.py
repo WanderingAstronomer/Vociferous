@@ -583,7 +583,7 @@ class ApplicationCoordinator(QObject):
     def _on_gpu_confirmation_requested(self, free, total, needed):
         # Replicate logic from main.py using ConfirmationDialog
         # Needs to import relevant UI
-        from src.ui.widgets.dialogs import ConfirmationDialog
+        from src.ui.widgets.dialogs.custom_dialog import ConfirmationDialog
 
         # Calculate percentages
         remaining_mb = free - needed

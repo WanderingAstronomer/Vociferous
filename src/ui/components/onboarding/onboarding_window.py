@@ -216,7 +216,7 @@ class OnboardingWindow(QDialog):
 
         # "Attempting to close ... must trigger confirm ... exiting terminates app"
         # Create custom styled dialog instead of QMessageBox
-        from src.ui.widgets.dialogs import ConfirmationDialog
+        from src.ui.widgets.dialogs.custom_dialog import ConfirmationDialog
 
         dialog = ConfirmationDialog(
             parent=self,

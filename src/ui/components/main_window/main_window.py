@@ -42,7 +42,8 @@ from src.ui.constants import (
     WorkspaceState,
 )
 from src.ui.constants.dimensions import MIN_WIDTH, MIN_HEIGHT, BASE
-from src.ui.widgets.dialogs import ConfirmationDialog, MessageDialog, show_error_dialog
+from src.ui.widgets.dialogs.custom_dialog import ConfirmationDialog, MessageDialog
+from src.ui.widgets.dialogs.error_dialog import show_error_dialog
 
 # New shell components
 from src.ui.components.main_window.icon_rail import IconRail
@@ -634,7 +635,7 @@ class MainWindow(QMainWindow):
                 logger.info(f"Deleted transcript: {timestamp}")
             except Exception as e:
                 logger.exception("Failed to delete transcript")
-                from src.ui.widgets.dialogs import show_error_dialog
+                from src.ui.widgets.dialogs.error_dialog import show_error_dialog
 
                 show_error_dialog(
                     "Delete Error",
@@ -689,7 +690,7 @@ class MainWindow(QMainWindow):
                 logger.info(f"Deleted {len(transcript_ids)} transcripts")
             except Exception as e:
                 logger.exception("Failed to delete transcripts")
-                from src.ui.widgets.dialogs import show_error_dialog
+                from src.ui.widgets.dialogs.error_dialog import show_error_dialog
 
                 show_error_dialog(
                     "Delete Error",
@@ -909,7 +910,7 @@ class MainWindow(QMainWindow):
             if not self.history_manager:
                 return
 
-            from src.ui.widgets.dialogs import ExportDialog
+            from src.ui.widgets.dialogs.export_dialog import ExportDialog
 
             dialog = ExportDialog(self)
             if dialog.exec():

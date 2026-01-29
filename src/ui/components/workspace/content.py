@@ -33,7 +33,8 @@ import src.ui.constants.colors as c
 from src.ui.constants import Spacing, Typography
 from src.ui.utils.clipboard_utils import copy_text
 from src.core.config_manager import ConfigManager
-from src.ui.widgets.visualizers import BarSpectrumVisualizer, WaveformVisualizer
+from src.ui.widgets.visualizers.bar_spectrum_visualizer.bar_spectrum_visualizer import BarSpectrumVisualizer
+from src.ui.widgets.visualizers.waveform_visualizer.waveform_visualizer import WaveformVisualizer
 
 logger = logging.getLogger(__name__)
 

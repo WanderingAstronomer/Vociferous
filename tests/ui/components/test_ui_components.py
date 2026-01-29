@@ -16,10 +16,10 @@ from PyQt6.QtWidgets import QApplication
 from src.database.history_manager import HistoryManager
 from src.input_handler.listener import KeyListener
 from src.ui.models import TranscriptionModel
-from src.ui.widgets.dialogs import CreateProjectDialog
-from src.ui.widgets.project import ProjectTreeWidget
-from src.ui.widgets.history_tree import HistoryTreeView
-from src.ui.widgets.hotkey_widget import HotkeyWidget
+from src.ui.widgets.dialogs.create_project_dialog import CreateProjectDialog
+from src.ui.widgets.project.project_tree import ProjectTreeWidget
+from src.ui.widgets.history_tree.history_tree_view import HistoryTreeView
+from src.ui.widgets.hotkey_widget.hotkey_widget import HotkeyWidget
 
 # Mark entire module as UI-dependent
 pytestmark = pytest.mark.ui_dependent

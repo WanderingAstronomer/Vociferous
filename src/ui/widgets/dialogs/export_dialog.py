@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
 
 from src.ui.components.title_bar.dialog_title_bar import DialogTitleBar
 from src.ui.constants import MAJOR_GAP, MINOR_GAP
-from src.ui.widgets.styled_button import ButtonStyle, StyledButton
+from src.ui.widgets.styled_button.styled_button import ButtonStyle, StyledButton
 
 
 class ExportDialog(QDialog):

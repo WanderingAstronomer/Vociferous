@@ -164,7 +164,7 @@ class TestErrorDialog:
 
     def test_error_dialog_creation(self, qapp):
         """ErrorDialog should be creatable."""
-        from src.ui.widgets.dialogs import ErrorDialog
+        from src.ui.widgets.dialogs.error_dialog import ErrorDialog
 
         dialog = ErrorDialog(
             parent=None,
@@ -177,7 +177,7 @@ class TestErrorDialog:
 
     def test_error_dialog_displays_message(self, qapp):
         """ErrorDialog should display the provided message."""
-        from src.ui.widgets.dialogs import ErrorDialog
+        from src.ui.widgets.dialogs.error_dialog import ErrorDialog
         from PyQt6.QtWidgets import QLabel
 
         dialog = ErrorDialog(
@@ -193,7 +193,7 @@ class TestErrorDialog:
 
     def test_error_dialog_toggle_details(self, qapp):
         """ErrorDialog details section should toggle visibility."""
-        from src.ui.widgets.dialogs import ErrorDialog
+        from src.ui.widgets.dialogs.error_dialog import ErrorDialog
         from PyQt6.QtWidgets import QPushButton
 
         dialog = ErrorDialog(
@@ -219,7 +219,7 @@ class TestErrorDialog:
 
     def test_error_dialog_copy_to_clipboard(self, qapp):
         """ErrorDialog should copy details to clipboard."""
-        from src.ui.widgets.dialogs import ErrorDialog
+        from src.ui.widgets.dialogs.error_dialog import ErrorDialog
         from PyQt6.QtWidgets import QPushButton
 
         dialog = ErrorDialog(
@@ -239,7 +239,7 @@ class TestErrorDialog:
 
     def test_show_error_dialog_function(self, qapp):
         """show_error_dialog convenience function should work."""
-        from src.ui.widgets.dialogs import show_error_dialog
+        from src.ui.widgets.dialogs.error_dialog import show_error_dialog
 
         # Mock exec to prevent blocking
         with patch.object(
@@ -383,7 +383,7 @@ class TestErrorPathIntegration:
 
     def test_history_tree_view_handles_invalid_model(self, qapp):
         """HistoryTreeView should handle operations with no model."""
-        from src.ui.widgets.history_tree import HistoryTreeView
+        from src.ui.widgets.history_tree.history_tree_view import HistoryTreeView
 
         view = HistoryTreeView()
 

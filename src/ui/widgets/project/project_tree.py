@@ -34,10 +34,11 @@ from PyQt6.QtWidgets import (
 import src.ui.constants.colors as c
 from src.ui.constants import ProjectColors, Typography
 from src.ui.constants.dimensions import PROJECT_ROW_HEIGHT, TRANSCRIPT_ROW_HEIGHT
-from src.ui.widgets.dialogs import ConfirmationDialog, CreateProjectDialog, InputDialog
+from src.ui.widgets.dialogs.custom_dialog import ConfirmationDialog, InputDialog
+from src.ui.widgets.dialogs.create_project_dialog import CreateProjectDialog
 from src.ui.widgets.dialogs.error_dialog import show_error_dialog
 from src.ui.widgets.project.project_delegate import ProjectDelegate
-from src.ui.widgets.transcript_item import (
+from src.ui.widgets.transcript_item.transcript_item import (
     ROLE_FULL_TEXT,
     ROLE_TIMESTAMP_ISO,
     ROLE_ENTRY_ID,

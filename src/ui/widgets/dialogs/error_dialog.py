@@ -26,7 +26,7 @@ from PyQt6.QtWidgets import (
 
 from src.ui.constants import MINOR_GAP, Typography
 from src.ui.widgets.dialogs.custom_dialog import StyledDialog
-from src.ui.widgets.styled_button import ButtonStyle, StyledButton
+from src.ui.widgets.styled_button.styled_button import ButtonStyle, StyledButton
 
 
 class ErrorDialog(StyledDialog):

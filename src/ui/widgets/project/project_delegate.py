@@ -21,8 +21,10 @@ from PyQt6.QtWidgets import (
 import src.ui.constants.colors as c
 from src.ui.constants import Typography
 from src.ui.utils.history_utils import format_time_compact
-from src.ui.widgets.transcript_item import (
+from src.ui.widgets.transcript_item.transcript_item import (
     ROLE_TIMESTAMP_ISO,
+)
+from src.ui.widgets.transcript_item.transcript_painter import (
     paint_transcript_entry,
 )
 

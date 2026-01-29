@@ -28,10 +28,11 @@ from src.ui.constants.view_ids import VIEW_SETTINGS
 import src.ui.constants.colors as c
 from src.ui.constants import Spacing, Typography
 from src.ui.contracts.capabilities import Capabilities, SelectionState, ActionId
-from src.ui.widgets.hotkey_widget import HotkeyWidget
+from src.ui.widgets.hotkey_widget.hotkey_widget import HotkeyWidget
 from src.ui.widgets.slider_field import SliderField
 from src.ui.widgets.toggle_switch import ToggleSwitch
-from src.ui.widgets.dialogs import ConfirmationDialog, show_error_dialog
+from src.ui.widgets.dialogs.custom_dialog import ConfirmationDialog
+from src.ui.widgets.dialogs.error_dialog import show_error_dialog
 from src.ui.styles.settings_view_styles import get_settings_view_stylesheet
 from src.core.config_manager import ConfigManager
 from src.core.model_registry import ASR_MODELS

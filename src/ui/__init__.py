@@ -14,7 +14,7 @@ Structure:
 Usage:
     from src.ui import constants
     from src.ui.components.main_window import MainWindow
-    from src.ui.widgets.styled_button import StyledButton
+    from src.ui.widgets.styled_button.styled_button import StyledButton
     from src.ui.styles import generate_unified_stylesheet
 """
 
