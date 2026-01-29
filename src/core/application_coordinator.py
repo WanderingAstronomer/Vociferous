@@ -114,8 +114,10 @@ class ApplicationCoordinator(QObject):
         self._setup_hotkey_dispatcher()
 
         # 3. Core Data Services
-        self.history_manager = HistoryManager()
-        self.state_manager = StateManager()
+        # Initialize core services with graceful handling of DB init failures
+        if not self._init_core_services():
+            # If init failed, return early. The retry logic is handled by the dialog callback.
+            return
 
         # 4. Hardware
         # Model loading is now deferred to the Engine Process (Headless)
@@ -447,26 +449,12 @@ class ApplicationCoordinator(QObject):
                 self.main_window.sync_recording_status_from_engine("idle")
                 return
 
-            # Save to history
+            # Save to history (use helper to allow retry)
             if self.history_manager:
-                try:
-                    entry = self.history_manager.add_entry(
-                        result.text, result.duration_ms, result.speech_duration_ms
-                    )
-                    # Ensure the UI refreshes metrics and updates list immediately
-                    self.main_window.on_transcription_complete(entry)
-                except DatabaseError as e:
-                    logger.error(f"Failed to save transcript: {e}")
-                    from src.ui.widgets.dialogs.error_dialog import show_error_dialog
-                    show_error_dialog(
-                        title="Failed to Save Transcript",
-                        message=(
-                            "The transcription was successful, but it could not be saved to history.\n\n"
-                            "Your transcript has been copied to the clipboard, but it will not appear in your history."
-                        ),
-                        details=str(e),
-                        parent=self.main_window,
-                    )
+                self._save_transcript(
+                    result.text, result.duration_ms, result.speech_duration_ms
+                )
+
 
             # Sync engine status last to avoid premature state transition
             self.main_window.sync_recording_status_from_engine("idle")
@@ -505,6 +493,59 @@ class ApplicationCoordinator(QObject):
         from src.ui.components.error_dialog import show_error_dialog
 
         show_error_dialog("Refinement Failed", error, self.main_window)
+
+    def _init_core_services(self) -> bool:
+        """Initialize History and State managers. Returns True on success, False on failure.
+
+        On failure, show a retry dialog that re-invokes this method.
+        """
+        try:
+            self.history_manager = HistoryManager()
+            self.state_manager = StateManager()
+            return True
+        except Exception as e:
+            # Wrap any initialization failure as DatabaseError for user-facing messaging
+            from src.core.exceptions import DatabaseError
+            from src.ui.widgets.dialogs.error_dialog import show_error_dialog
+
+            db_err = DatabaseError(f"Failed to initialize history database: {e}")
+
+            # Show a modal dialog with a Retry callback that attempts to initialize again
+            show_error_dialog(
+                title="Failed to Initialize History DB",
+                message=(
+                    "Vociferous could not initialize the history database. "
+                    "You can retry initialization or exit the application."
+                ),
+                details=str(db_err),
+                parent=None,
+                retry_callback=self._init_core_services,
+            )
+            return False
+
+    def _save_transcript(self, text: str, duration_ms: int, speech_duration_ms: int) -> None:
+        """Attempt to save transcript to history. On DatabaseError, show dialog with retry."""
+        try:
+            entry = self.history_manager.add_entry(text, duration_ms, speech_duration_ms)
+            # Ensure the UI refreshes metrics and updates list immediately
+            self.main_window.on_transcription_complete(entry)
+        except DatabaseError as e:
+            logger.error(f"Failed to save transcript: {e}")
+            from src.ui.widgets.dialogs.error_dialog import show_error_dialog
+
+            # Provide a retry callback that re-invokes this method with the same payload
+            show_error_dialog(
+                title="Failed to Save Transcript",
+                message=(
+                    "The transcription was successful, but it could not be saved to history.\n\n"
+                    "Your transcript has been copied to the clipboard, but it will not appear in your history."
+                ),
+                details=str(e),
+                parent=self.main_window,
+                retry_callback=lambda: self._save_transcript(
+                    text, duration_ms, speech_duration_ms
+                ),
+            )
 
     def _on_motd_ready(self, message: str):
         if self.main_window:

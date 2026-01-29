@@ -241,3 +241,103 @@ def test_hotkey_on_deactivation_ptt_mode(coordinator, coordinator_patches):
     # Should dispatch StopRecordingIntent
     args, _ = mock_window.dispatch_intent.call_args
     assert isinstance(args[0], StopRecordingIntent)
+
+
+def test_handle_transcription_result_save_failure_shows_dialog_and_copies(coordinator, coordinator_patches):
+    """When history save fails, show dialog with retry and copy transcript to clipboard."""
+    from src.core.exceptions import DatabaseError
+    from src.core_runtime.types import TranscriptionResult, EngineState
+
+    coordinator.start()
+
+    mock_history = coordinator_patches["history"].return_value
+    mock_history.add_entry.side_effect = DatabaseError("DB fail")
+
+    result = TranscriptionResult(
+        state=EngineState.COMPLETE, text="A B C", duration_ms=123, speech_duration_ms=45
+    )
+
+    with (
+        patch("src.ui.widgets.dialogs.error_dialog.show_error_dialog") as mock_show,
+        patch("src.ui.utils.clipboard_utils.copy_text") as mock_copy,
+    ):
+        coordinator._handle_transcription_result(result)
+
+        mock_show.assert_called_once()
+        _, kwargs = mock_show.call_args
+        assert "retry_callback" in kwargs and kwargs["retry_callback"] is not None
+
+        mock_copy.assert_called_once_with("A B C")
+
+        main_window = coordinator_patches["window"].return_value
+        main_window.on_transcription_complete.assert_not_called()
+
+
+def test_handle_transcription_result_retry_callback_succeeds(coordinator, coordinator_patches):
+    """Retry callback should re-attempt save and call on_transcription_complete on success."""
+    from src.core.exceptions import DatabaseError
+    from src.database.dtos import HistoryEntry
+    from src.core_runtime.types import TranscriptionResult, EngineState
+
+    coordinator.start()
+
+    mock_history = coordinator_patches["history"].return_value
+
+    success_entry = HistoryEntry(
+        timestamp="2025-01-01T12:00:00", text="A B C", duration_ms=123
+    )
+
+    mock_history.add_entry.side_effect = [DatabaseError("DB fail"), success_entry]
+
+    result = TranscriptionResult(
+        state=EngineState.COMPLETE, text="A B C", duration_ms=123, speech_duration_ms=45
+    )
+
+    with (
+        patch("src.ui.widgets.dialogs.error_dialog.show_error_dialog") as mock_show,
+        patch("src.ui.utils.clipboard_utils.copy_text"),
+    ):
+        coordinator._handle_transcription_result(result)
+
+        mock_show.assert_called_once()
+        retry_cb = mock_show.call_args.kwargs.get("retry_callback")
+        assert callable(retry_cb)
+
+        # Invoke the retry callback; should attempt to save again and succeed
+        retry_cb()
+
+        assert mock_history.add_entry.call_count == 2
+        main_window = coordinator_patches["window"].return_value
+        main_window.on_transcription_complete.assert_called_once_with(success_entry)
+
+
+def test_start_handles_history_init_failure_shows_dialog_and_retries(mock_qapp):
+    """If HistoryManager initialization fails during start(), show a retry dialog that allows re-initialization."""
+    from unittest.mock import MagicMock
+    from src.core.exceptions import DatabaseError
+
+    # Configure HistoryManager to fail first, then succeed
+    hist_side = [Exception("init fail"), MagicMock()]
+
+    with (
+        patch("src.core.application_coordinator.HistoryManager", side_effect=hist_side) as mock_hist,
+        patch("src.ui.widgets.dialogs.error_dialog.show_error_dialog") as mock_show,
+        patch("src.core.application_coordinator.StateManager") as mock_state,
+    ):
+        coord = ApplicationCoordinator(mock_qapp)
+
+        # First start: init should fail and show dialog
+        coord.start()
+        mock_show.assert_called_once()
+
+        retry_cb = mock_show.call_args.kwargs.get("retry_callback")
+        assert callable(retry_cb)
+
+        # Before retry, history_manager should not be set
+        assert getattr(coord, "history_manager", None) is None
+
+        # Simulate user pressing Retry on the dialog
+        retry_cb()
+
+        # After retry, history_manager should be initialized (side_effect second value)
+        assert getattr(coord, "history_manager", None) is not None
