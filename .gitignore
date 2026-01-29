@@ -21,6 +21,7 @@ htmlcov/
 # Virtual Environments
 # =========================
 
+.serena/
 .venv/
 venv/
 ENV/
