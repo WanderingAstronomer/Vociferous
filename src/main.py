@@ -15,6 +15,7 @@ from PyQt6.QtCore import QLockFile, qInstallMessageHandler
 from PyQt6.QtWidgets import QApplication
 
 from src.core.application_coordinator import ApplicationCoordinator
+from src.provisioning.requirements import verify_environment_integrity
 from src.ui.utils.error_handler import install_exception_hook
 from src.ui.widgets.dialogs.error_dialog import show_error_dialog
 
@@ -71,9 +72,17 @@ def _global_exception_handler(title: str, message: str, details: str) -> None:
 def main():
     # 1. Setup Exception Hooks
     install_exception_hook(_global_exception_handler)
+    
+    # 2. Environment Integrity Check (Fail fast before loading UI)
+    try:
+        verify_environment_integrity()
+    except RuntimeError as e:
+        sys.stderr.write(f"CRITICAL STARTUP ERROR:\n{e}\n")
+        return 1
+
     _install_qt_message_handler()
 
-    # 2. Single Instance Check
+    # 3. Single Instance Check
     lock_file_path = _get_lock_file_path()
     lock = QLockFile(lock_file_path)
     lock.setStaleLockTime(10_000)
