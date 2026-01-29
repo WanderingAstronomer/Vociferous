@@ -1,3 +1,21 @@
+## v3.0.6 - Maintenance: Test Suite Recovery and Venv Integrity
+
+**Date:** 2026-01-30
+**Status:** Maintenance / Bugfix
+
+### Added
+- **Test Runner**: Added `scripts/run_tests.sh` to provide an authoritative way to execute the test suite within the project's virtual environment.
+- **Environment Discovery**: Added `pythonpath = ["src"]` to `pyproject.toml` to ensure consistent module discovery across all platforms.
+
+### Fixed
+- **Test Collection**: Resolved 14+ `ModuleNotFoundError` errors caused by legacy imports of the defunct `src.provisioning.core` module.
+- **Path Resolution**: Fixed pathing errors in test utilities that prevented script detection when run from the repository root.
+- **Legacy Tests**: Purged or updated tests targeting removed private methods (`_validate_artifacts`, `_run_conversion`) in `SLMService`.
+
+### Changed
+- **Testing Philosophy**: Updated `docs/wiki/Testing-Philosophy.md` to document the new `scripts/run_tests.sh` workflow.
+
+---
 ## v3.0.5 - Refactor: SLM Service Decomposition
 
 **Date:** 2026-01-29

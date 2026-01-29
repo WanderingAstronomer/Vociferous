@@ -10,7 +10,6 @@ from PyQt6.QtCore import (
 
 from src.core.config_manager import ConfigManager
 from src.core.model_registry import SupportedModel
-from src.provisioning.core import provision_model
 from src.services.slm_types import ProvisioningSignals
 
 logger = logging.getLogger(__name__)
@@ -22,8 +21,11 @@ class _WorkerSignals(QObject):
 
 class ProvisioningWorker(QRunnable):
     """
-    Background worker that delegates model provisioning to src.provisioning.core.
-    Adaptor pattern to bridge core logic with Qt Signals.
+    Background worker that was previously responsible for provisioning.
+    
+    Reality Check: Provisioning logic has moved to scripts/provision_models.py.
+    This worker now acts as a stub to prevent import errors while the UI 
+    transitions to the new SLMRuntime.
     """
 
     def __init__(
@@ -37,24 +39,13 @@ class ProvisioningWorker(QRunnable):
         self.logger = logger
 
     def run(self) -> None:
-        try:
-            # Define progress callback adaptor
-            def progress_callback(msg: str):
-                self.signals.progress.emit(msg)
-
-            # Delegate to core library
-            provision_model(
-                self.model,
-                self.cache_dir,
-                progress_callback=progress_callback,
-                source_dir=self.source_dir,
-            )
-
-            self.signals.finished.emit(True, "Provisioning complete.")
-
-        except Exception as e:
-            self.logger.error(f"Provisioning worker failed: {e}")
-            self.signals.finished.emit(False, str(e))
+        """Inform the user that provisioning is now external."""
+        msg = (
+            f"Provisioning for {self.model.name} is now handled via the CLI.\n"
+            "Please run: python scripts/provision_models.py --model " + self.model.id
+        )
+        self.logger.warning(msg)
+        self.signals.finished.emit(False, msg)
 
 class _MOTDWorker(QRunnable):
     """Background worker for MOTD generation."""

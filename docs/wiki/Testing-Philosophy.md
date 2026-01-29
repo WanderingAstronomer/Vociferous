@@ -11,6 +11,28 @@ The test suite is designed around two principles:
 1. **Fast feedback** — Non-UI tests run in < 5 seconds
 2. **Comprehensive coverage** — UI tests verify end-to-end behavior
 
+## Running tests reliably (Recommended) 🔧
+
+On machines such as Raspberry Pi or CI runners, the system Python may not have the project test dependencies installed. To ensure tests always run with the project's virtual environment and from the repository root, use the provided helper script:
+
+```bash
+# from the repo root
+bash scripts/run_tests.sh [--force-ignore-running] [pytest-args...]
+```
+
+Notes:
+- `--force-ignore-running` sets `VOCIFEROUS_TEST_IGNORE_RUNNING=1` (useful in CI where the app may not be running) — otherwise the test suite will abort if it detects a live Vociferous lock to avoid interference.
+- Alternatively, activate the project's venv and run pytest directly:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+python -m pytest
+```
+
+This ensures pytest and other test-only dependencies are available and that test discovery runs from the correct working directory.
+
 ---
 
 ## Test Tiers
