@@ -255,7 +255,7 @@ class TestEditIntentStateAssertions:
     @pytest.fixture
     def workspace(self, qapp_session):
         """Create MainWorkspace instance for testing."""
-        from src.ui.components.workspace import MainWorkspace
+        from src.ui.components.workspace.workspace import MainWorkspace
         from src.ui.constants import WorkspaceState
 
         w = MainWorkspace()
@@ -351,7 +351,7 @@ class TestCommitIntentStateAssertions:
     @pytest.fixture
     def workspace(self, qapp_session):
         """Create MainWorkspace instance for testing."""
-        from src.ui.components.workspace import MainWorkspace
+        from src.ui.components.workspace.workspace import MainWorkspace
 
         w = MainWorkspace()
         return w
@@ -414,7 +414,7 @@ class TestDiscardIntentStateAssertions:
     @pytest.fixture
     def workspace(self, qapp_session):
         """Create MainWorkspace instance for testing."""
-        from src.ui.components.workspace import MainWorkspace
+        from src.ui.components.workspace.workspace import MainWorkspace
 
         w = MainWorkspace()
         return w
@@ -580,7 +580,7 @@ class TestDeleteIntentStateAssertions:
     @pytest.fixture
     def workspace(self, qapp_session):
         """Create MainWorkspace instance for testing."""
-        from src.ui.components.workspace import MainWorkspace
+        from src.ui.components.workspace.workspace import MainWorkspace
 
         w = MainWorkspace()
         return w

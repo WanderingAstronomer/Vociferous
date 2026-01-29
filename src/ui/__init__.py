@@ -22,3 +22,7 @@ Usage:
 # Import subpackages explicitly when needed.
 
 __version__ = "2.0.0-beta.2"
+
+# Public convenience import for MainWindow (kept for backwards compatibility)
+from src.ui.components.main_window.main_window import MainWindow
+__all__ = ["__version__", "MainWindow"]

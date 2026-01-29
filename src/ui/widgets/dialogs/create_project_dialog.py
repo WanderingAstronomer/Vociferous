@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from src.ui.components.title_bar import DialogTitleBar
+from src.ui.components.title_bar.dialog_title_bar import DialogTitleBar
 from src.ui.constants import MAJOR_GAP, MINOR_GAP
 import src.ui.constants.colors as c
 from src.ui.constants import ProjectColors

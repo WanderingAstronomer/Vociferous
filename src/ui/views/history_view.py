@@ -13,7 +13,8 @@ from PyQt6.QtWidgets import QHBoxLayout, QFrame, QVBoxLayout, QWidget, QLabel
 
 from src.database.signal_bridge import DatabaseSignalBridge
 from src.database.events import ChangeAction, EntityChange
-from src.ui.components.shared import HistoryList, ContentPanel
+from src.ui.components.shared.history_list import HistoryList
+from src.ui.components.shared.content_panel import ContentPanel
 from src.ui.constants.view_ids import VIEW_HISTORY
 from src.ui.contracts.capabilities import Capabilities, SelectionState, ActionId
 from src.ui.views.base_view import BaseView

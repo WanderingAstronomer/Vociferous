@@ -20,9 +20,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from src.ui.components.main_window.main_window import MainWindow
-from src.ui.components.title_bar import TitleBar
+from src.ui.components.title_bar.title_bar import TitleBar
 from src.ui.components.main_window.icon_rail import IconRail
-from src.ui.components.workspace import MainWorkspace
+from src.ui.components.workspace.workspace import MainWorkspace
 from src.ui.components.main_window.view_host import ViewHost
 from src.ui.constants.view_ids import VIEW_TRANSCRIBE, VIEW_HISTORY
 

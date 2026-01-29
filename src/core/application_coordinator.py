@@ -44,7 +44,7 @@ from src.ui.interaction.intents import (
 )
 
 # UI
-from src.ui.components.main_window import MainWindow
+from src.ui.components.main_window.main_window import MainWindow
 from src.ui.styles.unified_stylesheet import get_unified_stylesheet
 from src.ui.components.main_window.system_tray import SystemTrayManager
 

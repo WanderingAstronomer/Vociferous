@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import QHBoxLayout, QFrame, QVBoxLayout, QWidget, QLabel
 
 from src.database.signal_bridge import DatabaseSignalBridge
 from src.database.events import ChangeAction, EntityChange
-from src.ui.components.shared import ContentPanel
+from src.ui.components.shared.content_panel import ContentPanel
 from src.ui.constants.view_ids import VIEW_PROJECTS
 from src.ui.contracts.capabilities import ActionId, Capabilities, SelectionState
 from src.ui.views.base_view import BaseView

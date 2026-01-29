@@ -20,7 +20,7 @@ from src.ui.constants.view_ids import VIEW_REFINE
 from src.ui.constants import Spacing, Typography
 from src.ui.views.base_view import BaseView
 from src.ui.contracts.capabilities import Capabilities, ActionId
-from src.ui.components.shared import ContentPanel
+from src.ui.components.shared.content_panel import ContentPanel
 from src.ui.widgets.strength_selector import StrengthSelector
 from src.ui.styles.refine_view_styles import get_refine_card_stylesheet
 

@@ -15,7 +15,8 @@ from PyQt6.QtCore import QObject
 # Import DTO to re-export it for consumers
 from src.database.dtos import HistoryEntry
 from src.database.core import DatabaseCore
-from src.database.repositories import TranscriptRepository, ProjectRepository
+from src.database.repositories.transcript_repo import TranscriptRepository
+from src.database.repositories.project_repo import ProjectRepository
 from src.database.signal_bridge import DatabaseSignalBridge
 from src.database.events import ChangeAction, EntityChange
 from src.ui.constants import HISTORY_EXPORT_LIMIT

@@ -37,7 +37,7 @@ from src.ui.components.main_window.intent_feedback import IntentFeedbackHandler
 
 # from src.ui.components.main_window.main_window_styles import get_combined_stylesheet
 from src.ui.widgets.dialogs.blocking_overlay import BlockingOverlay
-from src.ui.components.title_bar import TitleBar
+from src.ui.components.title_bar.title_bar import TitleBar
 from src.ui.constants import (
     WorkspaceState,
 )

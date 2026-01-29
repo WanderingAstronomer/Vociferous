@@ -155,7 +155,7 @@ def test_style_contract_conformance(qtbot):
     """
     Contract: View must use standard container classes (ContentPanel).
     """
-    from src.ui.components.shared import ContentPanel
+    from src.ui.components.shared.content_panel import ContentPanel
 
     view = RefineView()
     qtbot.addWidget(view)

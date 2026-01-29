@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import QApplication
 if os.path.abspath("src") not in sys.path:
     sys.path.insert(0, os.path.abspath("src"))
 
-from src.ui.components.main_window import MainWindow
+from src.ui.components.main_window.main_window import MainWindow
 from src.ui.interaction.intents import (
     BeginRecordingIntent,
     StopRecordingIntent,
