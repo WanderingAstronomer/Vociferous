@@ -1,5 +1,22 @@
 # Vociferous Changelog
 
+## Unreleased - Chore: Init file cleanup and import refactor
+
+**Date:** 2026-01-29
+**Status:** Chore
+
+### Changed
+
+- **Chore:** Remove many unnecessary or empty `__init__.py` files used only as package markers in `tests/` and lightweight docstring-only `src/` packages.
+- **Chore:** Convert package-level convenience imports to explicit submodule imports to reduce implicit namespace coupling. Notable changes:
+  - Replaced imports from `src.input_handler` with explicit imports from `src.input_handler.listener`, `src.input_handler.types`, `src.input_handler.chord`, and `src.input_handler.backends.*`.
+  - Replaced `src.core.plugins` import with `src.core.plugins.loader`.
+  - Replaced `src.database.repositories` and `src.ui.components.*` facades with explicit submodule imports.
+- **Chore:** Removed now-unnecessary package `__init__.py` files: several empty `tests/**/__init__.py` files, and `src/input_handler/__init__.py`, `src/core/plugins/__init__.py`, `src/database/repositories/__init__.py`, and several `src/ui/components/*/__init__.py` that only re-exported small facades.
+- **Tests:** Updated tests to import explicit modules; ran full test suite successfully: `185 passed, 0 failed`.
+
+---
+
 ## v3.0.4 - Bugfix: Surface DB save/init failures (#59)
 
 **Date:** 2026-01-29
