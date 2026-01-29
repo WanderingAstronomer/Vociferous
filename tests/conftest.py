@@ -146,7 +146,7 @@ def config_manager(init_config):
 @pytest.fixture
 def key_listener(qapp_session):
     """Create and yield a KeyListener, stopping it after test."""
-    from src.input_handler import KeyListener
+    from src.input_handler.listener import KeyListener
 
     kl = KeyListener()
     yield kl

@@ -38,7 +38,7 @@ from src.core.model_registry import ASR_MODELS
 from src.services.slm_service import SLMState, SLMService
 
 if TYPE_CHECKING:
-    from src.input_handler import KeyListener
+    from src.input_handler.listener import KeyListener
 
 logger = logging.getLogger(__name__)
 

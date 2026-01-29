@@ -355,7 +355,7 @@ class TestErrorPathIntegration:
 
     def test_key_listener_callback_error_isolation(self):
         """KeyListener should isolate callback errors."""
-        from src.input_handler import KeyListener
+        from src.input_handler.listener import KeyListener
 
         listener = KeyListener()
 

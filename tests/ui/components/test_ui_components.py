@@ -14,7 +14,7 @@ from PyQt6.QtCore import QPoint, Qt
 from PyQt6.QtWidgets import QApplication
 
 from src.database.history_manager import HistoryManager
-from src.input_handler import KeyListener
+from src.input_handler.listener import KeyListener
 from src.ui.models import TranscriptionModel
 from src.ui.widgets.dialogs import CreateProjectDialog
 from src.ui.widgets.project import ProjectTreeWidget

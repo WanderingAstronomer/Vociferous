@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable
 
 from src.core.config_manager import ConfigManager
-from src.core.plugins import PluginLoader
+from src.core.plugins.loader import PluginLoader
 
 from .backends.base import InputBackend
 from .chord import KeyChord

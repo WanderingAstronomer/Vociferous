@@ -23,7 +23,7 @@ from src.database.history_manager import HistoryManager
 from src.core.command_bus import CommandBus
 
 # Infrastructure
-from src.input_handler import KeyListener
+from src.input_handler.listener import KeyListener
 from src.ui.utils.error_handler import get_error_logger
 
 # Domain Services

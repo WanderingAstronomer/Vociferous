@@ -6,7 +6,10 @@ import pytest
 import sys
 import logging
 
-from src.input_handler import EvdevBackend, InputEvent, KeyChord, KeyCode, PynputBackend
+from src.input_handler.backends.evdev import EvdevBackend
+from src.input_handler.types import InputEvent, KeyCode
+from src.input_handler.chord import KeyChord
+from src.input_handler.backends.pynput import PynputBackend
 
 
 class TestKeyCode:

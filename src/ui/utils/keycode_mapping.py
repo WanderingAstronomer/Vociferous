@@ -1,6 +1,6 @@
 """Keycode mapping utilities for hotkey display and configuration."""
 
-from src.input_handler import KeyCode
+from src.input_handler.types import KeyCode
 
 # Display names for keys (user-facing)
 KEY_DISPLAY_NAMES = {
