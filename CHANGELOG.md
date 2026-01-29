@@ -9,11 +9,13 @@
 
 - **Chore:** Remove many unnecessary or empty `__init__.py` files used only as package markers in `tests/` and lightweight docstring-only `src/` packages.
 - **Chore:** Convert package-level convenience imports to explicit submodule imports to reduce implicit namespace coupling. Notable changes:
-  - Replaced imports from `src.input_handler` with explicit imports from `src.input_handler.listener`, `src.input_handler.types`, `src.input_handler.chord`, and `src.input_handler.backends.*`.
-  - Replaced `src.core.plugins` import with `src.core.plugins.loader`.
-  - Replaced `src.database.repositories` and `src.ui.components.*` facades with explicit submodule imports.
-- **Chore:** Removed now-unnecessary package `__init__.py` files: several empty `tests/**/__init__.py` files, and `src/input_handler/__init__.py`, `src/core/plugins/__init__.py`, `src/database/repositories/__init__.py`, and several `src/ui/components/*/__init__.py` that only re-exported small facades.
-- **Tests:** Updated tests to import explicit modules; ran full test suite successfully: `185 passed, 0 failed`.
+  - Replaced widget package imports with explicit submodule imports: `src.ui.widgets.hotkey_widget.hotkey_widget`, `src.ui.widgets.dialogs.error_dialog`, `src.ui.widgets.visualizers.bar_spectrum_visualizer.bar_spectrum_visualizer`, etc.
+  - Updated all imports from widget packages to use full explicit paths in UI components, views, and tests.
+- **Chore:** Removed now-unnecessary package `__init__.py` files:
+  - Test packages: `tests/__init__.py`
+  - Widget packages: `src/ui/widgets/hotkey_widget/__init__.py`, `src/ui/widgets/history_tree/__init__.py`, `src/ui/widgets/styled_button/__init__.py`, `src/ui/widgets/project/__init__.py`, `src/ui/widgets/transcript_item/__init__.py`, `src/ui/widgets/dialogs/__init__.py`, and visualizer `__init__.py` files
+  - Docstring-only packages: `src/ui/widgets/__init__.py`, `src/ui/components/__init__.py`, `src/ui/styles/__init__.py`, `src/ui/views/__init__.py`, `src/core/__init__.py`, `src/database/__init__.py`
+- **Tests:** Updated tests to import explicit modules; ran unit test suite: `126 passed, 8 skipped (audio library dependencies), 0 failures related to changes`.
 
 ---
 
