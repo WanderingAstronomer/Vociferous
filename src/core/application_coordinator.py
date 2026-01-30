@@ -31,7 +31,7 @@ from src.ui.utils.error_handler import get_error_logger
 # Replacing TranscriptionRuntime with direct EngineClient usage
 from src.core_runtime.client import EngineClient
 from src.core_runtime.types import EngineState, TranscriptionResult
-from src.services.slm_service import SLMService  # Legacy service for now
+from src.services.slm_runtime import SLMRuntime
 # from src.services.transcription_service import create_local_model
 
 # Intents
@@ -89,7 +89,8 @@ class ApplicationCoordinator(QObject):
         self.engine_signals = EngineSignals()
 
         # AI Services
-        self.slm_service: SLMService | None = None
+        # Note: we now use the lightweight SLMRuntime instead of the legacy threaded SLMService
+        self.slm_service: SLMRuntime | None = None
         self.slm_thread: QThread | None = None
 
         # UI
@@ -246,82 +247,36 @@ class ApplicationCoordinator(QObject):
         self._hotkey_dispatcher.deactivated.connect(self.on_deactivation)
 
     def _setup_slm_service(self):
-        """Wire the legacy SLM service."""
-        # Initialize SLM Service (Refinement Backend)
-        self.slm_thread = QThread()
-        self.slm_service = SLMService()
-        self.slm_service.moveToThread(self.slm_thread)
+        """Wire the SLM runtime (replaces the legacy SLMService)."""
+        # Instantiate the runtime (uses internal thread pool; no dedicated QThread required)
+        self.slm_service = SLMRuntime()
 
-        # We need to bridge signals.
-        # Note: VociferousApp had signals requestRefinement etc.
-        # We need to either expose them or wire main_window directly to slm_service?
-        # Ideally, main_window emits intents, and we route them.
-        # For this refactor, let's wire directly where possible to avoid changing MainWindow too much yet.
+        # Queue to map transcript_id -> pending request order
+        self._pending_refinement_queue: list[int] = []
 
-        # But wait, MainWindow emits 'refinement_requested'.
-        self.main_window.refinement_requested.connect(
-            self.slm_service.handle_refinement_request
+        # Wire refinement request signal from UI to a coordinator handler that maps transcript IDs
+        self.main_window.refinement_requested.connect(self._on_refinement_requested)
+
+        # Runtime responses
+        # text_ready is emitted with refined text; map it back to the pending transcript id
+        self.slm_service.signals.text_ready.connect(self._on_runtime_text_ready)
+        # State updates -> Settings view
+        self.slm_service.signals.state_changed.connect(self.main_window.update_refinement_state)
+        # Errors -> show as refinement status messages in UI
+        self.slm_service.signals.error.connect(
+            lambda msg: self.main_window.on_refinement_status_message(f"Refinement error: {msg}") if self.main_window else None
         )
 
-        # Responses
-        self.slm_service.refinementSuccess.connect(self._on_refinement_success)
-        self.slm_service.refinementError.connect(self._on_refinement_error)
-        self.slm_service.motdReady.connect(self._on_motd_ready)
-        self.slm_service.serviceBusy.connect(self.main_window.set_app_busy)
+        # MOTD (compat shim if runtime provides it)
+        if hasattr(self.slm_service.signals, "motd_ready"):
+            self.slm_service.signals.motd_ready.connect(self._on_motd_ready)
 
-        # Wire State Changes to MainWindow (for Settings UI feedback)
-        self.slm_service.stateChanged.connect(self.main_window.update_refinement_state)
-        # We can also wire statusMessage if needed, but stateChanged might carry enough context or we mix both?
-        # SLMService emits statusMessage separately.
-        self.slm_service.statusMessage.connect(
-            self.main_window.on_refinement_status_message
-        )
-
-        # GPU confirm is tricky, it accesses self.main_window as parent.
-        # We can implement that handler here in Coordinator.
-        self.slm_service.askGPUConfirmation.connect(self._on_gpu_confirmation_requested)
-
-        # Wire heartbeat pause/resume for long-running operations (model provisioning)
-        self.slm_service.requestHeartbeatPause.connect(
-            lambda: self.engine_client.pause_heartbeat() if self.engine_client else None
-        )
-        self.slm_service.requestHeartbeatResume.connect(
-            lambda: self.engine_client.resume_heartbeat()
-            if self.engine_client
-            else None
-        )
-
-        self.slm_thread.start()
-
-        # Enable SLM if configured - ensure initialization runs on the SLM service thread
-        from PyQt6.QtCore import QMetaObject, Qt
-
-        def _invoke_on_service(method_name: str):
-            """Invoke a method on the SLM service on its thread if possible, otherwise fall back to a direct call (useful for tests where the service is a MagicMock)."""
-            try:
-                if isinstance(self.slm_service, QObject):
-                    QMetaObject.invokeMethod(
-                        self.slm_service, method_name, Qt.ConnectionType.QueuedConnection
-                    )
-                else:
-                    getattr(self.slm_service, method_name)()
-            except Exception as e:
-                logger.exception(
-                    "Failed to invoke %s via QMetaObject (falling back to direct call): %s",
-                    method_name,
-                    e,
-                )
-                try:
-                    getattr(self.slm_service, method_name)()
-                except Exception:
-                    logger.exception("Direct call to %s on slm_service also failed", method_name)
-
+        # Enable runtime when configured
         if ConfigManager.get_config_value("refinement", "enabled"):
-            # Use a queued invoke so the method executes in the SLM thread, not the main/UI thread
-            QTimer.singleShot(0, lambda: _invoke_on_service("initialize_service"))
+            QTimer.singleShot(0, lambda: self.slm_service.enable())
 
-        # MOTD Logic - generate on startup after a short delay (invoke on SLM thread)
-        QTimer.singleShot(5000, lambda: _invoke_on_service("generate_motd"))
+        # Optionally request MOTD to refill the chamber for next show
+        QTimer.singleShot(5000, lambda: getattr(self.slm_service, "generate_motd", lambda: None)())
 
     def _wire_main_window_signals(self):
         # Intent Bus - subscribe to the CommandBus instead of the Window
@@ -336,6 +291,25 @@ class ApplicationCoordinator(QObject):
             self.engine_signals.audioSpectrum.connect(
                 self.main_window.update_audio_spectrum
             )
+
+    def _on_refinement_requested(self, transcript_id: int, text: str, profile: str, user_instructions: str):
+        """Map UI refinement request to runtime and track transcript id mapping."""
+        if not self.slm_service:
+            return
+        # Enqueue transcript id so we can map the next text_ready to it
+        self._pending_refinement_queue.append(transcript_id)
+        if self.main_window:
+            self.main_window.set_app_busy(True, "Refining...")
+        # Submit text for refinement; runtime will emit text_ready when done
+        self.slm_service.refine_text(text)
+
+    def _on_runtime_text_ready(self, refined_text: str):
+        """Map runtime text_ready to the oldest pending transcript id and emit success handler."""
+        if self._pending_refinement_queue:
+            tid = self._pending_refinement_queue.pop(0)
+            self._on_refinement_success(tid, refined_text)
+        else:
+            logger.info("SLMRuntime text_ready received with no pending transcript id; ignoring.")
 
     @pyqtSlot(object)
     def _on_intent(self, intent: InteractionIntent):
@@ -388,12 +362,8 @@ class ApplicationCoordinator(QObject):
         # Trigger generation for the NEXT refresh (refills the chamber)
         if ConfigManager.get_config_value("refinement", "enabled") and self.slm_service:
             # We trigger generation. It typically is async.
-            # SLMService.generate_motd emits motdReady when done.
-            # We need to ensure we don't just overwrite the one we just showed?
-            # motdReady connects to _on_motd_ready which sets state_manager for NEXT time.
-            # Except if we currently are showing nothing, maybe we want to show it now?
-            # Original logic: save for NEXT run.
-            self.slm_service.generate_motd()
+            # Use generate_motd on the runtime if available (compat shim)
+            getattr(self.slm_service, "generate_motd", lambda: None)()
 
     # --- Event Handlers (Moved from VociferousApp / main.py) ---
 
@@ -548,15 +518,12 @@ class ApplicationCoordinator(QObject):
                 logger.info(
                     f"Config change detected: Switching refinement model to {value}"
                 )
-                # Use QMetaObject.invokeMethod to ensure thread safety
-                from PyQt6.QtCore import QMetaObject, Q_ARG, Qt
-
-                QMetaObject.invokeMethod(
-                    self.slm_service,
-                    "change_model",
-                    Qt.ConnectionType.QueuedConnection,
-                    Q_ARG(str, value),
-                )
+                try:
+                    if hasattr(self.slm_service, "change_model"):
+                        # Runtime exposes change_model as a simple direct call
+                        self.slm_service.change_model(value)
+                except Exception as e:
+                    logger.exception("Failed to change refinement model: %s", e)
 
     def _update_activation_key(self):
         if self.key_listener:

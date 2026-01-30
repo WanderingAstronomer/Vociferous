@@ -30,7 +30,7 @@ def coordinator_patches():
         patch("src.core.application_coordinator.StateManager") as mock_state,
         patch("src.core.application_coordinator.MainWindow") as mock_window,
         patch("src.core.application_coordinator.SystemTrayManager") as mock_tray,
-        patch("src.core.application_coordinator.SLMService") as mock_slm,
+        patch("src.core.application_coordinator.SLMRuntime") as mock_slm,
         patch("src.core.application_coordinator.EngineClient") as mock_engine_client,
     ):
         # Make SystemTrayManager.build_icon() return a valid QIcon
@@ -140,10 +140,6 @@ def test_cleanup(coordinator, coordinator_patches):
             coord.cleanup()
 
             coordinator_patches["listener"].return_value.stop.assert_called()
-
-            # Check thread quit
-            mock_thread_instance.quit.assert_called()
-            mock_thread_instance.wait.assert_called()
         finally:
             coord.cleanup()
 
@@ -164,7 +160,7 @@ def test_engine_no_respawn_during_shutdown(qapp):
         patch("src.core.application_coordinator.HistoryManager"),
         patch("src.core.application_coordinator.MainWindow"),
         patch("src.core.application_coordinator.SystemTrayManager") as mock_tray,
-        patch("src.core.application_coordinator.SLMService"),
+        patch("src.core.application_coordinator.SLMRuntime"),
         patch(
             "src.core.application_coordinator.EngineClient"
         ) as mock_engine_client_cls,

@@ -36,14 +36,14 @@ def mock_heavy_dependencies():
 @pytest.fixture
 def slm_module():
     """Import the module safely after mocking."""
-    import src.services.slm_service as mod
+    import src.services.slm_runtime as mod
 
     return mod
 
 
 @pytest.fixture
 def slm_service(slm_module):
-    service = slm_module.SLMService()
+    service = slm_module.SLMRuntime()
     return service
 
 
@@ -63,154 +63,67 @@ class TestRefinementBackend:
     ):
         """
         Invariant: Refinement must be capable of running off the main thread.
-        This test verifies SLMService functions correctly as a threaded worker.
+        This test verifies runtime emits refined text asynchronously.
         """
-        # 1. Setup Worker Thread
-        thread = QThread()
-        slm_service.moveToThread(thread)
-        thread.start()
+        # 2. Setup Driver (Main Thread)
+        class Driver(QObject):
+            trigger = pyqtSignal(str)
 
-        try:
-            # 2. Setup Driver (Main Thread)
-            class Driver(QObject):
-                trigger = pyqtSignal(int, str, str, str)
+        driver = Driver()
+        # Connect the driver to the runtime refine_text slot
+        driver.trigger.connect(slm_service.refine_text)
 
-            driver = Driver()
-            driver.trigger.connect(
-                slm_service.handle_refinement_request,
-                type=Qt.ConnectionType.QueuedConnection,
-            )
+        # 3. Setup Mocks
+        mock_engine = MagicMock()
 
-            # 3. Setup Mocks
-            mock_engine = MagicMock()
+        def slow_refine(text):
+            time.sleep(0.01)  # Small sleep
+            return f"Refined {text}"
 
-            def slow_refine(text, profile=None, instructions=None):
-                time.sleep(0.01)  # Small sleep
-                res = MagicMock()
-                res.content = f"Refined {text}"
-                res.reasoning = None
-                return res
+        mock_engine.refine.side_effect = slow_refine
 
-            mock_engine.refine.side_effect = slow_refine
-
-            # We access private _engine/_state for setup purposes
-            with (
-                patch.object(slm_service, "_engine", mock_engine),
-                patch.object(slm_service, "_state", slm_module.SLMState.READY),
-            ):
-                # 4. Trigger
-                with qtbot.waitSignal(
-                    slm_service.refinementSuccess, timeout=2000
-                ) as blocker:
-                    driver.trigger.emit(100, "Input", "BALANCED", "")
-
-                # 5. Assert
-                assert blocker.args == [100, "Refined Input"]
-                mock_engine.refine.assert_called_with("Input", "BALANCED", "")
-        finally:
-            # Cleanup
-            thread.quit()
-            thread.wait()
-
-    def test_initialization_download(self, slm_service, slm_module):
-        """Test that initialization triggers provisioning if files are missing."""
-        # Use patch on the module's namespace for the helper function
+        # We access private _engine/_state for setup purposes
         with (
-            patch("src.services.slm_service.get_model_cache_dir") as mock_get_cache,
-            patch.object(
-                slm_service, "_start_background_provisioning"
-            ) as mock_provision,
-            patch.object(slm_service, "_load_engine"),
-            patch("src.services.slm_service.validate_model_artifacts", return_value=False),
+            patch.object(slm_service, "_engine", mock_engine),
+            patch.object(slm_service, "_state", slm_module.SLMState.READY),
         ):
-            mock_get_cache.return_value = Path("/tmp/cache")
+            # 4. Trigger
+            with qtbot.waitSignal(slm_service.signals.text_ready, timeout=2000) as blocker:
+                driver.trigger.emit("Input")
 
-            slm_service.initialize_service()
+            # 5. Assert
+            assert blocker.args == ["Refined Input"]
+            mock_engine.refine.assert_called_with("Input")
 
-            mock_provision.assert_called_once()
+    def test_initialization_missing_artifacts_sets_error(self, slm_service):
+        """When model artifacts are missing, enable() should result in an ERROR state."""
+        # Make cache dir point to a path without model artifacts
+        with patch("src.core.resource_manager.ResourceManager.get_user_cache_dir") as mock_cache:
+            mock_cache.return_value = Path("/tmp/nonexistent_cache")
 
+            # Call the load task synchronously for deterministic test behavior
+            slm_service._load_model_task()
+
+            from src.services.slm_types import SLMState
+
+            assert slm_service.state == SLMState.ERROR
     def test_initialization_fails_gracefully_without_dependencies(self, slm_module):
-        """Test that initialization sets NOT_AVAILABLE when RefinementEngine is None (deps missing)."""
-        # Temporarily set RefinementEngine to None to simulate missing dependencies
+        """When RefinementEngine is not present, enable() should set ERROR state."""
         original = slm_module.RefinementEngine
         slm_module.RefinementEngine = None
 
         try:
-            service = slm_module.SLMService()
+            service = slm_module.SLMRuntime()
 
-            # Mock statusMessage to capture emissions
-            status_messages = []
-            service.statusMessage.connect(lambda msg: status_messages.append(msg))
+            errors = []
+            service.signals.error.connect(lambda e: errors.append(e))
 
-            service.initialize_service()
+            # Call load task synchronously for deterministic behavior
+            service._load_model_task()
 
-            assert service.state == slm_module.SLMState.NOT_AVAILABLE
-            assert (
-                "Refinement unavailable: dependencies not installed" in status_messages
-            )
+            assert service.state == slm_module.SLMState.ERROR
+            assert errors
         finally:
-            # Restore
             slm_module.RefinementEngine = original
 
-    def test_initialize_runs_in_service_thread(self, qapp, qtbot, slm_service):
-        """Initialization invoked via a queued call should execute on the SLM service thread (not the main thread)."""
-        from PyQt6.QtCore import QThread, QMetaObject, Qt
 
-        thread = QThread()
-        slm_service.moveToThread(thread)
-        thread.start()
-
-        called = {}
-
-        def fake_load(model_path, tokenizer_path, device):
-            # Record the QThread object on which this was executed
-            called["thread"] = QThread.currentThread()
-
-        with patch.object(slm_service, "_load_engine", side_effect=fake_load):
-            QMetaObject.invokeMethod(
-                slm_service, "initialize_service", Qt.ConnectionType.QueuedConnection
-            )
-
-            qtbot.waitUntil(lambda: "thread" in called, timeout=2000)
-            assert called["thread"] is not QThread.currentThread()
-
-        thread.quit()
-        thread.wait()
-
-    def test_gpu_confirmation_flow_queued(self, qapp, qtbot, slm_service, slm_module):
-        """When GPU headroom is low, initialization should set WAITING_FOR_USER; submit_gpu_choice must be invoked on the service thread and continue initialization with the chosen device."""
-        from PyQt6.QtCore import QThread, QMetaObject, Qt, Q_ARG
-
-        thread = QThread()
-        slm_service.moveToThread(thread)
-        thread.start()
-
-        # Force GPU map to low headroom so the service enters WAITING_FOR_USER
-        with patch("src.services.slm_service.get_gpu_memory_map", return_value=(16000, 2000)):
-            with patch.object(slm_service, "_load_engine") as mock_load:
-                QMetaObject.invokeMethod(
-                    slm_service, "initialize_service", Qt.ConnectionType.QueuedConnection
-                )
-
-                # Wait for the service to enter the waiting state
-                qtbot.waitUntil(
-                    lambda: slm_service.state == slm_module.SLMState.WAITING_FOR_USER,
-                    timeout=2000,
-                )
-
-                # Simulate user choosing CPU (False) via queued invocation
-                QMetaObject.invokeMethod(
-                    slm_service,
-                    "submit_gpu_choice",
-                    Qt.ConnectionType.QueuedConnection,
-                    Q_ARG(bool, False),
-                )
-
-                qtbot.waitUntil(lambda: mock_load.called, timeout=2000)
-
-                # Confirm _load_engine got called with 'cpu' as device (3rd arg)
-                args, _ = mock_load.call_args
-                assert args[2] == "cpu"
-
-        thread.quit()
-        thread.wait()

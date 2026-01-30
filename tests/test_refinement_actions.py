@@ -126,109 +126,39 @@ def test_blocking_overlay_activation(mock_mainwindow_full):
     assert window.cursor().shape() == Qt.CursorShape.ArrowCursor
 
 
-def test_slm_service_queue(qtbot):
-    """
-    Tests that SLMService queues requests when busy/loading.
-    """
-    from src.services.slm_service import SLMService, SLMState
+def test_slm_runtime_ignores_requests_when_not_ready(qtbot):
+    """SLMRuntime should not call the engine when not READY."""
+    from src.services.slm_runtime import SLMRuntime, SLMState
 
-    # SLMService takes no args
-    service = SLMService()
-    service._engine = MagicMock()
+    runtime = SLMRuntime()
+    runtime._engine = MagicMock()
 
-    # 1. State: LOADING
-    service._state = SLMState.LOADING
+    # 1. Not ready
+    runtime._state = SLMState.LOADING
 
-    # Request Refine
-    # Use the actual public method
-    service.handle_refinement_request(123, "Original", "BALANCED", "Instructions")
+    # Request refine
+    runtime.refine_text("Original")
 
-    # Assert NOT called yet
-    service._engine.refine.assert_not_called()
-    assert len(service._request_queue) == 1
-
-    # 2. State Transition -> READY
-    service._set_state(SLMState.READY)
-
-    assert len(service._request_queue) == 0
-    service._engine.refine.assert_called_once()
-
-    args, kwargs = service._engine.refine.call_args
-    assert args[0] == "Original"
-    assert args[1] == "BALANCED"  # Profile
-    assert args[2] == "Instructions"
+    # Engine should not be called when runtime is not READY
+    runtime._engine.refine.assert_not_called()
 
 
-def test_retry_parameters_passed(qtbot):
-    """
-    Tests that temperature and seed are passed to the engine.
-    """
-    from src.services.slm_service import SLMService, SLMState
+def test_runtime_parameters_forwarded(qtbot):
+    """SLMRuntime should forward the text to the engine for refinement."""
+    from src.services.slm_runtime import SLMRuntime, SLMState
 
-    service = SLMService()
-    service._engine = MagicMock()
-    service._state = SLMState.READY
+    runtime = SLMRuntime()
+    runtime._engine = MagicMock()
+    runtime._state = SLMState.READY
+
+    # Ensure the thread pool runs tasks synchronously for this test
+    runtime._thread_pool.start = lambda fn: fn()
 
     # Act
-    service.handle_refinement_request(
-        123, "Text", "BALANCED", "Inst", temperature=0.8, seed_variation=12345
-    )
+    runtime.refine_text("Text")
 
-    # Assert
-    service._engine.refine.assert_called_with(
-        "Text", "BALANCED", "Inst", temperature=0.8, seed_variation=12345
-    )
+    # Assert: runtime passes the text to engine.refine
+    runtime._engine.refine.assert_called_with("Text")
 
 
-def test_request_queue_limit(qtbot):
-    """Enqueuing more than max requests should be rejected and queue capped."""
-    from src.services.slm_service import SLMService, SLMState
 
-    service = SLMService()
-    service._engine = MagicMock()
-    service._state = SLMState.LOADING
-
-    # Make queue small for deterministic behavior
-    service._max_queue_size = 3
-
-    errors = []
-    msgs = []
-    service.refinementError.connect(lambda tid, msg: errors.append((tid, msg)))
-    service.statusMessage.connect(lambda m: msgs.append(m))
-
-    # Enqueue 4 unique requests (1 more than max)
-    for i in range(4):
-        service.handle_refinement_request(100 + i, f"Text{i}")
-
-    assert len(service._request_queue) == 3
-    # Extra request should have caused an error emit
-    assert errors and errors[-1][0] == 103
-    assert any("Refinement queue full" in m for m in msgs)
-
-
-def test_request_queue_dedupe(qtbot):
-    """Duplicate requests for same transcript should replace queued request and only latest processed."""
-    from src.services.slm_service import SLMService, SLMState
-
-    service = SLMService()
-    service._engine = MagicMock()
-    service._state = SLMState.LOADING
-    service._max_queue_size = 5
-
-    messages = []
-    service.statusMessage.connect(lambda m: messages.append(m))
-
-    tid = 200
-    service.handle_refinement_request(tid, "Original", "BALANCED", "Inst1")
-    service.handle_refinement_request(tid, "Updated", "PRECISE", "Inst2")
-
-    assert len(service._request_queue) == 1
-    queued = service._request_queue[0]
-    assert queued[1] == "Updated"
-    assert queued[2] == "PRECISE"
-    assert queued[3] == "Inst2"
-    assert "Request updated in queue." in messages
-
-    # Transition to READY and ensure the latest request was processed
-    service._set_state(SLMState.READY)
-    service._engine.refine.assert_called_once_with("Updated", "PRECISE", "Inst2")

@@ -34,8 +34,7 @@ from src.ui.widgets.toggle_switch import ToggleSwitch
 from src.ui.widgets.dialogs import ConfirmationDialog, show_error_dialog
 from src.ui.styles.settings_view_styles import get_settings_view_stylesheet
 from src.core.config_manager import ConfigManager
-from src.core.model_registry import ASR_MODELS
-from src.services.slm_service import SLMService
+from src.core.model_registry import ASR_MODELS, MODELS
 from src.services.slm_types import SLMState
 
 if TYPE_CHECKING:
@@ -467,9 +466,7 @@ class SettingsView(BaseView):
         model_select.setMinimumWidth(280)
 
         # Populate models
-        sorted_models = sorted(
-            SLMService.get_supported_models(), key=lambda x: x.required_vram_mb
-        )
+        sorted_models = sorted(list(MODELS.values()), key=lambda x: x.required_vram_mb)
         for model in sorted_models:
             model_select.addItem(model.name, model.id)
 

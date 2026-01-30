@@ -89,13 +89,7 @@ def test_onboarding_refinement_gate(qtbot):
     mock_model.name = "Test Model"
     mock_model.required_vram_mb = 1000
 
-    with (
-        patch(
-            "services.slm_service.SLMService.get_supported_models",
-            return_value=[mock_model],
-        ),
-        patch.dict("services.slm_service.MODELS", {mock_model.id: mock_model}),
-    ):
+    with patch.dict("src.core.model_registry.MODELS", {mock_model.id: mock_model}):
         page = RefinementPage()
         qtbot.addWidget(page)
 
