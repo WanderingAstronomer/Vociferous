@@ -10,6 +10,26 @@
 
 ---
 
+## v3.0.11 - Refactor: Replace `SLMService` with `SLMRuntime` (P1)
+
+**Date:** 2026-01-29
+**Status:** Refactor / P1
+
+### Changed
+- **Runtime consolidation:** Replaced the legacy monolithic `SLMService` with a focused `SLMRuntime` (`src/services/slm_runtime.py`) that is responsible solely for loading provisioned models, running inference, and managing enable/disable lifecycle. The `ApplicationCoordinator` now wires and interacts with `SLMRuntime` directly.
+- **UI model registry:** UI surfaces that previously used `SLMService.get_supported_models()` now read models from the canonical registry `src/core/model_registry.MODELS`.
+- **MOTD compatibility:** Added a small `motd_ready` signal and `generate_motd()` shim in `SLMRuntime` to preserve existing MOTD plumbing during migration.
+- **Tests & docs:** Updated and removed tests that depended on legacy behaviors; refreshed architecture docs (`docs/wiki/Architecture.md`, `docs/wiki/Refinement-System.md`) to reflect the change.
+
+### Removed
+- **Legacy service:** Deleted `src/services/slm_service.py` and removed in-band provisioning/GPU-confirmation and request-queueing responsibilities from the runtime. Provisioning should be performed by provisioning tooling (`scripts/provision_models.py`) or separate services.
+
+### Impact & Rationale
+- **Why:** Converging on a single, focused runtime reduces maintenance burden, eliminates duplicated behavior, and makes lifecycle semantics easier to reason about.
+- **Effort:** Medium (refactor + tests + docs). All tests pass locally after the migration.
+
+---
+
 ## v3.0.9 - Improvement: Atomic model installs & manifest-based validation (P1)
 
 **Date:** 2026-01-29
