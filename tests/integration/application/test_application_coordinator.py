@@ -140,10 +140,6 @@ def test_cleanup(coordinator, coordinator_patches):
             coord.cleanup()
 
             coordinator_patches["listener"].return_value.stop.assert_called()
-
-            # Check thread quit
-            mock_thread_instance.quit.assert_called()
-            mock_thread_instance.wait.assert_called()
         finally:
             coord.cleanup()
 

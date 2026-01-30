@@ -151,6 +151,9 @@ def test_runtime_parameters_forwarded(qtbot):
     runtime._engine = MagicMock()
     runtime._state = SLMState.READY
 
+    # Ensure the thread pool runs tasks synchronously for this test
+    runtime._thread_pool.start = lambda fn: fn()
+
     # Act
     runtime.refine_text("Text")
 

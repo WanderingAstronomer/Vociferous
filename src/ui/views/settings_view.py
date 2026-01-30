@@ -466,9 +466,7 @@ class SettingsView(BaseView):
         model_select.setMinimumWidth(280)
 
         # Populate models
-        sorted_models = sorted(
-            sorted(list(MODELS.values()), key=lambda x: x.required_vram_mb)
-        )
+        sorted_models = sorted(list(MODELS.values()), key=lambda x: x.required_vram_mb)
         for model in sorted_models:
             model_select.addItem(model.name, model.id)
 

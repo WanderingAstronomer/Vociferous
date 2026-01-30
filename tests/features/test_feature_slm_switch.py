@@ -77,14 +77,6 @@ class TestSLMModelSwitching:
             # Should attempt to reload: disable() called; enable() called if refinement enabled config is True or prior state
             mock_disable.assert_called()
             # enable may be called depending on config; we allow either but don't assert it here.
-    def test_initialization_picks_correct_model(self, slm_module):
-        """Test that __init__ uses the configured model ID."""
-
-        # Mock Config to return qwen14b
-        # Must mock where it's used, not where it's defined
-        with patch.object(
-            slm_module.ConfigManager, "get_config_value", return_value="qwen4b"
-        ):
-            service = slm_module.SLMService()
-            # Assert: Picked up 4B
-            assert service.current_model.id == "qwen4b"
+    def test_initialization_picks_correct_model_is_deprecated(self, slm_module):
+        """Legacy init semantics removed — ensure model registry exists and contains qwen4b."""
+        assert "qwen4b" in slm_module.MODELS

@@ -63,39 +63,37 @@ class TestRefinementBackend:
     ):
         """
         Invariant: Refinement must be capable of running off the main thread.
-        This test verifies SLMService functions correctly as a threaded worker.
+        This test verifies runtime emits refined text asynchronously.
         """
-                # 2. Setup Driver (Main Thread)
-            class Driver(QObject):
-                trigger = pyqtSignal(str)
+        # 2. Setup Driver (Main Thread)
+        class Driver(QObject):
+            trigger = pyqtSignal(str)
 
-            driver = Driver()
-            # Connect the driver to the runtime refine_text slot
-            driver.trigger.connect(slm_service.refine_text)
+        driver = Driver()
+        # Connect the driver to the runtime refine_text slot
+        driver.trigger.connect(slm_service.refine_text)
 
-            # 3. Setup Mocks
-            mock_engine = MagicMock()
+        # 3. Setup Mocks
+        mock_engine = MagicMock()
 
-            def slow_refine(text):
-                time.sleep(0.01)  # Small sleep
-                return f"Refined {text}"
+        def slow_refine(text):
+            time.sleep(0.01)  # Small sleep
+            return f"Refined {text}"
 
-            mock_engine.refine.side_effect = slow_refine
+        mock_engine.refine.side_effect = slow_refine
 
-            # We access private _engine/_state for setup purposes
-            with (
-                patch.object(slm_service, "_engine", mock_engine),
-                patch.object(slm_service, "_state", slm_module.SLMState.READY),
-            ):
-                # 4. Trigger
-                with qtbot.waitSignal(
-                    slm_service.signals.text_ready, timeout=2000
-                ) as blocker:
-                    driver.trigger.emit("Input")
+        # We access private _engine/_state for setup purposes
+        with (
+            patch.object(slm_service, "_engine", mock_engine),
+            patch.object(slm_service, "_state", slm_module.SLMState.READY),
+        ):
+            # 4. Trigger
+            with qtbot.waitSignal(slm_service.signals.text_ready, timeout=2000) as blocker:
+                driver.trigger.emit("Input")
 
-                # 5. Assert
-                assert blocker.args == ["Refined Input"]
-                mock_engine.refine.assert_called_with("Input")
+            # 5. Assert
+            assert blocker.args == ["Refined Input"]
+            mock_engine.refine.assert_called_with("Input")
 
     def test_initialization_missing_artifacts_sets_error(self, slm_service):
         """When model artifacts are missing, enable() should result in an ERROR state."""
@@ -103,15 +101,12 @@ class TestRefinementBackend:
         with patch("src.core.resource_manager.ResourceManager.get_user_cache_dir") as mock_cache:
             mock_cache.return_value = Path("/tmp/nonexistent_cache")
 
-            # Call enable which will run load task in background; wait briefly then assert ERROR
-            slm_service.enable()
+            # Call the load task synchronously for deterministic test behavior
+            slm_service._load_model_task()
 
-            # Give the threadpool a moment to schedule (small sleep)
-            import time
+            from src.services.slm_types import SLMState
 
-            time.sleep(0.05)
-
-            assert slm_service.state == slm_module.SLMState.ERROR
+            assert slm_service.state == SLMState.ERROR
     def test_initialization_fails_gracefully_without_dependencies(self, slm_module):
         """When RefinementEngine is not present, enable() should set ERROR state."""
         original = slm_module.RefinementEngine
@@ -123,12 +118,8 @@ class TestRefinementBackend:
             errors = []
             service.signals.error.connect(lambda e: errors.append(e))
 
-            service.enable()
-
-            # Give the threadpool a moment
-            import time
-
-            time.sleep(0.05)
+            # Call load task synchronously for deterministic behavior
+            service._load_model_task()
 
             assert service.state == slm_module.SLMState.ERROR
             assert errors
