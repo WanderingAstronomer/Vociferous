@@ -151,3 +151,66 @@ class TestRefinementBackend:
         finally:
             # Restore
             slm_module.RefinementEngine = original
+
+    def test_initialize_runs_in_service_thread(self, qapp, qtbot, slm_service):
+        """Initialization invoked via a queued call should execute on the SLM service thread (not the main thread)."""
+        from PyQt6.QtCore import QThread, QMetaObject, Qt
+
+        thread = QThread()
+        slm_service.moveToThread(thread)
+        thread.start()
+
+        called = {}
+
+        def fake_load(model_path, tokenizer_path, device):
+            # Record the QThread object on which this was executed
+            called["thread"] = QThread.currentThread()
+
+        with patch.object(slm_service, "_load_engine", side_effect=fake_load):
+            QMetaObject.invokeMethod(
+                slm_service, "initialize_service", Qt.ConnectionType.QueuedConnection
+            )
+
+            qtbot.waitUntil(lambda: "thread" in called, timeout=2000)
+            assert called["thread"] is not QThread.currentThread()
+
+        thread.quit()
+        thread.wait()
+
+    def test_gpu_confirmation_flow_queued(self, qapp, qtbot, slm_service, slm_module):
+        """When GPU headroom is low, initialization should set WAITING_FOR_USER; submit_gpu_choice must be invoked on the service thread and continue initialization with the chosen device."""
+        from PyQt6.QtCore import QThread, QMetaObject, Qt, Q_ARG
+
+        thread = QThread()
+        slm_service.moveToThread(thread)
+        thread.start()
+
+        # Force GPU map to low headroom so the service enters WAITING_FOR_USER
+        with patch("src.services.slm_service.get_gpu_memory_map", return_value=(16000, 2000)):
+            with patch.object(slm_service, "_load_engine") as mock_load:
+                QMetaObject.invokeMethod(
+                    slm_service, "initialize_service", Qt.ConnectionType.QueuedConnection
+                )
+
+                # Wait for the service to enter the waiting state
+                qtbot.waitUntil(
+                    lambda: slm_service.state == slm_module.SLMState.WAITING_FOR_USER,
+                    timeout=2000,
+                )
+
+                # Simulate user choosing CPU (False) via queued invocation
+                QMetaObject.invokeMethod(
+                    slm_service,
+                    "submit_gpu_choice",
+                    Qt.ConnectionType.QueuedConnection,
+                    Q_ARG(bool, False),
+                )
+
+                qtbot.waitUntil(lambda: mock_load.called, timeout=2000)
+
+                # Confirm _load_engine got called with 'cpu' as device (3rd arg)
+                args, _ = mock_load.call_args
+                assert args[2] == "cpu"
+
+        thread.quit()
+        thread.wait()

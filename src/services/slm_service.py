@@ -3,10 +3,8 @@ from pathlib import Path
 from typing import Optional, Any
 
 from PyQt6.QtCore import (
-    QMutex,
     QObject,
     QTimer,
-    QWaitCondition,
     pyqtSignal,
     pyqtSlot,
     QThreadPool,
@@ -85,8 +83,9 @@ class SLMService(QObject):
         self.current_model = MODELS.get(model_id, MODELS["qwen4b"])
 
         # Synchronization for User Input (non-blocking GPU confirmation)
-        self._gpu_wait_condition = QWaitCondition()
-        self._gpu_mutex = QMutex()
+        # Historically we used a blocking wait for GPU confirmation which led to
+        # UI deadlocks. We now use an async emit + queued submit pattern and no
+        # longer need the blocking primitives. Keep only the choice storage.
         self._user_gpu_choice = False
         # Store pending initialization state when waiting for GPU confirmation
         self._pending_init_model_dir: Optional[Path] = None
@@ -299,10 +298,8 @@ class SLMService(QObject):
         """Receive user choice from main thread and continue initialization."""
         self._cancel_gpu_confirmation_timeout()
 
-        self._gpu_mutex.lock()
+        # Store user choice; processing continues on the service thread via queued invocation.
         self._user_gpu_choice = use_gpu
-        self._gpu_mutex.unlock()
-        self._gpu_wait_condition.wakeAll()
 
         if (
             self._pending_init_model_dir is not None

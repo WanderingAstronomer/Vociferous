@@ -293,12 +293,35 @@ class ApplicationCoordinator(QObject):
 
         self.slm_thread.start()
 
-        # Enable SLM if configured
-        if ConfigManager.get_config_value("refinement", "enabled"):
-            QTimer.singleShot(0, self.slm_service.initialize_service)
+        # Enable SLM if configured - ensure initialization runs on the SLM service thread
+        from PyQt6.QtCore import QMetaObject, Qt
 
-        # MOTD Logic - generate on startup after a short delay
-        QTimer.singleShot(5000, lambda: self.slm_service.generate_motd())
+        def _invoke_on_service(method_name: str):
+            """Invoke a method on the SLM service on its thread if possible, otherwise fall back to a direct call (useful for tests where the service is a MagicMock)."""
+            try:
+                if isinstance(self.slm_service, QObject):
+                    QMetaObject.invokeMethod(
+                        self.slm_service, method_name, Qt.ConnectionType.QueuedConnection
+                    )
+                else:
+                    getattr(self.slm_service, method_name)()
+            except Exception as e:
+                logger.exception(
+                    "Failed to invoke %s via QMetaObject (falling back to direct call): %s",
+                    method_name,
+                    e,
+                )
+                try:
+                    getattr(self.slm_service, method_name)()
+                except Exception:
+                    logger.exception("Direct call to %s on slm_service also failed", method_name)
+
+        if ConfigManager.get_config_value("refinement", "enabled"):
+            # Use a queued invoke so the method executes in the SLM thread, not the main/UI thread
+            QTimer.singleShot(0, lambda: _invoke_on_service("initialize_service"))
+
+        # MOTD Logic - generate on startup after a short delay (invoke on SLM thread)
+        QTimer.singleShot(5000, lambda: _invoke_on_service("generate_motd"))
 
     def _wire_main_window_signals(self):
         # Intent Bus - subscribe to the CommandBus instead of the Window
@@ -576,4 +599,26 @@ class ApplicationCoordinator(QObject):
         use_gpu = result == 1
         
         if self.slm_service:
-            self.slm_service.submit_gpu_choice(use_gpu)
+            # Ensure submit_gpu_choice runs on the service's thread to avoid cross-thread execution.
+            # Fall back to a direct call if the service is mocked in tests.
+            from PyQt6.QtCore import QMetaObject, Q_ARG, Qt
+
+            try:
+                if isinstance(self.slm_service, QObject):
+                    QMetaObject.invokeMethod(
+                        self.slm_service,
+                        "submit_gpu_choice",
+                        Qt.ConnectionType.QueuedConnection,
+                        Q_ARG(bool, use_gpu),
+                    )
+                else:
+                    self.slm_service.submit_gpu_choice(use_gpu)
+            except Exception as e:
+                logger.exception(
+                    "Failed to submit GPU choice via QMetaObject (falling back to direct call): %s",
+                    e,
+                )
+                try:
+                    self.slm_service.submit_gpu_choice(use_gpu)
+                except Exception:
+                    logger.exception("Direct call to submit_gpu_choice failed")

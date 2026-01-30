@@ -1,5 +1,18 @@
 # Vociferous Changelog
 
+## v3.0.7 - Bugfix: SLM GPU confirmation non-blocking fix
+
+**Date:** 2026-01-29
+**Status:** Bugfix / P0
+
+### Fixed
+- **SLM GPU confirmation deadlock:** Removed legacy blocking primitives (`QWaitCondition`/`QMutex`) from `SLMService` and replaced the blocking wait flow with an asynchronous signal/queued-invoke pattern. The service now emits `askGPUConfirmation` and returns immediately; the UI confirmation handler invokes `submit_gpu_choice` using a queued call so the choice is processed on the service thread.
+- **Timeout fallback:** Added/ensured a 30s GPU confirmation timeout that defaults to CPU when no response is received.
+- **Thread-safety & test-hardened coordinator:** The `ApplicationCoordinator` now safely invokes `initialize_service`, `generate_motd`, and `submit_gpu_choice` using a queued invocation when possible and falls back to direct calls when the service is mocked in tests.
+- **Tests:** Added unit tests verifying that initialization runs on the SLM service thread and that the GPU confirmation flow resumes initialization via queued invocation.
+
+---
+
 ## v3.0.6 - Maintenance: Test Suite Recovery and Venv Integrity
 
 **Date:** 2026-01-30
