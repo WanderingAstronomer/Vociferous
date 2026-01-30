@@ -43,10 +43,10 @@ flowchart TB
         EngineServer["EngineServer"]
         WhisperEngine["TranscriptionEngine"]
         AudioCapture["AudioCapture"]
-        SLMService["SLMService"]
+        SLMRuntime["SLMRuntime"]
         EngineServer --> WhisperEngine
         EngineServer --> AudioCapture
-        EngineServer --> SLMService
+        EngineServer --> SLMRuntime
     end
 
     subgraph Database["Database Layer"]
@@ -66,7 +66,7 @@ flowchart TB
 - `src/core_runtime/client.py` — `EngineClient`
 - `src/core_runtime/server.py` — `EngineServer`
 - `src/core_runtime/engine.py` — `TranscriptionEngine`
-- `src/services/slm_service.py` — `SLMService`
+- `src/services/slm_runtime.py` — `SLMRuntime`
 - `src/database/history_manager.py` — `HistoryManager`
 
 ---
@@ -98,21 +98,23 @@ class ApplicationCoordinator:
         self.state_manager = StateManager()
         self.history_manager = HistoryManager()
         self.engine_client = EngineClient()
-        self.slm_service = SLMService()
+        # Use the lightweight runtime for refinement (no dedicated QThread)
+        self.slm_runtime = SLMRuntime()
         self.main_window = MainWindow()
         
         # Wire signals
         self._connect_signals()
     
     def start(self):
-        """Start all background threads and show UI."""
+        """Start core systems and show UI."""
         self.engine_client.start()
-        self.slm_thread.start()
+        # SLMRuntime runs tasks on a shared thread pool; no dedicated thread to start
         self.main_window.show()
     
     def shutdown(self):
         """Clean shutdown of all components."""
-        self.slm_service.cleanup()
+        # Gracefully disable the runtime to free resources
+        self.slm_runtime.disable()
         self.engine_client.stop()
         self.history_manager.close()
 ```
@@ -178,20 +180,26 @@ stateDiagram-v2
 
 ## Service Layer
 
-Services encapsulate business logic and run on background threads.
+Services encapsulate business logic and run on background threads or shared worker pools.
 
-### SLMService
+### SLMRuntime (formerly SLMService)
 
-**Location:** `src/services/slm_service.py`
+**Location:** `src/services/slm_runtime.py`
 
-**Purpose:** Manage refinement model lifecycle and execution
+**Purpose:** Load provisioned refinement models, run inference, and manage runtime lifecycle.
 
-**Thread:** Dedicated QThread via `moveToThread()`
+**Threading:** No dedicated QThread. Uses a shared `QThreadPool` for background tasks and non-blocking operations.
+
+**Notes:**
+- The **provisioning** (download/convert/install) responsibilities were intentionally removed from the runtime to keep the runtime focused and lightweight. Provisioning is performed by separate tools (scripts/provision_models.py) or offline steps.
+- GPU confirmation dialogs and long-lived request queueing/deduplication formerly handled by the legacy service were removed to simplify lifecycle; the `ApplicationCoordinator` now maps transcript IDs to `text_ready` events.
 
 **Key Signals:**
-- `stateChanged(SLMState)` — State machine transition
-- `refinementSuccess(int, str)` — Refinement complete
-- `refinementError(int, str)` — Refinement failed
+- `state_changed(SLMState)` — State machine transition
+- `progress(str)` — Progress messages
+- `error(str)` — Error messages
+- `text_ready(str)` — Refined text is available
+- `motd_ready(str)` — Message-of-the-day (compat shim)
 
 ### WhisperTranscriptionEngine
 

@@ -11,7 +11,7 @@ The engine is built on high-performance inference libraries optimized for consum
 *   **Core Engine**: [CTranslate2](https://github.com/OpenNMT/CTranslate2) (C++ inference engine).
 *   **Model Architecture**: Qwen-based (default `qwen4b`) quantized to **Int8** or **Int8_Float16**.
 *   **Tokenizer**: HuggingFace `tokenizers`.
-*   **Service Layer**: `SLMService` running in a background thread to prevent UI blocking.
+*   **Service Layer**: `SLMRuntime` — a lightweight runtime which runs inference via background tasks (no dedicated background thread).  Provisioning/downloads/conversion are NOT performed by the runtime; use `scripts/provision_models.py` or provisioning utilities.
 
 ### Performance Optimization
 *   **Dynamic Padding**: Output token limits are calculated dynamically based on input length (`input * 0.5 + 150`), capped at 16k tokens, ensuring efficient GPU usage.
@@ -65,8 +65,6 @@ Prompts are constructed using the **ChatML** format (or Llama 3 equivalent) with
 3.  **User Input**: Wrapper in `<<<BEGIN TRANSCRIPT>>>` delimiters to prevent instruction injection attacks.
 
 ### Lifecycle Management
-The `SLMService` handles the complex provisioning lifecycle:
-1.  **Check Resources**: Verifies disk space and existing artifacts.
-2.  **Download**: Fetches model snapshots from **HuggingFace** or **ModelScope**.
-3.  **Conversion**: Automatically converts generic PyTorch checkpoints to CTranslate2 binary format using `ct2-transformers-converter`.
-4.  **Loading**: Warms up the engine on the selected device (CPU/GPU).
+The `SLMRuntime` is intentionally focused: it is responsible for loading already-provisioned models from disk, warming the inference engine, running refinements, and managing its enable/disable lifecycle. It does NOT perform provisioning (downloading or format conversion) or device-choice user interactions. Those responsibilities are performed by separate provisioning tooling (e.g., `scripts/provision_models.py`) or manual setup steps.
+
+If an application needs provisioning or conversion, it should be implemented as an explicit provisioning step or separate `ProvisioningManager` service rather than being embedded into the runtime. This separation simplifies the runtime's lifecycle and reduces accidental side-effects in the UI.
