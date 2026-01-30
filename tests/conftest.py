@@ -60,6 +60,10 @@ def pytest_sessionstart(session) -> None:
     if os.environ.get("VOCIFEROUS_TEST_IGNORE_RUNNING") == "1":
         return
 
+    # Skip lock check during test discovery to avoid blocking IDEs
+    if session.config.getoption("collectonly"):
+        return
+
     # Import lazily to avoid Qt import work if not needed.
     from PyQt6.QtCore import QLockFile
 
