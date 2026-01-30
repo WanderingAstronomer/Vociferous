@@ -1,3 +1,9 @@
+raise ImportError("SLMService has been removed. Import SLMRuntime from src.services.slm_runtime instead.")
+
+# Legacy module intentionally removed and disabled to avoid accidental usage
+# This file is kept only as a sentinel. Do not reintroduce SLMService; prefer
+# the focused SLMRuntime and small focused provisioning components.
+
 import logging
 from pathlib import Path
 from typing import Optional, Any

@@ -43,6 +43,7 @@ class SLMSignals(QObject):
     progress = pyqtSignal(str)
     error = pyqtSignal(str)
     text_ready = pyqtSignal(str)
+    motd_ready = pyqtSignal(str)  # Compatibility shim (for MOTD)
 
 
 class SLMRuntime(QObject):
@@ -169,3 +170,48 @@ class SLMRuntime(QObject):
             logger.error(f"Inference failed: {e}")
             self.signals.error.emit(f"Inference failed: {e}")
             self.state = SLMState.READY  # Return to ready state even on error?
+
+    def generate_motd(self):
+        """Generate a lightweight Message of the Day (compat shim).
+
+        This will emit `motd_ready` via signals.motd_ready when complete.
+        If the engine is present, attempt to use it; otherwise emit a friendly default.
+        """
+        try:
+            if not self._engine:
+                # Fire a default motd immediately
+                self.signals.motd_ready.emit("Welcome to Vociferous")
+                return
+
+            # Run motd generation in background to avoid blocking
+            self._thread_pool.start(self._motd_task)
+        except Exception as e:
+            logger.error(f"MOTD generation failed: {e}")
+            self.signals.error.emit(str(e))
+
+    def _motd_task(self):
+        try:
+            if not self._engine:
+                raise RuntimeError("Engine not loaded for MOTD generation.")
+
+            motd = (self._engine.generate_motd() if hasattr(self._engine, "generate_motd") else "Welcome to Vociferous")
+            self.signals.motd_ready.emit(motd)
+        except Exception as e:
+            logger.error(f"MOTD task failed: {e}")
+            self.signals.error.emit(str(e))
+
+    def change_model(self, model_id: str):
+        """Change active model and reload runtime.
+
+        This is a minimal implementation that updates config and reloads the runtime.
+        """
+        try:
+            ConfigManager.set_config_value(model_id, "refinement", "model_id")
+        except Exception:
+            logger.exception("Failed to persist new model id to config")
+
+        # Force reload (unload + enable)
+        self.disable()
+        # Re-enable if refinement is enabled in config
+        if ConfigManager.get_config_value("refinement", "enabled"):
+            self.enable()

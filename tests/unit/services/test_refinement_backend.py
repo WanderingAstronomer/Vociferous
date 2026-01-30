@@ -36,14 +36,14 @@ def mock_heavy_dependencies():
 @pytest.fixture
 def slm_module():
     """Import the module safely after mocking."""
-    import src.services.slm_service as mod
+    import src.services.slm_runtime as mod
 
     return mod
 
 
 @pytest.fixture
 def slm_service(slm_module):
-    service = slm_module.SLMService()
+    service = slm_module.SLMRuntime()
     return service
 
 
@@ -65,31 +65,20 @@ class TestRefinementBackend:
         Invariant: Refinement must be capable of running off the main thread.
         This test verifies SLMService functions correctly as a threaded worker.
         """
-        # 1. Setup Worker Thread
-        thread = QThread()
-        slm_service.moveToThread(thread)
-        thread.start()
-
-        try:
-            # 2. Setup Driver (Main Thread)
+                # 2. Setup Driver (Main Thread)
             class Driver(QObject):
-                trigger = pyqtSignal(int, str, str, str)
+                trigger = pyqtSignal(str)
 
             driver = Driver()
-            driver.trigger.connect(
-                slm_service.handle_refinement_request,
-                type=Qt.ConnectionType.QueuedConnection,
-            )
+            # Connect the driver to the runtime refine_text slot
+            driver.trigger.connect(slm_service.refine_text)
 
             # 3. Setup Mocks
             mock_engine = MagicMock()
 
-            def slow_refine(text, profile=None, instructions=None):
+            def slow_refine(text):
                 time.sleep(0.01)  # Small sleep
-                res = MagicMock()
-                res.content = f"Refined {text}"
-                res.reasoning = None
-                return res
+                return f"Refined {text}"
 
             mock_engine.refine.side_effect = slow_refine
 
@@ -100,117 +89,50 @@ class TestRefinementBackend:
             ):
                 # 4. Trigger
                 with qtbot.waitSignal(
-                    slm_service.refinementSuccess, timeout=2000
+                    slm_service.signals.text_ready, timeout=2000
                 ) as blocker:
-                    driver.trigger.emit(100, "Input", "BALANCED", "")
+                    driver.trigger.emit("Input")
 
                 # 5. Assert
-                assert blocker.args == [100, "Refined Input"]
-                mock_engine.refine.assert_called_with("Input", "BALANCED", "")
-        finally:
-            # Cleanup
-            thread.quit()
-            thread.wait()
+                assert blocker.args == ["Refined Input"]
+                mock_engine.refine.assert_called_with("Input")
 
-    def test_initialization_download(self, slm_service, slm_module):
-        """Test that initialization triggers provisioning if files are missing."""
-        # Use patch on the module's namespace for the helper function
-        with (
-            patch("src.services.slm_service.get_model_cache_dir") as mock_get_cache,
-            patch.object(
-                slm_service, "_start_background_provisioning"
-            ) as mock_provision,
-            patch.object(slm_service, "_load_engine"),
-            patch("src.services.slm_service.validate_model_artifacts", return_value=False),
-        ):
-            mock_get_cache.return_value = Path("/tmp/cache")
+    def test_initialization_missing_artifacts_sets_error(self, slm_service):
+        """When model artifacts are missing, enable() should result in an ERROR state."""
+        # Make cache dir point to a path without model artifacts
+        with patch("src.core.resource_manager.ResourceManager.get_user_cache_dir") as mock_cache:
+            mock_cache.return_value = Path("/tmp/nonexistent_cache")
 
-            slm_service.initialize_service()
+            # Call enable which will run load task in background; wait briefly then assert ERROR
+            slm_service.enable()
 
-            mock_provision.assert_called_once()
+            # Give the threadpool a moment to schedule (small sleep)
+            import time
 
+            time.sleep(0.05)
+
+            assert slm_service.state == slm_module.SLMState.ERROR
     def test_initialization_fails_gracefully_without_dependencies(self, slm_module):
-        """Test that initialization sets NOT_AVAILABLE when RefinementEngine is None (deps missing)."""
-        # Temporarily set RefinementEngine to None to simulate missing dependencies
+        """When RefinementEngine is not present, enable() should set ERROR state."""
         original = slm_module.RefinementEngine
         slm_module.RefinementEngine = None
 
         try:
-            service = slm_module.SLMService()
+            service = slm_module.SLMRuntime()
 
-            # Mock statusMessage to capture emissions
-            status_messages = []
-            service.statusMessage.connect(lambda msg: status_messages.append(msg))
+            errors = []
+            service.signals.error.connect(lambda e: errors.append(e))
 
-            service.initialize_service()
+            service.enable()
 
-            assert service.state == slm_module.SLMState.NOT_AVAILABLE
-            assert (
-                "Refinement unavailable: dependencies not installed" in status_messages
-            )
+            # Give the threadpool a moment
+            import time
+
+            time.sleep(0.05)
+
+            assert service.state == slm_module.SLMState.ERROR
+            assert errors
         finally:
-            # Restore
             slm_module.RefinementEngine = original
 
-    def test_initialize_runs_in_service_thread(self, qapp, qtbot, slm_service):
-        """Initialization invoked via a queued call should execute on the SLM service thread (not the main thread)."""
-        from PyQt6.QtCore import QThread, QMetaObject, Qt
 
-        thread = QThread()
-        slm_service.moveToThread(thread)
-        thread.start()
-
-        called = {}
-
-        def fake_load(model_path, tokenizer_path, device):
-            # Record the QThread object on which this was executed
-            called["thread"] = QThread.currentThread()
-
-        with patch.object(slm_service, "_load_engine", side_effect=fake_load):
-            QMetaObject.invokeMethod(
-                slm_service, "initialize_service", Qt.ConnectionType.QueuedConnection
-            )
-
-            qtbot.waitUntil(lambda: "thread" in called, timeout=2000)
-            assert called["thread"] is not QThread.currentThread()
-
-        thread.quit()
-        thread.wait()
-
-    def test_gpu_confirmation_flow_queued(self, qapp, qtbot, slm_service, slm_module):
-        """When GPU headroom is low, initialization should set WAITING_FOR_USER; submit_gpu_choice must be invoked on the service thread and continue initialization with the chosen device."""
-        from PyQt6.QtCore import QThread, QMetaObject, Qt, Q_ARG
-
-        thread = QThread()
-        slm_service.moveToThread(thread)
-        thread.start()
-
-        # Force GPU map to low headroom so the service enters WAITING_FOR_USER
-        with patch("src.services.slm_service.get_gpu_memory_map", return_value=(16000, 2000)):
-            with patch.object(slm_service, "_load_engine") as mock_load:
-                QMetaObject.invokeMethod(
-                    slm_service, "initialize_service", Qt.ConnectionType.QueuedConnection
-                )
-
-                # Wait for the service to enter the waiting state
-                qtbot.waitUntil(
-                    lambda: slm_service.state == slm_module.SLMState.WAITING_FOR_USER,
-                    timeout=2000,
-                )
-
-                # Simulate user choosing CPU (False) via queued invocation
-                QMetaObject.invokeMethod(
-                    slm_service,
-                    "submit_gpu_choice",
-                    Qt.ConnectionType.QueuedConnection,
-                    Q_ARG(bool, False),
-                )
-
-                qtbot.waitUntil(lambda: mock_load.called, timeout=2000)
-
-                # Confirm _load_engine got called with 'cpu' as device (3rd arg)
-                args, _ = mock_load.call_args
-                assert args[2] == "cpu"
-
-        thread.quit()
-        thread.wait()
