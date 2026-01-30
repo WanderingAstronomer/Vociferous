@@ -275,7 +275,17 @@ class ConfigManager(QObject):
 
     @classmethod
     def save_config(cls, config_path: Path | str | None = None) -> None:
-        """Save the current configuration to a YAML file."""
+        """Save the current configuration to a YAML file using an atomic, crash-safe write.
+
+        Uses a temporary file written into the same directory followed by an atomic
+        os.replace() to ensure the target file is either the old or the new content
+        (no partial writes). We also create a `.bak` backup of the previous file
+        when present.
+        """
+        import os
+        import shutil
+        import tempfile
+
         path = (
             Path(config_path)
             if config_path
@@ -283,7 +293,46 @@ class ConfigManager(QObject):
         )
         if cls._instance is None:
             raise RuntimeError("ConfigManager not initialized")
-        path.write_text(yaml.dump(cls._instance.config, default_flow_style=False))
+
+        # Ensure parent dir exists
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        data = yaml.dump(cls._instance.config, default_flow_style=False).encode(
+            "utf-8"
+        )
+
+        # Backup existing file before replace
+        bak_path = path.with_suffix(path.suffix + ".bak")
+        try:
+            if path.exists():
+                shutil.copy2(path, bak_path)
+        except Exception:
+            # Log but do not fail save because backup is optional
+            logger.exception("Failed to create backup of config file")
+
+        tmp_file = None
+        try:
+            # Create a temporary file in the same directory to ensure the eventual
+            # os.replace is atomic on the same filesystem
+            fd, tmp_file = tempfile.mkstemp(dir=str(path.parent))
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # Atomic replace
+            os.replace(tmp_file, str(path))
+            tmp_file = None
+        except Exception:
+            logger.exception("Failed to atomically write config file")
+            # Ensure temp file cleanup
+            if tmp_file and Path(tmp_file).exists():
+                try:
+                    Path(tmp_file).unlink()
+                except Exception:
+                    logger.exception("Failed to remove temp config file")
+            # Re-raise so callers can react to failure if needed
+            raise
 
     @classmethod
     def reload_config(cls) -> None:
