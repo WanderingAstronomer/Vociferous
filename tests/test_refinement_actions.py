@@ -178,3 +178,57 @@ def test_retry_parameters_passed(qtbot):
     service._engine.refine.assert_called_with(
         "Text", "BALANCED", "Inst", temperature=0.8, seed_variation=12345
     )
+
+
+def test_request_queue_limit(qtbot):
+    """Enqueuing more than max requests should be rejected and queue capped."""
+    from src.services.slm_service import SLMService, SLMState
+
+    service = SLMService()
+    service._engine = MagicMock()
+    service._state = SLMState.LOADING
+
+    # Make queue small for deterministic behavior
+    service._max_queue_size = 3
+
+    errors = []
+    msgs = []
+    service.refinementError.connect(lambda tid, msg: errors.append((tid, msg)))
+    service.statusMessage.connect(lambda m: msgs.append(m))
+
+    # Enqueue 4 unique requests (1 more than max)
+    for i in range(4):
+        service.handle_refinement_request(100 + i, f"Text{i}")
+
+    assert len(service._request_queue) == 3
+    # Extra request should have caused an error emit
+    assert errors and errors[-1][0] == 103
+    assert any("Refinement queue full" in m for m in msgs)
+
+
+def test_request_queue_dedupe(qtbot):
+    """Duplicate requests for same transcript should replace queued request and only latest processed."""
+    from src.services.slm_service import SLMService, SLMState
+
+    service = SLMService()
+    service._engine = MagicMock()
+    service._state = SLMState.LOADING
+    service._max_queue_size = 5
+
+    messages = []
+    service.statusMessage.connect(lambda m: messages.append(m))
+
+    tid = 200
+    service.handle_refinement_request(tid, "Original", "BALANCED", "Inst1")
+    service.handle_refinement_request(tid, "Updated", "PRECISE", "Inst2")
+
+    assert len(service._request_queue) == 1
+    queued = service._request_queue[0]
+    assert queued[1] == "Updated"
+    assert queued[2] == "PRECISE"
+    assert queued[3] == "Inst2"
+    assert "Request updated in queue." in messages
+
+    # Transition to READY and ensure the latest request was processed
+    service._set_state(SLMState.READY)
+    service._engine.refine.assert_called_once_with("Updated", "PRECISE", "Inst2")

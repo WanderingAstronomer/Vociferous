@@ -73,6 +73,13 @@ class SLMService(QObject):
             tuple
         ] = []  # Stores pending requests as (args, kwargs)
 
+        # Configurable maximum request queue size (default 5)
+        try:
+            self._max_queue_size = ConfigManager.get_value("refinement", "max_queue_size", default=5)
+        except Exception:
+            # ConfigManager may not be initialized in some test contexts; fall back safely
+            self._max_queue_size = 5
+
         # Determine initial model from config
         model_id = "qwen4b"
         if ConfigManager:
@@ -391,6 +398,27 @@ class SLMService(QObject):
 
         if self.state != SLMState.READY:
             logger.info(f"Service busy/loading ({self.state.value}). Enqueuing request {transcript_id}.")
+
+            # Deduplicate: if a request for the same transcript_id exists, replace it
+            for i, item in enumerate(self._request_queue):
+                try:
+                    existing_tid = item[0]
+                except Exception:
+                    existing_tid = None
+                if existing_tid == transcript_id:
+                    self._request_queue[i] = (transcript_id, text, profile, user_instructions, kwargs)
+                    self.statusMessage.emit("Request updated in queue.")
+                    return
+
+            # Capacity check: reject new requests when queue is full
+            if len(self._request_queue) >= self._max_queue_size:
+                self.statusMessage.emit(
+                    f"Refinement queue full ({self._max_queue_size}). Please try again later."
+                )
+                self.refinementError.emit(transcript_id, "Refinement queue full")
+                return
+
+            # Normal enqueue
             self._request_queue.append((transcript_id, text, profile, user_instructions, kwargs))
             self.statusMessage.emit("Request queued. Waiting for service...")
             return

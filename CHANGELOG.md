@@ -1,5 +1,15 @@
 # Vociferous Changelog
 
+## v3.0.10 - Safety: SLM request queue dedupe & max size (P2)
+
+**Date:** 2026-01-29
+**Status:** Improvement / Safety
+
+### Changed
+- **SLM queue safety:** Added deduplication of queued refinement requests by `transcript_id` and a configurable queue size `refinement.max_queue_size` (default: `5`). Duplicate requests now replace pending entries (emits "Request updated in queue.") and requests that exceed the queue limit are rejected with a user-facing status message and `refinementError`.
+
+---
+
 ## v3.0.9 - Improvement: Atomic model installs & manifest-based validation (P1)
 
 **Date:** 2026-01-29
