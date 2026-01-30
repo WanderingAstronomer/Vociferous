@@ -1,5 +1,18 @@
 # Vociferous Changelog
 
+## v3.0.9 - Improvement: Atomic model installs & manifest-based validation (P1)
+
+**Date:** 2026-01-29
+**Status:** Bugfix / P1
+
+### Fixed / Improved
+- **Atomic provisioning:** `provision_model()` now converts artifacts into a temporary install directory and atomically moves the directory into place on success to prevent partial installs from being treated as valid.
+- **Artifact manifest & checksums:** A `manifest.json` is written for each installed model containing SHA256 checksums for key artifacts; `validate_model_artifacts()` uses the manifest to verify file integrity and detect corruption or mismatches.
+- **Cleanup on failure:** Partial conversion directories and temp downloads are cleaned up on failure (no half-installed models remain in the cache).
+- **Tests:** Added unit tests that assert manifest creation, checksum verification, and proper cleanup when conversion fails.
+
+---
+
 ## v3.0.7 - Bugfix: SLM GPU confirmation non-blocking fix
 
 **Date:** 2026-01-29

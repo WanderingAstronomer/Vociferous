@@ -40,6 +40,53 @@ def test_provision_with_valid_offline_source(tmp_path, monkeypatch):
     assert (final / "config.json").exists()
     assert (final / "tokenizer.json").exists()
 
+    # Manifest must exist and include checksums
+    manifest_path = final / "manifest.json"
+    assert manifest_path.exists()
+    manifest = json.loads(manifest_path.read_text())
+    assert "files" in manifest and "model.bin" in manifest["files"]
+
+    # Verify checksum matches actual file
+    import hashlib
+
+    def _sha256_hex(p: Path) -> str:
+        h = hashlib.sha256()
+        with p.open("rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
+    assert manifest["files"]["model.bin"] == _sha256_hex(final / "model.bin")
+
++def test_provision_cleanup_on_conversion_failure(tmp_path, monkeypatch):
++    """If conversion fails, no final model dir should be left and temps cleaned up."""
++    model = MODELS["qwen4b"]
++    cache_root = tmp_path / "cache"
++    cache_root.mkdir()
++
++    source = tmp_path / "source"
++    source.mkdir()
++    (source / "config.json").write_text(json.dumps({"model": "test"}))
++    (source / "model.safetensors").write_text("fake-weights")
++
++    # Simulate partial write then failure inside convert_model
++    def bad_convert(model_arg, source_dir: Path, output_dir: Path, progress_callback=None):
++        (output_dir / "model.bin").write_text("partial")
++        raise RuntimeError("simulated crash during conversion")
++
++    monkeypatch.setattr("src.provisioning.core.convert_model", bad_convert)
++
++    with pytest.raises(Exception):
++        provision_model(model, cache_root, progress_callback=lambda m: None, source_dir=source)
++
++    final = cache_root / model.dir_name
++    # Final dir must not exist
++    assert not final.exists()
++
++    # No lingering temp dirs starting with model.dir_name.tmp-
++    temps = [p for p in cache_root.iterdir() if p.is_dir() and p.name.startswith(f"{model.dir_name}.tmp-")]
++    assert temps == []
+
 
 def test_provision_with_invalid_offline_source_missing_config(tmp_path):
     model = MODELS["qwen4b"]

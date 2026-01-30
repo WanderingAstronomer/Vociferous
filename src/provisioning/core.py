@@ -236,9 +236,19 @@ def provision_model(
     final_model_dir = cache_root / model.dir_name
     source_temp_dir = cache_root / "slm-source-temp"
 
+    # Use a dedicated temporary output dir for conversion to ensure atomic install
+    import hashlib
+    import json
+    import os
+    import uuid
+
+    temp_install_dir = cache_root / f"{model.dir_name}.tmp-{uuid.uuid4().hex}"
+
     # Clean start for temp
     if source_temp_dir.exists():
         shutil.rmtree(source_temp_dir, ignore_errors=True)
+    if temp_install_dir.exists():
+        shutil.rmtree(temp_install_dir, ignore_errors=True)
 
     downloaded_source = None
     try:
@@ -254,26 +264,75 @@ def provision_model(
                 model, source_temp_dir, progress_callback=progress_callback
             )
 
-        # 2. Convert
-        if not final_model_dir.exists():
-            final_model_dir.mkdir(parents=True)
+        # 2. Convert into temporary install dir
+        temp_install_dir.mkdir(parents=True)
 
         convert_model(
             model,
             downloaded_source,
-            final_model_dir,
+            temp_install_dir,
             progress_callback=progress_callback,
         )
 
-        # 3. Artifacts (tokenizer.json)
-        logger.info("Copying tokenizer artifacts...")
+        # 3. Artifacts (tokenizer.json) - copy into temp dir
+        logger.info("Copying tokenizer artifacts into temp install dir...")
         source_tokenizer = downloaded_source / "tokenizer.json"
         if source_tokenizer.exists():
-            shutil.copy2(source_tokenizer, final_model_dir / "tokenizer.json")
+            shutil.copy2(source_tokenizer, temp_install_dir / "tokenizer.json")
         else:
             logger.warning(
                 "tokenizer.json not found in source. If you have a custom tokenizer, ensure tokenization artifacts are present."
             )
+
+        # 4. Validate artifacts in temp dir and write manifest with checksums
+        def _sha256_hex(p: Path) -> str:
+            h = hashlib.sha256()
+            with p.open("rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    h.update(chunk)
+            return h.hexdigest()
+
+        manifest = {
+            "model_id": model.id,
+            "revision": getattr(model, "revision", ""),
+            "created_at": int(__import__("time").time()),
+            "files": {},
+        }
+
+        # Files to include if they exist
+        candidate_files = ["model.bin", "config.json", "tokenizer.json", "vocabulary.json", "vocabulary.txt"]
+        for fname in candidate_files:
+            p = temp_install_dir / fname
+            if p.exists():
+                manifest["files"][fname] = _sha256_hex(p)
+
+        # Require model.bin and config.json at minimum
+        if "model.bin" not in manifest["files"] or "config.json" not in manifest["files"]:
+            raise ProvisioningError("Converted artifacts incomplete: missing model.bin or config.json")
+
+        # Write manifest atomically into temp_install_dir
+        manifest_path = temp_install_dir / "manifest.json"
+        tmp_manifest = manifest_path.with_suffix(".tmp")
+        with tmp_manifest.open("w", encoding="utf-8") as mf:
+            json.dump(manifest, mf, indent=2)
+            mf.flush()
+            os.fsync(mf.fileno())
+        os.replace(str(tmp_manifest), str(manifest_path))
+
+        # 5. Atomic install: move temp_install_dir into final_model_dir
+        # If final exists, remove it first to ensure replace succeeds
+        if final_model_dir.exists():
+            shutil.rmtree(final_model_dir, ignore_errors=True)
+
+        os.replace(str(temp_install_dir), str(final_model_dir))
+
+        # fsync parent dir to make the rename durable (best-effort)
+        try:
+            dirfd = os.open(str(cache_root), os.O_DIRECTORY)
+            os.fsync(dirfd)
+            os.close(dirfd)
+        except Exception:
+            logger.exception("Failed to fsync cache directory after installing model")
 
         if progress_callback:
             progress_callback("Provisioning complete.")
@@ -282,10 +341,14 @@ def provision_model(
 
     except Exception as e:
         logger.error(f"Provisioning failed: {e}")
-        # Clean up partial result
+        # Clean up partial results
+        # Remove final dir if it's present (shouldn't be on failure)
         if final_model_dir.exists():
             shutil.rmtree(final_model_dir, ignore_errors=True)
-        raise e
+        # Remove temp install dir if present
+        if temp_install_dir.exists():
+            shutil.rmtree(temp_install_dir, ignore_errors=True)
+        raise
     finally:
         # Cleanup source if we downloaded it into the temp dir
         if source_dir is None and downloaded_source is not None:

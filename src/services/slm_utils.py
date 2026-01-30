@@ -34,11 +34,46 @@ def get_gpu_memory_map() -> tuple[int, int] | None:
         return None
 
 def validate_model_artifacts(model_dir: Path) -> bool:
-    """Check if all required model artifacts exist."""
+    """Validate model artifacts using a manifest containing checksums.
+
+    The manifest (`manifest.json`) is required and must contain checksums for key files.
+    Falls back to basic existence checks if manifest is missing to preserve compatibility.
+    """
+    import json
+    import hashlib
+
     if not model_dir.exists():
         return False
 
-    # CTranslate2 can produce vocabulary.json OR vocabulary.txt, check loosely
+    manifest_path = model_dir / "manifest.json"
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            files = manifest.get("files", {})
+
+            def _sha256_hex(p: Path) -> str:
+                h = hashlib.sha256()
+                with p.open("rb") as f:
+                    for chunk in iter(lambda: f.read(8192), b""):
+                        h.update(chunk)
+                return h.hexdigest()
+
+            for fname, checksum in files.items():
+                p = model_dir / fname
+                if not p.exists():
+                    logger.warning(f"Manifest references missing file {fname} in {model_dir}")
+                    return False
+                actual = _sha256_hex(p)
+                if actual != checksum:
+                    logger.warning(f"Checksum mismatch for {fname} in {model_dir}")
+                    return False
+
+            return True
+        except Exception as e:
+            logger.exception("Failed to validate manifest: %s", e)
+            return False
+
+    # Backward-compatible loose checks: best-effort validation
     has_vocab = (model_dir / "vocabulary.json").exists() or (
         model_dir / "vocabulary.txt"
     ).exists()
