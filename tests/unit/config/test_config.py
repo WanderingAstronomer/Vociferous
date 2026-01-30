@@ -126,6 +126,57 @@ class TestConfigManagerInvariants:
         # but here we dump full config.
         assert saved_data["ui"]["theme"] == "dark"
 
+    def test_atomic_write_cleans_temp_and_preserves_original_on_replace_failure(
+        self, clean_config_manager, mock_schema, mock_config_path, monkeypatch
+    ):
+        """If atomic replace fails, the original file must remain and temp files cleaned."""
+        ConfigManager.initialize(schema_path=mock_schema)
+
+        # Create an existing config file
+        ConfigManager.set_config_value(2, "core", "version")
+        ConfigManager.save_config(mock_config_path)
+        original_contents = mock_config_path.read_text()
+
+        # Now simulate os.replace failing on the next save
+        import os
+
+        def fake_replace(*args, **kwargs):
+            raise OSError("simulated replace failure")
+
+        monkeypatch.setattr(os, "replace", fake_replace)
+
+        # Update config and attempt save
+        ConfigManager.set_config_value(3, "core", "version")
+
+        with pytest.raises(Exception):
+            ConfigManager.save_config(mock_config_path)
+
+        # Original file should be unchanged
+        assert mock_config_path.read_text() == original_contents
+
+        # No lingering temp files in the same directory
+        tmp_files = [p.name for p in mock_config_path.parent.iterdir() if p.name.startswith("config.yaml") and ".tmp" in p.name]
+        assert tmp_files == []
+
+    def test_atomic_write_creates_backup_on_success(
+        self, clean_config_manager, mock_schema, mock_config_path
+    ):
+        """A backup (.bak) of previous config should be created on save when file exists."""
+        ConfigManager.initialize(schema_path=mock_schema)
+
+        # Create an initial file
+        ConfigManager.set_config_value(4, "core", "version")
+        ConfigManager.save_config(mock_config_path)
+
+        # Update and save again
+        ConfigManager.set_config_value(5, "core", "version")
+        ConfigManager.save_config(mock_config_path)
+
+        bak_path = mock_config_path.with_suffix(mock_config_path.suffix + ".bak")
+        assert bak_path.exists()
+        bak_data = yaml.safe_load(bak_path.read_text())
+        assert bak_data["core"]["version"] == 4
+
     def test_resilience_to_missing_keys_and_deep_paths(
         self, clean_config_manager, mock_schema
     ):

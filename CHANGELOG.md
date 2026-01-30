@@ -1,5 +1,17 @@
 # Vociferous Changelog
 
+## v3.0.8 - Bugfix: Atomic config saves (P1)
+
+**Date:** 2026-01-29
+**Status:** Bugfix / P1
+
+### Fixed
+- **Crash-safe config persistence:** `ConfigManager.save_config` now performs atomic writes using a temporary file, fsync, and `os.replace()` to avoid partial/corrupt `config.yaml` files on crashes or power loss. The method also writes an optional `.bak` backup of the previous config when present.
+- **Robustness:** The implementation cleans up temporary files on failure and raises on unrecoverable write errors so callers can react appropriately.
+- **Tests:** Added tests to assert temp-file cleanup on failure and `.bak` creation on success.
+
+---
+
 ## v3.0.7 - Bugfix: SLM GPU confirmation non-blocking fix
 
 **Date:** 2026-01-29
