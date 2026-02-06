@@ -566,8 +566,18 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot(int, str)
     def _on_refinement_accepted(self, transcript_id: int, refined_text: str) -> None:
-        """Apply the refinement to the database."""
+        """Apply the refinement to the database.
+
+        Stores the refined text as a variant for provenance tracking,
+        then updates the mutable normalized_text field.
+        """
         if self.history_manager:
+            from src.core.config_manager import ConfigManager
+
+            model_id = ConfigManager.get_value("slm_model", "qwen4b")
+            self.history_manager.add_variant_atomic(
+                transcript_id, refined_text, kind="refined", model_id=model_id
+            )
             self.history_manager.update_normalized_text(transcript_id, refined_text)
 
         # Note: UI updates via DatabaseSignalBridge
