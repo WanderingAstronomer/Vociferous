@@ -9,6 +9,7 @@ import sys
 import threading
 import logging
 import time
+from logging.handlers import RotatingFileHandler
 from typing import Optional, BinaryIO
 
 from src.core_runtime.protocol.transport import PacketTransport
@@ -16,12 +17,33 @@ from src.core_runtime.protocol.types import ProtocolMessage, MessageType
 from src.core_runtime.engine import TranscriptionEngine
 from src.core_runtime.types import TranscriptionResult
 from src.core.config_manager import ConfigManager
+from src.core.resource_manager import ResourceManager
 
-# Configure logging to file/stderr (since stdout is used for transport)
+# Configure logging for the engine process.
+# stdout is reserved for IPC transport, so stderr + file logging are used.
+_log_format = "%(asctime)s [%(levelname)s] (Engine) %(message)s"
+_handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
+
+try:
+    _log_dir = ResourceManager.get_user_log_dir()
+    _log_dir.mkdir(parents=True, exist_ok=True)
+    _engine_log_file = _log_dir / "vociferous_engine.log"
+    _file_handler = RotatingFileHandler(
+        _engine_log_file,
+        maxBytes=5 * 1024 * 1024,  # 5 MB
+        backupCount=2,
+        encoding="utf-8",
+    )
+    _file_handler.setFormatter(logging.Formatter(_log_format))
+    _handlers.append(_file_handler)
+except Exception:
+    # If file logging setup fails, continue with stderr only
+    sys.stderr.write("Warning: Could not set up engine file logging\n")
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] (Engine) %(message)s",
-    handlers=[logging.StreamHandler(sys.stderr)],
+    format=_log_format,
+    handlers=_handlers,
 )
 logger = logging.getLogger(__name__)
 
