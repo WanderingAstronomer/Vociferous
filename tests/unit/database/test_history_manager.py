@@ -103,7 +103,7 @@ class TestDatabaseInitialization:
         assert "projects" in referenced_tables
 
     def test_initialization_does_not_create_legacy_artifacts(self, temp_db):
-        """Fresh initialization must not create legacy artifacts (schema_version, focus_groups)."""
+        """Fresh initialization must not create legacy artifacts (focus_groups)."""
         # Initialize fresh database
         HistoryManager(history_file=temp_db)
 
@@ -112,10 +112,11 @@ class TestDatabaseInitialization:
             cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = {row[0] for row in cursor.fetchall()}
 
-        assert "schema_version" not in tables
         assert "focus_groups" not in tables
         assert "transcripts" in tables
         assert "projects" in tables
+        # schema_version is an infrastructure table for migration tracking, not legacy
+        assert "schema_version" in tables
 
         # Verify transcripts schema contains expected modern columns
         with sqlite3.connect(temp_db) as conn:
