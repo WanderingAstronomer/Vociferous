@@ -178,9 +178,11 @@ class ExportDialog(QDialog):
         location_row.addWidget(self.location_input, 1)
 
         browse_btn = StyledButton("Browse...", ButtonStyle.SECONDARY)
-        browse_btn.setFixedHeight(42)
         browse_btn.clicked.connect(self._browse_location)
         location_row.addWidget(browse_btn)
+
+        # Align row heights: let both widgets derive height from the stylesheet
+        location_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         content_layout.addWidget(location_container)
 
