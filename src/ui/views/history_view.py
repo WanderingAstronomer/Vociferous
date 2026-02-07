@@ -253,3 +253,7 @@ class HistoryView(BaseView):
                 entry = self._history_manager.get_entry(selection.primary_id)
                 if entry:
                     self.content_panel.set_entry(entry)
+
+        elif change.entity_type == "project":
+            # Project color or metadata changed — refresh color indicators
+            self._model.refresh_project_colors()
