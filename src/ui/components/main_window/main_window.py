@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from src.core.resource_manager import ResourceManager
 from PyQt6.QtCore import (
     QEvent,
+    QPoint,
     QSettings,
     Qt,
     QTimer,
@@ -20,6 +21,8 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtGui import (
     QCloseEvent,
+    QCursor,
+    QMouseEvent,
     QResizeEvent,
     QGuiApplication,
 )
@@ -82,6 +85,9 @@ if TYPE_CHECKING:
     from src.core.command_bus import CommandBus
 
 logger = logging.getLogger(__name__)
+
+# Edge resize grip width for frameless window (pixels from border)
+_EDGE_GRIP = 8
 
 
 class MainWindow(QMainWindow):
@@ -1069,6 +1075,65 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
         if hasattr(self, "_blocking_overlay"):
             self._blocking_overlay.resize(self.size())
+
+    # ------------------------------------------------------------------
+    # Edge resize for frameless window
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_edges(pos: QPoint, w: int, h: int) -> Qt.Edges:
+        """Return the Qt edges the cursor is near."""
+        edges = Qt.Edges()
+        if pos.x() < _EDGE_GRIP:
+            edges |= Qt.Edge.LeftEdge
+        elif pos.x() > w - _EDGE_GRIP:
+            edges |= Qt.Edge.RightEdge
+        if pos.y() < _EDGE_GRIP:
+            edges |= Qt.Edge.TopEdge
+        elif pos.y() > h - _EDGE_GRIP:
+            edges |= Qt.Edge.BottomEdge
+        return edges
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """Initiate native resize when clicking on a window edge."""
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and not self.isMaximized()
+        ):
+            edges = self._get_edges(
+                event.position().toPoint(), self.width(), self.height()
+            )
+            if edges:
+                wh = self.windowHandle()
+                if wh and hasattr(wh, "startSystemResize"):
+                    wh.startSystemResize(edges)
+                    return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        """Update cursor shape when hovering near window edges."""
+        if self.isMaximized():
+            self.unsetCursor()
+            super().mouseMoveEvent(event)
+            return
+
+        edges = self._get_edges(event.position().toPoint(), self.width(), self.height())
+        if edges == (Qt.Edge.LeftEdge | Qt.Edge.TopEdge) or edges == (Qt.Edge.RightEdge | Qt.Edge.BottomEdge):
+            self.setCursor(QCursor(Qt.CursorShape.SizeFDiagCursor))
+        elif edges == (Qt.Edge.RightEdge | Qt.Edge.TopEdge) or edges == (Qt.Edge.LeftEdge | Qt.Edge.BottomEdge):
+            self.setCursor(QCursor(Qt.CursorShape.SizeBDiagCursor))
+        elif edges & (Qt.Edge.LeftEdge | Qt.Edge.RightEdge):
+            self.setCursor(QCursor(Qt.CursorShape.SizeHorCursor))
+        elif edges & (Qt.Edge.TopEdge | Qt.Edge.BottomEdge):
+            self.setCursor(QCursor(Qt.CursorShape.SizeVerCursor))
+        else:
+            self.unsetCursor()
+        super().mouseMoveEvent(event)
+
+    def leaveEvent(self, event: QEvent) -> None:
+        """Reset cursor when leaving the window."""
+        self.unsetCursor()
+        super().leaveEvent(event)
 
     def changeEvent(self, event: QEvent) -> None:
         """Handle window state changes, including taskbar interactions."""
