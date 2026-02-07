@@ -85,6 +85,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from importlib.util import find_spec
 
 
 def _configure_logging() -> None:
@@ -101,6 +102,52 @@ def _configure_logging() -> None:
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         datefmt="%H:%M:%S",
     )
+
+
+def _check_python_version() -> None:
+    """
+    Verify Python 3.12+ is being used.
+
+    Fails fast with a clear error if the Python version is insufficient.
+    This prevents cryptic import errors later.
+    """
+    if sys.version_info < (3, 12):
+        logger = logging.getLogger("Vociferous")
+        logger.error(
+            f"Python 3.12+ required, but running Python {sys.version_info.major}.{sys.version_info.minor}. "
+            f"Please use Python 3.12 or later."
+        )
+        sys.exit(1)
+
+
+def _validate_dependencies() -> None:
+    """
+    Check that critical dependencies are installed.
+
+    Validates key packages (PyQt6, sqlalchemy) that will be imported.
+    Provides clear guidance if dependencies are missing.
+    """
+    logger = logging.getLogger("Vociferous")
+    required_modules = [
+        "PyQt6",
+        "sqlalchemy",
+        "faster_whisper",
+    ]
+
+    missing = []
+    for module in required_modules:
+        if find_spec(module) is None:
+            missing.append(module)
+
+    if missing:
+        logger.error(
+            f"Missing required dependencies: {', '.join(missing)}. "
+            f"Please install dependencies:\n"
+            f"  source .venv/bin/activate\n"
+            f"  pip install -r requirements.txt\n"
+            f"Or run: bash scripts/install.sh"
+        )
+        sys.exit(1)
 
 
 def _preflight_env() -> None:
@@ -124,6 +171,8 @@ def _preflight_env() -> None:
     - New process runs, sets LD_LIBRARY_PATH, execs
     - ...forever
     """
+    logger = logging.getLogger("Vociferous")
+
     # 1. Enforce Virtual Environment
     # If the venv exists, we MUST use it. This prevents ModuleNotFoundError
     # when dependencies (like sqlalchemy) are installed in venv but script
@@ -138,27 +187,30 @@ def _preflight_env() -> None:
         try:
             current_prefix = Path(sys.prefix).resolve()
             expected_prefix = venv_path.resolve()
-            
+
             if current_prefix != expected_prefix:
                 # Re-exec args: [python, script, *args]
-                os.execv(str(venv_python), [str(venv_python), *sys.argv])
+                try:
+                    os.execv(str(venv_python), [str(venv_python), *sys.argv])
+                except OSError as e:
+                    logger.error(
+                        f"Failed to re-execute with venv Python: {e}. "
+                        f"Please activate manually: source .venv/bin/activate"
+                    )
+                    sys.exit(1)
         except Exception as e:
-            # Fallback
-             logging.getLogger("Vociferous").warning(f"Failed to enforce venv: {e}")
+            logger.warning(f"Could not enforce venv: {e}. Proceeding with current Python.")
     else:
-        logging.getLogger("Vociferous").warning(
-            "Virtual environment not found at .venv/. Proceeding with system Python."
+        logger.warning(
+            "Virtual environment not found at .venv/. "
+            "Run: bash scripts/install.sh"
         )
-        # Create the venv directory variable for later use
-        #TODO: venv_path = None
 
     # Sentinel to prevent infinite re-exec loop
     if os.environ.get("_VOCIFEROUS_ENV_READY") == "1":
         return
 
     # venv lives at project root (same directory as this script)
-    # venv_path is already defined above
-
     # Find Python version dynamically
     lib_path = venv_path / "lib"
     if not lib_path.exists():
@@ -180,7 +232,13 @@ def _preflight_env() -> None:
             # Re-exec with correct LD_LIBRARY_PATH (must be set before process starts)
             os.environ["LD_LIBRARY_PATH"] = f"{cudnn_str}:{cublas_str}:{ld_path}"
             os.environ["_VOCIFEROUS_ENV_READY"] = "1"
-            os.execv(sys.executable, [sys.executable, *sys.argv])
+            try:
+                os.execv(sys.executable, [sys.executable, *sys.argv])
+            except OSError as e:
+                logger.error(f"Failed to re-exec with GPU libraries: {e}")
+                sys.exit(1)
+    else:
+        logger.debug("NVIDIA GPU libraries not found, proceeding without GPU acceleration")
 
     # Hint CUDA visibility
     os.environ.setdefault("CUDA_VISIBLE_DEVICES", "0")
@@ -229,12 +287,51 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 if __name__ == "__main__":
     _configure_logging()
+    logger = logging.getLogger("Vociferous")
+
+    # Validation: Check Python version
+    _check_python_version()
+
+    # Validation: Check that src/main.py exists
+    main_file = Path(__file__).parent / "src" / "main.py"
+    if not main_file.exists():
+        logger.error(
+            f"Application entry point not found: {main_file}. "
+            f"This may indicate a corrupted installation."
+        )
+        sys.exit(1)
+
+    # Environment setup
     _preflight_env()
+
+    # Validation: Check dependencies after environment setup
+    _validate_dependencies()
+
+    # Startup diagnostics
+    logger.info(f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+    logger.info(f"Virtual environment: {Path(sys.prefix).name}")
+    gpu_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "None")
+    logger.info(f"GPU (CUDA_VISIBLE_DEVICES): {gpu_devices}")
+
+    # Configure Qt logging
     _configure_qt_logging_rules()
 
     # Filter stderr to suppress Qt D-Bus tray icon noise
     sys.stderr = _StderrFilter(sys.stderr)
 
-    from main import main
-
-    sys.exit(main())
+    # Run the application with error handling
+    try:
+        from main import main
+        sys.exit(main())
+    except ImportError as e:
+        logger.error(
+            f"Failed to import application: {e}. "
+            f"Please verify dependencies are installed correctly."
+        )
+        sys.exit(1)
+    except KeyboardInterrupt:
+        logger.info("Application interrupted by user")
+        sys.exit(130)
+    except Exception as e:
+        logger.exception(f"Unexpected error during application startup: {e}")
+        sys.exit(1)
