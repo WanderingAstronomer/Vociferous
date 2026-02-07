@@ -212,6 +212,38 @@ class HistoryManager(QObject):
             logger.error(f"Export failed: {e}")
             return False
 
+    def backup_database(self, dest: Path) -> bool:
+        """Copy the SQLite database file to *dest* for backup.
+
+        Uses SQLite's VACUUM INTO for a consistent, self-contained copy that
+        does not interfere with ongoing writes (WAL-safe).  Falls back to a
+        plain file copy if VACUUM INTO is unavailable.
+        """
+        import shutil
+        from sqlalchemy import text as sa_text
+
+        try:
+            dest = Path(dest)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+
+            try:
+                with self.db.engine.connect() as conn:
+                    conn.execute(sa_text(f"VACUUM INTO '{dest}'"))
+                    conn.commit()
+            except Exception:
+                # Fallback: plain copy (safe when WAL is checkpointed)
+                logger.warning("VACUUM INTO unavailable, falling back to file copy")
+                with self.db.engine.connect() as conn:
+                    conn.execute(sa_text("PRAGMA wal_checkpoint(TRUNCATE)"))
+                    conn.commit()
+                shutil.copy2(self.db.db_path, dest)
+
+            logger.info("Database backup created: %s", dest)
+            return True
+        except Exception as e:
+            logger.error("Database backup failed: %s", e)
+            return False
+
     # ========== Project Methods ==========
 
     def create_project(

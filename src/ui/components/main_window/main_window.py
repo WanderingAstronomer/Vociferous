@@ -28,6 +28,7 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtWidgets import (
     QDialog,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -347,6 +348,7 @@ class MainWindow(QMainWindow):
 
         # Connect SettingsView signals
         self.view_settings.export_history_requested.connect(self._export_history)
+        self.view_settings.backup_database_requested.connect(self._backup_database)
         self.view_settings.clear_all_history_requested.connect(self._clear_all_history)
         self.view_settings.restart_requested.connect(self._restart_application)
         self.view_settings.exit_requested.connect(self.close)
@@ -951,6 +953,45 @@ class MainWindow(QMainWindow):
             show_error_dialog(
                 title="Export Error",
                 message=f"Failed to export history: {e}",
+                parent=self,
+            )
+
+    def _backup_database(self) -> None:
+        """Create a backup copy of the SQLite database."""
+        try:
+            if not self.history_manager:
+                return
+
+            dest, _ = QFileDialog.getSaveFileName(
+                self,
+                "Backup Database",
+                "vociferous_backup.db",
+                "SQLite Database (*.db);;All Files (*)",
+            )
+            if not dest:
+                return
+
+            from pathlib import Path
+
+            success = self.history_manager.backup_database(Path(dest))
+            if success:
+                MessageDialog(
+                    self,
+                    title="Backup Successful",
+                    message=f"Database backed up to:\n{dest}",
+                    button_text="OK",
+                ).exec()
+            else:
+                show_error_dialog(
+                    title="Backup Failed",
+                    message="Could not back up database. Check logs for details.",
+                    parent=self,
+                )
+        except Exception as e:
+            logger.exception("Error backing up database")
+            show_error_dialog(
+                title="Backup Error",
+                message=f"Failed to back up database: {e}",
                 parent=self,
             )
 

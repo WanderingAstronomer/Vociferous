@@ -67,6 +67,7 @@ class SettingsView(BaseView):
 
     # Signals for actions that require orchestrator involvement
     export_history_requested = pyqtSignal()
+    backup_database_requested = pyqtSignal()
     clear_all_history_requested = pyqtSignal()
     restart_requested = pyqtSignal()
     exit_requested = pyqtSignal()
@@ -1062,6 +1063,14 @@ class SettingsView(BaseView):
         export_btn.setFixedHeight(40)
         export_btn.setMinimumWidth(160)
         btn_layout.addWidget(export_btn)
+
+        # Backup database button
+        backup_btn = QPushButton("Backup Database...")
+        backup_btn.setObjectName("secondaryButton")
+        backup_btn.clicked.connect(self.backup_database_requested.emit)
+        backup_btn.setFixedHeight(40)
+        backup_btn.setMinimumWidth(160)
+        btn_layout.addWidget(backup_btn)
 
         # Clear all button
         clear_btn = QPushButton("Clear All History...")
