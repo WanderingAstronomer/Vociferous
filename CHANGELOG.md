@@ -1,5 +1,79 @@
 # Vociferous Changelog
 
+## v3.0.18 - Feature: Database Backup Export (P3, #70)
+
+**Date:** 2026-02-06
+**Status:** Feature
+
+### Added
+- **Database backup:** New "Backup Database…" button in Settings → History Management exports a consistent copy of the SQLite database via `VACUUM INTO`, with a WAL-checkpoint file-copy fallback.
+- `HistoryManager.backup_database(dest)` encapsulates the logic; `MainWindow` wires a standard save-file dialog.
+
+---
+
+## v3.0.17 - Feature: Frameless Window Edge Resize (P3, #69)
+
+**Date:** 2026-02-06
+**Status:** Bugfix / UX
+
+### Fixed
+- **Edge resize:** `MainWindow` now supports resizing from all four edges and corners using `startSystemResize()` with an 8 px grip zone, matching the behavior users expect from a frameless window.
+- Mouse cursor updates to the correct resize arrow on hover and resets on leave.
+
+---
+
+## v3.0.16 - Bugfix: Project Color Refresh on Data Change (P3, #68)
+
+**Date:** 2026-02-06
+**Status:** Bugfix
+
+### Fixed
+- **History view project colors:** `HistoryView._handle_data_changed` now handles `entity_type == "project"` events by calling `TranscriptionModel.refresh_project_colors()`, so color-identifier badges update without a manual refresh.
+
+---
+
+## v3.0.15 - Bugfix: Export Dialog Browse Button Height (P3, #67)
+
+**Date:** 2026-02-06
+**Status:** Bugfix / UI
+
+### Fixed
+- **Browse button sizing:** Removed `setFixedHeight(42)` on the Browse button in `ExportDialog`, which conflicted with the stylesheet's `min-height: 44px`, causing a 2 px visual glitch. Vertical alignment centred via layout flag instead.
+
+---
+
+## v3.0.14 - Improvement: Versioned Database Migrations (P2, #66)
+
+**Date:** 2026-02-06
+**Status:** Improvement / Safety
+
+### Changed
+- **Migration framework:** Replaced ad-hoc `ALTER TABLE` try/except migrations with a `schema_version` table and a numbered migration registry. Each migration runs inside an explicit transaction (`engine.begin()`), and the version counter advances atomically.
+- Existing databases auto-bootstrap to the correct version on first run.
+
+---
+
+## v3.0.13 - Improvement: Engine Subprocess Logging (P2, #65)
+
+**Date:** 2026-02-06
+**Status:** Improvement
+
+### Changed
+- **Engine log file:** The `core_runtime` subprocess now writes to `vociferous_engine.log` via a `RotatingFileHandler` (5 MB, 2 backups) in the same log directory as the main application, in addition to its existing stderr handler.
+- Falls back to stderr-only if file handler setup fails.
+
+---
+
+## v3.0.12 - Bugfix: Refinement Acceptance Stores Variant (P2, #64)
+
+**Date:** 2026-02-06
+**Status:** Bugfix
+
+### Fixed
+- **Variant persistence:** Accepting a refined transcription now stores an immutable variant (`kind="refined"`) via `HistoryManager.add_variant_atomic` before updating the normalised text, preserving the full refinement history per the data model's design intent.
+
+---
+
 ## v3.0.10 - Safety: SLM request queue dedupe & max size (P2)
 
 **Date:** 2026-01-29
