@@ -1,0 +1,40 @@
+# Virtual environment
+.venv/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.cursor/
+.idea/
+*.swp
+*.swo
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Docker (avoid recursive context)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Testing / dev artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

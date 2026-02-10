@@ -26,6 +26,7 @@
 <p>
     <a href="#features">Features</a> •
     <a href="#installation">Installation</a> •
+    <a href="#docker">Docker</a> •
     <a href="#quick-start">Quick Start</a> •
     <a href="#documentation">Documentation</a> •
     <a href="#architecture">Architecture</a>
@@ -197,6 +198,48 @@ cd Vociferous</code></pre>
 <pre><code>./vociferous</code></pre>
 
 <p><strong>Important:</strong> Always use the <code>./vociferous</code> launcher script.</p>
+
+<h3 id="docker">Docker</h3>
+
+<p>
+    Vociferous can also run inside a Docker container. This requires Docker and, for GPU acceleration,
+    the <a href="https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html">NVIDIA Container Toolkit</a>.
+</p>
+
+<ol>
+    <li>Allow Docker to access your display</li>
+</ol>
+
+<pre><code>xhost +local:docker</code></pre>
+
+<ol start="2">
+    <li>Build and run (CPU-only)</li>
+</ol>
+
+<pre><code>docker compose up --build</code></pre>
+
+<ol start="3">
+    <li>Or build and run with GPU acceleration</li>
+</ol>
+
+<pre><code>docker compose --profile gpu up --build</code></pre>
+
+<p>
+    Application data (config, database, model cache) is stored in named Docker volumes
+    and persists across container restarts.
+</p>
+
+<details>
+<summary><strong>Docker Notes</strong></summary>
+
+<ul>
+    <li>The image targets <code>linux/amd64</code> because PyQt6 only publishes prebuilt wheels for x86_64. On Apple Silicon or ARM hosts, Docker will use emulation automatically.</li>
+    <li>X11 forwarding is configured by default. For Wayland, uncomment the relevant lines in <code>docker-compose.yml</code>.</li>
+    <li>Audio input uses PulseAudio socket passthrough. Ensure PulseAudio (or PipeWire with the PulseAudio compatibility layer) is running on the host.</li>
+    <li>Global hotkeys require input device access — the container is granted the <code>input</code> and <code>audio</code> groups.</li>
+</ul>
+
+</details>
 
 <hr>
 
