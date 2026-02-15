@@ -7,10 +7,15 @@ Starts Litestar API server and pywebview window.
 
 import logging
 import threading
+import time
 from pathlib import Path
+from typing import Any
+
+import numpy as np
 
 from src.core.command_bus import CommandBus
-from src.core.settings import VociferousSettings, save_settings
+from src.core.event_bus import EventBus
+from src.core.settings import VociferousSettings, get_settings, save_settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,25 +27,34 @@ class ApplicationCoordinator:
     Owns and manages the lifecycle of:
     - Settings (already initialized before construction)
     - Database
-    - CommandBus
-    - Engine client (ASR subprocess)
-    - SLM runtime (refinement)
+    - CommandBus + EventBus
+    - Transcription model (pywhispercpp)
+    - SLM runtime (llama-cpp-python refinement)
     - Audio service
     - Input handler
     - Litestar API server
-    - pywebview windows
+    - pywebview window
     """
 
     def __init__(self, settings: VociferousSettings) -> None:
         self.settings = settings
         self._shutdown_event = threading.Event()
 
-        # Core services (initialized in start())
+        # Core buses
         self.command_bus = CommandBus()
+        self.event_bus = EventBus()
+
+        # Services (initialized in start())
         self.db = None
-        self.engine_client = None
         self.audio_service = None
         self.input_listener = None
+        self.slm_runtime = None
+        self._asr_model = None  # pywhispercpp Model instance
+
+        # Recording state
+        self._is_recording = False
+        self._recording_stop = threading.Event()
+
         self._server_thread: threading.Thread | None = None
 
     def start(self) -> None:
@@ -49,12 +63,13 @@ class ApplicationCoordinator:
 
         Order matters:
         1. Database
-        2. Engine client (ASR subprocess)
-        3. Audio service
-        4. Input handler
-        5. Register intent handlers
-        6. Start API server (background thread)
-        7. Open pywebview window (blocks until closed)
+        2. ASR model (warm load)
+        3. SLM runtime
+        4. Audio service (with event callbacks)
+        5. Input handler
+        6. Register intent handlers
+        7. Start API server (background thread)
+        8. Open pywebview window (blocks until closed)
         """
         logger.info("Starting Vociferous v4.0...")
 
@@ -63,33 +78,25 @@ class ApplicationCoordinator:
         self.db = TranscriptDB()
         logger.info("Database initialized (%d transcripts)", self.db.transcript_count())
 
-        # 2. Register intent handlers with CommandBus
+        # 2. ASR model (optional warm load)
+        self._load_asr_model()
+
+        # 3. SLM runtime
+        self._init_slm_runtime()
+
+        # 4. Audio service with event callbacks
+        self._init_audio_service()
+
+        # 5. Input handler
+        self._init_input_handler()
+
+        # 6. Register intent handlers with CommandBus
         self._register_handlers()
 
-        # 3. Audio service
-        try:
-            from src.services.audio_service import AudioService
-            self.audio_service = AudioService()
-            logger.info("Audio service ready")
-        except Exception:
-            logger.exception("Audio service failed to initialize (non-fatal)")
-
-        # 4. Input handler
-        try:
-            from src.input_handler import create_listener
-            self.input_listener = create_listener(
-                activation_key=self.settings.recording.activation_key,
-                backend=self.settings.recording.input_backend,
-                callback=self._on_hotkey,
-            )
-            logger.info("Input handler ready")
-        except Exception:
-            logger.exception("Input handler failed to initialize (non-fatal)")
-
-        # 5. Start API server in background thread
+        # 7. Start API server in background thread
         self._start_api_server()
 
-        # 6. Open pywebview window (blocks main thread)
+        # 8. Open pywebview window (blocks main thread)
         self._open_window()
 
         logger.info("Vociferous shutdown complete.")
@@ -98,8 +105,8 @@ class ApplicationCoordinator:
         """Signal all services to stop."""
         logger.info("Shutdown requested...")
         self._shutdown_event.set()
+        self._recording_stop.set()
 
-        # Close pywebview windows
         try:
             import webview
             for window in webview.windows:
@@ -115,11 +122,18 @@ class ApplicationCoordinator:
             except Exception:
                 logger.exception("Input listener cleanup failed")
 
-        if self.engine_client:
+        if self.slm_runtime:
             try:
-                self.engine_client.shutdown()
+                self.slm_runtime.disable()
             except Exception:
-                logger.exception("Engine client cleanup failed")
+                logger.exception("SLM runtime cleanup failed")
+
+        if self._asr_model:
+            try:
+                del self._asr_model
+                self._asr_model = None
+            except Exception:
+                logger.exception("ASR model cleanup failed")
 
         if self.db:
             try:
@@ -127,7 +141,79 @@ class ApplicationCoordinator:
             except Exception:
                 logger.exception("Database cleanup failed")
 
+        self.event_bus.clear()
         logger.info("Cleanup complete.")
+
+    # --- Service Initialization ---
+
+    def _load_asr_model(self) -> None:
+        """Warm-load the whisper.cpp model at startup."""
+        try:
+            from src.services.transcription_service import create_local_model
+            self._asr_model = create_local_model()
+            self.event_bus.emit("engine_status", {"asr": "ready"})
+        except Exception:
+            logger.exception("ASR model failed to load (will retry on first transcription)")
+            self.event_bus.emit("engine_status", {"asr": "unavailable"})
+
+    def _init_slm_runtime(self) -> None:
+        """Initialize the SLM refinement runtime if enabled."""
+        try:
+            from src.services.slm_runtime import SLMRuntime
+
+            def on_slm_state(state):
+                self.event_bus.emit("engine_status", {"slm": state.value})
+
+            def on_slm_error(msg):
+                self.event_bus.emit("refinement_error", {"message": msg})
+
+            def on_slm_text(text):
+                # Text result from async refinement — handled per-request in _handle_refine_transcript
+                pass
+
+            self.slm_runtime = SLMRuntime(
+                on_state_changed=on_slm_state,
+                on_error=on_slm_error,
+                on_text_ready=on_slm_text,
+            )
+
+            if self.settings.refinement.enabled:
+                self.slm_runtime.enable()
+
+        except Exception:
+            logger.exception("SLM runtime failed to initialize (non-fatal)")
+
+    def _init_audio_service(self) -> None:
+        """Initialize the audio capture service with EventBus callbacks."""
+        try:
+            from src.services.audio_service import AudioService
+
+            def on_level(level: float) -> None:
+                self.event_bus.emit("audio_level", {"level": level})
+
+            def on_spectrum(bands: list[float]) -> None:
+                self.event_bus.emit("audio_spectrum", {"bands": bands})
+
+            self.audio_service = AudioService(
+                on_level_update=on_level,
+                on_spectrum_update=on_spectrum,
+            )
+            logger.info("Audio service ready")
+        except Exception:
+            logger.exception("Audio service failed to initialize (non-fatal)")
+
+    def _init_input_handler(self) -> None:
+        """Initialize the global hotkey listener."""
+        try:
+            from src.input_handler import create_listener
+            self.input_listener = create_listener(
+                activation_key=self.settings.recording.activation_key,
+                backend=self.settings.recording.input_backend,
+                callback=self._on_hotkey,
+            )
+            logger.info("Input handler ready")
+        except Exception:
+            logger.exception("Input handler failed to initialize (non-fatal)")
 
     # --- Intent Handlers ---
 
@@ -152,24 +238,31 @@ class ApplicationCoordinator:
         self.command_bus.register(RefineTranscriptIntent, self._handle_refine_transcript)
 
     def _handle_begin_recording(self, intent) -> None:
-        logger.info("Begin recording")
-        if self.audio_service:
-            self.audio_service.start_recording()
+        if self._is_recording or not self.audio_service:
+            return
+
+        self._is_recording = True
+        self._recording_stop.clear()
+        self.event_bus.emit("recording_started", {})
+
+        t = threading.Thread(target=self._recording_loop, daemon=True, name="recording")
+        t.start()
 
     def _handle_stop_recording(self, intent) -> None:
-        logger.info("Stop recording")
-        if self.audio_service:
-            audio_data = self.audio_service.stop_recording()
-            if audio_data is not None:
-                self._transcribe(audio_data)
+        if not self._is_recording:
+            return
+        self._recording_stop.set()
 
     def _handle_cancel_recording(self, intent) -> None:
-        logger.info("Cancel recording")
-        if self.audio_service:
-            self.audio_service.stop_recording()
+        if not self._is_recording:
+            return
+        self._recording_stop.set()
+        # Mark as cancelled so _recording_loop doesn't transcribe
+        self._is_recording = False
+        self.event_bus.emit("recording_stopped", {"cancelled": True})
 
     def _handle_toggle_recording(self, intent) -> None:
-        if self.audio_service and self.audio_service.is_recording:
+        if self._is_recording:
             from src.core.intents.definitions import StopRecordingIntent
             self.command_bus.dispatch(StopRecordingIntent())
         else:
@@ -179,6 +272,7 @@ class ApplicationCoordinator:
     def _handle_delete_transcript(self, intent) -> None:
         if self.db:
             self.db.delete_transcript(intent.transcript_id)
+            self.event_bus.emit("transcript_deleted", {"id": intent.transcript_id})
 
     def _handle_commit_edits(self, intent) -> None:
         if self.db:
@@ -187,20 +281,134 @@ class ApplicationCoordinator:
             )
 
     def _handle_refine_transcript(self, intent) -> None:
-        # TODO: Phase 2 — SLM refinement via llama-cpp-python
-        logger.info("Refine transcript %d at level %d (not yet implemented)", intent.transcript_id, intent.level)
+        """Refine a transcript using the SLM runtime."""
+        if not self.slm_runtime or not self.db:
+            self.event_bus.emit("refinement_error", {"message": "SLM not available"})
+            return
 
-    # --- Internal ---
+        transcript = self.db.get_transcript(intent.transcript_id)
+        if not transcript:
+            self.event_bus.emit("refinement_error", {"message": "Transcript not found"})
+            return
+
+        self.event_bus.emit("refinement_started", {
+            "transcript_id": intent.transcript_id,
+            "level": intent.level,
+        })
+
+        def do_refine():
+            try:
+                text = transcript.text or transcript.raw_text
+                refined = self.slm_runtime.refine_text_sync(text, level=intent.level)
+
+                # Store as variant
+                self.db.add_variant(
+                    intent.transcript_id,
+                    f"refinement_L{intent.level}",
+                    refined,
+                    model_id=self.settings.refinement.model_id,
+                    set_current=True,
+                )
+
+                self.event_bus.emit("refinement_complete", {
+                    "transcript_id": intent.transcript_id,
+                    "text": refined,
+                    "level": intent.level,
+                })
+            except Exception as e:
+                logger.exception("Refinement failed for transcript %d", intent.transcript_id)
+                self.event_bus.emit("refinement_error", {
+                    "transcript_id": intent.transcript_id,
+                    "message": str(e),
+                })
+
+        t = threading.Thread(target=do_refine, daemon=True, name="refine")
+        t.start()
+
+    # --- Recording Pipeline ---
+
+    def _recording_loop(self) -> None:
+        """
+        Background thread: record audio → transcribe → store → emit.
+
+        Runs off the main thread. Uses EventBus for all progress reporting.
+        """
+        try:
+            audio_data = self.audio_service.record_audio(
+                should_stop=lambda: self._recording_stop.is_set()
+            )
+
+            # Check if cancelled during recording
+            if not self._is_recording:
+                return
+
+            self._is_recording = False
+            self.event_bus.emit("recording_stopped", {"cancelled": False})
+
+            if audio_data is None or len(audio_data) == 0:
+                self.event_bus.emit("transcription_error", {
+                    "message": "Recording too short or empty"
+                })
+                return
+
+            # Transcribe
+            self._transcribe_and_store(audio_data)
+
+        except Exception as e:
+            logger.exception("Recording loop error")
+            self._is_recording = False
+            self.event_bus.emit("recording_stopped", {"cancelled": False})
+            self.event_bus.emit("transcription_error", {"message": str(e)})
+
+    def _transcribe_and_store(self, audio_data) -> None:
+        """Run transcription on audio data, store result, and emit event."""
+        from src.services.transcription_service import transcribe, create_local_model
+
+        try:
+            # Lazy-load ASR model if not already loaded
+            if self._asr_model is None:
+                self._asr_model = create_local_model()
+
+            text, speech_duration_ms = transcribe(audio_data, local_model=self._asr_model)
+
+            if not text.strip():
+                self.event_bus.emit("transcription_error", {
+                    "message": "No speech detected"
+                })
+                return
+
+            # Store in database
+            duration_ms = int(len(audio_data) / 16000 * 1000)
+            transcript = None
+            if self.db:
+                transcript = self.db.add_transcript(
+                    raw_text=text,
+                    duration_ms=duration_ms,
+                    speech_duration_ms=speech_duration_ms,
+                    project_id=self.settings.user.active_project_id,
+                )
+
+            self.event_bus.emit("transcription_complete", {
+                "text": text,
+                "id": transcript.id if transcript else None,
+                "duration_ms": duration_ms,
+                "speech_duration_ms": speech_duration_ms,
+            })
+
+            logger.info("Transcription complete: %d chars, %dms", len(text), duration_ms)
+
+        except Exception as e:
+            logger.exception("Transcription failed")
+            self.event_bus.emit("transcription_error", {"message": str(e)})
+
+    # --- Hotkey ---
 
     def _on_hotkey(self) -> None:
         """Callback from input handler when activation key is pressed."""
         from src.core.intents.definitions import ToggleRecordingIntent
         self.command_bus.dispatch(ToggleRecordingIntent())
 
-    def _transcribe(self, audio_data) -> None:
-        """Send audio to the engine subprocess for transcription."""
-        # TODO: Phase 2 — pywhispercpp engine integration
-        logger.info("Transcription requested (engine not yet connected)")
+    # --- Server + Window ---
 
     def _start_api_server(self) -> None:
         """Start the Litestar API server in a background thread."""

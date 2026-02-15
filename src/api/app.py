@@ -6,11 +6,14 @@ REST + WebSocket endpoints bridging the Svelte frontend to the Python backend.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from typing import TYPE_CHECKING
 
-from litestar import Litestar, get, post, put, delete
+from litestar import Litestar, get, post, put, delete, WebSocket
 from litestar.config.cors import CORSConfig
+from litestar.handlers import websocket_listener
 from litestar.response import Response
 from litestar.static_files import StaticFilesConfig
 
@@ -22,8 +25,65 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# --- WebSocket connection manager ---
+
+class ConnectionManager:
+    """Manages active WebSocket connections and broadcasts events."""
+
+    def __init__(self) -> None:
+        self._connections: set[WebSocket] = set()
+        self._lock = asyncio.Lock()
+
+    async def connect(self, ws: WebSocket) -> None:
+        async with self._lock:
+            self._connections.add(ws)
+        logger.debug("WS client connected (%d total)", len(self._connections))
+
+    async def disconnect(self, ws: WebSocket) -> None:
+        async with self._lock:
+            self._connections.discard(ws)
+        logger.debug("WS client disconnected (%d total)", len(self._connections))
+
+    async def broadcast(self, event_type: str, data: dict) -> None:
+        """Send an event to all connected WebSocket clients."""
+        message = json.dumps({"type": event_type, "data": data})
+        async with self._lock:
+            dead = []
+            for ws in self._connections:
+                try:
+                    await ws.send_data(message)
+                except Exception:
+                    dead.append(ws)
+            for ws in dead:
+                self._connections.discard(ws)
+
+
 def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     """Create the Litestar application with all routes."""
+
+    ws_manager = ConnectionManager()
+
+    # Bridge EventBus → WebSocket broadcast
+    _wire_event_bridge(coordinator, ws_manager)
+
+    # --- WebSocket handler ---
+
+    @websocket_listener("/ws")
+    async def ws_handler(data: str, socket: WebSocket) -> None:
+        """
+        Handle incoming WebSocket messages from the frontend.
+
+        Expected format: {"type": "start_recording", ...}
+        Responses are sent via EventBus → broadcast bridge, not direct replies.
+        """
+        try:
+            msg = json.loads(data)
+            msg_type = msg.get("type", "")
+        except (json.JSONDecodeError, AttributeError):
+            logger.warning("Invalid WS message: %s", data[:100])
+            return
+
+        _handle_ws_message(coordinator, msg_type, msg.get("data", {}))
 
     # --- Transcript endpoints ---
 
@@ -50,6 +110,7 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
         deleted = coordinator.db.delete_transcript(transcript_id)
         if not deleted:
             return Response(content={"error": "Not found"}, status_code=404)
+        coordinator.event_bus.emit("transcript_deleted", {"id": transcript_id})
         return Response(content={"deleted": True})
 
     @post("/api/transcripts/{transcript_id:int}/refine")
@@ -113,6 +174,7 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
         from src.core.settings import update_settings
         new_settings = update_settings(**data)
         coordinator.settings = new_settings
+        coordinator.event_bus.emit("config_updated", new_settings.model_dump())
         return new_settings.model_dump()
 
     # --- Model endpoints ---
@@ -146,7 +208,6 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
         if not intent_type_name:
             return Response(content={"error": "Missing 'type'"}, status_code=400)
 
-        # Map type string to intent class
         intent_map = {
             "begin_recording": defs.BeginRecordingIntent,
             "stop_recording": defs.StopRecordingIntent,
@@ -172,7 +233,6 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
 
     # --- Build the app ---
 
-    # Serve the Svelte frontend from frontend/dist/ if it exists
     frontend_dist = ResourceManager.get_app_root() / "frontend" / "dist"
     static_configs = []
     if frontend_dist.is_dir():
@@ -186,6 +246,7 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
 
     app = Litestar(
         route_handlers=[
+            ws_handler,
             list_transcripts, get_transcript, delete_transcript,
             refine_transcript, search_transcripts,
             list_projects, create_project, delete_project,
@@ -204,6 +265,76 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     )
 
     return app
+
+
+def _wire_event_bridge(coordinator: ApplicationCoordinator, ws_manager: ConnectionManager) -> None:
+    """
+    Bridge EventBus events to WebSocket broadcast.
+
+    The EventBus emits from sync Python threads. We need to schedule
+    the async broadcast onto the running asyncio event loop.
+    """
+    event_types = [
+        "recording_started",
+        "recording_stopped",
+        "transcription_complete",
+        "transcription_error",
+        "audio_level",
+        "refinement_started",
+        "refinement_complete",
+        "refinement_error",
+        "transcript_deleted",
+        "config_updated",
+        "engine_status",
+    ]
+
+    for event_type in event_types:
+
+        def make_handler(et: str):
+            def handler(data: dict) -> None:
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(ws_manager.broadcast(et, data))
+                except RuntimeError:
+                    # No running loop — we're in a sync thread.
+                    # Schedule on uvicorn's loop if available.
+                    try:
+                        import uvicorn
+                        loop = asyncio.new_event_loop()
+                        loop.run_until_complete(ws_manager.broadcast(et, data))
+                        loop.close()
+                    except Exception:
+                        logger.debug("No event loop for WS broadcast of '%s'", et)
+            return handler
+
+        coordinator.event_bus.on(event_type, make_handler(event_type))
+
+
+def _handle_ws_message(coordinator: ApplicationCoordinator, msg_type: str, data: dict) -> None:
+    """
+    Handle an incoming WebSocket command from the frontend.
+
+    Maps WS message types to CommandBus intents.
+    """
+    from src.core.intents.definitions import (
+        BeginRecordingIntent,
+        StopRecordingIntent,
+        CancelRecordingIntent,
+        ToggleRecordingIntent,
+    )
+
+    handlers = {
+        "start_recording": lambda: coordinator.command_bus.dispatch(BeginRecordingIntent()),
+        "stop_recording": lambda: coordinator.command_bus.dispatch(StopRecordingIntent()),
+        "cancel_recording": lambda: coordinator.command_bus.dispatch(CancelRecordingIntent()),
+        "toggle_recording": lambda: coordinator.command_bus.dispatch(ToggleRecordingIntent()),
+    }
+
+    handler = handlers.get(msg_type)
+    if handler:
+        handler()
+    else:
+        logger.warning("Unknown WS message type: %s", msg_type)
 
 
 def _transcript_to_dict(t, include_variants: bool = False) -> dict:

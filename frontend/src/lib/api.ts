@@ -20,61 +20,57 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 export interface TranscriptVariant {
   id: number;
-  transcript_id: number;
-  variant_type: string;
-  content: string;
-  is_current: boolean;
+  kind: string;
+  text: string;
+  model_id: string | null;
   created_at: string;
 }
 
 export interface Transcript {
   id: number;
+  timestamp: string;
   raw_text: string;
-  language: string;
-  model_id: string;
+  normalized_text: string;
+  text: string;
+  display_name: string | null;
   duration_ms: number;
+  speech_duration_ms: number;
   project_id: number | null;
+  project_name: string | null;
+  current_variant_id: number | null;
   created_at: string;
-  variants: TranscriptVariant[];
-}
-
-export interface HistoryEntry {
-  id: number;
-  raw_text: string;
-  display_text: string;
-  language: string;
-  model_id: string;
-  duration_ms: number;
-  project_id: number | null;
-  created_at: string;
+  variants?: TranscriptVariant[];
 }
 
 export interface Project {
   id: number;
   name: string;
-  created_at: string;
+  color: string | null;
+  parent_id: number | null;
 }
 
-export function getTranscripts(limit = 50, offset = 0): Promise<HistoryEntry[]> {
-  return request(`/transcripts?limit=${limit}&offset=${offset}`);
+export function getTranscripts(limit = 50, projectId?: number): Promise<Transcript[]> {
+  let url = `/transcripts?limit=${limit}`;
+  if (projectId != null) url += `&project_id=${projectId}`;
+  return request(url);
 }
 
 export function getTranscript(id: number): Promise<Transcript> {
   return request(`/transcripts/${id}`);
 }
 
-export function deleteTranscript(id: number): Promise<void> {
+export function deleteTranscript(id: number): Promise<{ deleted: boolean }> {
   return request(`/transcripts/${id}`, { method: 'DELETE' });
 }
 
-export function searchTranscripts(q: string): Promise<HistoryEntry[]> {
-  return request(`/search?q=${encodeURIComponent(q)}`);
+export function searchTranscripts(q: string, limit = 50): Promise<Transcript[]> {
+  return request(`/transcripts/search?q=${encodeURIComponent(q)}&limit=${limit}`);
 }
 
-export function refineTranscript(id: number, level: number): Promise<{ variant_id: number; content: string }> {
+export function refineTranscript(id: number, level: number, instructions = ''): Promise<{ status: string }> {
   return request(`/transcripts/${id}/refine`, {
     method: 'POST',
-    body: JSON.stringify({ level }),
+    body: JSON.stringify({ level, instructions }),
   });
 }
 
@@ -84,14 +80,14 @@ export function getProjects(): Promise<Project[]> {
   return request('/projects');
 }
 
-export function createProject(name: string): Promise<Project> {
+export function createProject(name: string, color?: string): Promise<Project> {
   return request('/projects', {
     method: 'POST',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, color }),
   });
 }
 
-export function deleteProject(id: number): Promise<void> {
+export function deleteProject(id: number): Promise<{ deleted: boolean }> {
   return request(`/projects/${id}`, { method: 'DELETE' });
 }
 
@@ -110,21 +106,28 @@ export function updateConfig(updates: Record<string, unknown>): Promise<Record<s
 
 // --- Models ---
 
-export function getModels(): Promise<{ asr: Record<string, unknown>; slm: Record<string, unknown> }> {
+export interface ModelInfo {
+  name: string;
+  filename: string;
+  size_mb: number;
+  repo_id: string;
+}
+
+export function getModels(): Promise<{ asr: Record<string, ModelInfo>; slm: Record<string, ModelInfo> }> {
   return request('/models');
 }
 
 // --- Health ---
 
-export function getHealth(): Promise<{ status: string; version: string }> {
+export function getHealth(): Promise<{ status: string; version: string; transcripts: number }> {
   return request('/health');
 }
 
-// --- Intents (generic dispatch) ---
+// --- Intent dispatch ---
 
-export function dispatchIntent(intentType: string, payload: Record<string, unknown> = {}): Promise<{ ok: boolean }> {
+export function dispatchIntent(type: string, payload: Record<string, unknown> = {}): Promise<{ dispatched: boolean }> {
   return request('/intents', {
     method: 'POST',
-    body: JSON.stringify({ type: intentType, ...payload }),
+    body: JSON.stringify({ type, ...payload }),
   });
 }

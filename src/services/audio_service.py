@@ -311,7 +311,7 @@ class AudioService:
 
         audio_data = np.array(recording, dtype=np.int16)
         duration = len(audio_data) / self.sample_rate
-        min_duration_ms = recording_options.get("min_duration") or 100
+        min_duration_ms = get_settings().recording.min_duration_ms
 
         logger.info(f"Recording finished: {audio_data.size} samples, {duration:.2f}s")
 
