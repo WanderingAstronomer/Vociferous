@@ -9,7 +9,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING
+import threading
+from contextlib import asynccontextmanager
+from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING, Any
 
 from litestar import Litestar, get, post, put, delete, WebSocket
 from litestar.config.cors import CORSConfig
@@ -28,34 +31,69 @@ logger = logging.getLogger(__name__)
 # --- WebSocket connection manager ---
 
 class ConnectionManager:
-    """Manages active WebSocket connections and broadcasts events."""
+    """
+    Thread-safe WebSocket connection manager.
+
+    Stores connected sockets and provides broadcast from any thread.
+    The event loop reference is captured on first connect so that
+    sync EventBus handlers can schedule broadcasts via call_soon_threadsafe.
+    """
 
     def __init__(self) -> None:
         self._connections: set[WebSocket] = set()
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
 
-    async def connect(self, ws: WebSocket) -> None:
-        async with self._lock:
+    def register(self, ws: WebSocket) -> None:
+        """Add a WebSocket (called from async context)."""
+        with self._lock:
             self._connections.add(ws)
+            if self._loop is None:
+                try:
+                    self._loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    pass
         logger.debug("WS client connected (%d total)", len(self._connections))
 
-    async def disconnect(self, ws: WebSocket) -> None:
-        async with self._lock:
+    def unregister(self, ws: WebSocket) -> None:
+        """Remove a WebSocket (called from async context)."""
+        with self._lock:
             self._connections.discard(ws)
         logger.debug("WS client disconnected (%d total)", len(self._connections))
 
-    async def broadcast(self, event_type: str, data: dict) -> None:
-        """Send an event to all connected WebSocket clients."""
+    def broadcast_threadsafe(self, event_type: str, data: dict) -> None:
+        """
+        Schedule a broadcast from any thread (sync-safe).
+
+        Called by EventBus handlers which fire from background threads
+        (recording thread, refinement thread, etc.).
+        """
+        with self._lock:
+            loop = self._loop
+            conns = set(self._connections)
+
+        if not conns or loop is None:
+            return
+
         message = json.dumps({"type": event_type, "data": data})
-        async with self._lock:
+
+        async def _do_broadcast():
             dead = []
-            for ws in self._connections:
+            for ws in conns:
                 try:
                     await ws.send_data(message)
                 except Exception:
                     dead.append(ws)
-            for ws in dead:
-                self._connections.discard(ws)
+            if dead:
+                with self._lock:
+                    for ws in dead:
+                        self._connections.discard(ws)
+
+        try:
+            loop.call_soon_threadsafe(asyncio.ensure_future, _do_broadcast())
+        except RuntimeError:
+            # Loop closed (shutdown)
+            pass
 
 
 def create_app(coordinator: ApplicationCoordinator) -> Litestar:
@@ -66,9 +104,20 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     # Bridge EventBus → WebSocket broadcast
     _wire_event_bridge(coordinator, ws_manager)
 
+    # --- WebSocket lifecycle: register/unregister connections ---
+
+    @asynccontextmanager
+    async def ws_lifespan(socket: WebSocket) -> AsyncGenerator[None, Any]:
+        """Register socket on connect, unregister on disconnect."""
+        ws_manager.register(socket)
+        try:
+            yield
+        finally:
+            ws_manager.unregister(socket)
+
     # --- WebSocket handler ---
 
-    @websocket_listener("/ws")
+    @websocket_listener("/ws", connection_lifespan=ws_lifespan)
     async def ws_handler(data: str, socket: WebSocket) -> None:
         """
         Handle incoming WebSocket messages from the frontend.
@@ -213,7 +262,6 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             "stop_recording": defs.StopRecordingIntent,
             "cancel_recording": defs.CancelRecordingIntent,
             "toggle_recording": defs.ToggleRecordingIntent,
-            "navigate": defs.NavigateIntent,
             "delete_transcript": defs.DeleteTranscriptIntent,
             "commit_edits": defs.CommitEditsIntent,
             "refine_transcript": defs.RefineTranscriptIntent,
@@ -271,8 +319,9 @@ def _wire_event_bridge(coordinator: ApplicationCoordinator, ws_manager: Connecti
     """
     Bridge EventBus events to WebSocket broadcast.
 
-    The EventBus emits from sync Python threads. We need to schedule
-    the async broadcast onto the running asyncio event loop.
+    EventBus handlers fire from sync Python threads (recording, refinement, etc.).
+    We use broadcast_threadsafe() which schedules onto uvicorn's event loop
+    via call_soon_threadsafe.
     """
     event_types = [
         "recording_started",
@@ -280,6 +329,7 @@ def _wire_event_bridge(coordinator: ApplicationCoordinator, ws_manager: Connecti
         "transcription_complete",
         "transcription_error",
         "audio_level",
+        "audio_spectrum",
         "refinement_started",
         "refinement_complete",
         "refinement_error",
@@ -292,19 +342,7 @@ def _wire_event_bridge(coordinator: ApplicationCoordinator, ws_manager: Connecti
 
         def make_handler(et: str):
             def handler(data: dict) -> None:
-                try:
-                    loop = asyncio.get_running_loop()
-                    loop.create_task(ws_manager.broadcast(et, data))
-                except RuntimeError:
-                    # No running loop — we're in a sync thread.
-                    # Schedule on uvicorn's loop if available.
-                    try:
-                        import uvicorn
-                        loop = asyncio.new_event_loop()
-                        loop.run_until_complete(ws_manager.broadcast(et, data))
-                        loop.close()
-                    except Exception:
-                        logger.debug("No event loop for WS broadcast of '%s'", et)
+                ws_manager.broadcast_threadsafe(et, data)
             return handler
 
         coordinator.event_bus.on(event_type, make_handler(event_type))

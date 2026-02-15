@@ -11,8 +11,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 from src.core.command_bus import CommandBus
 from src.core.event_bus import EventBus
 from src.core.settings import VociferousSettings, get_settings, save_settings
@@ -206,11 +204,7 @@ class ApplicationCoordinator:
         """Initialize the global hotkey listener."""
         try:
             from src.input_handler import create_listener
-            self.input_listener = create_listener(
-                activation_key=self.settings.recording.activation_key,
-                backend=self.settings.recording.input_backend,
-                callback=self._on_hotkey,
-            )
+            self.input_listener = create_listener(callback=self._on_hotkey)
             logger.info("Input handler ready")
         except Exception:
             logger.exception("Input handler failed to initialize (non-fatal)")

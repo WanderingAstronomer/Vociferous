@@ -56,6 +56,7 @@ class UserSettings(BaseModel):
 
     name: str = ""
     onboarding_completed: bool = False
+    active_project_id: int | None = None
 
     class Config:
         frozen = True

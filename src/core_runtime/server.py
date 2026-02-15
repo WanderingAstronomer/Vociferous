@@ -119,18 +119,8 @@ class EngineServer:
                 break
 
     def _init_engine(self):
-        # We need a way to mock/inject model for headers/testing.
-        # For real usage, we load the model.
-        # But wait, loading model takes time. We should probably report status.
-
-        # NOTE: faster_whisper import happens inside services usually to lazy load.
-        # We'll rely on TranscriptionService's internal handling or inject None for now
-        # and let the first run load it?
-        # Actually, TranscriptionEngine takes `local_model`.
-
-        # Let's import the service to get the model loader
-
-        # We defer model loading to a background thread or first run to not block handshake
+        # Defer model loading to first transcription request to avoid blocking handshake.
+        # The model (pywhispercpp) will be loaded lazily on first use.
         self.local_model = None
 
     def start(self):
