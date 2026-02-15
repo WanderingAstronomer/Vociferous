@@ -1,13 +1,21 @@
+"""
+Vociferous Model Provisioning CLI.
+
+v4.0: Downloads pre-quantized GGUF/GGML models directly from HuggingFace.
+No more CTranslate2 conversion pipeline.
+"""
+
 import logging
-from pathlib import Path
-from typing import Optional
 
 import typer
-from typing_extensions import Annotated
 
-from src.core.config_manager import get_model_cache_dir
-from src.core.model_registry import MODELS
-from src.provisioning.core import provision_model, ProvisioningError
+from src.core.resource_manager import ResourceManager
+from src.core.model_registry import ASR_MODELS, SLM_MODELS, get_asr_model, get_slm_model
+from src.provisioning.core import (
+    provision_asr_model,
+    provision_slm_model,
+    ProvisioningError,
+)
 from src.provisioning.requirements import (
     check_dependencies,
     get_missing_dependency_message,
@@ -24,25 +32,32 @@ logger = logging.getLogger("provision-cli")
 app = typer.Typer(help="Vociferous Model Provisioning Tool", add_completion=False)
 
 
-@app.command()
-def list():
+def _get_cache_dir():
+    return ResourceManager.get_user_cache_dir("models")
+
+
+@app.command("list")
+def list_models():
     """List available models and their status."""
-    cache_dir = get_model_cache_dir()
+    cache_dir = _get_cache_dir()
     print(f"\nModel Directory: {cache_dir}\n")
-    print(f"{'ID':<15} {'Name':<30} {'Status':<15}")
-    print("-" * 60)
 
-    for model_id, model in MODELS.items():
-        model_dir = cache_dir / model.dir_name
+    print("=== ASR Models (whisper.cpp GGML) ===")
+    print(f"{'ID':<25} {'Name':<30} {'Size':<10} {'Status':<10}")
+    print("-" * 75)
+    for model_id, model in ASR_MODELS.items():
+        path = cache_dir / model.filename
+        status = "INSTALLED" if path.exists() else "MISSING"
+        print(f"{model_id:<25} {model.name:<30} {model.size_mb}MB{'':<5} {status:<10}")
 
-        # Simple existence check
-        is_ready = (model_dir / "model.bin").exists() and (
-            model_dir / "config.json"
-        ).exists()
-        status = "INSTALLED" if is_ready else "MISSING"
-
-        print(f"{model_id:<15} {model.name:<30} {status:<15}")
-    print("\n")
+    print(f"\n=== SLM Models (llama.cpp GGUF) ===")
+    print(f"{'ID':<25} {'Name':<30} {'Size':<10} {'Status':<10}")
+    print("-" * 75)
+    for model_id, model in SLM_MODELS.items():
+        path = cache_dir / model.filename
+        status = "INSTALLED" if path.exists() else "MISSING"
+        print(f"{model_id:<25} {model.name:<30} {model.size_mb}MB{'':<5} {status:<10}")
+    print()
 
 
 @app.command()
@@ -52,91 +67,66 @@ def check():
 
     print("\n=== Dependency Status ===\n")
     if installed:
-        print("✓ Installed:")
+        print("Installed:")
         for dep in installed:
-            print(f"  - {dep}")
+            print(f"  + {dep}")
 
     if missing:
-        print("\n✗ Missing:")
+        print("\nMissing:")
         for dep in missing:
             print(f"  - {dep}")
         print("\n" + get_missing_dependency_message(missing))
         raise typer.Exit(code=1)
     else:
-        print("\n✓ Environment is ready for model conversion.")
+        print("\nEnvironment is ready.")
 
 
 @app.command()
 def install(
     model_id: str = typer.Argument(
-        ..., help="ID of the model to install (e.g., qwen4b)"
+        ..., help="ID of the model to install (e.g., large-v3-turbo-q5_0, qwen4b)"
     ),
     force: bool = typer.Option(
-        False, "--force", "-f", help="Re-install even if already present"
+        False, "--force", "-f", help="Re-download even if already present"
     ),
-    source_dir: Annotated[
-        Optional[Path],
-        typer.Option(help="Use a local directory as source instead of downloading"),
-    ] = None,
 ):
-    """
-    Provision a specific model. Downloads and converts weights.
+    """Download and install a specific model."""
+    cache_dir = _get_cache_dir()
 
-    If --source-dir is provided, it must point to a directory containing a valid
-    HuggingFace Transformers model (config.json, model.safetensors/bin, tokenizer.json).
-    The tool will convert it to CTranslate2 format.
-    """
-    if model_id not in MODELS:
-        logger.error(f"Unknown model ID: {model_id}")
-        logger.info(f"Available models: {', '.join(MODELS.keys())}")
+    # Determine if it's an ASR or SLM model
+    asr_model = get_asr_model(model_id)
+    slm_model = get_slm_model(model_id)
+
+    if asr_model is None and slm_model is None:
+        all_ids = list(ASR_MODELS.keys()) + list(SLM_MODELS.keys())
+        logger.error("Unknown model ID: %s", model_id)
+        logger.info("Available models: %s", ", ".join(all_ids))
         raise typer.Exit(code=1)
 
-    model = MODELS[model_id]
-    cache_dir = get_model_cache_dir()
-    target_dir = cache_dir / model.dir_name
-
-    if target_dir.exists() and not force:
-        # Quick check for artifacts
-        if (target_dir / "model.bin").exists():
-            logger.info(f"Model '{model_id}' appears to be installed at {target_dir}.")
-            logger.info("Use --force to reinstall.")
-            return
-
-    # Check deps before starting
-    _, missing = check_dependencies()
-    if missing:
-        logger.error("Missing dependencies for conversion.")
-        print(get_missing_dependency_message(missing))
-        raise typer.Exit(code=1)
-
-    logger.info(f"Starting provisioning for {model_id}...")
-
-    def on_progress(msg):
+    def on_progress(msg: str):
         print(f"-> {msg}")
 
     try:
-        # TODO: Implement source_dir support in core.py if 'source_dir' is provided (Offline mode)
-        # For now, if source_dir is passed, we might need a custom flow or update core.py
-        # The core logic assumes 'download' handles obtaining source.
-        # I'll update core.py later to allow skipping download if needed, but for now standard flow:
+        if asr_model:
+            target = cache_dir / asr_model.filename
+            if target.exists() and not force:
+                logger.info("Model '%s' already installed at %s", model_id, target)
+                logger.info("Use --force to re-download.")
+                return
+            provision_asr_model(asr_model, cache_dir, progress_callback=on_progress)
+        else:
+            assert slm_model is not None
+            target = cache_dir / slm_model.filename
+            if target.exists() and not force:
+                logger.info("Model '%s' already installed at %s", model_id, target)
+                logger.info("Use --force to re-download.")
+                return
+            provision_slm_model(slm_model, cache_dir, progress_callback=on_progress)
 
-        if source_dir:
-            # If a local source is provided, let core handle validation and conversion.
-            logger.info(f"Using local source: {source_dir}")
-            provision_model(
-                model,
-                cache_dir,
-                progress_callback=on_progress,
-                source_dir=source_dir,
-            )
-            logger.info("Provisioning complete (Offline).")
-            return
-
-        provision_model(model, cache_dir, progress_callback=on_progress)
-        logger.info(f"Successfully installed {model_id}.")
+        logger.info("Successfully installed %s.", model_id)
 
     except ProvisioningError as e:
-        logger.error(f"Failed: {e}")
+        logger.error("Failed: %s", e)
         raise typer.Exit(code=1)
     except Exception as e:
         logger.exception(e)

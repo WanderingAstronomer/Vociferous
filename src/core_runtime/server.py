@@ -16,7 +16,7 @@ from src.core_runtime.protocol.transport import PacketTransport
 from src.core_runtime.protocol.types import ProtocolMessage, MessageType
 from src.core_runtime.engine import TranscriptionEngine
 from src.core_runtime.types import TranscriptionResult
-from src.core.config_manager import ConfigManager
+from src.core.settings import init_settings, get_settings, update_settings
 from src.core.resource_manager import ResourceManager
 
 # Configure logging for the engine process.
@@ -62,7 +62,7 @@ class EngineServer:
         self.is_session_active = False  # Flag to track session intent across async load
 
         # Initialize Configuration (process-local)
-        ConfigManager.initialize()
+        init_settings()
 
         # Guard for safe model loading across threads
         self._model_lock = threading.Lock()
@@ -199,8 +199,8 @@ class EngineServer:
         if not section or not key:
             return
 
-        logger.info(f"Updating engine config: {section}.{key} = {value}")
-        ConfigManager.set_config_value(value, section, key)
+        logger.info("Updating engine config: %s.%s = %s", section, key, value)
+        update_settings(**{section: {key: value}})
 
         # If ASR model changed, force a reload to free memory and prep new model
         if section == "model_options" and key == "model":

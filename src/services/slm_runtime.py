@@ -1,33 +1,21 @@
 """
 SLM Runtime - Lightweight Inference Service.
 
-This module replaces the old monolithic SLMService.
-It is responsible strictly for:
-1. Loading an *already provisioned* model from disk.
-2. Running inference via RefinementEngine.
+Manages the lifecycle of a GGUF-based refinement model:
+1. Loading an already provisioned GGUF model from disk.
+2. Running inference via RefinementEngine (llama-cpp-python).
 3. Managing lifecycle (Enable/Disable/Unload).
-
-It DOES NOT:
-1. Download models.
-2. Install pip dependencies.
-3. Convert models.
 """
 
-from src.services.slm_types import SLMState
+import gc
 import logging
-from typing import Optional
+import threading
+from typing import Callable, Optional
 
-from PyQt6.QtCore import (
-    QMutex,
-    QObject,
-    QThreadPool,
-    QWaitCondition,
-    pyqtSignal,
-    pyqtSlot,
-)
-
-from src.core.config_manager import ConfigManager
+from src.services.slm_types import SLMState
+from src.core.settings import get_settings, update_settings
 from src.core.resource_manager import ResourceManager
+from src.core.model_registry import get_slm_model
 
 try:
     from src.refinement.engine import RefinementEngine
@@ -37,187 +25,163 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-
-class SLMSignals(QObject):
-    state_changed = pyqtSignal(SLMState)
-    progress = pyqtSignal(str)
-    error = pyqtSignal(str)
-    text_ready = pyqtSignal(str)
-    motd_ready = pyqtSignal(str)  # Compatibility shim (for MOTD)
-
-
-class SLMRuntime(QObject):
+class SLMRuntime:
     """
     Runtime service for Small Language Model refinement.
-    Assumes models are already provisioned in the cache.
+    Assumes GGUF models are already provisioned in the cache.
     """
 
-    def __init__(self):
-        super().__init__()
-        self.signals = SLMSignals()
+    def __init__(
+        self,
+        on_state_changed: Optional[Callable[[SLMState], None]] = None,
+        on_error: Optional[Callable[[str], None]] = None,
+        on_text_ready: Optional[Callable[[str], None]] = None,
+    ) -> None:
         self._state = SLMState.DISABLED
         self._engine: Optional[RefinementEngine] = None
-        self._mutex = QMutex()
-        self._wait_condition = QWaitCondition()
-        self._thread_pool = QThreadPool.globalInstance()
+        self._lock = threading.Lock()
+
+        # Callbacks (replace PyQt signals)
+        self._on_state_changed = on_state_changed
+        self._on_error = on_error
+        self._on_text_ready = on_text_ready
 
     @property
     def state(self) -> SLMState:
         return self._state
 
     @state.setter
-    def state(self, new_state: SLMState):
+    def state(self, new_state: SLMState) -> None:
         if self._state != new_state:
             self._state = new_state
-            self.signals.state_changed.emit(new_state)
+            if self._on_state_changed:
+                self._on_state_changed(new_state)
 
-    @pyqtSlot()
-    def enable(self):
-        """Enable the SLM runtime. Starts async loading."""
+    def enable(self) -> None:
+        """Enable the SLM runtime. Starts async model loading."""
         if self.state not in (SLMState.DISABLED, SLMState.ERROR):
             return
 
         self.state = SLMState.LOADING
-        self._thread_pool.start(self._load_model_task)
+        t = threading.Thread(target=self._load_model_task, daemon=True)
+        t.start()
 
-    @pyqtSlot()
-    def disable(self):
+    def disable(self) -> None:
         """Unload the model and disable runtime."""
         self._unload_model()
         self.state = SLMState.DISABLED
 
-    def _load_model_task(self):
-        """Background task to load the model."""
+    def _load_model_task(self) -> None:
+        """Background task to load the GGUF model."""
         try:
-            # 1. Resolve Model Path from manifest
-            model_id = ConfigManager.get_value("slm_model", "qwen4b")
-            
+            s = get_settings()
+            model_id = s.refinement.model_id
+
             if not model_id:
                 logger.info("No SLM model configured. SLM service disabled.")
                 self.state = SLMState.DISABLED
                 return
 
+            slm_model = get_slm_model(model_id)
+            if slm_model is None:
+                raise ValueError(f"Unknown SLM model_id: {model_id}")
+
             cache_dir = ResourceManager.get_user_cache_dir("models")
+            model_path = cache_dir / slm_model.filename
 
-            # Map model_id to directory name via manifest lookup
-            # This allows the provisioner to control directory structure
-            model_dir_map = {
-                "qwen4b": "qwen3-4b-ct2",
-                "qwen8b": "qwen3-8b-ct2",
-                "qwen14b": "qwen3-14b-ct2",
-            }
-
-            model_dir_name = model_dir_map.get(model_id)
-            if not model_dir_name:
-                raise ValueError(f"Unknown model_id: {model_id}")
-
-            model_path = cache_dir / model_dir_name
-            manifest_path = model_path / "manifest.json"
-
-            # 2. Validation
             if not model_path.exists():
                 raise FileNotFoundError(
-                    f"Model directory not found: {model_path}.\n"
-                    "Please run the setup utility to provision the model."
+                    f"GGUF model file not found: {model_path}. "
+                    "Please run provisioning to download the model."
                 )
 
-            if not manifest_path.exists():
-                raise FileNotFoundError(
-                    f"Manifest not found: {manifest_path}.\n"
-                    "Model directory may be incomplete or corrupted."
-                )
-
-            # 3. Load Engine
             if not RefinementEngine:
                 raise ImportError(
-                    "RefinementEngine module missing (ctranslate2/transformers)."
+                    "RefinementEngine not available (llama-cpp-python missing)."
                 )
 
-            logger.info(f"Loading SLM from {model_path}...")
-            self._engine = RefinementEngine(str(model_path))
+            logger.info("Loading SLM from %s...", model_path)
+
+            # Build level data from settings
+            levels = {}
+            for idx, level in s.refinement.levels.items():
+                levels[idx] = {
+                    "name": level.name,
+                    "role": level.role,
+                    "permitted": level.permitted,
+                    "prohibited": level.prohibited,
+                    "directive": level.directive,
+                }
+
+            self._engine = RefinementEngine(
+                model_path=model_path,
+                system_prompt=s.refinement.system_prompt,
+                invariants=s.refinement.invariants,
+                levels=levels,
+            )
 
             self.state = SLMState.READY
 
         except Exception as e:
-            logger.error(f"Failed to load SLM: {e}")
-            self.signals.error.emit(str(e))
+            logger.error("Failed to load SLM: %s", e)
+            if self._on_error:
+                self._on_error(str(e))
             self.state = SLMState.ERROR
 
-    def _unload_model(self):
+    def _unload_model(self) -> None:
         """Force unload of the engine to free VRAM."""
         if self._engine:
             logger.info("Unloading SLM engine...")
             del self._engine
             self._engine = None
-            import gc
-
             gc.collect()
 
-    @pyqtSlot(str)
-    def refine_text(self, text: str):
-        """Submit text for refinement."""
+    def refine_text(self, text: str, level: int = 1) -> None:
+        """Submit text for refinement (runs in background thread)."""
         if self.state != SLMState.READY:
             logger.warning("Refinement requested but SLM not ready.")
             return
 
         self.state = SLMState.INFERRING
-        # Run inference in background
-        self._thread_pool.start(lambda: self._inference_task(text))
+        t = threading.Thread(
+            target=self._inference_task, args=(text, level), daemon=True
+        )
+        t.start()
 
-    def _inference_task(self, text: str):
+    def refine_text_sync(self, text: str, level: int = 1) -> str:
+        """Synchronous refinement — blocks until complete. Returns refined text."""
+        if not self._engine:
+            raise RuntimeError("Engine not loaded.")
+
+        result = self._engine.refine(text, profile=level)
+        return result.content
+
+    def _inference_task(self, text: str, level: int) -> None:
         try:
             if not self._engine:
                 raise RuntimeError("Engine disappeared during inference.")
 
-            refined = self._engine.refine(text)
-            self.signals.text_ready.emit(refined)
+            result = self._engine.refine(text, profile=level)
+
+            if self._on_text_ready:
+                self._on_text_ready(result.content)
+
             self.state = SLMState.READY
         except Exception as e:
-            logger.error(f"Inference failed: {e}")
-            self.signals.error.emit(f"Inference failed: {e}")
-            self.state = SLMState.READY  # Return to ready state even on error?
+            logger.error("Inference failed: %s", e)
+            if self._on_error:
+                self._on_error(f"Inference failed: {e}")
+            self.state = SLMState.READY
 
-    def generate_motd(self):
-        """Generate a lightweight Message of the Day (compat shim).
-
-        This will emit `motd_ready` via signals.motd_ready when complete.
-        If the engine is present, attempt to use it; otherwise emit a friendly default.
-        """
+    def change_model(self, model_id: str) -> None:
+        """Change active model and reload runtime."""
         try:
-            if not self._engine:
-                # Fire a default motd immediately
-                self.signals.motd_ready.emit("Welcome to Vociferous")
-                return
-
-            # Run motd generation in background to avoid blocking
-            self._thread_pool.start(self._motd_task)
-        except Exception as e:
-            logger.error(f"MOTD generation failed: {e}")
-            self.signals.error.emit(str(e))
-
-    def _motd_task(self):
-        try:
-            if not self._engine:
-                raise RuntimeError("Engine not loaded for MOTD generation.")
-
-            motd = (self._engine.generate_motd() if hasattr(self._engine, "generate_motd") else "Welcome to Vociferous")
-            self.signals.motd_ready.emit(motd)
-        except Exception as e:
-            logger.error(f"MOTD task failed: {e}")
-            self.signals.error.emit(str(e))
-
-    def change_model(self, model_id: str):
-        """Change active model and reload runtime.
-
-        This is a minimal implementation that updates config and reloads the runtime.
-        """
-        try:
-            ConfigManager.set_config_value(model_id, "refinement", "model_id")
+            update_settings(refinement={"model_id": model_id})
         except Exception:
             logger.exception("Failed to persist new model id to config")
 
-        # Force reload (unload + enable)
         self.disable()
-        # Re-enable if refinement is enabled in config
-        if ConfigManager.get_config_value("refinement", "enabled"):
+
+        s = get_settings()
+        if s.refinement.enabled:
             self.enable()

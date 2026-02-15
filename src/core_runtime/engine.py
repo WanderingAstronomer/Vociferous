@@ -2,19 +2,17 @@
 Core Application Engine.
 
 Orchestrates the Audio -> Transcription pipeline without Qt dependencies.
+Runs inside the engine subprocess.
 """
 
 import logging
 import time
-from typing import Callable, Optional, TYPE_CHECKING
+from typing import Callable, Optional
 
 from src.services.audio_service import AudioService
 from src.services.transcription_service import transcribe
 from src.core.exceptions import VociferousError
 from src.core_runtime.types import EngineState, TranscriptionResult
-
-if TYPE_CHECKING:
-    from faster_whisper import WhisperModel
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +24,7 @@ class TranscriptionEngine:
 
     def __init__(
         self,
-        local_model: "WhisperModel | None",
+        local_model,
         on_result: Callable[[TranscriptionResult], None],
         on_audio_level: Optional[Callable[[float], None]] = None,
         on_spectrum_update: Optional[Callable[[list], None]] = None,
@@ -36,12 +34,6 @@ class TranscriptionEngine:
         self.is_recording = False
         self.is_running = True
         self.sample_rate: int | None = None
-
-        # Audio Service setup
-        # Note: AudioService might need to be passed in or factory created to allow easier mocking?
-        # For now, instantiating it here is consistent with previous design.
-        # But for headless harness, we might want to inject a mock AudioService.
-        # Let's support injection or internal creation.
 
         self.audio_service = AudioService(
             on_level_update=on_audio_level, on_spectrum_update=on_spectrum_update
@@ -54,10 +46,7 @@ class TranscriptionEngine:
     def stop(self) -> None:
         """Stop engine completely."""
         self.is_running = False
-        self.is_recording = False  # Ensure recording stops too
-        # In a real threaded loop, we might need synchronization primitives if this is called from another thread.
-        # However, this class is just the logic. The caller handles threading.
-        # Typically run_pipeline block until done.
+        self.is_recording = False
 
     def run_pipeline(self) -> None:
         """
@@ -71,7 +60,7 @@ class TranscriptionEngine:
             # 1. Validation
             is_valid, error_msg = AudioService.validate_microphone()
             if not is_valid:
-                logger.error(f"Microphone validation failed: {error_msg}")
+                logger.error("Microphone validation failed: %s", error_msg)
                 self.on_result(
                     TranscriptionResult(
                         state=EngineState.ERROR, error_message=error_msg
@@ -84,9 +73,7 @@ class TranscriptionEngine:
 
             logger.info("Recording...")
 
-            # 2. Recording Loop
-            # This blocks until self.is_recording becomes False (via callback)
-            # or until silence detection (if configured in AudioService)
+            # 2. Recording Loop (blocks until stop or silence detection)
             audio_data = self.audio_service.record_audio(
                 should_stop=lambda: not (self.is_running and self.is_recording)
             )
@@ -115,16 +102,13 @@ class TranscriptionEngine:
             try:
                 result, speech_duration_ms = transcribe(audio_data, self.local_model)
             except VociferousError as e:
-                logger.error(f"Transcription error: {str(e)}", exc_info=True)
-                msg = str(e)
-                if e.doc_ref:
-                    msg += f"\nSee: {e.doc_ref}"
+                logger.error("Transcription error: %s", e, exc_info=True)
                 self.on_result(
-                    TranscriptionResult(state=EngineState.ERROR, error_message=msg)
+                    TranscriptionResult(state=EngineState.ERROR, error_message=str(e))
                 )
                 return
             except Exception as e:
-                logger.exception(f"Unexpected transcription failure: {e}")
+                logger.exception("Unexpected transcription failure: %s", e)
                 self.on_result(
                     TranscriptionResult(
                         state=EngineState.ERROR,
@@ -134,7 +118,7 @@ class TranscriptionEngine:
                 return
 
             elapsed = time.perf_counter() - start_time
-            logger.info(f"Transcription completed in {elapsed:.2f}s")
+            logger.info("Transcription completed in %.2fs", elapsed)
 
             if not self.is_running:
                 return
@@ -159,7 +143,7 @@ class TranscriptionEngine:
             logger.exception("Critical error in engine pipeline")
             self.on_result(
                 TranscriptionResult(
-                    state=EngineState.ERROR, error_message=f"System Error: {str(e)}"
+                    state=EngineState.ERROR, error_message=f"System Error: {e}"
                 )
             )
         finally:

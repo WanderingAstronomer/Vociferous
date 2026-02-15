@@ -1,180 +1,135 @@
 """
-Transcription module using faster-whisper.
+Transcription module using pywhispercpp (whisper.cpp).
 
-Provides speech-to-text via OpenAI Whisper (CTranslate2 backend).
+Provides speech-to-text via OpenAI Whisper GGML models loaded through
+the whisper.cpp C++ library with Python bindings.
 """
 
 import logging
-from typing import TYPE_CHECKING
+import time
+from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
 
 from src.core_runtime.constants import AudioConfig
-from src.core.config_manager import ConfigManager
+from src.core.settings import get_settings
 from src.core.resource_manager import ResourceManager
-from src.core.model_registry import ASR_MODELS, DEFAULT_ASR_MODEL_ID
-from src.core.exceptions import ModelLoadError, TranscriptionError
-
-if TYPE_CHECKING:
-    from faster_whisper import WhisperModel
+from src.core.model_registry import ASR_MODELS, get_asr_model
+from src.core.exceptions import EngineError
 
 logger = logging.getLogger(__name__)
 
 
-def create_local_model() -> "WhisperModel":
-    """
-    Create and configure a faster-whisper model instance.
+def _resolve_model_path() -> Path:
+    """Resolve the filesystem path to the currently configured GGML model file."""
+    s = get_settings()
+    model_id = s.model.model
+    asr_model = get_asr_model(model_id)
 
-    Tries CUDA first, falls back to CPU on failure.
-    Loads from cache when available to avoid HTTP requests.
-    """
-    from faster_whisper import WhisperModel
+    if asr_model is None:
+        # Fallback to default
+        model_id = "large-v3-turbo-q5_0"
+        asr_model = ASR_MODELS[model_id]
 
-    logger.info("Loading Whisper model...")
+    cache_dir = ResourceManager.get_user_cache_dir("models")
+    model_path = cache_dir / asr_model.filename
 
-    model_options = ConfigManager.get_config_section("model_options")
-    model_id: str = model_options.get("model", DEFAULT_ASR_MODEL_ID)
-
-    # Resolve repo_id from registry
-    asr_model = ASR_MODELS.get(model_id, ASR_MODELS[DEFAULT_ASR_MODEL_ID])
-    model_repo = asr_model.repo_id
-
-    device: str = model_options.get("device", "auto")
-    compute_type: str = model_options.get("compute_type", "float16")
-
-    # Use ResourceManager to get authoritative cache location
-    download_root = str(ResourceManager.get_user_cache_dir("models"))
-
-    # Handle device selection using match/case
-    match (device, compute_type):
-        case ("auto", _):
-            device = "cuda"  # Try CUDA first, faster-whisper will fall back to CPU
-        case ("cpu", "float16"):
-            # float16 doesn't work on CPU, downgrade to float32
-            compute_type = "float32"
-            logger.warning("float16 not supported on CPU, using float32 instead.")
-        case (_, "int8"):
-            device = "cpu"
-            logger.info("Using int8 quantization, forcing CPU.")
-
-    # Try loading from cache first to avoid unnecessary HTTP requests
-    model = None
-    try:
-        # Attempt local-only load (no network)
-        model = WhisperModel(
-            model_repo,
-            device=device,
-            compute_type=compute_type,
-            local_files_only=True,
-            download_root=download_root,
+    if not model_path.exists():
+        raise EngineError(
+            f"ASR model file not found: {model_path}. "
+            f"Run provisioning to download '{model_id}'."
         )
-        logger.info(f"Model loaded from cache: {model_repo} on {device}")
-    except Exception:
-        # Model not in cache, download it
-        logger.info(f"Model not cached, downloading {model_repo}...")
-        try:
-            model = WhisperModel(
-                model_repo,
-                device=device,
-                compute_type=compute_type,
-                download_root=download_root,
-            )
-            logger.info(f"Model downloaded: {model_repo} on {device}")
-        except Exception as e:
-            logger.warning(f"Error loading model on {device}: {e}")
-            logger.info("Falling back to CPU...")
-            try:
-                model = WhisperModel(
-                    model_repo,
-                    device="cpu",
-                    compute_type="float32",
-                    download_root=download_root,
-                )  # Force float32 for CPU
-                logger.info(f"Model loaded: {model_repo} on CPU")
-            except Exception as final_error:
-                raise ModelLoadError(
-                    f"Failed to load Whisper model {model_repo} on both {device} and CPU.",
-                    context={
-                        "model": model_repo,
-                        "initial_device": device,
-                        "initial_error": str(e),
-                        "final_error": str(final_error),
-                    },
-                ) from final_error
+
+    return model_path
+
+
+def create_local_model():
+    """
+    Create and return a pywhispercpp Model instance.
+
+    Loads the GGML model file from the cache directory.
+    """
+    from pywhispercpp.model import Model
+
+    model_path = _resolve_model_path()
+    logger.info("Loading whisper.cpp model from %s...", model_path)
+
+    start = time.perf_counter()
+
+    try:
+        model = Model(str(model_path))
+    except Exception as e:
+        raise EngineError(f"Failed to load whisper.cpp model: {e}") from e
+
+    elapsed = time.perf_counter() - start
+    logger.info("Whisper model loaded in %.2fs", elapsed)
 
     return model
 
 
 def transcribe(
-    audio_data: NDArray[np.int16] | None, local_model: "WhisperModel | None" = None
+    audio_data: NDArray[np.int16] | None, local_model=None
 ) -> tuple[str, int]:
     """
-    Transcribe audio data to text using faster-whisper.
+    Transcribe audio data to text using pywhispercpp.
 
-    Converts int16 to float32, runs VAD-filtered transcription,
-    then post-processes the result.
+    Converts int16 to float32, runs transcription, then post-processes.
+
+    Args:
+        audio_data: Raw audio samples (int16, 16kHz mono).
+        local_model: A pywhispercpp.Model instance (created if None).
 
     Returns:
-        Tuple of (transcription_text, speech_duration_ms)
-        speech_duration_ms is the sum of all speech segments after VAD filtering
+        Tuple of (transcription_text, speech_duration_ms).
     """
-    if audio_data is None:
+    if audio_data is None or len(audio_data) == 0:
         return "", 0
 
     if local_model is None:
         local_model = create_local_model()
 
-    model_options = ConfigManager.get_config_section("model_options")
-    language: str | None = model_options.get("language", "en") or None
-    vad_filter: bool = model_options.get("vad_filter", True)
+    s = get_settings()
+    language = s.model.language or "en"
 
-    # Convert int16 to float32 (required by faster-whisper)
+    # Convert int16 → float32 (whisper.cpp expects float32 in [-1, 1])
     try:
         audio_float: NDArray[np.float32] = (
             audio_data.astype(np.float32) / AudioConfig.INT16_SCALE
         )
 
-        # Transcribe with VAD for cleaner output
-        segments, _ = local_model.transcribe(
-            audio=audio_float,
+        start = time.perf_counter()
+
+        # pywhispercpp transcribe returns a list of Segment objects
+        segments = local_model.transcribe(
+            audio_float,
             language=language,
-            vad_filter=vad_filter,
         )
 
-        # Combine segments and calculate effective speech duration
-        segment_list = list(segments)
-        transcription = "".join(segment.text for segment in segment_list).strip()
+        transcription = "".join(seg.text for seg in segments).strip()
 
-        # Calculate total speech duration from segments (end - start of each segment)
-        speech_duration_seconds = sum(
-            segment.end - segment.start for segment in segment_list
-        )
-        speech_duration_ms = int(speech_duration_seconds * 1000)
+        # Estimate speech duration from audio length (pywhispercpp doesn't
+        # expose per-segment timestamps in all versions)
+        speech_duration_ms = int(len(audio_data) / AudioConfig.DEFAULT_SAMPLE_RATE * 1000)
+
+        elapsed = time.perf_counter() - start
+        logger.info("Transcription completed in %.2fs (%d segments)", elapsed, len(segments))
 
         return post_process_transcription(transcription), speech_duration_ms
 
     except Exception as e:
-        raise TranscriptionError(
-            f"Transcription failed: {str(e)}",
-            context={
-                "audio_size_samples": len(audio_data),
-                "language": language,
-                "model_type": str(type(local_model)),
-            },
-        ) from e
+        raise EngineError(f"Transcription failed: {e}") from e
 
 
 def post_process_transcription(transcription: str | None) -> str:
-    """Apply user-configured post-processing (strip whitespace, add trailing space)."""
+    """Apply user-configured post-processing."""
     if not transcription:
         return ""
 
     result = transcription.strip()
 
-    output_options = ConfigManager.get_config_section("output_options")
-
-    if output_options.get("add_trailing_space", True):
+    s = get_settings()
+    if s.output.add_trailing_space:
         result += " "
 
     return result
