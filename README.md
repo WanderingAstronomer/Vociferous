@@ -62,18 +62,18 @@ make provision
 ### Run
 
 ```bash
-make run
-# or
 ./vociferous
 ```
 
 Press the activation key (default: **Right Alt**) to start/stop recording. Transcriptions appear in the main window and are saved to the local database.
 
+> **Tip:** `make run` does the same thing — it's just a wrapper around `./vociferous`.
+
 ---
 
-## Docker
+## Alternative: Docker
 
-Run Vociferous in a container with display forwarding, audio passthrough, and optional GPU acceleration.
+Run in a container if you don't want to install GTK/WebKitGTK system dependencies locally.
 
 ### Wayland (default)
 
