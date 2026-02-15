@@ -1122,9 +1122,9 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _get_edges(pos: QPoint, w: int, h: int) -> Qt.Edges:
+    def _get_edges(pos: QPoint, w: int, h: int) -> Qt.Edge:
         """Return the Qt edges the cursor is near."""
-        edges = Qt.Edges()
+        edges = Qt.Edge(0)
         if pos.x() < _EDGE_GRIP:
             edges |= Qt.Edge.LeftEdge
         elif pos.x() > w - _EDGE_GRIP:

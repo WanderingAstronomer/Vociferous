@@ -95,11 +95,38 @@ class KeyListener:
         self.select_backend_from_config()
 
     def start(self) -> None:
-        """Start the active backend."""
+        """Start the active backend, enabling fallback if startup fails."""
+        # Prioritize currently selected backend, then try others
+        candidates = []
         if self.active_backend:
-            self.active_backend.start()
-        else:
-            raise RuntimeError("No active backend selected")
+            candidates.append(self.active_backend)
+        for backend in self.backends:
+            if backend not in candidates:
+                candidates.append(backend)
+
+        if not candidates:
+            logger.error("No input backends available to start")
+            return
+
+        for backend in candidates:
+            try:
+                # Ensure callback is connected
+                backend.on_input_event = self.on_input_event
+                backend.start()
+                self.active_backend = backend
+                logger.info(f"Started input backend: {type(backend).__name__}")
+                return
+            except Exception as e:
+                logger.warning(
+                    f"Backend {type(backend).__name__} failed to start: {e}"
+                )
+                try:
+                    backend.stop()
+                except Exception:
+                    pass
+
+        logger.error("All input backends failed to start")
+        self.active_backend = None
 
     def stop(self) -> None:
         """Stop the active backend."""
@@ -128,6 +155,8 @@ class KeyListener:
         keys: set[KeyCode | frozenset[KeyCode]] = set()
         for key in combination_string.upper().split("+"):
             key = key.strip()
+            if not key:
+                continue
             if key in modifier_map:
                 keys.add(modifier_map[key])
             else:
@@ -143,17 +172,20 @@ class KeyListener:
 
     def on_input_event(self, event: tuple[KeyCode, InputEvent]) -> None:
         """Handle input events and trigger callbacks for key chord changes."""
-        if not self.key_chord:
-            return
-
         key, event_type = event
 
+        # Capture mode takes priority - allow hotkey rebinding even if key_chord is not set
         if self.capture_mode and self.capture_callback:
             try:
                 self.capture_callback(key, event_type)
             except Exception:
                 logger.exception("Error in capture callback")
             return
+
+        # If no key chord configured, exit early for normal hotkey detection
+        if not self.key_chord:
+            return
+
         was_active = self.key_chord.is_active()
         is_active = self.key_chord.update(key, event_type)
 

@@ -91,6 +91,12 @@ class SLMRuntime(QObject):
         try:
             # 1. Resolve Model Path from manifest
             model_id = ConfigManager.get_value("slm_model", "qwen4b")
+            
+            if not model_id:
+                logger.info("No SLM model configured. SLM service disabled.")
+                self.state = SLMState.DISABLED
+                return
+
             cache_dir = ResourceManager.get_user_cache_dir("models")
 
             # Map model_id to directory name via manifest lookup

@@ -19,7 +19,6 @@ from src.ui.components.onboarding.pages import (
     RefinementPage,
     ASRModelPage,
     HotkeyPage,
-    SetupPage,
     CalibrationPage,
 )
 from src.ui.constants import Spacing
@@ -66,7 +65,6 @@ class OnboardingWindow(QDialog):
             RefinementPage(),
             ASRModelPage(),
             HotkeyPage(key_listener=self._key_listener),
-            SetupPage(),
             CalibrationPage(),
         ]
 

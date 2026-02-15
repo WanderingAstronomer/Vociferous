@@ -174,7 +174,11 @@ class ApplicationCoordinator(QObject):
         # 9. Config Listeners
         ConfigManager.instance().config_changed.connect(self._on_config_changed)
 
-        # 10. Check Onboarding Status
+        # 10. Start Interaction (Before Onboarding so hotkeys can be configured)
+        self.key_listener.start()
+        self._update_activation_key()
+
+        # 11. Check Onboarding Status
         onboarding_completed = ConfigManager.get_config_value(
             "user", "onboarding_completed"
         )
@@ -189,10 +193,6 @@ class ApplicationCoordinator(QObject):
                 logger.info("Onboarding cancelled by user, exiting...")
                 self.shutdown()
                 return
-
-        # 11. Start Interaction
-        self.key_listener.start()
-        self._update_activation_key()
 
         # Show Window (if configured, or start hidden)
         self.main_window.show()

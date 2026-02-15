@@ -53,6 +53,11 @@ desktop.ini
 # Local user configuration (runtime-modified)
 src/config.yaml
 
+# Environment files with secrets
+.env
+.env.local
+.env*.local
+
 # SQLite databases / runtime data (if introduced later)
 *.db
 *.sqlite
