@@ -16,7 +16,7 @@ Vociferous captures audio from your microphone, transcribes it locally using [wh
 ## Stack
 
 | Layer | Technology |
-|-------|-----------|
+| ----- | ---------- |
 | Window shell | [pywebview](https://pywebview.flowrl.com/) (GTK) |
 | Frontend | [Svelte 5](https://svelte.dev/) + [Tailwind CSS v4](https://tailwindcss.com/) + [Vite 6](https://vite.dev/) |
 | API | [Litestar](https://litestar.dev/) REST + WebSocket |

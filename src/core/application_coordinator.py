@@ -226,12 +226,12 @@ class ApplicationCoordinator:
         """Register all intent handlers with the CommandBus."""
         from src.core.intents.definitions import (
             BeginRecordingIntent,
-            StopRecordingIntent,
             CancelRecordingIntent,
-            ToggleRecordingIntent,
-            DeleteTranscriptIntent,
             CommitEditsIntent,
+            DeleteTranscriptIntent,
             RefineTranscriptIntent,
+            StopRecordingIntent,
+            ToggleRecordingIntent,
         )
 
         self.command_bus.register(BeginRecordingIntent, self._handle_begin_recording)
@@ -384,7 +384,7 @@ class ApplicationCoordinator:
 
     def _transcribe_and_store(self, audio_data) -> None:
         """Run transcription on audio data, store result, and emit event."""
-        from src.services.transcription_service import transcribe, create_local_model
+        from src.services.transcription_service import create_local_model, transcribe
 
         try:
             # Lazy-load ASR model if not already loaded
@@ -475,6 +475,7 @@ class ApplicationCoordinator:
         def run_server():
             try:
                 import uvicorn
+
                 from src.api.app import create_app
 
                 app = create_app(self)
