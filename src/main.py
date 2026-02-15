@@ -1,8 +1,8 @@
 """
-Vociferous - Main Entry Point.
+Vociferous v4.0 — Main Entry Point.
 
-Refactored to use ApplicationCoordinator as the composition root.
-Maintains Single Instance Lock and Global Exception Handling.
+Starts Litestar API server + pywebview native window.
+Replaces PyQt6 QApplication bootstrap.
 """
 
 import logging
@@ -10,39 +10,9 @@ import os
 import signal
 import sys
 import tempfile
-
-from PyQt6.QtCore import QLockFile, qInstallMessageHandler
-from PyQt6.QtWidgets import QApplication
-
-from src.core.application_coordinator import ApplicationCoordinator
-from src.provisioning.requirements import verify_environment_integrity
-from src.ui.utils.error_handler import install_exception_hook
-from src.ui.widgets.dialogs.error_dialog import show_error_dialog
-
-# Prefer client-side decorations on Wayland
-os.environ.setdefault("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1")
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-_QT_MESSAGE_HANDLER_INSTALLED = False
-_TRAY_DBUS_ERROR_SEEN = False
-
-
-def _qt_message_handler(_mode, _context, message: str) -> None:
-    global _TRAY_DBUS_ERROR_SEEN
-    if "QDBusTrayIcon encountered a D-Bus error" in message:
-        _TRAY_DBUS_ERROR_SEEN = True
-        return
-    # Default handler equivalent or simple output
-    sys.stderr.write(f"{message}\n")
-
-
-def _install_qt_message_handler() -> None:
-    global _QT_MESSAGE_HANDLER_INSTALLED
-    if _QT_MESSAGE_HANDLER_INSTALLED:
-        return
-    qInstallMessageHandler(_qt_message_handler)
-    _QT_MESSAGE_HANDLER_INSTALLED = True
 
 
 def _get_lock_file_path() -> str:
@@ -53,81 +23,60 @@ def _get_lock_file_path() -> str:
     return os.path.join(tempfile.gettempdir(), "vociferous.lock")
 
 
-def _global_exception_handler(title: str, message: str, details: str) -> None:
-    """Callback for error dialog display (invoked by error_handler)."""
-    # Note: Exception logging is handled by src/ui/utils/error_handler.py
+def _acquire_lock() -> bool:
+    """Simple file-based single instance lock. Returns True if acquired."""
+    import fcntl
+
+    lock_path = _get_lock_file_path()
     try:
-        if QApplication.instance():
-            parent = QApplication.activeWindow()
-            show_error_dialog(
-                title=title,
-                message=message,
-                details=details,
-                parent=parent,
-            )
-    except Exception as e:
-        sys.stderr.write(f"Critical Error (Dialog failed): {message} | {e}\n")
+        lock_fd = open(lock_path, "w")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_fd.write(str(os.getpid()))
+        lock_fd.flush()
+        # Keep fd open (lock is held while process lives)
+        _acquire_lock._fd = lock_fd  # type: ignore[attr-defined]
+        return True
+    except (OSError, IOError):
+        return False
 
 
-def main():
-    # 1. Setup Exception Hooks
-    install_exception_hook(_global_exception_handler)
-    
-    # 2. Environment Integrity Check (Fail fast before loading UI)
-    try:
-        verify_environment_integrity()
-    except RuntimeError as e:
-        sys.stderr.write(f"CRITICAL STARTUP ERROR:\n{e}\n")
+def main() -> int:
+    # 1. Logging (basic — LogManager will enhance later)
+    from src.core.log_manager import setup_logging
+    setup_logging()
+
+    # 2. Single instance check
+    if not _acquire_lock():
+        sys.stderr.write(
+            "ERROR: Vociferous is already running. Only one instance allowed.\n"
+        )
         return 1
 
-    _install_qt_message_handler()
+    # 3. Settings
+    from src.core.settings import init_settings
+    settings = init_settings()
 
-    # 3. Single Instance Check
-    lock_file_path = _get_lock_file_path()
-    lock = QLockFile(lock_file_path)
-    lock.setStaleLockTime(10_000)
+    # 4. Application Coordinator (composition root)
+    from src.core.application_coordinator import ApplicationCoordinator
+    coordinator = ApplicationCoordinator(settings)
 
-    if not lock.tryLock():
-        if lock.removeStaleLockFile() and lock.tryLock():
-            pass
-        else:
-            sys.stderr.write(
-                "ERROR: Vociferous is already running. Only one instance allowed.\n"
-            )
-            return 1
-
-    # 3. Application Setup
-    app = QApplication(sys.argv)
-    app.setApplicationName("Vociferous")
-    app.setQuitOnLastWindowClosed(False)
-
-    # 4. Font Configuration
-    font = app.font()
-    font.setPointSize(18)
-    app.setFont(font)
-
-    # 5. Coordinator (Composition Root)
-    coordinator = ApplicationCoordinator(app)
-
-    # 6. Install Signal Handlers for graceful shutdown
-    def signal_handler(signum, frame):
-        """Handle SIGTERM and SIGINT by triggering shutdown."""
-        logger.info(f"Received signal {signum}, initiating shutdown...")
+    # 5. Signal handlers for graceful shutdown
+    def signal_handler(signum: int, frame: object) -> None:
+        logger.info("Received signal %d, initiating shutdown...", signum)
         coordinator.shutdown()
 
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
-    # 7. Start
+    # 6. Start
     try:
         coordinator.start()
-        ret = app.exec()
+    except KeyboardInterrupt:
+        pass
     finally:
-        # Cleanup
         coordinator.cleanup()
-        lock.unlock()
 
-    return ret
+    return 0
 
 
 if __name__ == "__main__":

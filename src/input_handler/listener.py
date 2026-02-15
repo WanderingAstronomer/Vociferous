@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Callable
 
-from src.core.config_manager import ConfigManager
+from src.core.settings import get_settings
 from src.core.plugins import PluginLoader
 
 from .backends.base import InputBackend
@@ -37,9 +37,7 @@ class KeyListener:
 
     def select_backend_from_config(self) -> None:
         """Select the active backend based on configuration."""
-        preferred_backend = ConfigManager.get_config_value(
-            "recording_options", "input_backend"
-        )
+        preferred_backend = get_settings().recording.input_backend
 
         if preferred_backend == "auto":
             self.select_active_backend()
@@ -135,9 +133,7 @@ class KeyListener:
 
     def load_activation_keys(self) -> None:
         """Load activation keys from configuration."""
-        key_combination = ConfigManager.get_config_value(
-            "recording_options", "activation_key"
-        )
+        key_combination = get_settings().recording.activation_key
         keys = self.parse_key_combination(key_combination)
         self.set_activation_keys(keys)
 

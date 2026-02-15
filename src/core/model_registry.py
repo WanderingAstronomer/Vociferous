@@ -1,113 +1,126 @@
+"""
+Model Registry — GGUF/GGML model catalog for Vociferous v4.0.
+
+Replaces CTranslate2 repo references with direct GGUF/GGML URLs.
+"""
+
+from __future__ import annotations
+
 from dataclasses import dataclass
-from enum import Enum, auto
-from typing import Dict
-
-
-class ModelType(Enum):
-    ASR = auto()
-    SLM = auto()
 
 
 @dataclass(frozen=True, slots=True)
-class SupportedModel:
+class ASRModel:
+    """A whisper.cpp GGML model entry."""
     id: str
     name: str
-    repo_id: str
-    revision: str
-    dir_name: str
-    quantization: str
-    required_vram_mb: int = 0
-    source: str = "HuggingFace"
-    model_type: ModelType = ModelType.SLM
-    prompt_format: str = "chatml"
+    filename: str
+    repo: str
+    size_mb: int
+    tier: str  # fast, balanced, quality
 
 
-MODELS: Dict[str, SupportedModel] = {
-    "qwen4b": SupportedModel(
+@dataclass(frozen=True, slots=True)
+class SLMModel:
+    """A llama.cpp GGUF model entry."""
+    id: str
+    name: str
+    filename: str
+    repo: str
+    size_mb: int
+    tier: str  # fast, balanced, quality, pro
+    quant: str
+
+
+# --- ASR Models (whisper.cpp GGML) ---
+
+ASR_MODELS: dict[str, ASRModel] = {
+    "small-en": ASRModel(
+        id="small-en",
+        name="Whisper Small English",
+        filename="ggml-small.en.bin",
+        repo="ggerganov/whisper.cpp",
+        size_mb=466,
+        tier="fast",
+    ),
+    "large-v3-turbo-q5_0": ASRModel(
+        id="large-v3-turbo-q5_0",
+        name="Whisper Large v3 Turbo (Q5)",
+        filename="ggml-large-v3-turbo-q5_0.bin",
+        repo="ggerganov/whisper.cpp",
+        size_mb=547,
+        tier="balanced",
+    ),
+    "large-v3-turbo": ASRModel(
+        id="large-v3-turbo",
+        name="Whisper Large v3 Turbo",
+        filename="ggml-large-v3-turbo.bin",
+        repo="ggerganov/whisper.cpp",
+        size_mb=1500,
+        tier="quality",
+    ),
+}
+
+# --- SLM Models (llama.cpp GGUF) ---
+
+SLM_MODELS: dict[str, SLMModel] = {
+    "qwen1.7b": SLMModel(
+        id="qwen1.7b",
+        name="Qwen3 1.7B",
+        filename="qwen3-1.7b-q4_k_m.gguf",
+        repo="Qwen/Qwen3-1.7B-GGUF",
+        size_mb=1100,
+        tier="fast",
+        quant="Q4_K_M",
+    ),
+    "qwen4b": SLMModel(
         id="qwen4b",
-        name="Qwen 3 (4B) - Fast",
-        repo_id="Qwen/Qwen3-4B",
-        revision="main",
-        dir_name="qwen3-4b-ct2",
-        quantization="int8",
-        required_vram_mb=5500,
-        model_type=ModelType.SLM,
+        name="Qwen3 4B",
+        filename="qwen3-4b-q4_k_m.gguf",
+        repo="Qwen/Qwen3-4B-GGUF",
+        size_mb=2500,
+        tier="balanced",
+        quant="Q4_K_M",
     ),
-    "qwen8b": SupportedModel(
+    "qwen8b": SLMModel(
         id="qwen8b",
-        name="Qwen 3 (8B)",
-        repo_id="Qwen/Qwen3-8B",
-        revision="main",
-        dir_name="qwen3-8b-ct2",
-        quantization="int8",
-        required_vram_mb=9000,
-        model_type=ModelType.SLM,
+        name="Qwen3 8B",
+        filename="qwen3-8b-q4_k_m.gguf",
+        repo="Qwen/Qwen3-8B-GGUF",
+        size_mb=5030,
+        tier="quality",
+        quant="Q4_K_M",
     ),
-    "qwen14b": SupportedModel(
+    "qwen14b": SLMModel(
         id="qwen14b",
-        name="Qwen 3 (14B) - Pro",
-        repo_id="Qwen/Qwen3-14B",
-        revision="main",
-        dir_name="qwen3-14b-ct2",
-        quantization="int8",
-        required_vram_mb=13500,
-        model_type=ModelType.SLM,
-    ),
-    "daredevil8b": SupportedModel(
-        id="daredevil8b",
-        name="NeuralDaredevil (8B) - Llama 3",
-        repo_id="mlabonne/NeuralDaredevil-8B-abliterated",
-        revision="main",
-        dir_name="daredevil-8b-ct2",
-        quantization="int8",
-        required_vram_mb=9000,
-        model_type=ModelType.SLM,
-        prompt_format="llama3",
-    ),
-    "josiefied8b": SupportedModel(
-        id="josiefied8b",
-        name="Josiefied Qwen3 (8B) - Abliterated",
-        repo_id="Goekdeniz-Guelmez/Josiefied-Qwen3-8B-abliterated-v1",
-        revision="main",
-        dir_name="josiefied-qwen3-8b-ct2",
-        quantization="int8",
-        required_vram_mb=9000,
-        model_type=ModelType.SLM,
+        name="Qwen3 14B",
+        filename="qwen3-14b-q4_k_m.gguf",
+        repo="Qwen/Qwen3-14B-GGUF",
+        size_mb=8500,
+        tier="pro",
+        quant="Q4_K_M",
     ),
 }
 
-ASR_MODELS: Dict[str, SupportedModel] = {
-    "distil-small-en": SupportedModel(
-        id="distil-small-en",
-        name="Whisper Distil Small.en (Fastest)",
-        repo_id="Systran/faster-distil-whisper-small.en",
-        revision="main",
-        dir_name="distil-small-en-ct2",
-        quantization="float16",
-        required_vram_mb=1000,
-        model_type=ModelType.ASR,
-    ),
-    "distil-large-v3": SupportedModel(
-        id="distil-large-v3",
-        name="Whisper Distil v3 (Balanced)",
-        repo_id="SYSTRAN/faster-distil-whisper-large-v3",
-        revision="main",
-        dir_name="distil-large-v3-ct2",
-        quantization="float16",
-        required_vram_mb=2100,
-        model_type=ModelType.ASR,
-    ),
-    "large-v3": SupportedModel(
-        id="large-v3",
-        name="Whisper v3 (High Quality)",
-        repo_id="Systran/faster-whisper-large-v3",
-        revision="main",
-        dir_name="large-v3-ct2",
-        quantization="float16",
-        required_vram_mb=3200,
-        model_type=ModelType.ASR,
-    ),
-}
 
-DEFAULT_MODEL_ID = "qwen4b"
-DEFAULT_ASR_MODEL_ID = "distil-large-v3"
+def get_asr_model(model_id: str) -> ASRModel | None:
+    """Look up an ASR model by ID."""
+    return ASR_MODELS.get(model_id)
+
+
+def get_slm_model(model_id: str) -> SLMModel | None:
+    """Look up an SLM model by ID."""
+    return SLM_MODELS.get(model_id)
+
+
+def get_model_catalog() -> dict:
+    """Return the full model catalog as serializable dicts."""
+    return {
+        "asr": {k: _model_to_dict(v) for k, v in ASR_MODELS.items()},
+        "slm": {k: _model_to_dict(v) for k, v in SLM_MODELS.items()},
+    }
+
+
+def _model_to_dict(m: ASRModel | SLMModel) -> dict:
+    from dataclasses import asdict
+    return asdict(m)

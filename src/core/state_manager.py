@@ -1,5 +1,7 @@
 """
-StateManager - Manages persistent session state.
+StateManager — Persistent session state (v4.0).
+
+Uses ResourceManager for paths. No Qt dependency.
 """
 
 import json
@@ -7,7 +9,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from PyQt6.QtCore import QStandardPaths
+from src.core.resource_manager import ResourceManager
 
 logger = logging.getLogger(__name__)
 
@@ -15,37 +17,22 @@ logger = logging.getLogger(__name__)
 class StateManager:
     """
     Manages ephemeral application state/session data that persists across runs
-    but is not configuration (e.g., MOTD, window geometry cache).
+    but is not configuration (e.g., window geometry cache, flags).
     """
 
-    _instance = None
-    _state: dict[str, Any] = {}
-
-    def __new__(cls) -> "StateManager":
-        if cls._instance is None:
-            cls._instance = super(StateManager, cls).__new__(cls)
-            cls._instance._load()
-        return cls._instance
-
-    def _get_state_path(self) -> Path:
-        """Get path to state.json in user config directory."""
-        config_dir = Path(
-            QStandardPaths.writableLocation(
-                QStandardPaths.StandardLocation.AppConfigLocation
-            )
-        )
-        config_dir.mkdir(parents=True, exist_ok=True)
-        return config_dir / "state.json"
+    def __init__(self) -> None:
+        self._state: dict[str, Any] = {}
+        self._path = ResourceManager.get_user_config_dir() / "state.json"
+        self._load()
 
     def _load(self) -> None:
         """Load state from disk."""
         try:
-            path = self._get_state_path()
-            if path.exists():
-                with open(path, "r", encoding="utf-8") as f:
+            if self._path.exists():
+                with open(self._path, "r", encoding="utf-8") as f:
                     self._state = json.load(f)
         except Exception as e:
-            logger.error(f"Failed to load state: {e}")
+            logger.error("Failed to load state: %s", e)
             self._state = {}
 
     def get(self, key: str, default: Any = None) -> Any:
@@ -60,8 +47,8 @@ class StateManager:
     def _save(self) -> None:
         """Save state to disk."""
         try:
-            path = self._get_state_path()
-            with open(path, "w", encoding="utf-8") as f:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._path, "w", encoding="utf-8") as f:
                 json.dump(self._state, f, indent=2)
         except Exception as e:
-            logger.error(f"Failed to save state: {e}")
+            logger.error("Failed to save state: %s", e)

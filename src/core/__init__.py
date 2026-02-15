@@ -1,24 +1,15 @@
-"""
-Core utilities and base classes for Vociferous.
-
-This module contains fundamental types and exceptions used throughout
-the application.
-"""
+"""Core utilities and base classes for Vociferous v4.0."""
 
 from .exceptions import (
     VociferousError,
+    AudioError,
+    EngineError,
     ConfigError,
-    DatabaseError,
-    ModelLoadError,
-    TranscriptionError,
-    AudioDeviceError,
 )
 
 __all__ = [
     "VociferousError",
+    "AudioError",
+    "EngineError",
     "ConfigError",
-    "DatabaseError",
-    "ModelLoadError",
-    "TranscriptionError",
-    "AudioDeviceError",
 ]

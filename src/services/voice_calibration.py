@@ -13,7 +13,7 @@ from typing import Callable
 import numpy as np
 import sounddevice as sd
 
-from src.core.config_manager import ConfigManager
+from src.core.settings import get_settings, update_settings
 
 logger = logging.getLogger(__name__)
 
@@ -203,17 +203,15 @@ class VoiceCalibrator:
 
     def save_calibration(self, results: dict[str, float]) -> None:
         """Save calibration results to config."""
-        # Save each calibration value
-        for key, value in results.items():
-            ConfigManager.set_config_value(value, "voice_calibration", key)
-
-        # Save config to disk
-        ConfigManager.save_config()
+        update_settings(voice_calibration=results)
         logger.info("Voice calibration saved to config")
 
     def get_calibration(self) -> dict[str, float] | None:
         """Retrieve saved calibration from config."""
-        return ConfigManager.get_config_section("voice_calibration")
+        cal = get_settings().voice_calibration
+        if cal.fundamental_freq == 0.0:
+            return None
+        return cal.model_dump()
 
     def compute_custom_bins(
         self, n_bins: int = 64, calibration: dict[str, float] | None = None

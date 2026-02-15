@@ -17,8 +17,6 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from src.core.exceptions import VociferousError
-from src.core.config_manager import ConfigManager
 from src.core.resource_manager import ResourceManager
 
 if TYPE_CHECKING:
@@ -105,20 +103,14 @@ class LogManager:
         # Ensure crash dump directory exists (managed here for consistency)
         CRASH_DUMP_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Get settings from ConfigManager (if initialized, else defaults)
+        # Get settings (graceful fallback if not yet initialized)
         try:
-            log_level_str = ConfigManager.get_config_value("logging", "level") or "INFO"
-            log_level = getattr(logging, log_level_str.upper(), logging.INFO)
-
-            enable_console = ConfigManager.get_config_value("logging", "console_echo")
-            if enable_console is None:
-                enable_console = True  # Default true
-
-            structured = (
-                ConfigManager.get_config_value("logging", "structured_output") or False
-            )
-        except RuntimeError:
-            # ConfigManager might not be ready yet during early startup
+            from src.core.settings import get_settings
+            s = get_settings()
+            log_level = getattr(logging, s.logging.level.upper(), logging.INFO)
+            enable_console = s.logging.console_echo
+            structured = s.logging.structured_output
+        except (RuntimeError, ImportError):
             log_level = logging.INFO
             enable_console = True
             structured = False
@@ -187,11 +179,7 @@ class LogManager:
         context_str = f" {context}" if context else ""
         log_message = f"Uncaught exception{context_str}: {exc_value}"
 
-        # Capture extra context if available
         extra = {}
-        if isinstance(exc_value, VociferousError):
-            extra["context"] = exc_value.context
-            log_message += f" | Doc Ref: {exc_value.doc_ref}"
 
         # Log to file
         logger.error(log_message, exc_info=(exc_type, exc_value, exc_tb), extra=extra)
@@ -248,3 +236,8 @@ def _open_path(path: Path) -> bool:
     except Exception as e:
         logger.error(f"Failed to open {path}: {e}")
         return False
+
+
+def setup_logging() -> LogManager:
+    """Convenience function to initialize logging at startup."""
+    return LogManager()

@@ -15,7 +15,7 @@ import webrtcvad
 from numpy.typing import NDArray
 
 from src.core_runtime.constants import FlowTiming
-from src.core.config_manager import ConfigManager
+from src.core.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +51,10 @@ class AudioService:
     def _calculate_bin_edges(self) -> None:
         """Calculate bin edges for logarithmic FFT grouping (with optional voice calibration)."""
         # Check if user has calibrated their voice
-        calibration = ConfigManager.get_config_section("voice_calibration")
+        cal = get_settings().voice_calibration
+        calibration = cal.model_dump() if cal.fundamental_freq > 0 else {}
 
-        if calibration and isinstance(calibration, dict):
+        if calibration:
             # Use personalized bins centered on user's voice
             from src.services.voice_calibration import VoiceCalibrator
 
@@ -125,11 +126,11 @@ class AudioService:
         Returns:
             Recorded audio data or None if too short/failed.
         """
-        recording_options = ConfigManager.get_config_section("recording_options")
-        self.sample_rate = recording_options.get("sample_rate") or 16000
+        s = get_settings()
+        self.sample_rate = s.recording.sample_rate
         frame_duration_ms = 30  # WebRTC VAD frame duration
         frame_size = int(self.sample_rate * (frame_duration_ms / 1000.0))
-        silence_duration_ms = recording_options.get("silence_duration") or 900
+        silence_duration_ms = s.recording.silence_duration_ms
         silence_frames = int(silence_duration_ms / frame_duration_ms)
 
         # Skip initial audio to avoid capturing key press sounds
@@ -138,7 +139,7 @@ class AudioService:
         )
 
         # Create VAD for voice activity detection modes
-        recording_mode = recording_options.get("recording_mode") or "continuous"
+        recording_mode = s.recording.recording_mode
         vad = None
         speech_detected = False
         silent_frame_count = 0
@@ -230,12 +231,7 @@ class AudioService:
                     base_gate = np.linspace(0.65, 0.35, self._n_bins)
 
                     # User-configurable gate boost (0.0 to 0.5 additional suppression)
-                    gate_boost = (
-                        ConfigManager.get_config_value(
-                            "bar_spectrum", "gate_aggression"
-                        )
-                        or 0.0
-                    )
+                    gate_boost = get_settings().visualizer.gate_aggression
                     gate_curve = base_gate + gate_boost
 
                     # Apply frequency-dependent gating
