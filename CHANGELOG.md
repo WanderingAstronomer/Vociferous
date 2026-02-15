@@ -1,8 +1,54 @@
 # Vociferous Changelog
 
-**Vociferous** is a Linux-native speech-to-text application that lets you transcribe audio using Whisper and refine results with an AI language model. Version 3.0 focuses on stability, data integrity, and architectural clarity.
+**Vociferous** is a Linux-native speech-to-text application with offline transcription powered by whisper.cpp and text refinement via a local Small Language Model.
 
-**Note on version tags:** Priority numbers (P0-P3) indicate severity/scope. Same-day releases are ordered by version number (higher = later).
+---
+
+## v4.0.0 — Architecture Rebuild
+**Date:** 2026-02-14
+**Status:** Major Release
+
+### Overview
+Complete architectural rebuild from PyQt6 desktop application to a modern web-native stack. The core transcription pipeline and data model are preserved; the UI, configuration, API, and runtime layers are replaced.
+
+### Changed — Stack
+- **UI Shell:** PyQt6 → **pywebview** (GTK backend, native Linux window)
+- **Frontend:** Custom Qt widgets → **Svelte 5** SPA with **Tailwind CSS v4**, built via **Vite 6**
+- **API Layer:** Direct Python calls → **Litestar** REST + WebSocket server on `localhost:18900`
+- **ASR Engine:** faster-whisper (CTranslate2) → **pywhispercpp** (whisper.cpp, GGML models)
+- **SLM Engine:** transformers pipeline → **llama-cpp-python** (llama.cpp, GGUF models)
+- **Configuration:** Hand-rolled YAML + ConfigManager → **Pydantic Settings** (typed, validated, JSON persistence with atomic writes)
+- **Database:** SQLAlchemy ORM → **raw sqlite3** with dataclass models (3 tables: transcripts, transcript_variants, projects)
+
+### Changed — Architecture
+- **Event System:** Qt signals → **EventBus** (thread-safe pub/sub with `threading.Lock`)
+- **Command System:** Direct method calls → **CommandBus** (intent-based dispatch, preserved from v3)
+- **WebSocket:** Real-time event bridge from EventBus to frontend via **Litestar WebSocket Listener** with `connection_lifespan`
+- **Thread-safe broadcast:** `ConnectionManager` stores event loop reference, uses `call_soon_threadsafe` for sync→async bridging
+
+### Added
+- **Mini Widget:** Compact floating recording indicator (MiniWidget.svelte) — frameless, transparent, always-on-top pywebview window with pulsing dot and elapsed timer
+- **Onboarding Flow:** Startup ASR model verification with `onboarding_required` event
+- **Multi-page Vite Build:** Separate entry points for main app and mini widget
+- **Unit Test Suite:** 56 tests covering settings, command bus, event bus, database, and model registry
+
+### Preserved
+- **Process-based IPC:** `core_runtime/` subprocess with CRC32-framed stdin/stdout PacketTransport (unchanged)
+- **Transcript Immutability:** Raw captures remain immutable; edits stored as variants
+- **Model Registry:** Centralized ASR/SLM model catalog
+- **Provisioning System:** HuggingFace Hub model downloads with integrity checks
+
+### Removed
+- PyQt6 and all 73+ Qt widget/view files
+- SQLAlchemy, faster-whisper, CTranslate2, transformers, torch dependencies
+- YAML configuration system (ConfigManager, config_schema.yaml)
+- Legacy state manager, signal bridge, and unused database DTOs
+
+---
+
+## v3.x Legacy Changelog
+
+> The following entries document the v3.x release series, which used PyQt6, faster-whisper, and SQLAlchemy.
 
 ---
 

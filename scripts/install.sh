@@ -109,7 +109,7 @@ echo "=========================================="
 
 DEPS_OK=true
 
-for module in faster_whisper PyQt6 sounddevice sqlalchemy transformers; do
+for module in pywhispercpp webview sounddevice pydantic litestar llama_cpp; do
     if "$VENV_PYTHON" -c "import $module" 2>/dev/null; then
         echo "✓ $module is available"
     else

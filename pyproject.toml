@@ -3,7 +3,7 @@ name = "vociferous"
 version = "4.0.0-dev"
 description = "Linux-native speech-to-text with offline transcription and SLM refinement"
 requires-python = ">=3.12"
-license = "MIT"
+license = "AGPL-3.0-or-later"
 
 [project.scripts]
 vociferous = "src.main:main"

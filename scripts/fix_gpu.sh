@@ -83,4 +83,17 @@ fi
 
 echo ""
 echo "Verifying CUDA environment with Python..."
-./.venv/bin/python3 -c "import torch; print(f'Torch CUDA: {torch.cuda.is_available()}'); import ctranslate2; print(f'CTranslate2 CUDA Devices: {ctranslate2.get_cuda_device_count()}')"
+./.venv/bin/python3 -c "
+try:
+    from pywhispercpp.model import Model
+    print('pywhispercpp: available')
+except ImportError:
+    print('pywhispercpp: NOT available')
+try:
+    from llama_cpp import Llama
+    print('llama-cpp-python: available')
+except ImportError:
+    print('llama-cpp-python: NOT available')
+print('CUDA device check requires model load — skipping quick test.')
+print('If nvidia-uvm is loaded and /dev/nvidia-uvm exists, GPU inference should work.')
+"
