@@ -41,7 +41,6 @@ def download_model_file(
     from huggingface_hub import hf_hub_download
 
     target_dir.mkdir(parents=True, exist_ok=True)
-    target_path = target_dir / filename
 
     if progress_callback:
         progress_callback(f"Downloading {filename} from {repo_id}...")

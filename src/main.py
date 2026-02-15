@@ -10,7 +10,6 @@ import os
 import signal
 import sys
 import tempfile
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +42,7 @@ def _acquire_lock() -> bool:
 def main() -> int:
     # 1. Logging (basic — LogManager will enhance later)
     from src.core.log_manager import setup_logging
+
     setup_logging()
 
     # 2. Single instance check
@@ -54,10 +54,12 @@ def main() -> int:
 
     # 3. Settings
     from src.core.settings import init_settings
+
     settings = init_settings()
 
     # 4. Application Coordinator (composition root)
     from src.core.application_coordinator import ApplicationCoordinator
+
     coordinator = ApplicationCoordinator(settings)
 
     # 5. Signal handlers for graceful shutdown

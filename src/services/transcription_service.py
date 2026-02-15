@@ -110,10 +110,14 @@ def transcribe(
 
         # Estimate speech duration from audio length (pywhispercpp doesn't
         # expose per-segment timestamps in all versions)
-        speech_duration_ms = int(len(audio_data) / AudioConfig.DEFAULT_SAMPLE_RATE * 1000)
+        speech_duration_ms = int(
+            len(audio_data) / AudioConfig.DEFAULT_SAMPLE_RATE * 1000
+        )
 
         elapsed = time.perf_counter() - start
-        logger.info("Transcription completed in %.2fs (%d segments)", elapsed, len(segments))
+        logger.info(
+            "Transcription completed in %.2fs (%d segments)", elapsed, len(segments)
+        )
 
         return post_process_transcription(transcription), speech_duration_ms
 

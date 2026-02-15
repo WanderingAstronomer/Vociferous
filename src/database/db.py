@@ -11,7 +11,6 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from src.core.resource_manager import ResourceManager
 
@@ -39,7 +38,7 @@ class Project:
 class TranscriptVariant:
     id: int | None = None
     transcript_id: int = 0
-    kind: str = "raw"          # 'raw', 'user_edit', 'refined'
+    kind: str = "raw"  # 'raw', 'user_edit', 'refined'
     text: str = ""
     model_id: str | None = None
     created_at: str = ""
@@ -149,9 +148,19 @@ class TranscriptDB:
         norm = normalized_text if normalized_text is not None else raw_text
         cur = self._conn.execute(
             """INSERT INTO transcripts
-               (timestamp, raw_text, normalized_text, display_name, duration_ms, speech_duration_ms, project_id, created_at)
+               (timestamp, raw_text, normalized_text, display_name,
+                duration_ms, speech_duration_ms, project_id, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (ts, raw_text, norm, display_name, duration_ms, speech_duration_ms, project_id, ts),
+            (
+                ts,
+                raw_text,
+                norm,
+                display_name,
+                duration_ms,
+                speech_duration_ms,
+                project_id,
+                ts,
+            ),
         )
         tid = cur.lastrowid
         assert tid is not None
@@ -169,10 +178,16 @@ class TranscriptDB:
         self._conn.commit()
 
         return Transcript(
-            id=tid, timestamp=ts, raw_text=raw_text, normalized_text=norm,
-            display_name=display_name, duration_ms=duration_ms,
-            speech_duration_ms=speech_duration_ms, project_id=project_id,
-            current_variant_id=vid, created_at=ts,
+            id=tid,
+            timestamp=ts,
+            raw_text=raw_text,
+            normalized_text=norm,
+            display_name=display_name,
+            duration_ms=duration_ms,
+            speech_duration_ms=speech_duration_ms,
+            project_id=project_id,
+            current_variant_id=vid,
+            created_at=ts,
         )
 
     def get_transcript(self, transcript_id: int) -> Transcript | None:
@@ -190,7 +205,9 @@ class TranscriptDB:
         t.variants = self._get_variants(transcript_id)
         return t
 
-    def recent(self, limit: int = 50, project_id: int | None = None) -> list[Transcript]:
+    def recent(
+        self, limit: int = 50, project_id: int | None = None
+    ) -> list[Transcript]:
         """Get recent transcripts, newest first."""
         if project_id is not None:
             rows = self._conn.execute(
@@ -226,7 +243,9 @@ class TranscriptDB:
 
     def delete_transcript(self, transcript_id: int) -> bool:
         """Delete a transcript and its variants (CASCADE)."""
-        cur = self._conn.execute("DELETE FROM transcripts WHERE id = ?", (transcript_id,))
+        cur = self._conn.execute(
+            "DELETE FROM transcripts WHERE id = ?", (transcript_id,)
+        )
         self._conn.commit()
         return cur.rowcount > 0
 
@@ -264,8 +283,12 @@ class TranscriptDB:
             )
         self._conn.commit()
         return TranscriptVariant(
-            id=vid, transcript_id=transcript_id, kind=kind,
-            text=text, model_id=model_id, created_at=ts,
+            id=vid,
+            transcript_id=transcript_id,
+            kind=kind,
+            text=text,
+            model_id=model_id,
+            created_at=ts,
         )
 
     def _get_variants(self, transcript_id: int) -> list[TranscriptVariant]:
@@ -275,28 +298,41 @@ class TranscriptDB:
         ).fetchall()
         return [
             TranscriptVariant(
-                id=r["id"], transcript_id=r["transcript_id"], kind=r["kind"],
-                text=r["text"], model_id=r["model_id"], created_at=r["created_at"],
+                id=r["id"],
+                transcript_id=r["transcript_id"],
+                kind=r["kind"],
+                text=r["text"],
+                model_id=r["model_id"],
+                created_at=r["created_at"],
             )
             for r in rows
         ]
 
     # --- Projects ---
 
-    def add_project(self, name: str, *, color: str | None = None, parent_id: int | None = None) -> Project:
+    def add_project(
+        self, name: str, *, color: str | None = None, parent_id: int | None = None
+    ) -> Project:
         ts = utc_now()
         cur = self._conn.execute(
             "INSERT INTO projects (name, color, parent_id, created_at) VALUES (?, ?, ?, ?)",
             (name, color, parent_id, ts),
         )
         self._conn.commit()
-        return Project(id=cur.lastrowid, name=name, color=color, parent_id=parent_id, created_at=ts)
+        return Project(
+            id=cur.lastrowid, name=name, color=color, parent_id=parent_id, created_at=ts
+        )
 
     def get_projects(self) -> list[Project]:
         rows = self._conn.execute("SELECT * FROM projects ORDER BY name").fetchall()
         return [
-            Project(id=r["id"], name=r["name"], color=r["color"],
-                    parent_id=r["parent_id"], created_at=r["created_at"])
+            Project(
+                id=r["id"],
+                name=r["name"],
+                color=r["color"],
+                parent_id=r["parent_id"],
+                created_at=r["created_at"],
+            )
             for r in rows
         ]
 
@@ -339,6 +375,7 @@ class TranscriptDB:
     def export_backup(self, dest: Path) -> None:
         """Export a full database backup to dest path."""
         import shutil
+
         self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         shutil.copy2(self._path, dest)
 

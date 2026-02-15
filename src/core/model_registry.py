@@ -12,6 +12,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True, slots=True)
 class ASRModel:
     """A whisper.cpp GGML model entry."""
+
     id: str
     name: str
     filename: str
@@ -23,6 +24,7 @@ class ASRModel:
 @dataclass(frozen=True, slots=True)
 class SLMModel:
     """A llama.cpp GGUF model entry."""
+
     id: str
     name: str
     filename: str
@@ -123,4 +125,5 @@ def get_model_catalog() -> dict:
 
 def _model_to_dict(m: ASRModel | SLMModel) -> dict:
     from dataclasses import asdict
+
     return asdict(m)

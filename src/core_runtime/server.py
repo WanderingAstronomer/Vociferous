@@ -16,7 +16,7 @@ from src.core_runtime.protocol.transport import PacketTransport
 from src.core_runtime.protocol.types import ProtocolMessage, MessageType
 from src.core_runtime.engine import TranscriptionEngine
 from src.core_runtime.types import TranscriptionResult
-from src.core.settings import init_settings, get_settings, update_settings
+from src.core.settings import init_settings, update_settings
 from src.core.resource_manager import ResourceManager
 
 # Configure logging for the engine process.

@@ -106,6 +106,7 @@ class LogManager:
         # Get settings (graceful fallback if not yet initialized)
         try:
             from src.core.settings import get_settings
+
             s = get_settings()
             log_level = getattr(logging, s.logging.level.upper(), logging.INFO)
             enable_console = s.logging.console_echo

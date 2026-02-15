@@ -5,6 +5,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+
 def get_gpu_memory_map() -> tuple[int, int] | None:
     """Get (total, free) GPU memory in MB via nvidia-smi."""
     try:
@@ -32,6 +33,7 @@ def get_gpu_memory_map() -> tuple[int, int] | None:
     except Exception as e:
         logger.warning(f"Failed to query GPU memory: {e}")
         return None
+
 
 def validate_model_artifacts(model_dir: Path) -> bool:
     """Validate model artifacts using a manifest containing checksums.
@@ -61,7 +63,9 @@ def validate_model_artifacts(model_dir: Path) -> bool:
             for fname, checksum in files.items():
                 p = model_dir / fname
                 if not p.exists():
-                    logger.warning(f"Manifest references missing file {fname} in {model_dir}")
+                    logger.warning(
+                        f"Manifest references missing file {fname} in {model_dir}"
+                    )
                     return False
                 actual = _sha256_hex(p)
                 if actual != checksum:

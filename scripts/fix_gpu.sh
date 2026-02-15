@@ -21,17 +21,17 @@ else
     
     # Try modprobe directly first
     if sudo modprobe "$UVM_MODULE"; then
-         echo "  ✓ Successfully loaded $UVM_MODULE via modprobe."
+        echo "  ✓ Successfully loaded $UVM_MODULE via modprobe."
     else
         echo "  ! modprobe failed. Trying nvidia-modprobe..."
         if command -v nvidia-modprobe &> /dev/null; then
             echo "  Running: sudo nvidia-modprobe -u"
             sudo nvidia-modprobe -u
             if [ $? -eq 0 ]; then
-                 echo "  ✓ nvidia-modprobe returned success."
+                echo "  ✓ nvidia-modprobe returned success."
             else
-                 echo "  ✗ Failed to load UVM. Please run 'sudo modprobe $UVM_MODULE' manually."
-                 exit 1
+                echo "  ✗ Failed to load UVM. Please run 'sudo modprobe $UVM_MODULE' manually."
+                exit 1
             fi
         else
             echo "  ✗ nvidia-modprobe not found. Please verify your driver installation."
@@ -47,23 +47,23 @@ if [ ! -c /dev/nvidia-uvm ]; then
     
     # Fallback to manual creation if nvidia-modprobe fails
     if [ ! -c /dev/nvidia-uvm ]; then
-         echo "  ! nvidia-modprobe failed to create the device node."
-         echo "  Attempting manual creation via mknod..."
-         
-         # Find the major number in /proc/devices (usually named nvidia-uvm)
-         UVM_MAJOR=$(grep "nvidia-uvm" /proc/devices | awk '{print $1}')
-         
-         if [ -n "$UVM_MAJOR" ]; then
-             echo "  Found nvidia-uvm major number: $UVM_MAJOR"
-             sudo mknod -m 666 /dev/nvidia-uvm c "$UVM_MAJOR" 0
-             if [ $? -eq 0 ]; then
-                 echo "  ✓ Successfully created /dev/nvidia-uvm manually."
-             else
-                 echo "  ✗ Failed to run mknod."
-             fi
-         else
-             echo "  ✗ Could not find 'nvidia-uvm' in /proc/devices. Is the module really loaded?"
-         fi
+        echo "  ! nvidia-modprobe failed to create the device node."
+        echo "  Attempting manual creation via mknod..."
+        
+        # Find the major number in /proc/devices (usually named nvidia-uvm)
+        UVM_MAJOR=$(grep "nvidia-uvm" /proc/devices | awk '{print $1}')
+        
+        if [ -n "$UVM_MAJOR" ]; then
+            echo "  Found nvidia-uvm major number: $UVM_MAJOR"
+            sudo mknod -m 666 /dev/nvidia-uvm c "$UVM_MAJOR" 0
+            if [ $? -eq 0 ]; then
+                echo "  ✓ Successfully created /dev/nvidia-uvm manually."
+            else
+                echo "  ✗ Failed to run mknod."
+            fi
+        else
+            echo "  ✗ Could not find 'nvidia-uvm' in /proc/devices. Is the module really loaded?"
+        fi
     fi
 fi
 
@@ -71,10 +71,10 @@ if [ -c /dev/nvidia-uvm ]; then
     echo "✓ /dev/nvidia-uvm exists."
     # Check permissions
     if [ -r /dev/nvidia-uvm ] && [ -w /dev/nvidia-uvm ]; then
-         echo "✓ Device is readable/writable."
+        echo "✓ Device is readable/writable."
     else
-         echo "! Permissions might be restrictive. Fixing permissions..."
-         sudo chmod 666 /dev/nvidia-uvm
+        echo "! Permissions might be restrictive. Fixing permissions..."
+        sudo chmod 666 /dev/nvidia-uvm
     fi
 else
     echo "✗ Failed to create /dev/nvidia-uvm. CUDA will likely fail."

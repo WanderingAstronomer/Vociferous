@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 # --- WebSocket connection manager ---
 
+
 class ConnectionManager:
     """
     Thread-safe WebSocket connection manager.
@@ -138,7 +139,9 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     # --- Transcript endpoints ---
 
     @get("/api/transcripts")
-    async def list_transcripts(limit: int = 50, project_id: int | None = None) -> list[dict]:
+    async def list_transcripts(
+        limit: int = 50, project_id: int | None = None
+    ) -> list[dict]:
         if coordinator.db is None:
             return []
         transcripts = coordinator.db.recent(limit=limit, project_id=project_id)
@@ -147,7 +150,9 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     @get("/api/transcripts/{transcript_id:int}")
     async def get_transcript(transcript_id: int) -> Response:
         if coordinator.db is None:
-            return Response(content={"error": "Database not available"}, status_code=503)
+            return Response(
+                content={"error": "Database not available"}, status_code=503
+            )
         t = coordinator.db.get_transcript(transcript_id)
         if t is None:
             return Response(content={"error": "Not found"}, status_code=404)
@@ -156,7 +161,9 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     @delete("/api/transcripts/{transcript_id:int}")
     async def delete_transcript(transcript_id: int) -> Response:
         if coordinator.db is None:
-            return Response(content={"error": "Database not available"}, status_code=503)
+            return Response(
+                content={"error": "Database not available"}, status_code=503
+            )
         deleted = coordinator.db.delete_transcript(transcript_id)
         if not deleted:
             return Response(content={"error": "Not found"}, status_code=404)
@@ -166,6 +173,7 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     @post("/api/transcripts/{transcript_id:int}/refine")
     async def refine_transcript(transcript_id: int, data: dict) -> Response:
         from src.core.intents.definitions import RefineTranscriptIntent
+
         intent = RefineTranscriptIntent(
             transcript_id=transcript_id,
             level=data.get("level", 2),
@@ -207,7 +215,9 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     @delete("/api/projects/{project_id:int}")
     async def delete_project(project_id: int) -> Response:
         if coordinator.db is None:
-            return Response(content={"error": "Database not available"}, status_code=503)
+            return Response(
+                content={"error": "Database not available"}, status_code=503
+            )
         deleted = coordinator.db.delete_project(project_id)
         if not deleted:
             return Response(content={"error": "Not found"}, status_code=404)
@@ -222,6 +232,7 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     @put("/api/config")
     async def update_config(data: dict) -> dict:
         from src.core.settings import update_settings
+
         new_settings = update_settings(**data)
         coordinator.settings = new_settings
         coordinator.event_bus.emit("config_updated", new_settings.model_dump())
@@ -232,6 +243,7 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     @get("/api/models")
     async def list_models() -> dict:
         from src.core.model_registry import get_model_catalog
+
         return get_model_catalog()
 
     # --- Health ---
@@ -249,6 +261,7 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     @post("/api/onboarding/complete")
     async def complete_onboarding() -> dict:
         from src.core.settings import update_settings
+
         update_settings(user={"onboarding_completed": True})
         coordinator.settings = get_settings()
         return {"status": "ok"}
@@ -270,6 +283,7 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
         Expects: {"type": "begin_recording", ...fields}
         """
         from src.core.intents import definitions as defs
+
         intent_type_name = data.pop("type", None)
         if not intent_type_name:
             return Response(content={"error": "Missing 'type'"}, status_code=400)
@@ -286,7 +300,10 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
 
         intent_cls = intent_map.get(intent_type_name)
         if intent_cls is None:
-            return Response(content={"error": f"Unknown intent: {intent_type_name}"}, status_code=400)
+            return Response(
+                content={"error": f"Unknown intent: {intent_type_name}"},
+                status_code=400,
+            )
 
         try:
             intent = intent_cls(**data)
@@ -312,10 +329,16 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     app = Litestar(
         route_handlers=[
             ws_handler,
-            list_transcripts, get_transcript, delete_transcript,
-            refine_transcript, search_transcripts,
-            list_projects, create_project, delete_project,
-            get_config, update_config,
+            list_transcripts,
+            get_transcript,
+            delete_transcript,
+            refine_transcript,
+            search_transcripts,
+            list_projects,
+            create_project,
+            delete_project,
+            get_config,
+            update_config,
             list_models,
             health,
             complete_onboarding,
@@ -334,7 +357,9 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     return app
 
 
-def _wire_event_bridge(coordinator: ApplicationCoordinator, ws_manager: ConnectionManager) -> None:
+def _wire_event_bridge(
+    coordinator: ApplicationCoordinator, ws_manager: ConnectionManager
+) -> None:
     """
     Bridge EventBus events to WebSocket broadcast.
 
@@ -363,12 +388,15 @@ def _wire_event_bridge(coordinator: ApplicationCoordinator, ws_manager: Connecti
         def make_handler(et: str):
             def handler(data: dict) -> None:
                 ws_manager.broadcast_threadsafe(et, data)
+
             return handler
 
         coordinator.event_bus.on(event_type, make_handler(event_type))
 
 
-def _handle_ws_message(coordinator: ApplicationCoordinator, msg_type: str, data: dict) -> None:
+def _handle_ws_message(
+    coordinator: ApplicationCoordinator, msg_type: str, data: dict
+) -> None:
     """
     Handle an incoming WebSocket command from the frontend.
 
@@ -382,10 +410,18 @@ def _handle_ws_message(coordinator: ApplicationCoordinator, msg_type: str, data:
     )
 
     handlers = {
-        "start_recording": lambda: coordinator.command_bus.dispatch(BeginRecordingIntent()),
-        "stop_recording": lambda: coordinator.command_bus.dispatch(StopRecordingIntent()),
-        "cancel_recording": lambda: coordinator.command_bus.dispatch(CancelRecordingIntent()),
-        "toggle_recording": lambda: coordinator.command_bus.dispatch(ToggleRecordingIntent()),
+        "start_recording": lambda: coordinator.command_bus.dispatch(
+            BeginRecordingIntent()
+        ),
+        "stop_recording": lambda: coordinator.command_bus.dispatch(
+            StopRecordingIntent()
+        ),
+        "cancel_recording": lambda: coordinator.command_bus.dispatch(
+            CancelRecordingIntent()
+        ),
+        "toggle_recording": lambda: coordinator.command_bus.dispatch(
+            ToggleRecordingIntent()
+        ),
     }
 
     handler = handlers.get(msg_type)

@@ -7,13 +7,10 @@ Starts Litestar API server and pywebview window.
 
 import logging
 import threading
-import time
-from pathlib import Path
-from typing import Any
 
 from src.core.command_bus import CommandBus
 from src.core.event_bus import EventBus
-from src.core.settings import VociferousSettings, get_settings, save_settings
+from src.core.settings import VociferousSettings
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +74,7 @@ class ApplicationCoordinator:
 
         # 1. Database
         from src.database.db import TranscriptDB
+
         self.db = TranscriptDB()
         logger.info("Database initialized (%d transcripts)", self.db.transcript_count())
 
@@ -115,6 +113,7 @@ class ApplicationCoordinator:
 
         try:
             import webview
+
             for window in webview.windows:
                 window.destroy()
         except Exception:
@@ -156,10 +155,13 @@ class ApplicationCoordinator:
         """Warm-load the whisper.cpp model at startup."""
         try:
             from src.services.transcription_service import create_local_model
+
             self._asr_model = create_local_model()
             self.event_bus.emit("engine_status", {"asr": "ready"})
         except Exception:
-            logger.exception("ASR model failed to load (will retry on first transcription)")
+            logger.exception(
+                "ASR model failed to load (will retry on first transcription)"
+            )
             self.event_bus.emit("engine_status", {"asr": "unavailable"})
 
     def _init_slm_runtime(self) -> None:
@@ -212,6 +214,7 @@ class ApplicationCoordinator:
         """Initialize the global hotkey listener."""
         try:
             from src.input_handler import create_listener
+
             self.input_listener = create_listener(callback=self._on_hotkey)
             logger.info("Input handler ready")
         except Exception:
@@ -235,9 +238,13 @@ class ApplicationCoordinator:
         self.command_bus.register(StopRecordingIntent, self._handle_stop_recording)
         self.command_bus.register(CancelRecordingIntent, self._handle_cancel_recording)
         self.command_bus.register(ToggleRecordingIntent, self._handle_toggle_recording)
-        self.command_bus.register(DeleteTranscriptIntent, self._handle_delete_transcript)
+        self.command_bus.register(
+            DeleteTranscriptIntent, self._handle_delete_transcript
+        )
         self.command_bus.register(CommitEditsIntent, self._handle_commit_edits)
-        self.command_bus.register(RefineTranscriptIntent, self._handle_refine_transcript)
+        self.command_bus.register(
+            RefineTranscriptIntent, self._handle_refine_transcript
+        )
 
     def _handle_begin_recording(self, intent) -> None:
         if self._is_recording or not self.audio_service:
@@ -266,9 +273,11 @@ class ApplicationCoordinator:
     def _handle_toggle_recording(self, intent) -> None:
         if self._is_recording:
             from src.core.intents.definitions import StopRecordingIntent
+
             self.command_bus.dispatch(StopRecordingIntent())
         else:
             from src.core.intents.definitions import BeginRecordingIntent
+
             self.command_bus.dispatch(BeginRecordingIntent())
 
     def _handle_delete_transcript(self, intent) -> None:
@@ -293,10 +302,13 @@ class ApplicationCoordinator:
             self.event_bus.emit("refinement_error", {"message": "Transcript not found"})
             return
 
-        self.event_bus.emit("refinement_started", {
-            "transcript_id": intent.transcript_id,
-            "level": intent.level,
-        })
+        self.event_bus.emit(
+            "refinement_started",
+            {
+                "transcript_id": intent.transcript_id,
+                "level": intent.level,
+            },
+        )
 
         def do_refine():
             try:
@@ -312,17 +324,25 @@ class ApplicationCoordinator:
                     set_current=True,
                 )
 
-                self.event_bus.emit("refinement_complete", {
-                    "transcript_id": intent.transcript_id,
-                    "text": refined,
-                    "level": intent.level,
-                })
+                self.event_bus.emit(
+                    "refinement_complete",
+                    {
+                        "transcript_id": intent.transcript_id,
+                        "text": refined,
+                        "level": intent.level,
+                    },
+                )
             except Exception as e:
-                logger.exception("Refinement failed for transcript %d", intent.transcript_id)
-                self.event_bus.emit("refinement_error", {
-                    "transcript_id": intent.transcript_id,
-                    "message": str(e),
-                })
+                logger.exception(
+                    "Refinement failed for transcript %d", intent.transcript_id
+                )
+                self.event_bus.emit(
+                    "refinement_error",
+                    {
+                        "transcript_id": intent.transcript_id,
+                        "message": str(e),
+                    },
+                )
 
         t = threading.Thread(target=do_refine, daemon=True, name="refine")
         t.start()
@@ -348,9 +368,9 @@ class ApplicationCoordinator:
             self.event_bus.emit("recording_stopped", {"cancelled": False})
 
             if audio_data is None or len(audio_data) == 0:
-                self.event_bus.emit("transcription_error", {
-                    "message": "Recording too short or empty"
-                })
+                self.event_bus.emit(
+                    "transcription_error", {"message": "Recording too short or empty"}
+                )
                 return
 
             # Transcribe
@@ -371,12 +391,14 @@ class ApplicationCoordinator:
             if self._asr_model is None:
                 self._asr_model = create_local_model()
 
-            text, speech_duration_ms = transcribe(audio_data, local_model=self._asr_model)
+            text, speech_duration_ms = transcribe(
+                audio_data, local_model=self._asr_model
+            )
 
             if not text.strip():
-                self.event_bus.emit("transcription_error", {
-                    "message": "No speech detected"
-                })
+                self.event_bus.emit(
+                    "transcription_error", {"message": "No speech detected"}
+                )
                 return
 
             # Store in database
@@ -390,14 +412,19 @@ class ApplicationCoordinator:
                     project_id=self.settings.user.active_project_id,
                 )
 
-            self.event_bus.emit("transcription_complete", {
-                "text": text,
-                "id": transcript.id if transcript else None,
-                "duration_ms": duration_ms,
-                "speech_duration_ms": speech_duration_ms,
-            })
+            self.event_bus.emit(
+                "transcription_complete",
+                {
+                    "text": text,
+                    "id": transcript.id if transcript else None,
+                    "duration_ms": duration_ms,
+                    "speech_duration_ms": speech_duration_ms,
+                },
+            )
 
-            logger.info("Transcription complete: %d chars, %dms", len(text), duration_ms)
+            logger.info(
+                "Transcription complete: %d chars, %dms", len(text), duration_ms
+            )
 
         except Exception as e:
             logger.exception("Transcription failed")
@@ -408,6 +435,7 @@ class ApplicationCoordinator:
     def _on_hotkey(self) -> None:
         """Callback from input handler when activation key is pressed."""
         from src.core.intents.definitions import ToggleRecordingIntent
+
         self.command_bus.dispatch(ToggleRecordingIntent())
 
     def _check_onboarding(self) -> None:
@@ -429,10 +457,13 @@ class ApplicationCoordinator:
         model_path = ResourceManager.get_user_cache_dir("models") / asr.filename
         if not model_path.is_file():
             logger.info("Onboarding: ASR model not downloaded (%s)", asr.filename)
-            self.event_bus.emit("onboarding_required", {
-                "reason": "model_not_downloaded",
-                "model": asr.filename,
-            })
+            self.event_bus.emit(
+                "onboarding_required",
+                {
+                    "reason": "model_not_downloaded",
+                    "model": asr.filename,
+                },
+            )
         else:
             logger.info("ASR model ready: %s", model_path)
 
@@ -440,6 +471,7 @@ class ApplicationCoordinator:
 
     def _start_api_server(self) -> None:
         """Start the Litestar API server in a background thread."""
+
         def run_server():
             try:
                 import uvicorn
@@ -455,7 +487,9 @@ class ApplicationCoordinator:
             except Exception:
                 logger.exception("API server failed")
 
-        self._server_thread = threading.Thread(target=run_server, daemon=True, name="api-server")
+        self._server_thread = threading.Thread(
+            target=run_server, daemon=True, name="api-server"
+        )
         self._server_thread.start()
         logger.info("API server starting on http://127.0.0.1:18900")
 
@@ -488,7 +522,9 @@ class ApplicationCoordinator:
         except Exception:
             logger.exception("pywebview failed to start")
             # Fallback: keep running headless (API server still active)
-            logger.info("Running in headless mode (API server at http://127.0.0.1:18900)")
+            logger.info(
+                "Running in headless mode (API server at http://127.0.0.1:18900)"
+            )
             self._shutdown_event.wait()
 
     def toggle_mini_widget(self) -> None:

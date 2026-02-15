@@ -108,7 +108,13 @@ class RefinementEngine:
         )
 
         # Truncate at leaked end tokens
-        for marker in ["<|im_end|>", "<|eot_id|>", "<|endoftext|>", "</s>", "<|im_start|>"]:
+        for marker in [
+            "<|im_end|>",
+            "<|eot_id|>",
+            "<|endoftext|>",
+            "</s>",
+            "<|im_start|>",
+        ]:
             if marker in content:
                 content = content.split(marker)[0]
 
@@ -292,7 +298,8 @@ Input:
 
         logger.debug(
             "Refining ~%d estimated tokens with limit of %d new tokens.",
-            input_count, max_new_tokens,
+            input_count,
+            max_new_tokens,
         )
 
         response = self.llm.create_chat_completion(

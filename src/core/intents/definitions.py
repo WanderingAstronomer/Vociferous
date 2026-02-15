@@ -7,7 +7,7 @@ They carry no behavior — handlers are registered in the CommandBus.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum, auto
 
 from src.core.intents import InteractionIntent

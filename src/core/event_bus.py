@@ -19,6 +19,7 @@ EventHandler = Callable[[dict[str, Any]], None]
 @dataclass(frozen=True, slots=True)
 class Event:
     """A typed event with arbitrary payload."""
+
     type: str
     data: dict[str, Any] = field(default_factory=dict)
 

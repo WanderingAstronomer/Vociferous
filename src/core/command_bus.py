@@ -26,7 +26,9 @@ class CommandBus:
     def __init__(self) -> None:
         self._handlers: dict[type[InteractionIntent], IntentHandler] = {}
 
-    def register(self, intent_type: type[InteractionIntent], handler: IntentHandler) -> None:
+    def register(
+        self, intent_type: type[InteractionIntent], handler: IntentHandler
+    ) -> None:
         """Register a handler for an intent type."""
         self._handlers[intent_type] = handler
 

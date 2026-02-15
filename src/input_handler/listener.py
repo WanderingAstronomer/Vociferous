@@ -115,9 +115,7 @@ class KeyListener:
                 logger.info(f"Started input backend: {type(backend).__name__}")
                 return
             except Exception as e:
-                logger.warning(
-                    f"Backend {type(backend).__name__} failed to start: {e}"
-                )
+                logger.warning(f"Backend {type(backend).__name__} failed to start: {e}")
                 try:
                     backend.stop()
                 except Exception:

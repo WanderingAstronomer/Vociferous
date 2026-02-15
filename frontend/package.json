@@ -7,12 +7,17 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "format": "prettier --write \"src/**/*.{ts,svelte,css}\" \"*.html\"",
+    "format:check": "prettier --check \"src/**/*.{ts,svelte,css}\" \"*.html\""
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@tailwindcss/vite": "^4.1.18",
     "@tsconfig/svelte": "^5.0.4",
+    "@types/node": "^25.2.3",
+    "prettier": "^3.8.1",
+    "prettier-plugin-svelte": "^3.4.1",
     "svelte": "^5.28.1",
     "svelte-check": "^4.1.6",
     "tailwindcss": "^4.1.18",

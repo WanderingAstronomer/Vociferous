@@ -50,7 +50,7 @@ def list_models():
         status = "INSTALLED" if path.exists() else "MISSING"
         print(f"{model_id:<25} {model.name:<30} {model.size_mb}MB{'':<5} {status:<10}")
 
-    print(f"\n=== SLM Models (llama.cpp GGUF) ===")
+    print("\n=== SLM Models (llama.cpp GGUF) ===")
     print(f"{'ID':<25} {'Name':<30} {'Size':<10} {'Status':<10}")
     print("-" * 75)
     for model_id, model in SLM_MODELS.items():
