@@ -1,0 +1,70 @@
+# Vociferous — Docker Compose
+#
+# Usage:
+#   docker compose up                   # Wayland (default)
+#   docker compose --profile gpu up     # Wayland + NVIDIA GPU
+#
+# Prerequisites:
+#   - Wayland or X11 display server running
+#   - PulseAudio or PipeWire (with PulseAudio compat) for microphone
+#   - For GPU: nvidia-container-toolkit installed
+
+services:
+  vociferous:
+    build: .
+    container_name: vociferous
+    restart: unless-stopped
+
+    environment:
+      # Display — Wayland first, X11 fallback
+      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
+      - XDG_RUNTIME_DIR=/tmp/xdg
+      - GDK_BACKEND=wayland,x11
+      - DISPLAY=${DISPLAY:-:0}
+      # PulseAudio
+      - PULSE_SERVER=unix:${XDG_RUNTIME_DIR:-/run/user/1000}/pulse/native
+
+    volumes:
+      # Wayland socket
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}/${WAYLAND_DISPLAY:-wayland-0}:/tmp/xdg/${WAYLAND_DISPLAY:-wayland-0}:ro
+      # X11 socket (fallback)
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # PulseAudio socket (microphone access)
+      - ${XDG_RUNTIME_DIR:-/run/user/1000}/pulse:/run/user/1000/pulse:ro
+      # Persist application data
+      - vociferous-config:/root/.config/vociferous
+      - vociferous-data:/root/.local/share/vociferous
+      - vociferous-cache:/root/.cache/vociferous
+
+    # Audio devices
+    devices:
+      - /dev/snd:/dev/snd
+
+    # Input device access for global hotkeys (evdev)
+    group_add:
+      - audio
+      - input
+
+    # Networking — host mode for D-Bus and PulseAudio connectivity
+    network_mode: host
+    ipc: host
+
+  # ── GPU variant (activate with: docker compose --profile gpu up) ──
+  vociferous-gpu:
+    extends:
+      service: vociferous
+    container_name: vociferous-gpu
+    profiles:
+      - gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+
+volumes:
+  vociferous-config:
+  vociferous-data:
+  vociferous-cache:

@@ -1,0 +1,49 @@
+# Virtual environment
+.venv/
+
+# Git
+.git/
+.gitignore
+
+# IDE / Editor
+.vscode/
+.cursor/
+.idea/
+*.swp
+*.swo
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Docker (avoid recursive context)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Frontend build output (rebuilt in stage 1)
+frontend/node_modules/
+frontend/dist/
+
+# Testing / dev artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Documentation (not needed in image)
+docs/
+*.md
+LICENSE
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
