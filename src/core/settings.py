@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings
 
 from src.core.resource_manager import ResourceManager
@@ -29,16 +29,17 @@ logger = logging.getLogger(__name__)
 class ModelSettings(BaseModel):
     """ASR model configuration."""
 
+    model_config = ConfigDict(frozen=True)
+
     model: str = "large-v3-turbo-q5_0"
     device: str = "auto"
     language: str = "en"
 
-    class Config:
-        frozen = True
-
 
 class RecordingSettings(BaseModel):
     """Recording and input configuration."""
+
+    model_config = ConfigDict(frozen=True)
 
     activation_key: str = "alt_right"
     input_backend: str = "auto"
@@ -47,34 +48,31 @@ class RecordingSettings(BaseModel):
     silence_duration_ms: int = 900
     min_duration_ms: int = 100
 
-    class Config:
-        frozen = True
-
 
 class UserSettings(BaseModel):
     """User identity and preferences."""
+
+    model_config = ConfigDict(frozen=True)
 
     name: str = ""
     onboarding_completed: bool = False
     active_project_id: int | None = None
 
-    class Config:
-        frozen = True
-
 
 class LoggingSettings(BaseModel):
     """Logging configuration."""
+
+    model_config = ConfigDict(frozen=True)
 
     level: str = "INFO"
     console_echo: bool = True
     structured_output: bool = False
 
-    class Config:
-        frozen = True
-
 
 class VisualizerSettings(BaseModel):
     """Audio visualizer configuration."""
+
+    model_config = ConfigDict(frozen=True)
 
     type: str = "bars"
     style: str = "interstellar"
@@ -87,41 +85,35 @@ class VisualizerSettings(BaseModel):
     noise_reduction: float = 0.77
     gate_aggression: float = 0.0
 
-    class Config:
-        frozen = True
-
 
 class VoiceCalibrationSettings(BaseModel):
     """Voice calibration results (computed, not user-set)."""
+
+    model_config = ConfigDict(frozen=True)
 
     fundamental_freq: float = 0.0
     freq_mean: float = 0.0
     energy_95th: float = 0.0
 
-    class Config:
-        frozen = True
-
 
 class OutputSettings(BaseModel):
     """Text output configuration."""
 
-    add_trailing_space: bool = True
+    model_config = ConfigDict(frozen=True)
 
-    class Config:
-        frozen = True
+    add_trailing_space: bool = True
 
 
 class RefinementLevel(BaseModel):
     """Single refinement level definition."""
+
+    model_config = ConfigDict(frozen=True)
 
     name: str
     role: str
     permitted: list[str] = Field(default_factory=list)
     prohibited: list[str] = Field(default_factory=list)
     directive: str = ""
-
-    class Config:
-        frozen = True
 
 
 class RefinementSettings(BaseModel):
@@ -216,9 +208,6 @@ class RefinementSettings(BaseModel):
         "Produce no preamble, explanation, metadata, or additional commentary. "
         "Output exclusively the message that will be displayed to the user."
     )
-
-    class Config:
-        frozen = True
 
 
 # --- Main Settings ---

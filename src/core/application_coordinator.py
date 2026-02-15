@@ -53,6 +53,10 @@ class ApplicationCoordinator:
         self._is_recording = False
         self._recording_stop = threading.Event()
 
+        # Window references
+        self._main_window = None
+        self._mini_window = None
+
         self._server_thread: threading.Thread | None = None
 
     def start(self) -> None:
@@ -94,7 +98,11 @@ class ApplicationCoordinator:
         # 7. Start API server in background thread
         self._start_api_server()
 
-        # 8. Open pywebview window (blocks main thread)
+        # 8. Check first-run / onboarding
+        if not self.settings.user.onboarding_completed:
+            self._check_onboarding()
+
+        # 9. Open pywebview window (blocks main thread)
         self._open_window()
 
         logger.info("Vociferous shutdown complete.")
@@ -402,6 +410,32 @@ class ApplicationCoordinator:
         from src.core.intents.definitions import ToggleRecordingIntent
         self.command_bus.dispatch(ToggleRecordingIntent())
 
+    def _check_onboarding(self) -> None:
+        """
+        Check if required models are available for first-run users.
+
+        Emits an onboarding event so the frontend can guide the user
+        through model provisioning on first launch.
+        """
+        from src.core.model_registry import get_asr_model
+        from src.core.resource_manager import ResourceManager
+
+        asr = get_asr_model(self.settings.model.model)
+        if asr is None:
+            logger.info("Onboarding: no ASR model configured")
+            self.event_bus.emit("onboarding_required", {"reason": "no_asr_model"})
+            return
+
+        model_path = ResourceManager.get_user_cache_dir("models") / asr.filename
+        if not model_path.is_file():
+            logger.info("Onboarding: ASR model not downloaded (%s)", asr.filename)
+            self.event_bus.emit("onboarding_required", {
+                "reason": "model_not_downloaded",
+                "model": asr.filename,
+            })
+        else:
+            logger.info("ASR model ready: %s", model_path)
+
     # --- Server + Window ---
 
     def _start_api_server(self) -> None:
@@ -430,16 +464,46 @@ class ApplicationCoordinator:
         try:
             import webview
 
-            window = webview.create_window(
+            self._main_window = webview.create_window(
                 title="Vociferous",
                 url="http://127.0.0.1:18900",
                 width=1200,
                 height=800,
                 min_size=(800, 600),
             )
+
+            # Pre-create the mini widget window (hidden initially)
+            self._mini_window = webview.create_window(
+                title="Vociferous Mini",
+                url="http://127.0.0.1:18900/mini.html",
+                width=160,
+                height=56,
+                on_top=True,
+                frameless=True,
+                transparent=True,
+                hidden=True,
+            )
+
             webview.start(gui="gtk", debug=False)
         except Exception:
             logger.exception("pywebview failed to start")
             # Fallback: keep running headless (API server still active)
             logger.info("Running in headless mode (API server at http://127.0.0.1:18900)")
             self._shutdown_event.wait()
+
+    def toggle_mini_widget(self) -> None:
+        """Toggle between full UI and mini floating widget."""
+        try:
+            if self._main_window is None or self._mini_window is None:
+                return
+
+            if self._mini_window.hidden:
+                # Switch to mini: hide main, show mini
+                self._main_window.hide()
+                self._mini_window.show()
+            else:
+                # Switch to full: hide mini, show main
+                self._mini_window.hide()
+                self._main_window.show()
+        except Exception:
+            logger.exception("Failed to toggle mini widget")

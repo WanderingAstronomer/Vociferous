@@ -21,6 +21,7 @@ from litestar.response import Response
 from litestar.static_files import StaticFilesConfig
 
 from src.core.resource_manager import ResourceManager
+from src.core.settings import get_settings
 
 if TYPE_CHECKING:
     from src.core.application_coordinator import ApplicationCoordinator
@@ -243,6 +244,22 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             "transcripts": coordinator.db.transcript_count() if coordinator.db else 0,
         }
 
+    # --- Onboarding ---
+
+    @post("/api/onboarding/complete")
+    async def complete_onboarding() -> dict:
+        from src.core.settings import update_settings
+        update_settings(user={"onboarding_completed": True})
+        coordinator.settings = get_settings()
+        return {"status": "ok"}
+
+    # --- Mini widget toggle ---
+
+    @post("/api/mini-widget/toggle")
+    async def toggle_mini_widget() -> dict:
+        coordinator.toggle_mini_widget()
+        return {"status": "ok"}
+
     # --- Intent dispatch via POST ---
 
     @post("/api/intents")
@@ -301,6 +318,8 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             get_config, update_config,
             list_models,
             health,
+            complete_onboarding,
+            toggle_mini_widget,
             dispatch_intent,
         ],
         cors_config=CORSConfig(
@@ -336,6 +355,7 @@ def _wire_event_bridge(coordinator: ApplicationCoordinator, ws_manager: Connecti
         "transcript_deleted",
         "config_updated",
         "engine_status",
+        "onboarding_required",
     ]
 
     for event_type in event_types:
