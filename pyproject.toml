@@ -1,46 +1,33 @@
+[project]
+name = "vociferous"
+version = "4.0.0-dev"
+description = "Linux-native speech-to-text with offline transcription and SLM refinement"
+requires-python = ">=3.12"
+license = "MIT"
+
+[project.scripts]
+vociferous = "src.main:main"
+
 [tool.ruff]
-# Python 3.12 for onnxruntime support
 target-version = "py312"
 
 [tool.ruff.lint]
-# Allow single-letter variable names for keyboard key enums
 extend-ignore = ["E741"]
 
 [tool.ruff.lint.per-file-ignores]
-# Allow unused imports in test files for import-testing patterns
 "tests/*.py" = ["F401"]
-
-# Stylesheet multiline string has intentional blank lines
-"src/ui/main_window.py" = ["W293"]
-# Class constant doesn't need ClassVar annotation
-"src/ui/settings_dialog.py" = ["RUF012"]
 
 [tool.mypy]
 python_version = "3.12"
 explicit_package_bases = true
 namespace_packages = true
 files = ["src", "tests"]
-exclude = ["scripts"]
-
-# Disable errors for missing imports (focus on actual type issues)
+exclude = ["scripts", "frontend"]
 ignore_missing_imports = true
-
-# Be less strict with optional checking for Qt code (too many false positives)
 strict_optional = false
-
-# Warn about unused ignores
 warn_unused_ignores = true
-
-# Warn about redundant casts
 warn_redundant_casts = true
-
-# Show error codes
 show_error_codes = true
-
-# Disable specific checks that are problematic with PyQt6
-[[tool.mypy.overrides]]
-module = "src.ui.*"
-disable_error_code = ["union-attr", "override", "no-redef", "attr-defined", "assignment", "method-assign"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -54,8 +41,5 @@ filterwarnings = [
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "interactive: marks tests that require user interaction",
     "integration: marks tests that test multiple components together",
-    "ui_dependent: marks tests requiring Qt display/widgets (Tier 2)",
-    "system: marks tests that validate system environment (Tier 3)",
 ]

@@ -3,14 +3,16 @@
   import { onMount, onDestroy } from 'svelte';
   import TranscribeView from './views/TranscribeView.svelte';
   import HistoryView from './views/HistoryView.svelte';
+  import SearchView from './views/SearchView.svelte';
   import SettingsView from './views/SettingsView.svelte';
 
-  type View = 'transcribe' | 'history' | 'settings';
+  type View = 'transcribe' | 'history' | 'search' | 'settings';
   let currentView: View = $state('transcribe');
 
   const navItems: { id: View; label: string; icon: string }[] = [
     { id: 'transcribe', label: 'Transcribe', icon: '🎙' },
     { id: 'history', label: 'History', icon: '📋' },
+    { id: 'search', label: 'Search', icon: '🔍' },
     { id: 'settings', label: 'Settings', icon: '⚙' },
   ];
 
@@ -47,6 +49,8 @@
       <TranscribeView />
     {:else if currentView === 'history'}
       <HistoryView />
+    {:else if currentView === 'search'}
+      <SearchView />
     {:else if currentView === 'settings'}
       <SettingsView />
     {/if}
