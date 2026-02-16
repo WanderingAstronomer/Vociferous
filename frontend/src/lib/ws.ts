@@ -2,6 +2,8 @@
  * Vociferous WebSocket client for real-time events.
  */
 
+import type { WSEventMap, WSEventType, TypedEventHandler } from "./events";
+
 export type EventHandler = (data: unknown) => void;
 
 class WSClient {
@@ -47,6 +49,12 @@ class WSClient {
         }
     }
 
+    /**
+     * Subscribe to a typed WebSocket event.
+     * Returns an unsubscribe function.
+     */
+    on<T extends WSEventType>(type: T, handler: TypedEventHandler<T>): () => void;
+    on(type: string, handler: EventHandler): () => void;
     on(type: string, handler: EventHandler): () => void {
         if (!this.handlers.has(type)) {
             this.handlers.set(type, new Set());

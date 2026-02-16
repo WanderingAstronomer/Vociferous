@@ -11,7 +11,7 @@ Verifies:
 
 import pytest
 
-from src.database.db import TranscriptDB, Transcript, TranscriptVariant, Project
+from src.database.db import Project, Transcript, TranscriptDB, TranscriptVariant
 
 
 @pytest.fixture
@@ -99,6 +99,29 @@ class TestVariants:
         fetched = db.get_transcript(t.id)
         # No variant set → falls back to normalized_text
         assert fetched.text == fetched.normalized_text
+
+    def test_delete_variant(self, db: TranscriptDB):
+        t = db.add_transcript(raw_text="Original", duration_ms=100)
+        v1 = db.add_variant(t.id, "refined", "First refinement")
+        v2 = db.add_variant(t.id, "refined", "Second refinement")
+
+        assert db.delete_variant(t.id, v2.id) is True
+        fetched = db.get_transcript(t.id)
+        assert len(fetched.variants) == 2  # raw + v1
+
+    def test_delete_current_variant_resets_to_latest(self, db: TranscriptDB):
+        t = db.add_transcript(raw_text="Original", duration_ms=100)
+        v1 = db.add_variant(t.id, "refined", "First", set_current=True)
+        v2 = db.add_variant(t.id, "refined", "Second", set_current=True)
+
+        # Delete the current (v2) — should reset to v1
+        db.delete_variant(t.id, v2.id)
+        fetched = db.get_transcript(t.id)
+        assert fetched.current_variant_id == v1.id
+
+    def test_delete_nonexistent_variant_returns_false(self, db: TranscriptDB):
+        t = db.add_transcript(raw_text="Original", duration_ms=100)
+        assert db.delete_variant(t.id, 99999) is False
 
 
 class TestProjects:

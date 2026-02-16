@@ -15,11 +15,11 @@ import pytest
 
 from src.core.settings import (
     VociferousSettings,
-    init_settings,
     get_settings,
+    init_settings,
+    reset_for_tests,
     save_settings,
     update_settings,
-    reset_for_tests,
 )
 
 
@@ -59,10 +59,6 @@ class TestDefaults:
         assert len(s.refinement.levels) == 5
         assert 0 in s.refinement.levels
         assert 4 in s.refinement.levels
-
-    def test_default_onboarding_false(self):
-        s = VociferousSettings()
-        assert s.user.onboarding_completed is False
 
     def test_default_active_project_none(self):
         s = VociferousSettings()

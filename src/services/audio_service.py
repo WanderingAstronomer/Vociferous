@@ -14,7 +14,7 @@ import sounddevice as sd
 import webrtcvad
 from numpy.typing import NDArray
 
-from src.core_runtime.constants import FlowTiming
+from src.core.constants import FlowTiming
 from src.core.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -251,7 +251,7 @@ class AudioService:
 
             except Exception:
                 # Don't let exceptions bubble up to C-layer (PortAudio)
-                pass
+                logger.debug("audio_callback error", exc_info=True)
 
         try:
             stream = sd.InputStream(

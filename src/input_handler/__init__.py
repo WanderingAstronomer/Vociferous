@@ -21,6 +21,7 @@ __all__ = [
 
 def create_listener(
     callback: Callable[[], None],
+    deactivate_callback: Callable[[], None] | None = None,
     activation_key: str | None = None,
     backend: str | None = None,
 ) -> KeyListener:
@@ -29,6 +30,8 @@ def create_listener(
 
     Args:
         callback: Function to call when the activation hotkey is pressed.
+        deactivate_callback: Function to call when the activation hotkey is released
+            (needed for hold-to-record mode).
         activation_key: Override for the activation key (uses settings default if None).
         backend: Override for the input backend (uses settings default if None).
 
@@ -37,6 +40,8 @@ def create_listener(
     """
     listener = KeyListener()
     listener.add_callback("on_activate", callback)
+    if deactivate_callback is not None:
+        listener.add_callback("on_deactivate", deactivate_callback)
 
     # Override activation key if provided
     if activation_key is not None:

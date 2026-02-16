@@ -65,7 +65,11 @@ class TestCommandBus:
 
     def test_handler_exception_does_not_propagate(self):
         bus = CommandBus()
-        bus.register(_TestIntent, lambda i: (_ for _ in ()).throw(ValueError("boom")))
+
+        def _exploding_handler(intent: _TestIntent) -> None:
+            raise ValueError("boom")
+
+        bus.register(_TestIntent, _exploding_handler)
         # Should not raise — but returns False because handler failed
         result = bus.dispatch(_TestIntent())
         assert result is False

@@ -1,38 +1,330 @@
 @import "tailwindcss";
 
-/* Vociferous Design Tokens */
+/* ==========================================================================
+   Vociferous Design System
+   Ported from PyQt6 constants: colors.py, typography.py, spacing.py, dimensions.py
+   ========================================================================== */
+
 :root {
-    --color-bg-primary: #0a0a0a;
-    --color-bg-secondary: #171717;
-    --color-bg-tertiary: #262626;
-    --color-text-primary: #f5f5f5;
-    --color-text-secondary: #a3a3a3;
-    --color-text-muted: #737373;
-    --color-accent: #6366f1;
-    --color-accent-hover: #818cf8;
-    --color-danger: #ef4444;
-    --color-success: #22c55e;
-    --color-warning: #f59e0b;
-    --color-border: #404040;
-    --radius: 0.5rem;
+    /* ======================================================================
+       COLOR PALETTE — 10-shade families
+       Lower index = lighter, higher index = darker
+       ====================================================================== */
+
+    /* Grays */
+    --gray-0: #ffffff;
+    --gray-1: #e0e0e0;
+    --gray-2: #d4d4d4;
+    --gray-3: #bbbbbb;
+    --gray-4: #888888;
+    --gray-5: #707070;
+    --gray-6: #4c4c4c;
+    --gray-7: #3c3c3c;
+    --gray-8: #2a2a2a;
+    --gray-9: #1e1e1e;
+
+    /* Blues */
+    --blue-0: #e6f0fa;
+    --blue-1: #cce0f5;
+    --blue-2: #99c2ed;
+    --blue-3: #6db3e8;
+    --blue-4: #5a9fd4;
+    --blue-5: #4a8ac0;
+    --blue-6: #3d4f5f;
+    --blue-7: #2d5a7b;
+    --blue-8: #2d3d4d;
+    --blue-9: #1a252e;
+
+    /* Greens */
+    --green-0: #e6fae6;
+    --green-1: #ccf5cc;
+    --green-2: #a8e6a8;
+    --green-3: #7ee37e;
+    --green-4: #5bc95f;
+    --green-5: #4caf50;
+    --green-6: #3e7d3e;
+    --green-7: #3d8b40;
+    --green-8: #2a522a;
+    --green-9: #1a351a;
+
+    /* Reds */
+    --red-4: #ff8585;
+    --red-5: #ff6b6b;
+    --red-7: #cc5656;
+    --red-8: #7a3535;
+    --red-9: #5a2d2d;
+    --danger-bright: #ff5555;
+
+    /* Oranges */
+    --orange-4: #ffb733;
+    --orange-5: #ffa500;
+    --orange-7: #cc8400;
+
+    /* Purples */
+    --purple-4: #9d46f0;
+    --purple-5: #8a2be2;
+    --purple-7: #5e1d9b;
+    --purple-9: #2a0a44;
+
+    /* ======================================================================
+       SEMANTIC TOKENS — Surface, text, and interactive colors
+       ====================================================================== */
+
+    /* Shell (title bar, icon rail) */
+    --shell-bg: var(--gray-9);
+    --shell-border: var(--gray-7);
+
+    /* Content surfaces */
+    --surface-primary: var(--gray-9);
+    --surface-secondary: var(--gray-8);
+    --surface-tertiary: var(--gray-7);
+    --surface-border: var(--blue-4);
+
+    /* Text hierarchy */
+    --text-primary: var(--gray-2);
+    --text-secondary: var(--gray-4);
+    --text-tertiary: var(--gray-5);
+
+    /* Accent (blue) */
+    --accent: var(--blue-4);
+    --accent-hover: var(--blue-3);
+    --accent-muted: var(--blue-6);
+    --accent-surface: var(--blue-9);
+
+    /* Status */
+    --color-danger: var(--red-5);
+    --color-danger-surface: var(--red-9);
+    --color-success: var(--green-5);
+    --color-success-surface: var(--green-9);
+    --color-warning: var(--orange-5);
+
+    /* Overlays */
+    --hover-overlay: rgba(255, 255, 255, 0.08);
+    --hover-overlay-blue: rgba(59, 130, 246, 0.08);
+    --overlay-backdrop: rgba(0, 0, 0, 0.5);
+
+    /* Project palette */
+    --project-ocean: var(--blue-7);
+    --project-forest: var(--green-7);
+    --project-goldenrod: var(--orange-7);
+    --project-amethyst: var(--purple-7);
+    --project-brick: var(--red-8);
+    --project-teal: var(--blue-4);
+
+    /* ======================================================================
+       TYPOGRAPHY — 7-step scale from typography.py
+       ====================================================================== */
+
+    --font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+        system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace,
+        monospace;
+
+    /* Size scale — bumped for readability (old: 11/13/16/20/24/32/48) */
+    --text-xs: 13px;
+    --text-sm: 14px;
+    --text-base: 16px;
+    --text-md: 22px;
+    --text-lg: 26px;
+    --text-xl: 32px;
+    --text-xxl: 48px;
+
+    /* Weights */
+    --weight-normal: 400;
+    --weight-emphasis: 600;
+
+    /* Line heights */
+    --leading-tight: 1.2;
+    --leading-normal: 1.5;
+    --leading-relaxed: 1.65;
+
+    /* ======================================================================
+       SPACING — 8-step scale from spacing.py
+       ====================================================================== */
+
+    --space-0: 4px;
+    --space-1: 8px;
+    --space-2: 12px;
+    --space-3: 16px;
+    --space-4: 24px;
+    --space-5: 32px;
+    --space-6: 48px;
+    --space-7: 64px;
+
+    /* Semantic spacing */
+    --app-outer: var(--space-3);
+    --panel-padding: var(--space-3);
+    --major-gap: var(--space-3);
+    --minor-gap: var(--space-1);
+    --control-gap: var(--space-1);
+    --header-controls-gap: var(--space-4);
+    --controls-content-gap: var(--space-4);
+
+    /* ======================================================================
+       DIMENSIONS — radii, sizes, constraints
+       ====================================================================== */
+
+    /* Border radii scale */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    --radius-xl: 16px;
+
+    /* Icon rail */
+    --rail-width: 142px;
+    --rail-button-height: 80px;
+    --rail-icon-size: 32px;
+
+    /* Toggle switch */
+    --toggle-width: 50px;
+    --toggle-height: 24px;
+    --toggle-radius: 12px;
+    --toggle-circle: 18px;
+    --toggle-circle-margin: 3px;
+
+    /* Button heights */
+    --btn-height-primary: 48px;
+    --btn-height-secondary: 40px;
+    --btn-min-width: 240px;
+
+    /* Content column */
+    --content-min-width: 480px;
+    --content-max-width: 820px;
+    --content-outer-margin: var(--space-2);
+
+    /* ======================================================================
+       TRANSITIONS
+       ====================================================================== */
+
     --transition-fast: 150ms ease;
     --transition-normal: 250ms ease;
+    --transition-slow: 400ms ease;
+
+    /* Legacy compat aliases (used in existing views) */
+    --color-bg-primary: var(--surface-primary);
+    --color-bg-secondary: var(--surface-secondary);
+    --color-bg-tertiary: var(--surface-tertiary);
+    --color-text-primary: var(--text-primary);
+    --color-text-secondary: var(--text-secondary);
+    --color-text-muted: var(--text-tertiary);
+    --color-accent: var(--accent);
+    --color-accent-hover: var(--accent-hover);
+    --color-border: var(--shell-border);
+    --radius: var(--radius-md);
 }
 
-/* Scrollbar styling */
+/* ==========================================================================
+   BASE STYLES
+   ========================================================================== */
+
+html,
+body {
+    font-family: var(--font-family);
+    font-size: var(--text-base);
+    font-weight: var(--weight-normal);
+    line-height: var(--leading-normal);
+    color: var(--text-primary);
+    background: var(--shell-bg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ==========================================================================
+   SCROLLBAR
+   ========================================================================== */
+
 ::-webkit-scrollbar {
     width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-    background: var(--color-bg-secondary);
+    background: var(--surface-secondary);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--color-border);
+    background: var(--shell-border);
     border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-text-muted);
+    background: var(--text-tertiary);
+}
+
+/* ==========================================================================
+   UTILITY CLASSES
+   ========================================================================== */
+
+.text-xs { font-size: var(--text-xs); }
+.text-sm { font-size: var(--text-sm); }
+.text-base { font-size: var(--text-base); }
+.text-md { font-size: var(--text-md); }
+.text-lg { font-size: var(--text-lg); }
+.text-xl { font-size: var(--text-xl); }
+.text-xxl { font-size: var(--text-xxl); }
+
+.font-normal { font-weight: var(--weight-normal); }
+.font-emphasis { font-weight: var(--weight-emphasis); }
+
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-tertiary { color: var(--text-tertiary); }
+.text-accent { color: var(--accent); }
+.text-danger { color: var(--color-danger); }
+.text-success { color: var(--color-success); }
+
+.mono { font-family: var(--font-mono); }
+
+/* ==========================================================================
+   FORM ELEMENTS — Dark theme for native controls
+   ========================================================================== */
+
+select,
+input[type="text"],
+input[type="number"],
+input[type="search"],
+textarea {
+    background-color: var(--surface-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--shell-border);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-family);
+    font-size: var(--text-sm);
+    padding: 6px 12px;
+    outline: none;
+    transition: border-color var(--transition-fast);
+}
+
+select:focus,
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="search"]:focus,
+textarea:focus {
+    border-color: var(--accent);
+}
+
+select:hover,
+input[type="text"]:hover,
+input[type="number"]:hover {
+    border-color: var(--accent);
+}
+
+select option {
+    background-color: var(--gray-9);
+    color: var(--text-primary);
+}
+
+/* Dropdown select appearance override */
+select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+    cursor: pointer;
+}
+
+::placeholder {
+    color: var(--text-tertiary);
 }

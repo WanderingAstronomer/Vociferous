@@ -42,22 +42,31 @@ class EvdevBackend:
         self.evdev = evdev
         self.key_map = self._create_key_map()
 
-        # Initialize input devices
-        self.devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
+        # Initialize input devices — filter to keyboards and key-capable devices
+        all_devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
+        self.devices = [
+            d for d in all_devices
+            if evdev.ecodes.EV_KEY in (d.capabilities() or {})
+        ]
+        # Close devices we won't use
+        for d in all_devices:
+            if d not in self.devices:
+                try:
+                    d.close()
+                except Exception:
+                    pass
+        logger.info(
+            f"Evdev: {len(self.devices)} key-capable devices "
+            f"(of {len(all_devices)} total)"
+        )
+        if not self.devices:
+            raise RuntimeError(
+                "No key-capable input devices found. "
+                "Ensure your user is in the 'input' group: "
+                "sudo usermod -aG input $USER (then re-login)"
+            )
         self.stop_event = threading.Event()
-        self._setup_signal_handler()
         self._start_listening()
-
-    def _setup_signal_handler(self) -> None:
-        """Set up signal handlers for graceful shutdown."""
-        import signal
-
-        def signal_handler(signum, frame):
-            logger.info("Received termination signal. Stopping evdev backend...")
-            self.stop()
-
-        signal.signal(signal.SIGTERM, signal_handler)
-        signal.signal(signal.SIGINT, signal_handler)
 
     def stop(self) -> None:
         """Stop the evdev backend and clean up resources."""

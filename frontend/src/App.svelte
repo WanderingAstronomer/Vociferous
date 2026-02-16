@@ -1,59 +1,124 @@
 <script lang="ts">
     import { ws } from "./lib/ws";
     import { onMount, onDestroy } from "svelte";
+    import { getModels, getConfig } from "./lib/api";
+    import IconRail from "./lib/components/IconRail.svelte";
+    import TitleBar from "./lib/components/TitleBar.svelte";
+    import type { ViewId } from "./lib/components/IconRail.svelte";
     import TranscribeView from "./views/TranscribeView.svelte";
     import HistoryView from "./views/HistoryView.svelte";
     import SearchView from "./views/SearchView.svelte";
     import SettingsView from "./views/SettingsView.svelte";
+    import ProjectsView from "./views/ProjectsView.svelte";
+    import RefineView from "./views/RefineView.svelte";
+    import UserView from "./views/UserView.svelte";
 
-    type View = "transcribe" | "history" | "search" | "settings";
-    let currentView: View = $state("transcribe");
+    let currentView: ViewId = $state("transcribe");
+    let appReady = $state(false);
+    let refinementEnabled = $state(true);
 
-    const navItems: { id: View; label: string; icon: string }[] = [
-        { id: "transcribe", label: "Transcribe", icon: "🎙" },
-        { id: "history", label: "History", icon: "📋" },
-        { id: "search", label: "Search", icon: "🔍" },
-        { id: "settings", label: "Settings", icon: "⚙" },
-    ];
+    let hiddenViews: Set<ViewId> = $derived(refinementEnabled ? new Set() : new Set<ViewId>(["refine"]));
 
-    onMount(() => {
+    const VALID_SCALES = [100, 125, 150, 175, 200];
+
+    function applyUiScale(scale: number): void {
+        const clamped = VALID_SCALES.includes(scale) ? scale : 100;
+        document.documentElement.style.zoom = `${clamped}%`;
+    }
+
+    function handleNavigate(view: ViewId) {
+        currentView = view;
+    }
+
+    let unsubConfigUpdated: (() => void) | null = null;
+
+    onMount(async () => {
         ws.connect();
+
+        // Check ASR model availability + refinement toggle + UI scale
+        try {
+            const [models, config] = await Promise.all([getModels(), getConfig()]);
+            const hasAsr = Object.values(models.asr).some((m: any) => m.downloaded);
+            if (!hasAsr) {
+                currentView = "settings";
+            }
+            refinementEnabled = (config as any)?.refinement?.enabled ?? true;
+            applyUiScale((config as any)?.display?.ui_scale ?? 100);
+        } catch {
+            console.warn("Could not check initial status");
+        }
+
+        // Stay in sync when settings change
+        unsubConfigUpdated = ws.on("config_updated", (data: any) => {
+            if (data?.refinement?.enabled !== undefined) {
+                refinementEnabled = data.refinement.enabled;
+                // If user is on refine view but just disabled it, bounce to transcribe
+                if (!refinementEnabled && currentView === "refine") {
+                    currentView = "transcribe";
+                }
+            }
+            if (data?.display?.ui_scale !== undefined) {
+                applyUiScale(data.display.ui_scale);
+            }
+        });
+
+        appReady = true;
     });
 
     onDestroy(() => {
         ws.disconnect();
+        unsubConfigUpdated?.();
     });
 </script>
 
-<div class="flex h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
-    <!-- Sidebar -->
-    <nav
-        class="w-14 bg-[var(--color-bg-secondary)] border-r border-[var(--color-border)] flex flex-col items-center py-4 gap-2"
-    >
-        {#each navItems as item}
-            <button
-                class="w-10 h-10 rounded-lg flex items-center justify-center text-lg transition-colors duration-[var(--transition-fast)]
-          {currentView === item.id
-                    ? 'bg-[var(--color-accent)] text-white'
-                    : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]'}"
-                title={item.label}
-                onclick={() => (currentView = item.id)}
-            >
-                {item.icon}
-            </button>
-        {/each}
-    </nav>
+<div class="app-root">
+    <TitleBar />
+    <div class="app-shell">
+        {#if !appReady}
+            <!-- Waiting for initial status check -->
+        {:else}
+            <IconRail {currentView} {hiddenViews} onNavigate={handleNavigate} />
 
-    <!-- Main content -->
-    <main class="flex-1 overflow-hidden">
-        {#if currentView === "transcribe"}
-            <TranscribeView />
-        {:else if currentView === "history"}
-            <HistoryView />
-        {:else if currentView === "search"}
-            <SearchView />
-        {:else if currentView === "settings"}
-            <SettingsView />
+            <main class="app-content">
+                {#if currentView === "transcribe"}
+                    <TranscribeView />
+                {:else if currentView === "history"}
+                    <HistoryView />
+                {:else if currentView === "search"}
+                    <SearchView />
+                {:else if currentView === "settings"}
+                    <SettingsView />
+                {:else if currentView === "projects"}
+                    <ProjectsView />
+                {:else if currentView === "refine"}
+                    <RefineView />
+                {:else if currentView === "user"}
+                    <UserView />
+                {/if}
+            </main>
         {/if}
-    </main>
+    </div>
 </div>
+
+<style>
+    .app-root {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+    }
+
+    .app-shell {
+        display: flex;
+        flex: 1;
+        background: var(--shell-bg);
+        color: var(--text-primary);
+        overflow: hidden;
+    }
+
+    .app-content {
+        flex: 1;
+        overflow: hidden;
+        background: var(--surface-secondary);
+    }
+</style>

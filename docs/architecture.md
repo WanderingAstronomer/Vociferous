@@ -26,12 +26,8 @@ flowchart TB
     subgraph Services
         AS[AudioService]
         SR[SLMRuntime]
+        TS[TranscriptionService]
         IH[InputHandler]
-    end
-
-    subgraph Runtime["Subprocess"]
-        EC[EngineClient — IPC]
-        ES[EngineServer — ASR]
     end
 
     subgraph Data
@@ -42,9 +38,8 @@ flowchart TB
     PW --> SV
     LS --> CB
     CB --> AC
-    AC --> AS & SR & IH
-    AC --> EC
-    EC <-->|stdin/stdout IPC| ES
+    AC --> AS & SR & TS & IH
+    TS -->|pywhispercpp in-process| AC
     EB -->|broadcast_threadsafe| CM
     CM -->|WebSocket push| SV
     AC --> DB
@@ -85,15 +80,18 @@ Service → EventBus.emit("event_type", data) → ConnectionManager.broadcast_th
 
 The `EventBus` is thread-safe pub/sub. The API layer's `_wire_event_bridge` subscribes EventBus events to the WebSocket broadcast.
 
-### Transcription (Process IPC)
+### Transcription (In-Process)
 
-ASR inference runs in an **isolated subprocess** to protect UI responsiveness:
+ASR inference runs **in-process** via `pywhispercpp.Model` on a background thread:
 
 ```text
-EngineClient (UI process) ←stdin/stdout PacketTransport→ EngineServer (subprocess)
+ApplicationCoordinator._recording_loop() → transcription_service.transcribe(audio, model)
+    → pywhispercpp.Model.transcribe() → text result
 ```
 
-Messages use CRC32-framed length-prefixed binary protocol. The client spawns the server, performs a handshake, and exposes `start_session()` / `stop_session()`. A watchdog thread monitors heartbeat with a 30s timeout.
+The `pywhispercpp.Model` is loaded once at startup (warm load) and held for the process lifetime. Transcription is called from the recording background thread, so it never blocks the UI or API threads. The model instance is thread-safe for sequential calls.
+
+> **Note:** The `core_runtime/` package is reserved for future subprocess isolation if inference stability or GPU memory management requires process-level separation. Currently empty.
 
 ## Process and Threading Model
 
@@ -101,7 +99,7 @@ Messages use CRC32-framed length-prefixed binary protocol. The client spawns the
 | ----- | ----- | ----- |
 | Main thread | pywebview GTK event loop | Never |
 | API thread | Litestar / uvicorn (async) | Never |
-| ASR subprocess | whisper.cpp inference | Yes (by design) |
+| Recording thread | Audio capture + ASR inference | Yes (by design) |
 | SLM thread | llama.cpp inference | Yes (by design) |
 | Audio callback | sounddevice stream | Real-time |
 | Input listener | evdev / pynput hotkey capture | Blocking read |

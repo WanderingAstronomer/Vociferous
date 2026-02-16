@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 
 # Log file configuration
-LOG_DIR = ResourceManager.get_user_data_dir() / "logs"
+LOG_DIR = ResourceManager.get_user_log_dir()
 LOG_FILE = LOG_DIR / "vociferous.log"
 CRASH_DUMP_DIR = LOG_DIR / "crash_dumps"
 MAX_LOG_SIZE = 5 * 1024 * 1024  # 5 MB
@@ -228,7 +228,11 @@ def _open_path(path: Path) -> bool:
                 stderr=subprocess.DEVNULL,
             )
         elif sys.platform == "darwin":
-            subprocess.Popen(["open", target])
+            subprocess.Popen(
+                ["open", target],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         elif sys.platform == "win32":
             os.startfile(target)  # type: ignore
         else:

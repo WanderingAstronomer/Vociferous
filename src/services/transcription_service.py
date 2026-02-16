@@ -6,17 +6,18 @@ the whisper.cpp C++ library with Python bindings.
 """
 
 import logging
+import re
 import time
 from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
 
-from src.core_runtime.constants import AudioConfig
-from src.core.settings import get_settings
-from src.core.resource_manager import ResourceManager
-from src.core.model_registry import ASR_MODELS, get_asr_model
+from src.core.constants import AudioConfig
 from src.core.exceptions import EngineError
+from src.core.model_registry import ASR_MODELS, get_asr_model
+from src.core.resource_manager import ResourceManager
+from src.core.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +37,7 @@ def _resolve_model_path() -> Path:
     model_path = cache_dir / asr_model.filename
 
     if not model_path.exists():
-        raise EngineError(
-            f"ASR model file not found: {model_path}. "
-            f"Run provisioning to download '{model_id}'."
-        )
+        raise EngineError(f"ASR model file not found: {model_path}. Run provisioning to download '{model_id}'.")
 
     return model_path
 
@@ -53,12 +51,19 @@ def create_local_model():
     from pywhispercpp.model import Model
 
     model_path = _resolve_model_path()
-    logger.info("Loading whisper.cpp model from %s...", model_path)
+    s = get_settings()
+    n_threads = s.model.n_threads
+    logger.info("Loading whisper.cpp model from %s (n_threads=%d)...", model_path, n_threads)
 
     start = time.perf_counter()
 
     try:
-        model = Model(str(model_path))
+        model = Model(
+            str(model_path),
+            n_threads=n_threads,
+            print_realtime=False,
+            print_progress=False,
+        )
     except Exception as e:
         raise EngineError(f"Failed to load whisper.cpp model: {e}") from e
 
@@ -68,9 +73,7 @@ def create_local_model():
     return model
 
 
-def transcribe(
-    audio_data: NDArray[np.int16] | None, local_model=None
-) -> tuple[str, int]:
+def transcribe(audio_data: NDArray[np.int16] | None, local_model=None) -> tuple[str, int]:
     """
     Transcribe audio data to text using pywhispercpp.
 
@@ -94,9 +97,7 @@ def transcribe(
 
     # Convert int16 → float32 (whisper.cpp expects float32 in [-1, 1])
     try:
-        audio_float: NDArray[np.float32] = (
-            audio_data.astype(np.float32) / AudioConfig.INT16_SCALE
-        )
+        audio_float: NDArray[np.float32] = audio_data.astype(np.float32) / AudioConfig.INT16_SCALE
 
         start = time.perf_counter()
 
@@ -110,14 +111,10 @@ def transcribe(
 
         # Estimate speech duration from audio length (pywhispercpp doesn't
         # expose per-segment timestamps in all versions)
-        speech_duration_ms = int(
-            len(audio_data) / AudioConfig.DEFAULT_SAMPLE_RATE * 1000
-        )
+        speech_duration_ms = int(len(audio_data) / AudioConfig.DEFAULT_SAMPLE_RATE * 1000)
 
         elapsed = time.perf_counter() - start
-        logger.info(
-            "Transcription completed in %.2fs (%d segments)", elapsed, len(segments)
-        )
+        logger.info("Transcription completed in %.2fs (%d segments)", elapsed, len(segments))
 
         return post_process_transcription(transcription), speech_duration_ms
 
@@ -126,11 +123,20 @@ def transcribe(
 
 
 def post_process_transcription(transcription: str | None) -> str:
-    """Apply user-configured post-processing."""
+    """Apply user-configured post-processing.
+
+    Normalises whitespace artefacts from segment joining and applies
+    output settings (e.g. trailing space).
+    """
     if not transcription:
         return ""
 
     result = transcription.strip()
+
+    # Ensure a space after sentence-ending punctuation (. ! ? or ellipsis)
+    # when immediately followed by a letter.  Protects decimals (3.14)
+    # because digits don't match [A-Za-z].
+    result = re.sub(r"([.!?]+)([A-Za-z])", r"\1 \2", result)
 
     s = get_settings()
     if s.output.add_trailing_space:

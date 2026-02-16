@@ -12,10 +12,10 @@ import logging
 import threading
 from typing import Callable, Optional
 
-from src.services.slm_types import SLMState
-from src.core.settings import get_settings, update_settings
-from src.core.resource_manager import ResourceManager
 from src.core.model_registry import get_slm_model
+from src.core.resource_manager import ResourceManager
+from src.core.settings import get_settings, update_settings
+from src.services.slm_types import SLMState
 
 try:
     from src.refinement.engine import RefinementEngine
@@ -118,6 +118,8 @@ class SLMRuntime:
                 system_prompt=s.refinement.system_prompt,
                 invariants=s.refinement.invariants,
                 levels=levels,
+                n_gpu_layers=s.refinement.n_gpu_layers,
+                n_ctx=s.refinement.n_ctx,
             )
 
             self.state = SLMState.READY
@@ -130,11 +132,12 @@ class SLMRuntime:
 
     def _unload_model(self) -> None:
         """Force unload of the engine to free VRAM."""
-        if self._engine:
-            logger.info("Unloading SLM engine...")
-            del self._engine
-            self._engine = None
-            gc.collect()
+        with self._lock:
+            if self._engine:
+                logger.info("Unloading SLM engine...")
+                del self._engine
+                self._engine = None
+                gc.collect()
 
     def refine_text(self, text: str, level: int = 1) -> None:
         """Submit text for refinement (runs in background thread)."""
@@ -150,18 +153,18 @@ class SLMRuntime:
 
     def refine_text_sync(self, text: str, level: int = 1) -> str:
         """Synchronous refinement — blocks until complete. Returns refined text."""
-        if not self._engine:
-            raise RuntimeError("Engine not loaded.")
-
-        result = self._engine.refine(text, profile=level)
+        with self._lock:
+            if not self._engine:
+                raise RuntimeError("Engine not loaded.")
+            result = self._engine.refine(text, profile=level)
         return result.content
 
     def _inference_task(self, text: str, level: int) -> None:
         try:
-            if not self._engine:
-                raise RuntimeError("Engine disappeared during inference.")
-
-            result = self._engine.refine(text, profile=level)
+            with self._lock:
+                if not self._engine:
+                    raise RuntimeError("Engine disappeared during inference.")
+                result = self._engine.refine(text, profile=level)
 
             if self._on_text_ready:
                 self._on_text_ready(result.content)

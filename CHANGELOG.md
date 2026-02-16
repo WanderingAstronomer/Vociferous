@@ -15,7 +15,7 @@ Complete architectural rebuild from PyQt6 desktop application to a modern web-na
 
 ### Changed — Stack
 
-- **UI Shell:** PyQt6 → **pywebview** (GTK backend, native Linux window)
+- **UI Shell:** PyQt6 → **pywebview** (GTK on Linux, Cocoa on macOS, EdgeChromium on Windows)
 - **Frontend:** Custom Qt widgets → **Svelte 5** SPA with **Tailwind CSS v4**, built via **Vite 6**
 - **API Layer:** Direct Python calls → **Litestar** REST + WebSocket server on `localhost:18900`
 - **ASR Engine:** faster-whisper (CTranslate2) → **pywhispercpp** (whisper.cpp, GGML models)

@@ -3,8 +3,13 @@ Resource Manager - Authoritative source for path resolution.
 
 This module provides a robust, environment-aware mechanism for locating:
 1. Application Assets (icons, sounds) - via `sys._MEIPASS` or `assets/` relative to root.
-2. User Data (logs, db, config) - via XDG/AppLocal standards.
+2. User Data (logs, db, config) - via platform-appropriate standards.
 3. System Resources - via explicit environment overrides.
+
+Cross-platform path resolution:
+- Linux:   XDG dirs (~/.config, ~/.local/share, ~/.cache)
+- macOS:   ~/Library/Application Support, ~/Library/Caches
+- Windows: %APPDATA%, %LOCALAPPDATA%
 
 It is designed to be a "Pure Library" with no Qt dependencies, usable by
 both the UI and the Headless Engine.
@@ -15,10 +20,12 @@ import sys
 from pathlib import Path
 from typing import Final
 
-# Standard XDG defaults logic is now inline to support environment updates
-pass
+from platformdirs import PlatformDirs
 
 APP_NAME: Final = "vociferous"
+APP_AUTHOR: Final = "vociferous"
+
+_dirs = PlatformDirs(appname=APP_NAME, appauthor=APP_AUTHOR, ensure_exists=True)
 
 
 class ResourceManager:
@@ -37,10 +44,6 @@ class ResourceManager:
             return Path(sys._MEIPASS)  # type: ignore
 
         # Dev mode: file is in src/core/resource_manager.py
-        # Root is 2 levels up (src/core/ -> src/ -> root)
-        # Actually, standard layout is root/src/core.
-        # But wait, assets might be in root/assets/ or src/assets/?
-        # Let's check where this file is: src/core/__file__
         # Project root is parents[2] from here.
         return Path(__file__).resolve().parents[2]
 
@@ -48,16 +51,17 @@ class ResourceManager:
     def get_user_config_dir() -> Path:
         """
         Return the writable user configuration directory.
-        Follows XDG_CONFIG_HOME or ~/.config mapping.
+
+        Resolved per-platform by platformdirs:
+        - Linux:   ~/.config/vociferous
+        - macOS:   ~/Library/Application Support/vociferous
+        - Windows: C:\\Users\\<user>\\AppData\\Roaming\\vociferous
         """
         env_override = os.environ.get("VOCIFEROUS_CONFIG_DIR")
         if env_override:
             path = Path(env_override)
         else:
-            path = (
-                Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-                / APP_NAME
-            )
+            path = _dirs.user_config_path
 
         path.mkdir(parents=True, exist_ok=True)
         return path
@@ -66,16 +70,17 @@ class ResourceManager:
     def get_user_data_dir() -> Path:
         """
         Return the writable user data directory (DBs, history).
-        Follows XDG_DATA_HOME or ~/.local/share mapping.
+
+        Resolved per-platform by platformdirs:
+        - Linux:   ~/.local/share/vociferous
+        - macOS:   ~/Library/Application Support/vociferous
+        - Windows: C:\\Users\\<user>\\AppData\\Local\\vociferous
         """
         env_override = os.environ.get("VOCIFEROUS_DATA_DIR")
         if env_override:
             path = Path(env_override)
         else:
-            path = (
-                Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-                / APP_NAME
-            )
+            path = _dirs.user_data_path
 
         path.mkdir(parents=True, exist_ok=True)
         return path
@@ -84,16 +89,17 @@ class ResourceManager:
     def get_user_cache_dir(subdir: str = "") -> Path:
         """
         Return the writable user cache directory (Models, temp).
-        Follows XDG_CACHE_HOME or ~/.cache mapping.
+
+        Resolved per-platform by platformdirs:
+        - Linux:   ~/.cache/vociferous
+        - macOS:   ~/Library/Caches/vociferous
+        - Windows: C:\\Users\\<user>\\AppData\\Local\\vociferous\\Cache
         """
         env_override = os.environ.get("VOCIFEROUS_CACHE_DIR")
         if env_override:
             base = Path(env_override)
         else:
-            base = (
-                Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-                / APP_NAME
-            )
+            base = _dirs.user_cache_path
 
         if subdir:
             base = base / subdir
@@ -105,15 +111,20 @@ class ResourceManager:
     def get_user_log_dir() -> Path:
         """
         Return the writable user log directory.
-        Usually in cache/logs or state/logs. We map to cache/logs for simplicity.
+
+        Resolved per-platform by platformdirs:
+        - Linux:   ~/.local/state/vociferous/log
+        - macOS:   ~/Library/Logs/vociferous
+        - Windows: C:\\Users\\<user>\\AppData\\Local\\vociferous\\Logs
         """
         env_override = os.environ.get("VOCIFEROUS_LOG_DIR")
         if env_override:
-            return Path(env_override)
+            path = Path(env_override)
+        else:
+            path = _dirs.user_log_path
 
-        # Some linux definitions use XDG_STATE_HOME, but usually logs go to cache or specialized /var/log/
-        # For user apps: ~/.cache/app/logs is common
-        return ResourceManager.get_user_cache_dir() / "logs"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     @staticmethod
     def get_assets_root() -> Path:

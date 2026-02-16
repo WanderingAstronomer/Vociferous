@@ -1,8 +1,8 @@
 import logging
 from collections.abc import Callable
 
-from src.core.settings import get_settings
 from src.core.plugins import PluginLoader
+from src.core.settings import get_settings
 
 from .backends.base import InputBackend
 from .chord import KeyChord
@@ -50,6 +50,7 @@ class KeyListener:
             for instance in self.backends:
                 if isinstance(instance, backend_cls):
                     self.active_backend = instance
+                    self.active_backend.on_input_event = self.on_input_event
                     logger.info(f"Selected configured backend: {preferred_backend}")
                     return
 
@@ -144,6 +145,7 @@ class KeyListener:
             "SHIFT": frozenset({KeyCode.SHIFT_LEFT, KeyCode.SHIFT_RIGHT}),
             "ALT": frozenset({KeyCode.ALT_LEFT, KeyCode.ALT_RIGHT}),
             "META": frozenset({KeyCode.META_LEFT, KeyCode.META_RIGHT}),
+            "SUPER": frozenset({KeyCode.META_LEFT, KeyCode.META_RIGHT}),
         }
 
         keys: set[KeyCode | frozenset[KeyCode]] = set()

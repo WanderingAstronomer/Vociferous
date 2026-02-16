@@ -10,8 +10,8 @@ from src.core.model_registry import (
     ASRModel,
     SLMModel,
     get_asr_model,
-    get_slm_model,
     get_model_catalog,
+    get_slm_model,
 )
 
 
@@ -26,7 +26,7 @@ class TestASRModels:
         assert m.repo == "ggerganov/whisper.cpp"
 
     def test_get_asr_model(self):
-        m = get_asr_model("small-en")
+        m = get_asr_model("large-v3-turbo-q5_0")
         assert m is not None
         assert m.tier == "fast"
 

@@ -32,8 +32,9 @@ class ModelSettings(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     model: str = "large-v3-turbo-q5_0"
-    device: str = "auto"
+    device: str = "auto"  # Legacy field — GPU is compile-time for whisper.cpp
     language: str = "en"
+    n_threads: int = 4
 
 
 class RecordingSettings(BaseModel):
@@ -55,7 +56,6 @@ class UserSettings(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: str = ""
-    onboarding_completed: bool = False
     active_project_id: int | None = None
 
 
@@ -104,6 +104,14 @@ class OutputSettings(BaseModel):
     add_trailing_space: bool = True
 
 
+class DisplaySettings(BaseModel):
+    """Display and UI scaling configuration."""
+
+    model_config = ConfigDict(frozen=True)
+
+    ui_scale: int = 100
+
+
 class RefinementLevel(BaseModel):
     """Single refinement level definition."""
 
@@ -121,9 +129,10 @@ class RefinementSettings(BaseModel):
 
     enabled: bool = True
     model_id: str = "qwen4b"
+    n_gpu_layers: int = -1  # -1 = offload all layers to GPU, 0 = CPU only
+    n_ctx: int = 8192  # Context window size for llama.cpp
     system_prompt: str = (
-        "You are Vociferous Refinement Engine, a high-precision copy editor "
-        "for speech-to-text transcripts."
+        "You are Vociferous Refinement Engine, a high-precision copy editor for speech-to-text transcripts."
     )
     invariants: list[str] = Field(
         default_factory=lambda: [
@@ -229,11 +238,10 @@ class VociferousSettings(BaseSettings):
     user: UserSettings = Field(default_factory=UserSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     visualizer: VisualizerSettings = Field(default_factory=VisualizerSettings)
-    voice_calibration: VoiceCalibrationSettings = Field(
-        default_factory=VoiceCalibrationSettings
-    )
+    voice_calibration: VoiceCalibrationSettings = Field(default_factory=VoiceCalibrationSettings)
     output: OutputSettings = Field(default_factory=OutputSettings)
     refinement: RefinementSettings = Field(default_factory=RefinementSettings)
+    display: DisplaySettings = Field(default_factory=DisplaySettings)
 
     model_config = {
         "env_prefix": "VOCIFEROUS_",
@@ -270,9 +278,7 @@ def init_settings(config_path: Path | str | None = None) -> VociferousSettings:
             data = json.loads(path.read_text("utf-8"))
             _settings = VociferousSettings(**data)
         except Exception as e:
-            logger.warning(
-                "Failed to load settings from %s: %s. Using defaults.", path, e
-            )
+            logger.warning("Failed to load settings from %s: %s. Using defaults.", path, e)
             _settings = VociferousSettings()
     else:
         _settings = VociferousSettings()

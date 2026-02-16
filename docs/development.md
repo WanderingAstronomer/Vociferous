@@ -1,8 +1,17 @@
 # Development Guide
 
+## Platform Support
+
+Vociferous runs natively on:
+
+- **Linux** (Wayland or X11)
+- **macOS** (11.0+)
+- **Windows** (10/11)
+
+Docker containerization is **Linux-only** due to X11/Wayland requirements.
+
 ## Prerequisites
 
-- Linux (Wayland or X11)
 - Python 3.12+
 - Node.js 18+
 - System packages: `build-essential`, `python3-dev`, `libportaudio2`
@@ -76,11 +85,8 @@ src/
     command_bus.py               Intent dispatch (sync, dict-based)
     event_bus.py                 Pub/sub notifications (thread-safe)
     settings.py                  Pydantic Settings (JSON persistence)
+    constants.py                 Audio/timing constants
     intents/                     Intent dataclass definitions
-  core_runtime/
-    server.py                    ASR subprocess (stdin/stdout IPC)
-    client.py                    IPC client for UI process
-    engine.py                    whisper.cpp wrapper
   api/
     app.py                       Litestar REST + WebSocket
   database/
@@ -88,7 +94,7 @@ src/
   services/
     audio_service.py             sounddevice capture + FFT visualization
     slm_runtime.py               llama.cpp lifecycle + inference
-    transcription_service.py     Audio → text pipeline (runs in subprocess)
+    transcription_service.py     Audio → text pipeline (pywhispercpp, in-process)
   input_handler/
     listener.py                  Global hotkey (evdev / pynput)
   provisioning/

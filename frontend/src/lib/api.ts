@@ -63,6 +63,10 @@ export function deleteTranscript(id: number): Promise<{ deleted: boolean }> {
     return request(`/transcripts/${id}`, { method: "DELETE" });
 }
 
+export function deleteVariant(transcriptId: number, variantId: number): Promise<{ deleted: boolean }> {
+    return request(`/transcripts/${transcriptId}/variants/${variantId}`, { method: "DELETE" });
+}
+
 export function searchTranscripts(q: string, limit = 50): Promise<Transcript[]> {
     return request(`/transcripts/search?q=${encodeURIComponent(q)}&limit=${limit}`);
 }
@@ -80,15 +84,29 @@ export function getProjects(): Promise<Project[]> {
     return request("/projects");
 }
 
-export function createProject(name: string, color?: string): Promise<Project> {
+export function createProject(name: string, color?: string, parentId?: number | null): Promise<Project> {
     return request("/projects", {
         method: "POST",
-        body: JSON.stringify({ name, color }),
+        body: JSON.stringify({ name, color, parent_id: parentId ?? null }),
+    });
+}
+
+export function updateProject(
+    id: number,
+    updates: { name?: string; color?: string; parent_id?: number | null },
+): Promise<{ status: string }> {
+    return request(`/projects/${id}`, {
+        method: "PUT",
+        body: JSON.stringify(updates),
     });
 }
 
 export function deleteProject(id: number): Promise<{ deleted: boolean }> {
     return request(`/projects/${id}`, { method: "DELETE" });
+}
+
+export function assignProject(transcriptId: number, projectId: number | null): Promise<{ dispatched: boolean }> {
+    return dispatchIntent("assign_project", { transcript_id: transcriptId, project_id: projectId });
 }
 
 // --- Config ---
@@ -107,10 +125,14 @@ export function updateConfig(updates: Record<string, unknown>): Promise<Record<s
 // --- Models ---
 
 export interface ModelInfo {
+    id: string;
     name: string;
     filename: string;
+    repo: string;
     size_mb: number;
-    repo_id: string;
+    tier: string;
+    downloaded: boolean;
+    quant?: string;
 }
 
 export function getModels(): Promise<{ asr: Record<string, ModelInfo>; slm: Record<string, ModelInfo> }> {
@@ -123,6 +145,17 @@ export function getHealth(): Promise<{ status: string; version: string; transcri
     return request("/health");
 }
 
+export function restartEngine(): Promise<{ status: string }> {
+    return request("/engine/restart", { method: "POST" });
+}
+
+export function downloadModel(modelType: "asr" | "slm", modelId: string): Promise<{ status: string; model_id: string }> {
+    return request("/models/download", {
+        method: "POST",
+        body: JSON.stringify({ model_type: modelType, model_id: modelId }),
+    });
+}
+
 // --- Intent dispatch ---
 
 export function dispatchIntent(type: string, payload: Record<string, unknown> = {}): Promise<{ dispatched: boolean }> {
@@ -130,4 +163,28 @@ export function dispatchIntent(type: string, payload: Record<string, unknown> = 
         method: "POST",
         body: JSON.stringify({ type, ...payload }),
     });
+}
+
+// --- Key Capture ---
+
+export function startKeyCapture(): Promise<{ status: string }> {
+    return request("/keycapture/start", { method: "POST" });
+}
+
+export function stopKeyCapture(): Promise<{ status: string }> {
+    return request("/keycapture/stop", { method: "POST" });
+}
+
+// --- Window control ---
+
+export function minimizeWindow(): Promise<{ status: string }> {
+    return request("/window/minimize", { method: "POST" });
+}
+
+export function maximizeWindow(): Promise<{ status: string }> {
+    return request("/window/maximize", { method: "POST" });
+}
+
+export function closeWindow(): Promise<{ status: string }> {
+    return request("/window/close", { method: "POST" });
 }

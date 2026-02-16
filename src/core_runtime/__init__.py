@@ -1,4 +1,1 @@
-"""
-Core Runtime Package.
-Contains pure-Python (Qt-free) engine components for headless operation.
-"""
+"""Core Runtime Package — reserved for future subprocess ASR isolation."""

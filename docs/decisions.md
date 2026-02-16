@@ -9,16 +9,18 @@ PyQt6 was dropped in v4.0 because:
 - **Licensing friction** — PyQt6's GPL/commercial license conflicts with rapid iteration
 - **Widget maintenance** — 73+ custom Qt widgets were a significant maintenance burden for a solo developer
 - **Web ecosystem** — Svelte + Tailwind provides faster UI development with better tooling
-- **pywebview + GTK** — Native Linux window shell with minimal overhead; WebKitGTK handles rendering
+- **pywebview** — Cross-platform window shell (GTK on Linux, Cocoa on macOS, EdgeChromium on Windows) with minimal overhead
 
-## Why a subprocess for ASR?
+## Why in-process ASR (not a subprocess)?
 
-whisper.cpp inference can take seconds. Running it in-process would freeze the UI. The subprocess model:
+v4.0 uses `pywhispercpp.Model` loaded directly in the main process, with transcription running on a background thread. This replaced the original subprocess IPC design because:
 
-- **Isolation** — ASR crashes don't kill the UI
-- **Responsiveness** — UI thread never blocks on inference
-- **Recovery** — `EngineClient` watchdog detects subprocess death and can restart
-- **Simplicity** — stdin/stdout IPC avoids socket management complexity
+- **Simplicity** — No IPC protocol, no subprocess lifecycle management, no watchdog
+- **Reliability** — `pywhispercpp` wraps whisper.cpp cleanly; crashes are rare and recoverable
+- **Performance** — No serialization overhead for audio data
+- **Background thread** — Inference runs on a dedicated recording thread, never blocking the UI or API
+
+The `core_runtime/` package is reserved for future subprocess isolation if GPU memory pressure or crash recovery demands it.
 
 ## Why CommandBus + EventBus (not just one)?
 

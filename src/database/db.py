@@ -172,9 +172,7 @@ class TranscriptDB:
             (tid, raw_text, ts),
         )
         vid = vcur.lastrowid
-        self._conn.execute(
-            "UPDATE transcripts SET current_variant_id = ? WHERE id = ?", (vid, tid)
-        )
+        self._conn.execute("UPDATE transcripts SET current_variant_id = ? WHERE id = ?", (vid, tid))
         self._conn.commit()
 
         return Transcript(
@@ -205,9 +203,7 @@ class TranscriptDB:
         t.variants = self._get_variants(transcript_id)
         return t
 
-    def recent(
-        self, limit: int = 50, project_id: int | None = None
-    ) -> list[Transcript]:
+    def recent(self, limit: int = 50, project_id: int | None = None) -> list[Transcript]:
         """Get recent transcripts, newest first."""
         if project_id is not None:
             rows = self._conn.execute(
@@ -243,9 +239,7 @@ class TranscriptDB:
 
     def delete_transcript(self, transcript_id: int) -> bool:
         """Delete a transcript and its variants (CASCADE)."""
-        cur = self._conn.execute(
-            "DELETE FROM transcripts WHERE id = ?", (transcript_id,)
-        )
+        cur = self._conn.execute("DELETE FROM transcripts WHERE id = ?", (transcript_id,))
         self._conn.commit()
         return cur.rowcount > 0
 
@@ -308,20 +302,46 @@ class TranscriptDB:
             for r in rows
         ]
 
+    def delete_variant(self, transcript_id: int, variant_id: int) -> bool:
+        """Delete a variant. If it was the current variant, reset to the latest remaining."""
+        # Verify the variant belongs to this transcript
+        row = self._conn.execute(
+            "SELECT id FROM transcript_variants WHERE id = ? AND transcript_id = ?",
+            (variant_id, transcript_id),
+        ).fetchone()
+        if row is None:
+            return False
+
+        self._conn.execute("DELETE FROM transcript_variants WHERE id = ?", (variant_id,))
+
+        # If we just deleted the current variant, point to the latest remaining
+        cur_row = self._conn.execute(
+            "SELECT current_variant_id FROM transcripts WHERE id = ?", (transcript_id,)
+        ).fetchone()
+        if cur_row and cur_row["current_variant_id"] == variant_id:
+            latest = self._conn.execute(
+                "SELECT id FROM transcript_variants WHERE transcript_id = ? ORDER BY created_at DESC LIMIT 1",
+                (transcript_id,),
+            ).fetchone()
+            new_current = latest["id"] if latest else None
+            self._conn.execute(
+                "UPDATE transcripts SET current_variant_id = ? WHERE id = ?",
+                (new_current, transcript_id),
+            )
+
+        self._conn.commit()
+        return True
+
     # --- Projects ---
 
-    def add_project(
-        self, name: str, *, color: str | None = None, parent_id: int | None = None
-    ) -> Project:
+    def add_project(self, name: str, *, color: str | None = None, parent_id: int | None = None) -> Project:
         ts = utc_now()
         cur = self._conn.execute(
             "INSERT INTO projects (name, color, parent_id, created_at) VALUES (?, ?, ?, ?)",
             (name, color, parent_id, ts),
         )
         self._conn.commit()
-        return Project(
-            id=cur.lastrowid, name=name, color=color, parent_id=parent_id, created_at=ts
-        )
+        return Project(id=cur.lastrowid, name=name, color=color, parent_id=parent_id, created_at=ts)
 
     def get_projects(self) -> list[Project]:
         rows = self._conn.execute("SELECT * FROM projects ORDER BY name").fetchall()
@@ -337,7 +357,12 @@ class TranscriptDB:
         ]
 
     def delete_project(self, project_id: int) -> bool:
-        # Unlink transcripts first (don't cascade-delete transcripts)
+        # Re-parent child projects to root (one-level hierarchy)
+        self._conn.execute(
+            "UPDATE projects SET parent_id = NULL WHERE parent_id = ?",
+            (project_id,),
+        )
+        # Unlink transcripts (don't cascade-delete transcripts)
         self._conn.execute(
             "UPDATE transcripts SET project_id = NULL WHERE project_id = ?",
             (project_id,),
@@ -345,6 +370,39 @@ class TranscriptDB:
         cur = self._conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
         self._conn.commit()
         return cur.rowcount > 0
+
+    def get_project(self, project_id: int) -> Project | None:
+        """Fetch a single project by ID."""
+        row = self._conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        if row is None:
+            return None
+        return Project(
+            id=row["id"], name=row["name"], color=row["color"],
+            parent_id=row["parent_id"], created_at=row["created_at"],
+        )
+
+    def update_project(self, project_id: int, *, name: str | None = None, color: str | None = None, parent_id: int | None = ...) -> Project | None:
+        """Update project fields. Pass parent_id=None to move to root. Omit to leave unchanged."""
+        updates: list[str] = []
+        params: list[str | int | None] = []
+        if name is not None:
+            updates.append("name = ?")
+            params.append(name)
+        if color is not None:
+            updates.append("color = ?")
+            params.append(color)
+        if parent_id is not ...:
+            updates.append("parent_id = ?")
+            params.append(parent_id)
+        if not updates:
+            return self.get_project(project_id)
+        params.append(project_id)
+        self._conn.execute(
+            f"UPDATE projects SET {', '.join(updates)} WHERE id = ?",
+            params,
+        )
+        self._conn.commit()
+        return self.get_project(project_id)
 
     def assign_project(self, transcript_id: int, project_id: int | None) -> None:
         """Assign (or unassign) a transcript to a project."""

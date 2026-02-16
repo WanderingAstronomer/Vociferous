@@ -108,3 +108,41 @@ class RefineTranscriptIntent(InteractionIntent):
     level: int = 2
     instructions: str = ""
     source: IntentSource = IntentSource.CONTROLS
+
+
+@dataclass(frozen=True, slots=True)
+class CreateProjectIntent(InteractionIntent):
+    """Create a new project."""
+
+    name: str = ""
+    color: str | None = None
+    parent_id: int | None = None
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class DeleteProjectIntent(InteractionIntent):
+    """Delete a project."""
+
+    project_id: int = 0
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class UpdateProjectIntent(InteractionIntent):
+    """Update a project's name, color, or parent."""
+
+    project_id: int = 0
+    name: str | None = None
+    color: str | None = None
+    parent_id: int | None = None
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class AssignProjectIntent(InteractionIntent):
+    """Assign (or unassign) a transcript to a project."""
+
+    transcript_id: int = 0
+    project_id: int | None = None
+    source: IntentSource = IntentSource.API
