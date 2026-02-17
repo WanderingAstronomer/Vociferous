@@ -10,11 +10,11 @@ Manages the lifecycle of a GGUF-based refinement model:
 import gc
 import logging
 import threading
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from src.core.model_registry import get_slm_model
 from src.core.resource_manager import ResourceManager
-from src.core.settings import get_settings, update_settings
+from src.core.settings import VociferousSettings, update_settings
 from src.services.slm_types import SLMState
 
 try:
@@ -33,10 +33,14 @@ class SLMRuntime:
 
     def __init__(
         self,
+        settings_provider: Callable[[], VociferousSettings],
+        settings_updater: Callable[..., VociferousSettings] = update_settings,
         on_state_changed: Optional[Callable[[SLMState], None]] = None,
         on_error: Optional[Callable[[str], None]] = None,
         on_text_ready: Optional[Callable[[str], None]] = None,
     ) -> None:
+        self._settings_provider = settings_provider
+        self._settings_updater = settings_updater
         self._state = SLMState.DISABLED
         self._engine: Optional[RefinementEngine] = None
         self._lock = threading.Lock()
@@ -74,7 +78,7 @@ class SLMRuntime:
     def _load_model_task(self) -> None:
         """Background task to load the GGUF model."""
         try:
-            s = get_settings()
+            s = self._settings_provider()
             model_id = s.refinement.model_id
 
             if not model_id:
@@ -91,19 +95,16 @@ class SLMRuntime:
 
             if not model_path.exists():
                 raise FileNotFoundError(
-                    f"GGUF model file not found: {model_path}. "
-                    "Please run provisioning to download the model."
+                    f"GGUF model file not found: {model_path}. Please run provisioning to download the model."
                 )
 
             if not RefinementEngine:
-                raise ImportError(
-                    "RefinementEngine not available (llama-cpp-python missing)."
-                )
+                raise ImportError("RefinementEngine not available (llama-cpp-python missing).")
 
             logger.info("Loading SLM from %s...", model_path)
 
             # Build level data from settings
-            levels = {}
+            levels: dict[int | str, dict[str, Any]] = {}
             for idx, level in s.refinement.levels.items():
                 levels[idx] = {
                     "name": level.name,
@@ -139,7 +140,22 @@ class SLMRuntime:
                 self._engine = None
                 gc.collect()
 
-    def refine_text(self, text: str, level: int = 1) -> None:
+    @staticmethod
+    def _temperature_for_level(level: int) -> float:
+        """Return a level-specific sampling temperature.
+
+        Lower levels stay conservative; higher levels allow more rewriting freedom.
+        """
+        table = {
+            0: 0.01,
+            1: 0.08,
+            2: 0.16,
+            3: 0.26,
+            4: 0.38,
+        }
+        return table.get(level, 0.16)
+
+    def refine_text(self, text: str, level: int = 1, instructions: str = "") -> None:
         """Submit text for refinement (runs in background thread)."""
         if self.state != SLMState.READY:
             logger.warning("Refinement requested but SLM not ready.")
@@ -147,24 +163,36 @@ class SLMRuntime:
 
         self.state = SLMState.INFERRING
         t = threading.Thread(
-            target=self._inference_task, args=(text, level), daemon=True
+            target=self._inference_task,
+            args=(text, level, instructions),
+            daemon=True,
         )
         t.start()
 
-    def refine_text_sync(self, text: str, level: int = 1) -> str:
+    def refine_text_sync(self, text: str, level: int = 1, instructions: str = "") -> str:
         """Synchronous refinement — blocks until complete. Returns refined text."""
         with self._lock:
             if not self._engine:
                 raise RuntimeError("Engine not loaded.")
-            result = self._engine.refine(text, profile=level)
+            result = self._engine.refine(
+                text,
+                profile=level,
+                user_instructions=instructions,
+                temperature=self._temperature_for_level(level),
+            )
         return result.content
 
-    def _inference_task(self, text: str, level: int) -> None:
+    def _inference_task(self, text: str, level: int, instructions: str = "") -> None:
         try:
             with self._lock:
                 if not self._engine:
                     raise RuntimeError("Engine disappeared during inference.")
-                result = self._engine.refine(text, profile=level)
+                result = self._engine.refine(
+                    text,
+                    profile=level,
+                    user_instructions=instructions,
+                    temperature=self._temperature_for_level(level),
+                )
 
             if self._on_text_ready:
                 self._on_text_ready(result.content)
@@ -179,12 +207,12 @@ class SLMRuntime:
     def change_model(self, model_id: str) -> None:
         """Change active model and reload runtime."""
         try:
-            update_settings(refinement={"model_id": model_id})
+            self._settings_updater(refinement={"model_id": model_id})
         except Exception:
             logger.exception("Failed to persist new model id to config")
 
         self.disable()
 
-        s = get_settings()
+        s = self._settings_provider()
         if s.refinement.enabled:
             self.enable()

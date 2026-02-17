@@ -50,7 +50,6 @@ def download_model_file(
             repo_id=repo_id,
             filename=filename,
             local_dir=str(target_dir),
-            local_dir_use_symlinks=False,
         )
         logger.info("Downloaded %s -> %s", filename, downloaded)
 

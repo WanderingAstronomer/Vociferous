@@ -51,6 +51,12 @@ export interface RefinementErrorData {
     message: string;
 }
 
+export interface RefinementProgressData {
+    transcript_id: number;
+    message?: string;
+    elapsed_seconds?: number;
+}
+
 export interface TranscriptDeletedData {
     id: number;
 }
@@ -106,6 +112,7 @@ export interface WSEventMap {
     refinement_started: RefinementStartedData;
     refinement_complete: RefinementCompleteData;
     refinement_error: RefinementErrorData;
+    refinement_progress: RefinementProgressData;
     transcript_deleted: TranscriptDeletedData;
     transcript_updated: TranscriptUpdatedData;
     config_updated: ConfigUpdatedData;
@@ -122,3 +129,89 @@ export type WSEventType = keyof WSEventMap;
 
 /** Type-safe event handler for a specific event type. */
 export type TypedEventHandler<T extends WSEventType> = (data: WSEventMap[T]) => void;
+
+export type EventValidator<T extends WSEventType> = (
+    data: unknown,
+) => data is WSEventMap[T];
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null;
+
+const isNumber = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value);
+
+const isString = (value: unknown): value is string => typeof value === "string";
+
+const isBoolean = (value: unknown): value is boolean => typeof value === "boolean";
+
+const isNumberArray = (value: unknown): value is number[] =>
+    Array.isArray(value) && value.every((item) => isNumber(item));
+
+const isDownloadStatus = (
+    value: unknown,
+): value is DownloadProgressData["status"] =>
+    value === "started" ||
+    value === "downloading" ||
+    value === "complete" ||
+    value === "error";
+
+export const wsEventValidators: {
+    [K in WSEventType]: EventValidator<K>;
+} = {
+    recording_started: (data): data is RecordingStartedData => isObject(data),
+    recording_stopped: (data): data is RecordingStoppedData =>
+        isObject(data) && isBoolean(data.cancelled),
+    transcription_complete: (data): data is TranscriptionCompleteData =>
+        isObject(data) &&
+        isString(data.text) &&
+        (isNumber(data.id) || data.id === null) &&
+        isNumber(data.duration_ms) &&
+        isNumber(data.speech_duration_ms),
+    transcription_error: (data): data is TranscriptionErrorData =>
+        isObject(data) && isString(data.message),
+    audio_level: (data): data is AudioLevelData =>
+        isObject(data) && isNumber(data.level),
+    audio_spectrum: (data): data is AudioSpectrumData =>
+        isObject(data) && isNumberArray(data.bands),
+    refinement_started: (data): data is RefinementStartedData =>
+        isObject(data) && isNumber(data.transcript_id) && isNumber(data.level),
+    refinement_complete: (data): data is RefinementCompleteData =>
+        isObject(data) &&
+        isNumber(data.transcript_id) &&
+        isString(data.text) &&
+        isNumber(data.level),
+    refinement_error: (data): data is RefinementErrorData =>
+        isObject(data) &&
+        (data.transcript_id === undefined || isNumber(data.transcript_id)) &&
+        isString(data.message),
+    refinement_progress: (data): data is RefinementProgressData =>
+        isObject(data) &&
+        isNumber(data.transcript_id) &&
+        (data.message === undefined || isString(data.message)) &&
+        (data.elapsed_seconds === undefined || isNumber(data.elapsed_seconds)),
+    transcript_deleted: (data): data is TranscriptDeletedData =>
+        isObject(data) && isNumber(data.id),
+    transcript_updated: (data): data is TranscriptUpdatedData =>
+        isObject(data) && isNumber(data.id) && isNumber(data.variant_id),
+    config_updated: (data): data is ConfigUpdatedData => isObject(data),
+    engine_status: (data): data is EngineStatusData =>
+        isObject(data) &&
+        (data.asr === undefined || isString(data.asr)) &&
+        (data.slm === undefined || isString(data.slm)),
+    onboarding_required: (data): data is OnboardingRequiredData =>
+        isObject(data) && isString(data.reason),
+    download_progress: (data): data is DownloadProgressData =>
+        isObject(data) &&
+        isString(data.model_id) &&
+        isDownloadStatus(data.status) &&
+        isString(data.message),
+    project_created: (data): data is ProjectCreatedData =>
+        isObject(data) &&
+        isNumber(data.id) &&
+        isString(data.name) &&
+        (isString(data.color) || data.color === null),
+    project_deleted: (data): data is ProjectDeletedData =>
+        isObject(data) && isNumber(data.id),
+    key_captured: (data): data is KeyCapturedData =>
+        isObject(data) && isString(data.combo) && isString(data.display),
+};

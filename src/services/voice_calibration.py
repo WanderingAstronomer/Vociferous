@@ -13,7 +13,7 @@ from typing import Callable
 import numpy as np
 import sounddevice as sd
 
-from src.core.settings import get_settings, update_settings
+from src.core.settings import VociferousSettings, update_settings
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,13 @@ class VoiceCalibrator:
     DEFAULT_FUNDAMENTAL = 85.0
     DEFAULT_ENERGY_95 = 4000.0
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        settings_provider: Callable[[], VociferousSettings],
+        settings_updater: Callable[..., VociferousSettings] = update_settings,
+    ) -> None:
+        self._settings_provider = settings_provider
+        self._settings_updater = settings_updater
         self.sample_rate = 16000
         self.duration = 15  # seconds
         self.fft_size = 512
@@ -203,12 +209,12 @@ class VoiceCalibrator:
 
     def save_calibration(self, results: dict[str, float]) -> None:
         """Save calibration results to config."""
-        update_settings(voice_calibration=results)
+        self._settings_updater(voice_calibration=results)
         logger.info("Voice calibration saved to config")
 
     def get_calibration(self) -> dict[str, float] | None:
         """Retrieve saved calibration from config."""
-        cal = get_settings().voice_calibration
+        cal = self._settings_provider().voice_calibration
         if cal.fundamental_freq == 0.0:
             return None
         return cal.model_dump()

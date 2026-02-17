@@ -4,6 +4,46 @@
 
 ---
 
+## v4.1.0 — Multi-Select & UI Polish
+
+**Date:** 2026-02-16
+**Status:** Feature Release
+
+### Overview
+
+File-explorer-style multi-selection across all transcript views, batch project assignment, batch deletion, and comprehensive UI/UX polish. Full linter, type-checker, and test suite cleanup.
+
+### Added — Multi-Selection System
+
+- **`SelectionManager`** (`frontend/src/lib/selection.svelte.ts`): Reusable Svelte 5 rune-based selection manager with Click (select one), Ctrl+Click (toggle), Shift+Click (range select), Ctrl+Shift+Click (add range), Ctrl+A (select all), Escape (clear).
+- **HistoryView multi-select**: Selection count header, multi-select detail panel with bulk Assign/Delete buttons, keyboard hints, right-click auto-select for context menus.
+- **SearchView multi-select**: Same selection UX plus newly added project assignment system (was previously missing from SearchView entirely). Conditional single/multi action bar.
+- **ProjectsView multi-select**: Selection across expanded project transcript trees. Range selection walks the full display-order tree (root projects → children → expanded transcripts).
+- **Batch API functions** (`batchAssignProject`, `batchDeleteTranscripts`): Sequential loop over individual intent dispatches — no backend changes required.
+
+### Changed — UI Polish
+
+- **SettingsView**: Removed `small` prop from 3 CustomSelect dropdowns (Spectrum Type, UI Scale, Context Size); bumped number input max-width from 200px to 280px.
+- **UserView**: Removed `max-w-[960px]` cap — dashboard now fills available width.
+- **All transcript context menus**: Header dynamically shows batch count ("Assign N transcripts to project") when multi-selected.
+
+### Fixed — Code Quality
+
+- **Ruff**: Fixed 3 unused variable warnings in test files (prefixed with `_`).
+- **MyPy**: Fixed all 28 type errors (was 0 errors, now 0 errors):
+  - `ApplicationCoordinator`: Added proper `TYPE_CHECKING` imports and `Optional` type annotations for 7 lazily-initialized service attributes (killed 15 errors in one shot).
+  - `system.py`: Fixed `ASRModel | SLMModel` union type for model lookup.
+  - `db.py`: Replaced `Ellipsis` sentinel with proper `_Unset` enum for `update_project()` parent_id parameter.
+  - `engine.py`: Added `type: ignore` for llama-cpp-python's unusable chat completion stubs.
+  - `provisioning/core.py`: Removed deprecated `local_dir_use_symlinks` kwarg from `hf_hub_download()`.
+  - `log_manager.py`: Added `dict[str, object]` annotation for `extra`.
+  - `slm_runtime.py`: Added `dict[int | str, dict[str, Any]]` annotation for `levels`.
+  - `on_closing()`: Fixed `-> True` return annotation to `-> bool`.
+  - Tests: Removed 3 stale `type: ignore[misc]` comments, fixed generator fixture return type.
+- **Pytest**: 374 tests, 0 failures. Fixed 3 provisioning test assertions that expected the removed `local_dir_use_symlinks` kwarg.
+
+---
+
 ## v4.0.0 — Architecture Rebuild
 
 **Date:** 2026-02-14

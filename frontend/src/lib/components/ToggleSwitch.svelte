@@ -5,9 +5,9 @@
      */
 
     let {
-        checked = false,
+        checked = $bindable(false),
         disabled = false,
-        onChange = undefined as ((checked: boolean) => void) | undefined,
+        onChange = undefined as ((val: boolean) => void) | undefined,
     } = $props();
 
     function toggle() {
@@ -18,54 +18,18 @@
 </script>
 
 <button
-    class="toggle"
-    class:checked
-    class:disabled
+    class="relative w-[50px] h-[24px] rounded-[12px] border-none cursor-pointer p-0 transition-colors duration-250 flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+    class:bg-[var(--accent)]={checked}
+    class:bg-[var(--gray-6)]={!checked}
     role="switch"
     aria-label="Toggle"
     aria-checked={checked}
     {disabled}
     onclick={toggle}
 >
-    <span class="toggle-circle"></span>
+    <!-- Circle -->
+    <span
+        class="absolute top-[3px] left-[3px] w-[18px] h-[18px] rounded-full bg-white shadow transition-transform duration-250"
+        class:translate-x-[26px]={checked}
+    ></span>
 </button>
-
-<style>
-    .toggle {
-        position: relative;
-        width: var(--toggle-width);
-        height: var(--toggle-height);
-        border-radius: var(--toggle-radius);
-        border: none;
-        background: var(--gray-6);
-        cursor: pointer;
-        padding: 0;
-        transition: background var(--transition-normal);
-        flex-shrink: 0;
-    }
-
-    .toggle.checked {
-        background: var(--accent);
-    }
-
-    .toggle.disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-    }
-
-    .toggle-circle {
-        position: absolute;
-        top: var(--toggle-circle-margin);
-        left: var(--toggle-circle-margin);
-        width: var(--toggle-circle);
-        height: var(--toggle-circle);
-        border-radius: 50%;
-        background: var(--gray-0);
-        transition: transform var(--transition-normal);
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    }
-
-    .toggle.checked .toggle-circle {
-        transform: translateX(calc(var(--toggle-width) - var(--toggle-circle) - var(--toggle-circle-margin) * 2));
-    }
-</style>

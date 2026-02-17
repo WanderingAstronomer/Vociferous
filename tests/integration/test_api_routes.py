@@ -41,7 +41,6 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
         get_config,
         health,
         list_models,
-        toggle_mini_widget,
         update_config,
     )
     from src.api.transcripts import (
@@ -86,7 +85,6 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
             list_models,
             download_model,
             health,
-            toggle_mini_widget,
             dispatch_intent,
         ],
         cors_config=CORSConfig(

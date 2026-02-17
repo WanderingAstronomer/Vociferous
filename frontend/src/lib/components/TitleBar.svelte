@@ -14,6 +14,12 @@
     import { minimizeWindow, maximizeWindow, closeWindow } from "../api";
     import { Minus, Square, X } from "lucide-svelte";
 
+    interface Props {
+        isRecording?: boolean;
+    }
+
+    let { isRecording = false }: Props = $props();
+
     let maximized = $state(false);
 
     async function handleMinimize(): Promise<void> {
@@ -26,8 +32,12 @@
 
     async function handleMaximize(): Promise<void> {
         try {
-            await maximizeWindow();
-            maximized = !maximized;
+            const result = await maximizeWindow();
+            if (typeof result.maximized === "boolean") {
+                maximized = result.maximized;
+            } else {
+                maximized = !maximized;
+            }
         } catch {
             /* dev mode */
         }
@@ -42,18 +52,39 @@
     }
 </script>
 
-<div class="titlebar pywebview-drag-region">
-    <div class="titlebar-title pywebview-drag-region">
-        <span class="titlebar-text pywebview-drag-region">Vociferous</span>
+<div
+    class="flex items-center justify-between h-8 bg-[var(--shell-bg)] border-b border-[var(--shell-border)] shrink-0 select-none pywebview-drag-region"
+>
+    <div class="flex items-center gap-1.5 pl-3 pointer-events-none pywebview-drag-region">
+        <span class="text-xs font-medium text-[var(--text-secondary)] tracking-wide pywebview-drag-region"
+            >Vociferous</span
+        >
+        {#if isRecording}
+            <span
+                class="inline-flex items-center gap-1 text-[10px] leading-none py-0.5 px-1.5 rounded-full bg-[var(--color-danger-surface)] text-[var(--color-danger)] border border-[var(--color-danger)] pywebview-drag-region"
+            >
+                <span
+                    class="w-1.5 h-1.5 rounded-full bg-[var(--color-danger)] animate-[pulse-dot_1.2s_ease-in-out_infinite]"
+                ></span>
+                REC
+            </span>
+        {/if}
     </div>
 
-    <div class="titlebar-controls">
-        <button class="titlebar-btn" onclick={handleMinimize} aria-label="Minimize">
+    <div class="flex items-stretch h-full">
+        <button
+            class="flex items-center justify-center w-[46px] h-full bg-transparent border-none text-[var(--text-secondary)] cursor-pointer transition-[background,color] duration-100 hover:bg-[var(--hover-overlay)] hover:text-[var(--text-primary)]"
+            onclick={handleMinimize}
+            aria-label="Minimize"
+        >
             <Minus size={14} />
         </button>
-        <button class="titlebar-btn" onclick={handleMaximize} aria-label={maximized ? "Restore" : "Maximize"}>
+        <button
+            class="flex items-center justify-center w-[46px] h-full bg-transparent border-none text-[var(--text-secondary)] cursor-pointer transition-[background,color] duration-100 hover:bg-[var(--hover-overlay)] hover:text-[var(--text-primary)]"
+            onclick={handleMaximize}
+            aria-label={maximized ? "Restore" : "Maximize"}
+        >
             {#if maximized}
-                <!-- Restore icon: two overlapping squares -->
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2">
                     <rect x="3" y="5" width="8" height="8" rx="1" />
                     <path d="M5 5V3a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1h-2" />
@@ -62,66 +93,24 @@
                 <Square size={12} />
             {/if}
         </button>
-        <button class="titlebar-btn titlebar-btn-close" onclick={handleClose} aria-label="Close">
+        <button
+            class="flex items-center justify-center w-[46px] h-full bg-transparent border-none text-[var(--text-secondary)] cursor-pointer transition-[background,color] duration-100 hover:bg-[var(--color-danger)] hover:text-white"
+            onclick={handleClose}
+            aria-label="Close"
+        >
             <X size={14} />
         </button>
     </div>
 </div>
 
 <style>
-    .titlebar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        height: 32px;
-        background: var(--shell-bg);
-        border-bottom: 1px solid var(--shell-border);
-        flex-shrink: 0;
-        user-select: none;
-        -webkit-user-select: none;
-    }
-
-    .titlebar-title {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding-left: 12px;
-        pointer-events: none;
-    }
-
-    .titlebar-text {
-        font-size: 12px;
-        font-weight: 500;
-        color: var(--text-secondary);
-        letter-spacing: 0.02em;
-    }
-
-    .titlebar-controls {
-        display: flex;
-        align-items: stretch;
-        height: 100%;
-    }
-
-    .titlebar-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 46px;
-        height: 100%;
-        background: transparent;
-        border: none;
-        color: var(--text-secondary);
-        cursor: pointer;
-        transition: background 0.1s, color 0.1s;
-    }
-
-    .titlebar-btn:hover {
-        background: var(--hover-overlay);
-        color: var(--text-primary);
-    }
-
-    .titlebar-btn-close:hover {
-        background: var(--color-danger);
-        color: white;
+    @keyframes pulse-dot {
+        0%,
+        100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.35;
+        }
     }
 </style>

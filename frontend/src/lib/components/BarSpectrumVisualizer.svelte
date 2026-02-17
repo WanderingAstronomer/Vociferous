@@ -70,14 +70,31 @@
     let lastDrawTime = 0;
     const FRAME_INTERVAL = 33.33; // ~30fps cap
 
-    /* ===== Colors (from design tokens) ===== */
-    const BLUE_9 = "#1a252e";
-    const BLUE_6 = "#3d4f5f";
-    const BLUE_3 = "#6db3e8";
-    const BLUE_4 = "#5a9fd4";
+    let palette = $state({
+        base: "#2d3d4d",
+        mid: "#5a9fd4",
+        top: "#cce0f5",
+        peak: "#99c2ed",
+    });
 
     let cachedGradient: CanvasGradient | null = null;
     let cachedGradientHeight = 0;
+
+    function readThemeColor(token: string, fallback: string): string {
+        if (typeof window === "undefined") return fallback;
+        const value = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+        return value || fallback;
+    }
+
+    function refreshPalette(): void {
+        palette = {
+            base: readThemeColor("--blue-8", "#2d3d4d"),
+            mid: readThemeColor("--blue-4", "#5a9fd4"),
+            top: readThemeColor("--blue-1", "#cce0f5"),
+            peak: readThemeColor("--blue-2", "#99c2ed"),
+        };
+        cachedGradient = null;
+    }
 
     function reinitializeBuffers(): void {
         spectrum = new Float32Array(numBars);
@@ -279,9 +296,9 @@
         // Cache the bar gradient (reuse across all bars per frame)
         if (!cachedGradient || cachedGradientHeight !== height) {
             cachedGradient = ctx.createLinearGradient(0, height, 0, 0);
-            cachedGradient.addColorStop(0, BLUE_9);
-            cachedGradient.addColorStop(0.5, BLUE_6);
-            cachedGradient.addColorStop(1, BLUE_3);
+            cachedGradient.addColorStop(0, palette.base);
+            cachedGradient.addColorStop(0.5, palette.mid);
+            cachedGradient.addColorStop(1, palette.top);
             cachedGradientHeight = height;
         }
 
@@ -314,7 +331,7 @@
                 ctx.beginPath();
                 ctx.moveTo(x, peakY);
                 ctx.lineTo(x + barWidth, peakY);
-                ctx.strokeStyle = BLUE_4;
+                ctx.strokeStyle = palette.peak;
                 ctx.lineWidth = 1;
                 ctx.stroke();
             }
@@ -346,6 +363,7 @@
 
     onMount(() => {
         ctx = canvas.getContext("2d");
+        refreshPalette();
         recomputeSpreadAttenuation();
         computeEmphasisWeights();
         if (active) start();
@@ -378,12 +396,4 @@
     });
 </script>
 
-<canvas class="spectrum-canvas" bind:this={canvas}></canvas>
-
-<style>
-    .spectrum-canvas {
-        width: 100%;
-        height: 100%;
-        display: block;
-    }
-</style>
+<canvas class="w-full h-full block" bind:this={canvas}></canvas>

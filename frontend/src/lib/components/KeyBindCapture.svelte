@@ -13,12 +13,14 @@
 
     let capturing = $state(false);
     let pendingCombo = $state<{ combo: string; display: string } | null>(null);
+    let captureError = $state("");
 
     let unsubscribe: (() => void) | null = null;
 
     function startCapture() {
         capturing = true;
         pendingCombo = null;
+        captureError = "";
 
         unsubscribe = ws.on("key_captured", (data: KeyCapturedData) => {
             pendingCombo = { combo: data.combo, display: data.display };
@@ -28,8 +30,9 @@
             cleanup();
         });
 
-        startKeyCapture().catch(() => {
+        startKeyCapture().catch((e: unknown) => {
             capturing = false;
+            captureError = e instanceof Error ? e.message.replace(/^API\s\d+:\s*/i, "") : "Could not start key capture";
             cleanup();
         });
     }
@@ -56,80 +59,49 @@
     }
 </script>
 
-<div class="keybind-capture" {id}>
-    <span class="keybind-current">{formatDisplay(value || "None")}</span>
+<div class="flex items-center gap-2 min-h-10" {id}>
+    <span
+        class="h-10 min-w-[144px] px-[var(--space-2)] inline-flex items-center justify-center rounded-[var(--radius-sm)] border border-[var(--shell-border)] bg-[var(--surface-tertiary)] text-[var(--text-primary)] font-[var(--font-mono)] text-[var(--text-sm)] font-[var(--weight-emphasis)] tracking-wide"
+        >{formatDisplay(value || "None")}</span
+    >
     {#if capturing}
-        <button class="keybind-btn keybind-listening" onclick={cancelCapture}>
-            <span class="pulse-dot"></span> Press a key…
+        <button
+            class="h-10 inline-flex items-center gap-1.5 text-[var(--text-xs)] font-[var(--weight-emphasis)] py-1 px-[var(--space-2)] rounded-[var(--radius-sm)] border border-[var(--accent)] bg-[var(--surface-primary)] text-[var(--accent)] cursor-pointer whitespace-nowrap animate-[gentle-pulse_1.5s_ease-in-out_infinite]"
+            onclick={cancelCapture}
+        >
+            <span class="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-[dot-blink_1s_ease-in-out_infinite]"
+            ></span> Press a key…
         </button>
     {:else}
-        <button class="keybind-btn" onclick={startCapture}>Set Key</button>
+        <button
+            class="h-10 min-w-[88px] inline-flex items-center justify-center text-[var(--text-xs)] font-[var(--weight-emphasis)] py-1 px-[var(--space-2)] rounded-[var(--radius-sm)] border border-[var(--accent)] bg-[var(--accent)] text-[var(--gray-0)] cursor-pointer whitespace-nowrap transition-[background,border-color,color] duration-[var(--transition-fast)] hover:bg-[var(--accent-hover)] hover:border-[var(--accent-hover)]"
+            onclick={startCapture}>Set Key</button
+        >
     {/if}
 </div>
 
+{#if captureError}
+    <div class="mt-1 text-[var(--text-xs)] text-[var(--color-danger)] break-words">{captureError}</div>
+{/if}
+
 <style>
-    .keybind-capture {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        min-height: 2.25rem;
-    }
-
-    .keybind-current {
-        font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace;
-        font-size: 0.8rem;
-        color: var(--text-primary);
-        background: var(--bg-primary);
-        border: 1px solid var(--border-subtle);
-        border-radius: 0.375rem;
-        padding: 0.3rem 0.75rem;
-        min-width: 6rem;
-        text-align: center;
-    }
-
-    .keybind-btn {
-        font-size: 0.75rem;
-        font-weight: 500;
-        padding: 0.3rem 0.75rem;
-        border-radius: 0.375rem;
-        border: 1px solid var(--border-subtle);
-        background: var(--bg-tertiary);
-        color: var(--text-secondary);
-        cursor: pointer;
-        transition: background 0.15s, border-color 0.15s;
-        white-space: nowrap;
-    }
-
-    .keybind-btn:hover {
-        background: var(--bg-hover);
-        border-color: var(--accent-primary);
-        color: var(--text-primary);
-    }
-
-    .keybind-listening {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-        border-color: var(--accent-primary);
-        color: var(--accent-primary);
-        animation: gentle-pulse 1.5s ease-in-out infinite;
-    }
-
-    .pulse-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--accent-primary);
-        animation: dot-blink 1s ease-in-out infinite;
-    }
-
     @keyframes gentle-pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.7; }
+        0%,
+        100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.7;
+        }
     }
 
     @keyframes dot-blink {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.3; }
+        0%,
+        100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.3;
+        }
     }
 </style>

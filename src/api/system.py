@@ -25,22 +25,18 @@ async def get_config() -> dict:
 
 @put("/api/config")
 async def update_config(data: dict) -> dict:
-    from src.core.settings import update_settings
+    from src.core.intents.definitions import UpdateConfigIntent
 
     coordinator = get_coordinator()
-    new_settings = update_settings(**data)
-    coordinator.settings = new_settings
-    coordinator.event_bus.emit("config_updated", new_settings.model_dump())
+    intent = UpdateConfigIntent(settings=data)
+    success = coordinator.command_bus.dispatch(intent)
 
-    # Reload activation keys if the input handler is running
-    if coordinator.input_listener:
-        try:
-            coordinator.input_listener.update_activation_keys()
-            logger.info("Input handler activation keys reloaded")
-        except Exception:
-            logger.exception("Failed to reload activation keys")
+    if not success:
+        logger.error("Failed to update config via intent")
+        # Fallback or error?
+        # Assuming success for now as handlers are registered.
 
-    return new_settings.model_dump()
+    return coordinator.settings.model_dump()
 
 
 @post("/api/engine/restart")
@@ -49,9 +45,6 @@ async def restart_engine() -> dict:
     coordinator = get_coordinator()
     coordinator.restart_engine()
     return {"status": "restarting"}
-
-
-# --- Models ---
 
 
 @get("/api/models")
@@ -74,7 +67,7 @@ async def list_models() -> dict:
 @post("/api/models/download")
 async def download_model(data: dict) -> Response:
     """Start downloading a model. Sends progress via WebSocket."""
-    from src.core.model_registry import get_asr_model, get_slm_model
+    from src.core.model_registry import ASRModel, SLMModel, get_asr_model, get_slm_model
     from src.core.resource_manager import ResourceManager
 
     coordinator = get_coordinator()
@@ -84,7 +77,7 @@ async def download_model(data: dict) -> Response:
         return Response(content={"error": "Missing model_id"}, status_code=400)
 
     if model_type == "asr":
-        model = get_asr_model(model_id)
+        model: ASRModel | SLMModel | None = get_asr_model(model_id)
     else:
         model = get_slm_model(model_id)
 
@@ -175,6 +168,7 @@ def _detect_gpu_status() -> dict:
     # Whisper.cpp compiled backend info
     try:
         from pywhispercpp.model import Model as WhisperModel
+
         gpu["whisper_backends"] = WhisperModel.system_info() or ""
     except Exception:
         gpu["whisper_backends"] = "unavailable"
@@ -182,6 +176,7 @@ def _detect_gpu_status() -> dict:
     # SLM GPU layer configuration from settings
     try:
         from src.core.settings import get_settings
+
         s = get_settings()
         gpu["slm_gpu_layers"] = s.refinement.n_gpu_layers
     except Exception:
@@ -197,18 +192,9 @@ async def health() -> dict:
         "status": "ok",
         "version": "4.0.0-dev",
         "transcripts": coordinator.db.transcript_count() if coordinator.db else 0,
+        "recording_active": bool(getattr(coordinator, "_is_recording", False)),
         "gpu": _detect_gpu_status(),
     }
-
-
-# --- Mini widget ---
-
-
-@post("/api/mini-widget/toggle")
-async def toggle_mini_widget() -> dict:
-    coordinator = get_coordinator()
-    coordinator.toggle_mini_widget()
-    return {"status": "ok"}
 
 
 # --- Window control (frameless title-bar) ---
@@ -227,7 +213,7 @@ async def maximize_window() -> dict:
     """Toggle maximize/restore on the main window."""
     coordinator = get_coordinator()
     coordinator.maximize_window()
-    return {"status": "ok"}
+    return {"status": "ok", "maximized": coordinator.is_window_maximized()}
 
 
 @post("/api/window/close")
@@ -244,11 +230,41 @@ async def close_window() -> dict:
 @post("/api/keycapture/start")
 async def start_key_capture() -> Response:
     """Start key capture mode for hotkey rebinding. Keys are emitted via WebSocket."""
+    import os
+    import sys
+
     from src.input_handler.types import InputEvent, KeyCode
 
     coordinator = get_coordinator()
     if not coordinator.input_listener:
         return Response(content={"error": "Input handler not available"}, status_code=503)
+
+    backend = coordinator.input_listener.active_backend
+    if backend is None:
+        return Response(
+            content={
+                "error": (
+                    "No input backend is active. Hotkey capture is unavailable. "
+                    "On Linux, ensure evdev access (input group) and restart session."
+                )
+            },
+            status_code=503,
+        )
+
+    if (
+        type(backend).__name__ == "PynputBackend"
+        and sys.platform.startswith("linux")
+        and (os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland" or bool(os.environ.get("WAYLAND_DISPLAY")))
+    ):
+        return Response(
+            content={
+                "error": (
+                    "Hotkey capture is degraded under Wayland with PynputBackend. "
+                    "Use evdev backend with input-group permissions."
+                )
+            },
+            status_code=503,
+        )
 
     captured_keys: set[str] = set()
 

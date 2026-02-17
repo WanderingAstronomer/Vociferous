@@ -65,34 +65,39 @@
             return () => document.removeEventListener("click", handleClickOutside, true);
         }
     });
+    const triggerClasses = "flex items-center justify-between w-full h-10 px-3 bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded text-[var(--text-primary)] text-sm cursor-pointer outline-none transition-colors duration-150 hover:border-[var(--accent)] focus:border-[var(--accent)]";
+    const dropdownClasses = "absolute top-[calc(100%+4px)] left-0 right-0 max-h-60 overflow-y-auto bg-[var(--surface-primary)] border border-[var(--accent-muted)] rounded shadow-[0_8px_24px_rgba(0,0,0,0.4)] z-[100] list-none m-0 py-1";
+    const optionClasses = "flex items-center justify-between px-3 py-2 text-sm text-[var(--text-primary)] cursor-pointer transition-colors duration-150 hover:bg-[var(--hover-overlay-blue)]";
 </script>
 
-<div class="custom-select" class:small bind:this={containerEl}>
+<div class="relative flex-1" class:max-w-[200px]={small} bind:this={containerEl}>
     <button
         type="button"
-        class="select-trigger"
+        class={triggerClasses}
         {id}
         onclick={toggle}
         onkeydown={handleKeydown}
         aria-haspopup="listbox"
         aria-expanded={open}
     >
-        <span class="select-value">{selectedLabel}</span>
-        <ChevronDown size={14} class="select-chevron {open ? 'rotated' : ''}" />
+        <span class="overflow-hidden text-ellipsis whitespace-nowrap flex-1 text-left">{selectedLabel}</span>
+        <div class="shrink-0 text-[var(--text-tertiary)] transition-transform duration-150" class:rotate-180={open}>
+            <ChevronDown size={14} />
+        </div>
     </button>
 
     {#if open}
-        <ul class="select-dropdown" role="listbox">
+        <ul class={dropdownClasses} role="listbox">
             {#each options as opt}
                 <li
-                    class="select-option"
-                    class:selected={opt.value === value}
+                    class={optionClasses}
+                    class:text-[var(--accent)]={opt.value === value}
                     role="option"
                     aria-selected={opt.value === value}
                     onclick={() => select(opt.value)}
                     onkeydown={(e) => e.key === "Enter" && select(opt.value)}
                 >
-                    <span class="option-label">{opt.label}</span>
+                    <span class="overflow-hidden text-ellipsis whitespace-nowrap flex-1">{opt.label}</span>
                     {#if opt.value === value}
                         <Check size={12} />
                     {/if}
@@ -101,93 +106,3 @@
         </ul>
     {/if}
 </div>
-
-<style>
-    .custom-select {
-        position: relative;
-        flex: 1;
-    }
-    .custom-select.small {
-        max-width: 200px;
-    }
-
-    .select-trigger {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        width: 100%;
-        height: 40px;
-        padding: 0 var(--space-2);
-        background: var(--surface-primary);
-        border: 1px solid var(--shell-border);
-        border-radius: var(--radius-sm);
-        color: var(--text-primary);
-        font-family: var(--font-family);
-        font-size: var(--text-sm);
-        cursor: pointer;
-        outline: none;
-        transition: border-color var(--transition-fast);
-    }
-    .select-trigger:hover,
-    .select-trigger:focus {
-        border-color: var(--accent);
-    }
-
-    .select-value {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        flex: 1;
-        text-align: left;
-    }
-
-    :global(.select-chevron) {
-        flex-shrink: 0;
-        color: var(--text-tertiary);
-        transition: transform var(--transition-fast);
-    }
-    :global(.select-chevron.rotated) {
-        transform: rotate(180deg);
-    }
-
-    .select-dropdown {
-        position: absolute;
-        top: calc(100% + 4px);
-        left: 0;
-        right: 0;
-        max-height: 240px;
-        overflow-y: auto;
-        background: var(--surface-primary);
-        border: 1px solid var(--accent-muted);
-        border-radius: var(--radius-sm);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-        z-index: 100;
-        list-style: none;
-        margin: 0;
-        padding: 4px 0;
-    }
-
-    .select-option {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 8px var(--space-2);
-        font-size: var(--text-sm);
-        color: var(--text-primary);
-        cursor: pointer;
-        transition: background var(--transition-fast);
-    }
-    .select-option:hover {
-        background: var(--hover-overlay-blue);
-    }
-    .select-option.selected {
-        color: var(--accent);
-    }
-
-    .option-label {
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        flex: 1;
-    }
-</style>

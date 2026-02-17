@@ -5,12 +5,24 @@ Plain Python class. No QObject. Owns lifecycle of all services.
 Starts Litestar API server and pywebview window.
 """
 
+from __future__ import annotations
+
 import logging
+import os
+import platform
+import subprocess
 import threading
+from typing import TYPE_CHECKING, Any
 
 from src.core.command_bus import CommandBus
 from src.core.event_bus import EventBus
 from src.core.settings import VociferousSettings
+
+if TYPE_CHECKING:
+    from src.database.db import TranscriptDB
+    from src.input_handler.listener import KeyListener
+    from src.services.audio_service import AudioService
+    from src.services.slm_runtime import SLMRuntime
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +54,12 @@ class ApplicationCoordinator:
         self.event_bus = EventBus()
 
         # Services (initialized in start())
-        self.db = None
-        self.audio_service = None
-        self.input_listener = None
-        self.slm_runtime = None
-        self._asr_model = None  # pywhispercpp Model instance
-        self._uvicorn_server = None  # uvicorn.Server for graceful shutdown
+        self.db: TranscriptDB | None = None
+        self.audio_service: AudioService | None = None
+        self.input_listener: KeyListener | None = None
+        self.slm_runtime: SLMRuntime | None = None
+        self._asr_model: Any = None  # pywhispercpp Model instance
+        self._uvicorn_server: Any = None  # uvicorn.Server for graceful shutdown
 
         # Recording state
         self._is_recording = False
@@ -56,8 +68,7 @@ class ApplicationCoordinator:
         self._recording_thread: threading.Thread | None = None
 
         # Window references
-        self._main_window = None
-        self._mini_window = None
+        self._main_window: Any = None  # webview.Window
         self._window_maximized: bool = False
 
         self._server_thread: threading.Thread | None = None
@@ -132,8 +143,6 @@ class ApplicationCoordinator:
             try:
                 if self._main_window is not None:
                     self._main_window.destroy()
-                if self._mini_window is not None:
-                    self._mini_window.destroy()
             except Exception:
                 # Window may already be in close sequence.
                 logger.debug("Window destroy skipped during shutdown", exc_info=True)
@@ -209,7 +218,7 @@ class ApplicationCoordinator:
         try:
             from src.services.transcription_service import create_local_model
 
-            self._asr_model = create_local_model()
+            self._asr_model = create_local_model(self.settings)
             self.event_bus.emit("engine_status", {"asr": "ready"})
         except Exception:
             logger.exception("ASR model failed to load (will retry on first transcription)")
@@ -231,6 +240,7 @@ class ApplicationCoordinator:
                 pass
 
             self.slm_runtime = SLMRuntime(
+                settings_provider=lambda: self.settings,
                 on_state_changed=on_slm_state,
                 on_error=on_slm_error,
                 on_text_ready=on_slm_text,
@@ -294,6 +304,7 @@ class ApplicationCoordinator:
                 self.event_bus.emit("audio_spectrum", {"bands": bands})
 
             self.audio_service = AudioService(
+                settings_provider=lambda: self.settings,
                 on_level_update=on_level,
                 on_spectrum_update=on_spectrum,
             )
@@ -316,14 +327,36 @@ class ApplicationCoordinator:
                     "hotkey will not work. On Linux, ensure your user is "
                     "in the 'input' group: sudo usermod -aG input $USER"
                 )
-                self.event_bus.emit("engine_status", {
-                    "component": "input",
-                    "status": "unavailable",
-                    "message": "No input backend available. Hotkey disabled.",
-                })
+                self.event_bus.emit(
+                    "engine_status",
+                    {
+                        "component": "input",
+                        "status": "unavailable",
+                        "message": "No input backend available. Hotkey disabled.",
+                    },
+                )
             else:
                 backend_name = type(self.input_listener.active_backend).__name__
                 logger.info(f"Input handler ready (backend: {backend_name})")
+                if backend_name == "PynputBackend" and (
+                    os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
+                    or bool(os.environ.get("WAYLAND_DISPLAY"))
+                ):
+                    logger.warning(
+                        "Input backend is pynput under Wayland; hotkey capture may be "
+                        "degraded for native Wayland windows."
+                    )
+                    self.event_bus.emit(
+                        "engine_status",
+                        {
+                            "component": "input",
+                            "status": "degraded",
+                            "message": (
+                                "Pynput under Wayland may not capture hotkeys. "
+                                "Prefer evdev backend with input-group permissions."
+                            ),
+                        },
+                    )
         except Exception:
             logger.exception("Input handler failed to initialize (non-fatal)")
 
@@ -335,13 +368,17 @@ class ApplicationCoordinator:
             AssignProjectIntent,
             BeginRecordingIntent,
             CancelRecordingIntent,
+            ClearTranscriptsIntent,
             CommitEditsIntent,
             CreateProjectIntent,
             DeleteProjectIntent,
             DeleteTranscriptIntent,
+            DeleteTranscriptVariantIntent,
             RefineTranscriptIntent,
+            RestartEngineIntent,
             StopRecordingIntent,
             ToggleRecordingIntent,
+            UpdateConfigIntent,
             UpdateProjectIntent,
         )
 
@@ -350,12 +387,16 @@ class ApplicationCoordinator:
         self.command_bus.register(CancelRecordingIntent, self._handle_cancel_recording)
         self.command_bus.register(ToggleRecordingIntent, self._handle_toggle_recording)
         self.command_bus.register(DeleteTranscriptIntent, self._handle_delete_transcript)
+        self.command_bus.register(DeleteTranscriptVariantIntent, self._handle_delete_transcript_variant)
+        self.command_bus.register(ClearTranscriptsIntent, self._handle_clear_transcripts)
         self.command_bus.register(CommitEditsIntent, self._handle_commit_edits)
         self.command_bus.register(RefineTranscriptIntent, self._handle_refine_transcript)
         self.command_bus.register(CreateProjectIntent, self._handle_create_project)
         self.command_bus.register(UpdateProjectIntent, self._handle_update_project)
         self.command_bus.register(DeleteProjectIntent, self._handle_delete_project)
         self.command_bus.register(AssignProjectIntent, self._handle_assign_project)
+        self.command_bus.register(UpdateConfigIntent, self._handle_update_config)
+        self.command_bus.register(RestartEngineIntent, self._handle_restart_engine)
 
     def _handle_begin_recording(self, intent) -> None:
         with self._recording_lock:
@@ -397,6 +438,25 @@ class ApplicationCoordinator:
         if self.db:
             self.db.delete_transcript(intent.transcript_id)
             self.event_bus.emit("transcript_deleted", {"id": intent.transcript_id})
+
+    def _handle_delete_transcript_variant(self, intent) -> None:
+        if self.db:
+            deleted = self.db.delete_variant(intent.transcript_id, intent.variant_id)
+            if deleted:
+                # Refresh entire transcript for simplicity, or just notify variant deleted
+                # The frontend likely re-fetches or we need to send updated transcript object
+                # For now just notify updated.
+                t = self.db.get_transcript(intent.transcript_id)
+                if t:
+                    # Convert to dict manually or use a helper if available, but coordinator imports are tricky.
+                    # Ideally we just emit the ID and let frontend fetch.
+                    self.event_bus.emit("transcript_updated", {"id": intent.transcript_id})
+
+    def _handle_clear_transcripts(self, intent) -> None:
+        if self.db:
+            count = self.db.clear_all_transcripts()
+            logger.info("Cleared all transcripts: %d deleted", count)
+            self.event_bus.emit("transcripts_cleared", {"count": count})
 
     def _handle_commit_edits(self, intent) -> None:
         if self.db:
@@ -466,6 +526,25 @@ class ApplicationCoordinator:
             {"id": intent.transcript_id, "project_id": intent.project_id},
         )
 
+    def _handle_update_config(self, intent) -> None:
+        from src.core.settings import update_settings
+
+        new_settings = update_settings(**intent.settings)
+        self.settings = new_settings
+        self.event_bus.emit("config_updated", new_settings.model_dump())
+
+        # Reload activation keys if the input handler is running
+        if self.input_listener:
+            try:
+                self.input_listener.update_activation_keys()
+                logger.info("Input handler activation keys reloaded")
+            except Exception:
+                logger.exception("Failed to reload activation keys")
+
+    def _handle_restart_engine(self, intent) -> None:
+        """Restart ASR + SLM models (background thread)."""
+        self.restart_engine()
+
     def _handle_refine_transcript(self, intent) -> None:
         """Refine a transcript using the SLM runtime."""
         if not self.slm_runtime or not self.db:
@@ -501,7 +580,12 @@ class ApplicationCoordinator:
                     },
                 )
 
-                refined = self.slm_runtime.refine_text_sync(text, level=intent.level)
+                refined = self.slm_runtime.refine_text_sync(
+                    text,
+                    level=intent.level,
+                    instructions=intent.instructions,
+                )
+
                 elapsed = round(time.monotonic() - start_time, 1)
 
                 # Store as variant
@@ -578,9 +662,13 @@ class ApplicationCoordinator:
         try:
             # Lazy-load ASR model if not already loaded
             if self._asr_model is None:
-                self._asr_model = create_local_model()
+                self._asr_model = create_local_model(self.settings)
 
-            text, speech_duration_ms = transcribe(audio_data, local_model=self._asr_model)
+            text, speech_duration_ms = transcribe(
+                audio_data,
+                settings=self.settings,
+                local_model=self._asr_model,
+            )
 
             if not text.strip():
                 self.event_bus.emit("transcription_error", {"message": "No speech detected"})
@@ -607,6 +695,10 @@ class ApplicationCoordinator:
                 },
             )
 
+            # Auto-copy to system clipboard (works without window focus)
+            if self.settings.output.auto_copy_to_clipboard:
+                self._copy_to_system_clipboard(text)
+
             logger.info("Transcription complete: %d chars, %dms", len(text), duration_ms)
 
         except Exception as e:
@@ -619,10 +711,11 @@ class ApplicationCoordinator:
         """Callback from input handler when activation key is pressed."""
         from src.core.intents.definitions import ToggleRecordingIntent
 
-        mode = self.settings.recording.activation_mode
+        mode = self.settings.recording.recording_mode
         if mode == "hold_to_record":
             # Hold mode: press starts recording
             from src.core.intents.definitions import BeginRecordingIntent
+
             self.command_bus.dispatch(BeginRecordingIntent())
         else:
             # Toggle mode (default): press toggles recording state
@@ -630,9 +723,10 @@ class ApplicationCoordinator:
 
     def _on_hotkey_release(self) -> None:
         """Callback from input handler when activation key is released."""
-        mode = self.settings.recording.activation_mode
+        mode = self.settings.recording.recording_mode
         if mode == "hold_to_record" and self._is_recording:
             from src.core.intents.definitions import StopRecordingIntent
+
             self.command_bus.dispatch(StopRecordingIntent())
 
     # --- Server + Window ---
@@ -741,18 +835,17 @@ class ApplicationCoordinator:
             # Resolve app icon path
             icon_path = ResourceManager.get_icon_path("vociferous_icon")
 
-            def on_closing() -> True:
+            def on_closing() -> bool:
                 """Called when main window is closing. Trigger graceful shutdown."""
                 logger.info("Main window closing, initiating shutdown...")
-                # Destroy the mini window so webview.start() can unblock.
-                # The main window is already closing (don't destroy the caller).
-                if self._mini_window is not None:
-                    try:
-                        self._mini_window.destroy()
-                    except Exception:
-                        pass
                 self.shutdown(stop_server=True, close_windows=False)
                 return True  # Allow main window to close naturally
+
+            def on_maximized() -> None:
+                self._window_maximized = True
+
+            def on_restored() -> None:
+                self._window_maximized = False
 
             self._main_window = webview.create_window(
                 title="Vociferous",
@@ -765,18 +858,8 @@ class ApplicationCoordinator:
                 background_color="#1e1e1e",
             )
             self._main_window.events.closing += on_closing
-
-            # Pre-create the mini widget window (hidden initially)
-            self._mini_window = webview.create_window(
-                title="Vociferous Mini",
-                url="http://127.0.0.1:18900/mini.html",
-                width=160,
-                height=56,
-                on_top=True,
-                frameless=True,
-                transparent=True,
-                hidden=True,
-            )
+            self._main_window.events.maximized += on_maximized
+            self._main_window.events.restored += on_restored
 
             webview.start(debug=False, icon=icon_path)
         except Exception:
@@ -789,22 +872,55 @@ class ApplicationCoordinator:
             if not self._shutdown_event.is_set():
                 self.shutdown(stop_server=False, close_windows=False)
 
-    def toggle_mini_widget(self) -> None:
-        """Toggle between full UI and mini floating widget."""
-        try:
-            if self._main_window is None or self._mini_window is None:
-                return
+    # --- Clipboard ---
 
-            if self._mini_window.hidden:
-                # Switch to mini: hide main, show mini
-                self._main_window.hide()
-                self._mini_window.show()
+    @staticmethod
+    def _copy_to_system_clipboard(text: str) -> None:
+        """Copy text to the system clipboard without requiring window focus.
+
+        Uses platform-native CLI tools so it works even when the
+        pywebview window is not focused or is hidden behind other windows.
+        """
+        system = platform.system()
+        try:
+            if system == "Linux":
+                # Try xclip first (more common), fall back to xsel
+                for cmd in (
+                    ["xclip", "-selection", "clipboard"],
+                    ["xsel", "--clipboard", "--input"],
+                ):
+                    try:
+                        subprocess.run(
+                            cmd,
+                            input=text.encode("utf-8"),
+                            check=True,
+                            timeout=3,
+                        )
+                        logger.debug("Copied %d chars to clipboard via %s", len(text), cmd[0])
+                        return
+                    except FileNotFoundError:
+                        continue
+                logger.warning("No clipboard tool found (install xclip or xsel)")
+            elif system == "Darwin":
+                subprocess.run(
+                    ["pbcopy"],
+                    input=text.encode("utf-8"),
+                    check=True,
+                    timeout=3,
+                )
+                logger.debug("Copied %d chars to clipboard via pbcopy", len(text))
+            elif system == "Windows":
+                subprocess.run(
+                    ["clip.exe"],
+                    input=text.encode("utf-16le"),
+                    check=True,
+                    timeout=3,
+                )
+                logger.debug("Copied %d chars to clipboard via clip.exe", len(text))
             else:
-                # Switch to full: hide mini, show main
-                self._mini_window.hide()
-                self._main_window.show()
+                logger.warning("Auto-copy not supported on %s", system)
         except Exception:
-            logger.exception("Failed to toggle mini widget")
+            logger.warning("Failed to copy to system clipboard", exc_info=True)
 
     # --- Window control (frameless title-bar) ---
 
@@ -823,6 +939,10 @@ class ApplicationCoordinator:
         else:
             self._main_window.maximize()
             self._window_maximized = True
+
+    def is_window_maximized(self) -> bool:
+        """Return current maximize state tracked by window events."""
+        return self._window_maximized
 
     def close_window(self) -> None:
         """Close the main window, triggering graceful shutdown."""

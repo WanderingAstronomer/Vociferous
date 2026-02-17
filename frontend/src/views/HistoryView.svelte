@@ -20,11 +20,15 @@
         dispatchIntent,
         getProjects,
         assignProject,
+        batchAssignProject,
+        batchDeleteTranscripts,
         type Transcript,
         type Project,
     } from "../lib/api";
     import { ws } from "../lib/ws";
-    import { onMount } from "svelte";
+    import { nav } from "../lib/navigation.svelte";
+    import { SelectionManager } from "../lib/selection.svelte";
+    import { onMount, onDestroy } from "svelte";
     import {
         Copy,
         Check,
@@ -71,8 +75,21 @@
     let isEditing = $state(false);
     let editText = $state("");
     let projects: Project[] = $state([]);
+    let initialCollapseApplied = $state(false);
+    let projectMenuOpen = $state(false);
+    let projectMenuX = $state(0);
+    let projectMenuY = $state(0);
+    let projectMenuTranscriptId = $state<number | null>(null);
+    let batchAssigning = $state(false);
+
+    /* ===== Multi-Selection ===== */
+
+    const selection = new SelectionManager();
 
     /* ===== Derived ===== */
+
+    /** Fast color lookup by project id */
+    let projectById = $derived(new Map(projects.map((p) => [p.id, p])));
 
     let dayGroups = $derived.by((): DayGroup[] => {
         const filtered = filterText.trim()
@@ -103,11 +120,53 @@
         }));
     });
 
-    let selectedText = $derived(selectedEntry ? selectedEntry.text || selectedEntry.normalized_text || selectedEntry.raw_text || "" : "");
+    /** Flat list of visible transcript IDs in display order, for range selection. */
+    let orderedIds = $derived(dayGroups.filter((g) => !g.collapsed).flatMap((g) => g.entries.map((e) => e.id)));
+
+    let selectedText = $derived(
+        selectedEntry ? selectedEntry.text || selectedEntry.normalized_text || selectedEntry.raw_text || "" : "",
+    );
 
     let selectedWordCount = $derived(selectedText ? selectedText.split(/\s+/).filter(Boolean).length : 0);
 
+    /** Build flat project options with parent names for sub-project disambiguation. */
+    let projectOptions = $derived.by(() => {
+        const opts: { value: string; label: string }[] = [{ value: "", label: "No Project" }];
+        const byId = new Map(projects.map((p) => [p.id, p]));
+        for (const p of projects) {
+            if (p.parent_id) {
+                const parent = byId.get(p.parent_id);
+                opts.push({ value: String(p.id), label: parent ? `${parent.name} / ${p.name}` : p.name });
+            } else {
+                opts.push({ value: String(p.id), label: p.name });
+            }
+        }
+        return opts;
+    });
+
+    let visibleVariants = $derived(
+        (selectedEntry?.variants ?? []).filter((variant) => variant.kind.trim().toLowerCase() !== "raw"),
+    );
+
     /* ===== Collapse tracking ===== */
+
+    /** Auto-collapse older day groups on first load.
+     *  Today stays expanded; everything else collapses. */
+    $effect(() => {
+        if (!initialCollapseApplied && dayGroups.length > 0) {
+            const todayKey = new Date().toISOString().slice(0, 10);
+            const toCollapse = new Set<string>();
+            for (const group of dayGroups) {
+                if (group.key !== todayKey) {
+                    toCollapse.add(group.key);
+                }
+            }
+            if (toCollapse.size > 0) {
+                collapsedDays = toCollapse;
+            }
+            initialCollapseApplied = true;
+        }
+    });
 
     function toggleDay(key: string) {
         const next = new Set(collapsedDays);
@@ -177,7 +236,24 @@
         }
     }
 
-    async function selectEntry(id: number) {
+    /** Handle click on a transcript row. Uses SelectionManager for multi-select. */
+    function handleEntryClick(id: number, event: MouseEvent) {
+        selection.handleClick(id, event, orderedIds);
+
+        // If exactly one item is selected, load its detail
+        if (selection.count === 1) {
+            const singleId = selection.ids[0];
+            loadEntryDetail(singleId);
+        } else {
+            // Multi-select: clear detail pane
+            isEditing = false;
+            editText = "";
+            selectedId = null;
+            selectedEntry = null;
+        }
+    }
+
+    async function loadEntryDetail(id: number) {
         if (selectedId === id && !isEditing) return;
         isEditing = false;
         editText = "";
@@ -193,13 +269,34 @@
         }
     }
 
+    /** Legacy compat: still used by WS event handlers that reload a specific entry. */
+    async function selectEntry(id: number) {
+        selection.selectOnly(id);
+        await loadEntryDetail(id);
+    }
+
     /* ===== Actions ===== */
 
     async function handleDelete() {
+        if (selection.isMulti) {
+            // Batch delete
+            const ids = selection.ids;
+            try {
+                await batchDeleteTranscripts(ids);
+                entries = entries.filter((e) => !selection.isSelected(e.id));
+                selection.clear();
+                selectedId = null;
+                selectedEntry = null;
+            } catch (e: any) {
+                error = e.message;
+            }
+            return;
+        }
         if (selectedId == null) return;
         try {
             await deleteTranscript(selectedId);
             entries = entries.filter((e) => e.id !== selectedId);
+            selection.clear();
             selectedId = null;
             selectedEntry = null;
         } catch (e: any) {
@@ -209,13 +306,7 @@
 
     async function handleRefine() {
         if (selectedId == null) return;
-        refining = selectedId;
-        try {
-            await refineTranscript(selectedId, 2);
-        } catch (e: any) {
-            error = e.message;
-            refining = null;
-        }
+        nav.navigate("refine", selectedId);
     }
 
     function copyText() {
@@ -264,17 +355,73 @@
         editText = "";
     }
 
-    async function handleAssignProject(e: Event) {
-        if (!selectedEntry) return;
-        const select = e.target as HTMLSelectElement;
-        const value = select.value;
+    function openProjectMenu(event: MouseEvent, transcriptId: number) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        // If right-clicking a non-selected item, select it first
+        if (!selection.isSelected(transcriptId)) {
+            selection.selectOnly(transcriptId);
+            loadEntryDetail(transcriptId);
+        }
+
+        const menuWidth = 280;
+        const menuHeight = Math.min((projectOptions.length + 1) * 34, 360);
+        const x = Math.min(event.clientX, window.innerWidth - menuWidth - 8);
+        const y = Math.min(event.clientY, window.innerHeight - menuHeight - 8);
+
+        projectMenuX = Math.max(8, x);
+        projectMenuY = Math.max(8, y);
+        projectMenuTranscriptId = transcriptId;
+        projectMenuOpen = true;
+    }
+
+    function closeProjectMenu() {
+        projectMenuOpen = false;
+        projectMenuTranscriptId = null;
+    }
+
+    async function assignProjectFromContext(value: string) {
         const projectId = value === "" ? null : parseInt(value, 10);
+        closeProjectMenu();
+
+        // Batch assign all selected items
+        const ids = selection.ids;
+        if (ids.length === 0) return;
+
+        batchAssigning = true;
         try {
-            await assignProject(selectedEntry.id, projectId);
-            selectedEntry = await getTranscript(selectedEntry.id);
+            await batchAssignProject(ids, projectId);
+            if (selectedEntry && ids.includes(selectedEntry.id)) {
+                selectedEntry = await getTranscript(selectedEntry.id);
+            }
             loadHistory();
         } catch (err: any) {
             console.error("Failed to assign project:", err);
+        } finally {
+            batchAssigning = false;
+        }
+    }
+
+    function handleGlobalPointerDown() {
+        if (projectMenuOpen) closeProjectMenu();
+    }
+
+    function handleGlobalKeydown(event: KeyboardEvent) {
+        if (event.key === "Escape") {
+            if (projectMenuOpen) closeProjectMenu();
+            else if (selection.isMulti) {
+                selection.clear();
+                selectedId = null;
+                selectedEntry = null;
+            }
+        }
+        // Ctrl+A / Cmd+A: select all visible transcripts
+        if ((event.ctrlKey || event.metaKey) && event.key === "a" && !isEditing) {
+            event.preventDefault();
+            selection.selectAll(orderedIds);
+            selectedId = null;
+            selectedEntry = null;
         }
     }
 
@@ -282,7 +429,13 @@
 
     onMount(() => {
         loadHistory();
-        getProjects().then((p) => (projects = p)).catch(() => {});
+        getProjects()
+            .then((p) => (projects = p))
+            .catch(() => {});
+
+        document.addEventListener("pointerdown", handleGlobalPointerDown);
+        document.addEventListener("keydown", handleGlobalKeydown);
+
         const unsubs = [
             ws.on("transcription_complete", () => loadHistory()),
             ws.on("transcript_deleted", (data) => {
@@ -305,57 +458,127 @@
                 loadHistory();
             }),
             ws.on("project_created", () => {
-                getProjects().then((p) => (projects = p)).catch(() => {});
+                getProjects()
+                    .then((p) => (projects = p))
+                    .catch(() => {});
             }),
             ws.on("project_deleted", () => {
-                getProjects().then((p) => (projects = p)).catch(() => {});
+                getProjects()
+                    .then((p) => (projects = p))
+                    .catch(() => {});
                 loadHistory();
             }),
         ];
-        return () => unsubs.forEach((fn) => fn());
+        return () => {
+            unsubs.forEach((fn) => fn());
+            document.removeEventListener("pointerdown", handleGlobalPointerDown);
+            document.removeEventListener("keydown", handleGlobalKeydown);
+        };
+    });
+
+    onDestroy(() => {
+        document.removeEventListener("pointerdown", handleGlobalPointerDown);
+        document.removeEventListener("keydown", handleGlobalKeydown);
     });
 </script>
 
-<div class="history-view">
+<div class="flex h-full overflow-hidden">
     <!-- Master: List Panel -->
-    <div class="list-panel">
-        <div class="list-header">
-            <button class="refresh-btn" onclick={loadHistory} title="Refresh">
+    <div class="w-2/5 min-w-[280px] flex flex-col border-r border-[var(--shell-border)] bg-[var(--surface-primary)]">
+        <div class="flex items-center justify-end p-2 px-3 shrink-0 h-auto gap-2">
+            {#if selection.isMulti}
+                <span class="text-xs text-[var(--accent)] font-semibold mr-auto">{selection.count} selected</span>
+                <button
+                    class="text-xs text-[var(--text-tertiary)] bg-transparent border-none cursor-pointer hover:text-[var(--text-primary)] transition-colors"
+                    onclick={() => {
+                        selection.clear();
+                        selectedId = null;
+                        selectedEntry = null;
+                    }}>Clear</button
+                >
+            {/if}
+            <button
+                class="w-7 h-7 border-none rounded bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)]"
+                onclick={loadHistory}
+                title="Refresh"
+            >
                 <RefreshCw size={14} />
             </button>
         </div>
 
-        <div class="filter-bar">
-            <input type="text" class="filter-input" placeholder="Filter transcripts…" bind:value={filterText} />
+        <div class="py-1 px-3 shrink-0">
+            <input
+                type="text"
+                class="w-full h-9 bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded text-[var(--text-primary)] text-sm px-2 outline-none transition-colors duration-150 focus:border-[var(--accent)] placeholder:text-[var(--text-tertiary)]"
+                placeholder="Filter transcripts…"
+                bind:value={filterText}
+            />
         </div>
 
-        <div class="list-content">
+        <div class="flex-1 overflow-y-auto pb-2">
             {#if loading}
-                <div class="list-empty"><Loader2 size={20} class="spin" /><span>Loading history…</span></div>
+                <div
+                    class="flex flex-col items-center justify-center gap-1 h-[200px] text-[var(--text-tertiary)] text-sm"
+                >
+                    <Loader2 size={20} class="animate-spin" /><span>Loading history…</span>
+                </div>
             {:else if error}
-                <div class="list-empty error">{error}</div>
+                <div
+                    class="flex flex-col items-center justify-center gap-1 h-[200px] text-[var(--color-danger)] text-sm"
+                >
+                    {error}
+                </div>
             {:else if dayGroups.length === 0}
-                <div class="list-empty">{filterText ? "No matches found" : "No transcripts yet"}</div>
+                <div
+                    class="flex flex-col items-center justify-center gap-1 h-[200px] text-[var(--text-tertiary)] text-sm"
+                >
+                    {filterText ? "No matches found" : "No transcripts yet"}
+                </div>
             {:else}
-                {#each dayGroups as group (group.key)}
-                    <button class="day-header" onclick={() => toggleDay(group.key)}>
-                        <span class="day-chevron">
+                {#each dayGroups as group, groupIdx (group.key)}
+                    {#if groupIdx > 0}
+                        <div class="h-px mx-3 my-1 bg-[var(--accent)]"></div>
+                    {/if}
+                    <button
+                        class="flex items-center gap-1 w-full p-1 px-3 border-none bg-transparent text-[var(--text-secondary)] text-xs font-semibold uppercase tracking-wide cursor-pointer text-left transition-colors duration-150 hover:text-[var(--text-primary)]"
+                        onclick={() => toggleDay(group.key)}
+                    >
+                        <span class="flex items-center text-[var(--text-tertiary)]">
                             {#if group.collapsed}<ChevronRight size={14} />{:else}<ChevronDown size={14} />{/if}
                         </span>
-                        <span class="day-label">{group.label}</span>
-                        <span class="day-count">{group.entries.length}</span>
+                        <span class="flex-1">{group.label}</span>
+                        <span
+                            class="text-xs text-[var(--text-tertiary)] bg-[var(--surface-tertiary)] px-1.5 py-px rounded-lg"
+                            >{group.entries.length}</span
+                        >
                     </button>
                     {#if !group.collapsed}
                         {#each group.entries as entry (entry.id)}
                             <button
-                                class="entry-item"
-                                class:selected={selectedId === entry.id}
-                                onclick={() => selectEntry(entry.id)}
+                                class="flex items-stretch w-full p-1 px-3 border-none bg-transparent cursor-pointer text-left transition-colors duration-150 hover:bg-[var(--hover-overlay)]"
+                                class:bg-[var(--hover-overlay-blue)]={selection.isSelected(entry.id)}
+                                onclick={(e) => handleEntryClick(entry.id, e)}
+                                oncontextmenu={(e) => openProjectMenu(e, entry.id)}
                             >
-                                <div class="entry-indicator" class:active={selectedId === entry.id}></div>
-                                <div class="entry-content">
-                                    <span class="entry-preview">{truncate(getDisplayText(entry))}</span>
-                                    <span class="entry-time">{formatTime(entry.created_at)}</span>
+                                {#if entry.project_id && projectById.get(entry.project_id)?.color}
+                                    <span
+                                        class="w-1.5 h-1.5 rounded-full shrink-0 self-center mr-2"
+                                        style="background: {projectById.get(entry.project_id)!.color}"
+                                        title={projectById.get(entry.project_id)!.name}
+                                    ></span>
+                                {/if}
+                                <div
+                                    class="w-0.5 rounded-sm shrink-0 mr-2 transition-colors duration-150"
+                                    class:bg-[var(--accent)]={selection.isSelected(entry.id)}
+                                ></div>
+                                <div class="flex-1 min-w-0 flex flex-col gap-0.5 py-0.5">
+                                    <span
+                                        class="text-sm text-[var(--text-primary)] leading-normal overflow-hidden text-ellipsis whitespace-nowrap"
+                                        >{truncate(getDisplayText(entry))}</span
+                                    >
+                                    <span class="text-xs text-[var(--text-tertiary)] font-mono"
+                                        >{formatTime(entry.created_at)}</span
+                                    >
                                 </div>
                             </button>
                         {/each}
@@ -366,23 +589,71 @@
     </div>
 
     <!-- Detail: Content Panel -->
-    <div class="detail-panel">
+    <div class="flex-1 flex flex-col overflow-hidden bg-[var(--surface-secondary)]">
         {#if detailLoading}
-            <div class="detail-empty"><Loader2 size={24} class="spin" /></div>
-        {:else if selectedEntry}
-            <div class="detail-content">
-                <h2 class="detail-title">{getTitle(selectedEntry)}</h2>
-                <div class="detail-separator"></div>
+            <div class="flex-1 flex flex-col items-center justify-center gap-2 text-[var(--text-tertiary)] text-sm">
+                <Loader2 size={24} class="animate-spin" />
+            </div>
+        {:else if selection.isMulti}
+            <!-- Multi-Select Bulk Actions Panel -->
+            <div class="flex-1 flex flex-col items-center justify-center gap-[var(--space-4)] p-[var(--space-5)]">
+                <div
+                    class="w-16 h-16 rounded-2xl bg-[var(--surface-primary)] border border-[var(--accent-muted)] flex items-center justify-center"
+                >
+                    <FileText size={28} strokeWidth={1.2} class="text-[var(--accent)]" />
+                </div>
+                <h3 class="m-0 text-[var(--text-primary)] text-lg font-semibold">
+                    {selection.count} transcripts selected
+                </h3>
+                <p class="m-0 text-[var(--text-tertiary)] text-sm">
+                    Right-click to assign to project, or use actions below
+                </p>
 
-                <div class="detail-metrics">
-                    <div class="detail-metric">
+                <div class="flex flex-col gap-[var(--space-2)] w-full max-w-[320px]">
+                    <button
+                        class="inline-flex items-center justify-center gap-2 h-10 px-4 border-none rounded-[var(--radius-md)] text-sm font-semibold cursor-pointer whitespace-nowrap bg-[var(--surface-primary)] border border-[var(--shell-border)] text-[var(--text-primary)] hover:bg-[var(--hover-overlay)] hover:border-[var(--accent)] transition-colors"
+                        onclick={(e) => openProjectMenu(e, selection.ids[0])}
+                    >
+                        <FolderOpen size={15} /> Assign {selection.count} to Project…
+                    </button>
+                    <button
+                        class="inline-flex items-center justify-center gap-2 h-10 px-4 border border-[var(--shell-border)] rounded-[var(--radius-md)] text-sm font-semibold cursor-pointer whitespace-nowrap bg-transparent text-[var(--text-tertiary)] hover:text-[var(--color-danger)] hover:border-[var(--color-danger)] hover:bg-[var(--color-danger-surface)] transition-colors"
+                        onclick={handleDelete}
+                    >
+                        <Trash2 size={15} /> Delete {selection.count} Transcripts
+                    </button>
+                </div>
+
+                <div class="text-xs text-[var(--text-tertiary)] mt-[var(--space-2)]">
+                    <kbd
+                        class="px-1.5 py-0.5 bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded text-[10px] font-mono"
+                        >Esc</kbd
+                    >
+                    to clear selection ·
+                    <kbd
+                        class="px-1.5 py-0.5 bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded text-[10px] font-mono"
+                        >Ctrl+A</kbd
+                    > to select all
+                </div>
+            </div>
+        {:else if selectedEntry}
+            <div class="flex-1 flex flex-col p-4 gap-2 overflow-hidden">
+                <h2 class="text-xl font-semibold text-[var(--text-primary)] m-0 leading-tight text-center">
+                    {getTitle(selectedEntry)}
+                </h2>
+                <div class="h-px bg-[var(--shell-border)] shrink-0"></div>
+
+                <div class="flex flex-wrap justify-center gap-2 shrink-0">
+                    <div class="flex items-center gap-1 text-sm text-[var(--text-secondary)] font-mono">
                         <Clock size={12} /><span>{formatDuration(selectedEntry.duration_ms)}</span>
                     </div>
-                    <div class="detail-metric">
+                    <div class="flex items-center gap-1 text-sm text-[var(--text-secondary)] font-mono">
                         <Gauge size={12} /><span>{formatDuration(selectedEntry.speech_duration_ms)}</span>
                     </div>
-                    <div class="detail-metric"><Hash size={12} /><span>{selectedWordCount} words</span></div>
-                    <div class="detail-metric">
+                    <div class="flex items-center gap-1 text-sm text-[var(--text-secondary)] font-mono">
+                        <Hash size={12} /><span>{selectedWordCount} words</span>
+                    </div>
+                    <div class="flex items-center gap-1 text-sm text-[var(--text-secondary)] font-mono">
                         <FileText size={12} /><span
                             >{formatWpm(
                                 selectedWordCount,
@@ -391,48 +662,64 @@
                         >
                     </div>
                     {#if selectedEntry.project_name}
-                        <div class="detail-metric accent"><span>📁 {selectedEntry.project_name}</span></div>
+                        <div class="flex items-center gap-1 text-sm text-[var(--accent)]">
+                            <span>📁 {selectedEntry.project_name}</span>
+                        </div>
                     {/if}
                 </div>
 
-                <div class="text-panel-resizable">
+                <div class="shrink-0 overflow-hidden flex flex-col relative group">
                     <WorkspacePanel editing={isEditing}>
-                        <div class="detail-text-area">
+                        <div class="overflow-y-auto max-h-[340px]">
                             {#if isEditing}
                                 <textarea
-                                    class="detail-text-edit"
+                                    class="w-full min-h-[120px] max-h-[340px] text-base leading-relaxed text-[var(--text-primary)] bg-[var(--surface-primary)] border border-[var(--accent)] rounded p-2 whitespace-pre-wrap break-words resize-y outline-none"
                                     bind:value={editText}
                                 ></textarea>
                             {:else}
-                                <p class="detail-text">{selectedText}</p>
+                                <p
+                                    class="text-base leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap break-words m-0"
+                                >
+                                    {selectedText}
+                                </p>
                             {/if}
                         </div>
                     </WorkspacePanel>
                 </div>
 
-                {#if selectedEntry.variants && selectedEntry.variants.length > 0}
-                    <div class="variants-section">
-                        <h3 class="variants-heading">Variants</h3>
-                        {#each selectedEntry.variants as variant (variant.id)}
-                            <div class="variant-card">
-                                <div class="variant-header">
-                                    <span class="variant-kind">{variant.kind}</span>
-                                    <span class="variant-date">{formatTime(variant.created_at)}</span>
+                {#if visibleVariants.length > 0}
+                    <div class="shrink-0 max-h-[200px] overflow-y-auto">
+                        <h3
+                            class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide mb-2 m-0 mt-2"
+                        >
+                            Variants
+                        </h3>
+                        {#each visibleVariants as variant (variant.id)}
+                            <div class="p-2 px-3 bg-[var(--surface-primary)] rounded mb-2 group/variant">
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-xs font-semibold text-[var(--accent)] uppercase tracking-wide"
+                                        >{variant.kind}</span
+                                    >
+                                    <span class="text-xs text-[var(--text-tertiary)] font-mono"
+                                        >{formatTime(variant.created_at)}</span
+                                    >
                                     <button
-                                        class="variant-delete"
+                                        class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-0.5 rounded flex items-center opacity-0 transition-opacity duration-150 group-hover/variant:opacity-100 hover:text-[var(--color-danger)]"
                                         title="Delete variant"
                                         onclick={() => handleDeleteVariant(selectedEntry!.id, variant.id)}
                                     >
                                         <X size={12} />
                                     </button>
                                 </div>
-                                <p class="variant-text">{variant.text}</p>
+                                <p class="text-sm leading-normal text-[var(--text-secondary)] m-0">{variant.text}</p>
                             </div>
                         {/each}
                     </div>
                 {/if}
 
-                <div class="detail-footer">
+                <div
+                    class="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)] shrink-0 pt-2 border-t border-[var(--shell-border)]"
+                >
                     <Calendar size={12} />
                     <span>
                         {formatDayHeader(new Date(selectedEntry.created_at))} · {formatTime(selectedEntry.created_at)}
@@ -441,56 +728,60 @@
                     </span>
                 </div>
 
-                <div class="detail-actions">
+                <div class="flex items-center gap-2 shrink-0 pt-2">
                     {#if isEditing}
-                        <button class="action-btn primary" onclick={saveEdits} title="Save edits">
+                        <button
+                            class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-[var(--accent)] text-[var(--gray-0)] hover:bg-[var(--accent-hover)] transition-colors"
+                            onclick={saveEdits}
+                            title="Save edits"
+                        >
                             <Save size={14} /> Save
                         </button>
-                        <button class="action-btn ghost" onclick={cancelEdits} title="Discard edits">
+                        <button
+                            class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)] transition-colors"
+                            onclick={cancelEdits}
+                            title="Discard edits"
+                        >
                             <Undo2 size={14} /> Cancel
                         </button>
                     {:else}
-                        <button class="action-btn secondary" onclick={enterEditMode} title="Edit">
+                        <button
+                            class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-[var(--surface-tertiary)] text-[var(--text-primary)] hover:bg-[var(--gray-6)] transition-colors"
+                            onclick={enterEditMode}
+                            title="Edit"
+                        >
                             <Pencil size={14} /> Edit
                         </button>
-                        <button class="action-btn secondary" onclick={copyText} title="Copy">
+                        <button
+                            class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-[var(--surface-tertiary)] text-[var(--text-primary)] hover:bg-[var(--gray-6)] transition-colors"
+                            onclick={copyText}
+                            title="Copy"
+                        >
                             {#if copied}<Check size={14} /> Copied{:else}<Copy size={14} /> Copy{/if}
                         </button>
                         <button
-                            class="action-btn ghost"
+                            class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             onclick={handleRefine}
                             title="Refine"
                             disabled={refining === selectedId}
                         >
-                            {#if refining === selectedId}<Loader2 size={14} class="spin" /> Refining…{:else}<Sparkles
+                            {#if refining === selectedId}<Loader2 size={14} class="animate-spin" /> Refining…{:else}<Sparkles
                                     size={14}
                                 /> Refine{/if}
                         </button>
-                        {#if projects.length > 0}
-                            <div class="project-assign">
-                                <FolderOpen size={14} />
-                                <select
-                                    class="project-select"
-                                    value={selectedEntry?.project_id?.toString() ?? ""}
-                                    onchange={handleAssignProject}
-                                    title="Assign to project"
-                                >
-                                    <option value="">No Project</option>
-                                    {#each projects as project (project.id)}
-                                        <option value={project.id.toString()}>{project.name}</option>
-                                    {/each}
-                                </select>
-                            </div>
-                        {/if}
-                        <div class="action-spacer"></div>
-                        <button class="action-btn destructive" onclick={handleDelete} title="Delete"
-                            ><Trash2 size={14} /> Delete</button
+                        <span class="text-xs text-[var(--text-tertiary)]">Right-click transcript to assign project</span
+                        >
+                        <div class="flex-1"></div>
+                        <button
+                            class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-transparent text-[var(--text-tertiary)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-surface)] transition-colors"
+                            onclick={handleDelete}
+                            title="Delete"><Trash2 size={14} /> Delete</button
                         >
                     {/if}
                 </div>
             </div>
         {:else}
-            <div class="detail-empty">
+            <div class="flex-1 flex flex-col items-center justify-center gap-2 text-[var(--text-tertiary)] text-sm">
                 <FileText size={32} strokeWidth={1} />
                 <p>Select a transcript</p>
             </div>
@@ -498,433 +789,36 @@
     </div>
 </div>
 
-<style>
-    .history-view {
-        display: flex;
-        height: 100%;
-        overflow: hidden;
-    }
-
-    /* ===== List Panel ===== */
-    .list-panel {
-        width: 40%;
-        min-width: 280px;
-        display: flex;
-        flex-direction: column;
-        border-right: 1px solid var(--shell-border);
-        background: var(--surface-primary);
-    }
-    .list-header {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        padding: var(--space-2) var(--space-3);
-        flex-shrink: 0;
-        height: auto;
-    }
-    .refresh-btn {
-        width: 28px;
-        height: 28px;
-        border: none;
-        border-radius: var(--radius-sm);
-        background: transparent;
-        color: var(--text-tertiary);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition:
-            color var(--transition-fast),
-            background var(--transition-fast);
-    }
-    .refresh-btn:hover {
-        color: var(--text-primary);
-        background: var(--hover-overlay);
-    }
-    .filter-bar {
-        padding: var(--space-1) var(--space-3);
-        flex-shrink: 0;
-    }
-    .filter-input {
-        width: 100%;
-        height: 36px;
-        background: var(--surface-secondary);
-        border: 1px solid var(--shell-border);
-        border-radius: var(--radius-sm);
-        color: var(--text-primary);
-        font-family: var(--font-family);
-        font-size: var(--text-sm);
-        padding: 0 var(--space-2);
-        outline: none;
-        transition: border-color var(--transition-fast);
-    }
-    .filter-input:focus {
-        border-color: var(--accent);
-    }
-    .filter-input::placeholder {
-        color: var(--text-tertiary);
-    }
-    .list-content {
-        flex: 1;
-        overflow-y: auto;
-        padding-bottom: var(--space-2);
-    }
-    .list-empty {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: var(--space-1);
-        height: 200px;
-        color: var(--text-tertiary);
-        font-size: var(--text-sm);
-    }
-    .list-empty.error {
-        color: var(--color-danger);
-    }
-
-    /* ===== Day Header ===== */
-    .day-header {
-        display: flex;
-        align-items: center;
-        gap: var(--space-1);
-        width: 100%;
-        padding: var(--space-1) var(--space-3);
-        border: none;
-        background: transparent;
-        color: var(--text-secondary);
-        font-family: var(--font-family);
-        font-size: var(--text-xs);
-        font-weight: var(--weight-emphasis);
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        cursor: pointer;
-        transition: color var(--transition-fast);
-        text-align: left;
-    }
-    .day-header:hover {
-        color: var(--text-primary);
-    }
-    .day-chevron {
-        display: flex;
-        align-items: center;
-        color: var(--text-tertiary);
-    }
-    .day-label {
-        flex: 1;
-    }
-    .day-count {
-        font-size: var(--text-xs);
-        color: var(--text-tertiary);
-        background: var(--surface-tertiary);
-        padding: 1px 6px;
-        border-radius: 8px;
-    }
-
-    /* ===== Entry Item ===== */
-    .entry-item {
-        display: flex;
-        align-items: stretch;
-        width: 100%;
-        padding: var(--space-1) var(--space-3);
-        padding-left: var(--space-1);
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        text-align: left;
-        font-family: var(--font-family);
-        transition: background var(--transition-fast);
-    }
-    .entry-item:hover {
-        background: var(--hover-overlay);
-    }
-    .entry-item.selected {
-        background: var(--hover-overlay-blue);
-    }
-    .entry-indicator {
-        width: 3px;
-        border-radius: 2px;
-        flex-shrink: 0;
-        margin-right: var(--space-1);
-        transition: background var(--transition-fast);
-    }
-    .entry-indicator.active {
-        background: var(--accent);
-    }
-    .entry-content {
-        flex: 1;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        padding: 2px 0;
-    }
-    .entry-preview {
-        font-size: var(--text-sm);
-        color: var(--text-primary);
-        line-height: var(--leading-normal);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-    .entry-time {
-        font-size: var(--text-xs);
-        color: var(--text-tertiary);
-        font-family: var(--font-mono);
-    }
-
-    /* ===== Detail Panel ===== */
-    .detail-panel {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        background: var(--surface-secondary);
-    }
-    .detail-empty {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: var(--space-2);
-        color: var(--text-tertiary);
-        font-size: var(--text-sm);
-    }
-    .detail-content {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        padding: var(--space-4) var(--space-4) var(--space-2);
-        gap: var(--space-2);
-        overflow: hidden;
-    }
-    .detail-title {
-        font-size: var(--text-md);
-        font-weight: var(--weight-emphasis);
-        color: var(--text-primary);
-        margin: 0;
-        line-height: var(--leading-tight);
-        text-align: center;
-    }
-    .detail-separator {
-        height: 1px;
-        background: var(--shell-border);
-        flex-shrink: 0;
-    }
-
-    .detail-metrics {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: var(--space-2);
-        flex-shrink: 0;
-    }
-    .detail-metric {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        font-size: var(--text-sm);
-        color: var(--text-secondary);
-        font-family: var(--font-mono);
-    }
-    .detail-metric.accent {
-        color: var(--accent);
-        font-family: var(--font-family);
-    }
-
-    .detail-text-area {
-        flex: 1;
-        overflow-y: auto;
-    }
-
-    .text-panel-resizable {
-        flex: 1;
-        min-height: 100px;
-        max-height: 70vh;
-        overflow: hidden;
-        resize: vertical;
-        display: flex;
-        flex-direction: column;
-    }
-    .text-panel-resizable > :global(.workspace-panel) {
-        flex: 1;
-        min-height: 0;
-    }
-    .detail-text {
-        font-size: var(--text-base);
-        line-height: var(--leading-relaxed);
-        color: var(--text-primary);
-        white-space: pre-wrap;
-        word-break: break-word;
-        margin: 0;
-    }
-    .detail-text-edit {
-        width: 100%;
-        height: 100%;
-        min-height: 120px;
-        font-size: var(--text-base);
-        line-height: var(--leading-relaxed);
-        color: var(--text-primary);
-        background: var(--surface-primary);
-        border: 1px solid var(--accent);
-        border-radius: var(--radius-sm);
-        padding: var(--space-2);
-        font-family: var(--font-family);
-        white-space: pre-wrap;
-        word-break: break-word;
-        resize: vertical;
-        outline: none;
-    }
-
-    .variants-section {
-        flex-shrink: 0;
-        max-height: 200px;
-        overflow-y: auto;
-    }
-    .variants-heading {
-        font-size: var(--text-xs);
-        font-weight: var(--weight-emphasis);
-        color: var(--text-secondary);
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        margin: 0 0 var(--space-1);
-    }
-    .variant-card {
-        padding: var(--space-1) var(--space-2);
-        background: var(--surface-primary);
-        border-radius: var(--radius-sm);
-        margin-bottom: var(--space-1);
-    }
-    .variant-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 4px;
-    }
-    .variant-kind {
-        font-size: var(--text-xs);
-        font-weight: var(--weight-emphasis);
-        color: var(--accent);
-        text-transform: uppercase;
-        letter-spacing: 0.03em;
-    }
-    .variant-date {
-        font-size: var(--text-xs);
-        color: var(--text-tertiary);
-        font-family: var(--font-mono);
-    }
-    .variant-delete {
-        background: none;
-        border: none;
-        color: var(--text-tertiary);
-        cursor: pointer;
-        padding: 2px;
-        border-radius: var(--radius-sm);
-        display: flex;
-        align-items: center;
-        opacity: 0;
-        transition:
-            opacity 0.15s,
-            color 0.15s;
-    }
-    .variant-card:hover .variant-delete {
-        opacity: 1;
-    }
-    .variant-delete:hover {
-        color: var(--danger);
-    }
-    .variant-text {
-        font-size: var(--text-sm);
-        line-height: var(--leading-normal);
-        color: var(--text-secondary);
-        margin: 0;
-    }
-
-    .detail-footer {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-size: var(--text-xs);
-        color: var(--text-tertiary);
-        flex-shrink: 0;
-        padding-top: var(--space-1);
-        border-top: 1px solid var(--shell-border);
-    }
-
-    .detail-actions {
-        display: flex;
-        align-items: center;
-        gap: var(--space-1);
-        flex-shrink: 0;
-        padding-top: var(--space-1);
-    }
-    .action-spacer {
-        flex: 1;
-    }
-    .action-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        height: 36px;
-        padding: 0 var(--space-2);
-        border: none;
-        border-radius: var(--radius-sm);
-        font-family: var(--font-family);
-        font-size: var(--text-sm);
-        font-weight: var(--weight-emphasis);
-        cursor: pointer;
-        transition:
-            background var(--transition-fast),
-            color var(--transition-fast);
-        white-space: nowrap;
-    }
-    .action-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-    .action-btn.secondary {
-        background: var(--surface-tertiary);
-        color: var(--text-primary);
-    }
-    .action-btn.secondary:hover:not(:disabled) {
-        background: var(--gray-6);
-    }
-    .action-btn.ghost {
-        background: transparent;
-        color: var(--text-secondary);
-    }
-    .action-btn.ghost:hover:not(:disabled) {
-        color: var(--text-primary);
-        background: var(--hover-overlay);
-    }
-    .action-btn.destructive {
-        background: transparent;
-        color: var(--text-tertiary);
-    }
-    .action-btn.destructive:hover:not(:disabled) {
-        color: var(--color-danger);
-        background: var(--color-danger-surface);
-    }
-
-    .project-assign {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        color: var(--text-secondary);
-    }
-    .project-select {
-        height: 32px;
-        background: var(--surface-tertiary);
-        border: 1px solid var(--shell-border);
-        border-radius: var(--radius-sm);
-        color: var(--text-primary);
-        font-family: var(--font-family);
-        font-size: var(--text-sm);
-        padding: 0 var(--space-2);
-        cursor: pointer;
-    }
-    .project-select:hover {
-        border-color: var(--text-tertiary);
-    }
-</style>
+{#if projectMenuOpen}
+    <div
+        class="fixed min-w-[260px] max-w-[340px] max-h-[360px] overflow-y-auto bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-[var(--radius-md)] shadow-[0_12px_28px_rgba(0,0,0,0.45)] py-1 z-[200]"
+        style="left: {projectMenuX}px; top: {projectMenuY}px"
+        role="menu"
+        tabindex="-1"
+        onpointerdown={(e) => e.stopPropagation()}
+        oncontextmenu={(e) => e.preventDefault()}
+    >
+        <div class="px-3 py-1.5 text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">
+            {#if selection.isMulti}
+                Assign {selection.count} transcripts to project
+            {:else}
+                Assign to Project
+            {/if}
+        </div>
+        {#each projectOptions as option}
+            <button
+                class="w-full flex items-center justify-between gap-2 px-3 py-1.5 border-none bg-transparent text-left text-[var(--text-sm)] cursor-pointer transition-colors duration-150 hover:bg-[var(--hover-overlay-blue)] {selectedEntry?.id ===
+                    projectMenuTranscriptId && (selectedEntry?.project_id?.toString() ?? '') === option.value
+                    ? 'text-[var(--accent)]'
+                    : 'text-[var(--text-primary)]'}"
+                onclick={() => assignProjectFromContext(option.value)}
+                role="menuitem"
+            >
+                <span class="truncate">{option.label}</span>
+                {#if selectedEntry?.id === projectMenuTranscriptId && (selectedEntry?.project_id?.toString() ?? "") === option.value}
+                    <Check size={12} />
+                {/if}
+            </button>
+        {/each}
+    </div>
+{/if}

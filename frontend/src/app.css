@@ -199,18 +199,6 @@
     --transition-fast: 150ms ease;
     --transition-normal: 250ms ease;
     --transition-slow: 400ms ease;
-
-    /* Legacy compat aliases (used in existing views) */
-    --color-bg-primary: var(--surface-primary);
-    --color-bg-secondary: var(--surface-secondary);
-    --color-bg-tertiary: var(--surface-tertiary);
-    --color-text-primary: var(--text-primary);
-    --color-text-secondary: var(--text-secondary);
-    --color-text-muted: var(--text-tertiary);
-    --color-accent: var(--accent);
-    --color-accent-hover: var(--accent-hover);
-    --color-border: var(--shell-border);
-    --radius: var(--radius-md);
 }
 
 /* ==========================================================================

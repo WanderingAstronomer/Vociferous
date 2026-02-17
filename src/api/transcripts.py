@@ -48,6 +48,23 @@ async def delete_transcript(transcript_id: int) -> Response:
     return Response(content={"deleted": True})
 
 
+@delete("/api/transcripts", status_code=200)
+async def clear_all_transcripts() -> Response:
+    """Delete all transcripts via CommandBus intent."""
+    from src.core.intents.definitions import ClearTranscriptsIntent
+
+    coordinator = get_coordinator()
+    intent = ClearTranscriptsIntent()
+    success = coordinator.command_bus.dispatch(intent)
+    if not success:
+        return Response(content={"error": "Clear failed"}, status_code=500)
+    # Since dispatch is async in effect (handled synchronously but db is fast),
+    # we can assume it worked if success is True.
+    # Ideally we'd return the deleted count, but intents don't return values.
+    # The frontend should listen for 'transcripts_cleared' event.
+    return Response(content={"status": "cleared"})
+
+
 @get("/api/transcripts/search")
 async def search_transcripts(q: str, limit: int = 50) -> list[dict]:
     coordinator = get_coordinator()
@@ -74,13 +91,16 @@ async def refine_transcript(transcript_id: int, data: dict) -> Response:
 
 @delete("/api/transcripts/{transcript_id:int}/variants/{variant_id:int}", status_code=200)
 async def delete_variant(transcript_id: int, variant_id: int) -> Response:
-    """Delete a single refinement variant."""
+    """Delete a transcript variant via CommandBus intent."""
+    from src.core.intents.definitions import DeleteTranscriptVariantIntent
+
     coordinator = get_coordinator()
-    if coordinator.db is None:
-        return Response(content={"error": "Database not available"}, status_code=503)
-    deleted = coordinator.db.delete_variant(transcript_id, variant_id)
-    if not deleted:
-        return Response(content={"error": "Variant not found"}, status_code=404)
+    intent = DeleteTranscriptVariantIntent(
+        transcript_id=transcript_id, variant_id=variant_id
+    )
+    success = coordinator.command_bus.dispatch(intent)
+    if not success:
+        return Response(content={"error": "Delete failed"}, status_code=500)
     return Response(content={"deleted": True})
 
 

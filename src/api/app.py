@@ -33,10 +33,12 @@ from src.api.system import (
     maximize_window,
     minimize_window,
     restart_engine,
-    toggle_mini_widget,
+    start_key_capture,
+    stop_key_capture,
     update_config,
 )
 from src.api.transcripts import (
+    clear_all_transcripts,
     delete_transcript,
     delete_variant,
     get_transcript,
@@ -228,6 +230,7 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             list_transcripts,
             get_transcript,
             delete_transcript,
+            clear_all_transcripts,
             delete_variant,
             refine_transcript,
             search_transcripts,
@@ -243,11 +246,13 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             download_model,
             restart_engine,
             health,
-            toggle_mini_widget,
             minimize_window,
             maximize_window,
             close_window,
             dispatch_intent,
+            # Key capture
+            start_key_capture,
+            stop_key_capture,
             # SPA entry points
             *spa_handlers,
         ],
@@ -287,6 +292,10 @@ def _wire_event_bridge(coordinator: ApplicationCoordinator, ws_manager: Connecti
         "download_progress",
         "project_created",
         "project_deleted",
+        "project_updated",
+        "key_captured",
+        "transcript_updated",
+        "refinement_progress",
     ]
 
     for event_type in event_types:

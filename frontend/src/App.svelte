@@ -2,9 +2,10 @@
     import { ws } from "./lib/ws";
     import { onMount, onDestroy } from "svelte";
     import { getModels, getConfig } from "./lib/api";
+    import { nav } from "./lib/navigation.svelte";
+    import type { ViewId } from "./lib/navigation.svelte";
     import IconRail from "./lib/components/IconRail.svelte";
     import TitleBar from "./lib/components/TitleBar.svelte";
-    import type { ViewId } from "./lib/components/IconRail.svelte";
     import TranscribeView from "./views/TranscribeView.svelte";
     import HistoryView from "./views/HistoryView.svelte";
     import SearchView from "./views/SearchView.svelte";
@@ -12,10 +13,11 @@
     import ProjectsView from "./views/ProjectsView.svelte";
     import RefineView from "./views/RefineView.svelte";
     import UserView from "./views/UserView.svelte";
+    import type { ConfigUpdatedData } from "./lib/events";
 
-    let currentView: ViewId = $state("transcribe");
     let appReady = $state(false);
     let refinementEnabled = $state(true);
+    let recordingActive = $state(false);
 
     let hiddenViews: Set<ViewId> = $derived(refinementEnabled ? new Set() : new Set<ViewId>(["refine"]));
 
@@ -27,10 +29,12 @@
     }
 
     function handleNavigate(view: ViewId) {
-        currentView = view;
+        nav.navigate(view);
     }
 
     let unsubConfigUpdated: (() => void) | null = null;
+    let unsubRecordingStarted: (() => void) | null = null;
+    let unsubRecordingStopped: (() => void) | null = null;
 
     onMount(async () => {
         ws.connect();
@@ -40,7 +44,7 @@
             const [models, config] = await Promise.all([getModels(), getConfig()]);
             const hasAsr = Object.values(models.asr).some((m: any) => m.downloaded);
             if (!hasAsr) {
-                currentView = "settings";
+                nav.navigate("settings");
             }
             refinementEnabled = (config as any)?.refinement?.enabled ?? true;
             applyUiScale((config as any)?.display?.ui_scale ?? 100);
@@ -48,17 +52,32 @@
             console.warn("Could not check initial status");
         }
 
+        unsubRecordingStarted = ws.on("recording_started", () => {
+            recordingActive = true;
+        });
+        unsubRecordingStopped = ws.on("recording_stopped", () => {
+            recordingActive = false;
+        });
+
         // Stay in sync when settings change
-        unsubConfigUpdated = ws.on("config_updated", (data: any) => {
-            if (data?.refinement?.enabled !== undefined) {
-                refinementEnabled = data.refinement.enabled;
+        unsubConfigUpdated = ws.on("config_updated", (data: ConfigUpdatedData) => {
+            const refinement = data.refinement;
+            if (typeof refinement === "object" && refinement !== null && "enabled" in refinement) {
+                refinementEnabled = Boolean(refinement.enabled);
                 // If user is on refine view but just disabled it, bounce to transcribe
-                if (!refinementEnabled && currentView === "refine") {
-                    currentView = "transcribe";
+                if (!refinementEnabled && nav.current === "refine") {
+                    nav.navigate("transcribe");
                 }
             }
-            if (data?.display?.ui_scale !== undefined) {
-                applyUiScale(data.display.ui_scale);
+
+            const display = data.display;
+            if (
+                typeof display === "object" &&
+                display !== null &&
+                "ui_scale" in display &&
+                typeof display.ui_scale === "number"
+            ) {
+                applyUiScale(display.ui_scale);
             }
         });
 
@@ -68,57 +87,39 @@
     onDestroy(() => {
         ws.disconnect();
         unsubConfigUpdated?.();
+        unsubRecordingStarted?.();
+        unsubRecordingStopped?.();
     });
 </script>
 
-<div class="app-root">
-    <TitleBar />
-    <div class="app-shell">
+<div class="flex flex-col h-screen overflow-hidden">
+    <TitleBar isRecording={recordingActive} />
+    <div class="flex flex-1 bg-[var(--shell-bg)] text-[var(--text-primary)] overflow-hidden">
         {#if !appReady}
             <!-- Waiting for initial status check -->
         {:else}
-            <IconRail {currentView} {hiddenViews} onNavigate={handleNavigate} />
+            <IconRail currentView={nav.current} {hiddenViews} onNavigate={handleNavigate} />
 
-            <main class="app-content">
-                {#if currentView === "transcribe"}
+            <main class="flex-1 overflow-hidden bg-[var(--surface-secondary)]">
+                <!-- TranscribeView stays mounted to preserve recording/visualizer state -->
+                <div class="h-full" style:display={nav.current === "transcribe" ? "block" : "none"}>
                     <TranscribeView />
-                {:else if currentView === "history"}
+                </div>
+
+                {#if nav.current === "history"}
                     <HistoryView />
-                {:else if currentView === "search"}
+                {:else if nav.current === "search"}
                     <SearchView />
-                {:else if currentView === "settings"}
+                {:else if nav.current === "settings"}
                     <SettingsView />
-                {:else if currentView === "projects"}
+                {:else if nav.current === "projects"}
                     <ProjectsView />
-                {:else if currentView === "refine"}
+                {:else if nav.current === "refine"}
                     <RefineView />
-                {:else if currentView === "user"}
+                {:else if nav.current === "user"}
                     <UserView />
                 {/if}
             </main>
         {/if}
     </div>
 </div>
-
-<style>
-    .app-root {
-        display: flex;
-        flex-direction: column;
-        height: 100vh;
-        overflow: hidden;
-    }
-
-    .app-shell {
-        display: flex;
-        flex: 1;
-        background: var(--shell-bg);
-        color: var(--text-primary);
-        overflow: hidden;
-    }
-
-    .app-content {
-        flex: 1;
-        overflow: hidden;
-        background: var(--surface-secondary);
-    }
-</style>

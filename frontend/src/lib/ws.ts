@@ -2,9 +2,16 @@
  * Vociferous WebSocket client for real-time events.
  */
 
-import type { WSEventMap, WSEventType, TypedEventHandler } from "./events";
+import {
+    wsEventValidators,
+    type WSEventType,
+    type TypedEventHandler,
+} from "./events";
 
 export type EventHandler = (data: unknown) => void;
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null;
 
 class WSClient {
     private ws: WebSocket | null = null;
@@ -25,12 +32,31 @@ class WSClient {
             };
             this.ws.onmessage = (event) => {
                 try {
-                    const msg = JSON.parse(event.data);
-                    const type = msg.type as string;
+                    const msg = JSON.parse(event.data) as unknown;
+                    if (!isObject(msg)) {
+                        console.warn("[ws] invalid message payload", event.data);
+                        return;
+                    }
+
+                    const type = msg.type;
+                    if (typeof type !== "string") {
+                        console.warn("[ws] missing event type", msg);
+                        return;
+                    }
+
+                    const data = msg.data;
+                    if (type in wsEventValidators) {
+                        const validator = wsEventValidators[type as WSEventType];
+                        if (!validator(data)) {
+                            console.warn("[ws] invalid event payload", type, data);
+                            return;
+                        }
+                    }
+
                     const handlers = this.handlers.get(type);
                     if (handlers) {
                         for (const handler of handlers) {
-                            handler(msg.data);
+                            handler(data);
                         }
                     }
                 } catch {

@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from src.core.exceptions import ConfigError
 from src.core.settings import (
     ModelSettings,
     RecordingSettings,
@@ -139,7 +140,7 @@ class TestAtomicWrite:
         assert data["user"]["name"] == "ValidJSON"
 
     def test_save_without_init_raises(self) -> None:
-        with pytest.raises(RuntimeError, match="No settings to save"):
+        with pytest.raises(ConfigError, match="No settings to save"):
             save_settings()
 
 
@@ -196,12 +197,12 @@ class TestFrozenModels:
     def test_model_settings_frozen(self) -> None:
         m = ModelSettings()
         with pytest.raises(ValidationError):
-            m.model = "something_else"  # type: ignore[misc]
+            m.model = "something_else"
 
     def test_recording_settings_frozen(self) -> None:
         r = RecordingSettings()
         with pytest.raises(ValidationError):
-            r.sample_rate = 999  # type: ignore[misc]
+            r.sample_rate = 999
 
 
 # ── Environment Variable Overrides ────────────────────────────────────────
@@ -280,7 +281,7 @@ class TestModuleIsolation:
     def test_reset_clears_state(self) -> None:
         init_settings()
         reset_for_tests()
-        with pytest.raises(RuntimeError):
+        with pytest.raises(ConfigError):
             get_settings()
 
     def test_separate_config_paths_isolated(self, tmp_path: Path) -> None:

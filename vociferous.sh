@@ -24,4 +24,10 @@ if [[ ! -d "$SCRIPT_DIR/frontend/dist" ]] && [[ -f "$SCRIPT_DIR/frontend/package
     (cd "$SCRIPT_DIR/frontend" && npm install --silent && npx vite build)
 fi
 
+# NVIDIA DRM workaround: Disable WebKitGTK GPU acceleration to prevent
+# kernel panic (nv_drm_revoke_modeset_permission crash on Wayland).
+# See: NVIDIA driver 550.x has known DRM permission bugs with concurrent access.
+export WEBKIT_DISABLE_COMPOSITING_MODE=1
+export WEBKIT_DISABLE_DMABUF_RENDERER=1
+
 exec "$PYTHON" -m src.main "$@"

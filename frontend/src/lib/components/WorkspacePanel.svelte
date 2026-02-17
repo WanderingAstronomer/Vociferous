@@ -14,34 +14,21 @@
     }
 
     let { editing = false, recording = false, children }: Props = $props();
+
+    const baseClasses =
+        "flex-1 flex flex-col overflow-hidden bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-xl p-4 transition-all duration-250";
+
+    let stateClasses = $derived.by(() => {
+        if (editing) {
+            return "border-[var(--accent)] shadow-[0_0_0_1px_var(--accent-muted)]";
+        }
+        if (recording) {
+            return "border-[var(--blue-7)] shadow-[0_0_12px_rgba(90,159,212,0.1)]";
+        }
+        return "";
+    });
 </script>
 
-<div class="workspace-panel" class:editing class:recording>
+<div class="{baseClasses} {stateClasses}">
     {#if children}{@render children()}{/if}
 </div>
-
-<style>
-    .workspace-panel {
-        background: var(--surface-secondary);
-        border: 1px solid var(--shell-border);
-        border-radius: var(--radius-lg);
-        padding: var(--panel-padding);
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        transition:
-            border-color var(--transition-normal),
-            box-shadow var(--transition-normal);
-    }
-
-    .workspace-panel.editing {
-        border-color: var(--accent);
-        box-shadow: 0 0 0 1px var(--accent-muted);
-    }
-
-    .workspace-panel.recording {
-        border-color: var(--blue-7);
-        box-shadow: 0 0 12px rgba(90, 159, 212, 0.1);
-    }
-</style>

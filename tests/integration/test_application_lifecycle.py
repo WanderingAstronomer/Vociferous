@@ -94,7 +94,6 @@ class TestInitializationState:
     def test_window_refs_none(self, fresh_coordinator):
         """Window references must be None before start()."""
         assert fresh_coordinator._main_window is None
-        assert fresh_coordinator._mini_window is None
 
     def test_server_thread_none(self, fresh_coordinator):
         """Server thread not started until start()."""
@@ -121,13 +120,18 @@ class TestHandlerRegistration:
             AssignProjectIntent,
             BeginRecordingIntent,
             CancelRecordingIntent,
+            ClearTranscriptsIntent,
             CommitEditsIntent,
             CreateProjectIntent,
             DeleteProjectIntent,
             DeleteTranscriptIntent,
+            DeleteTranscriptVariantIntent,
             RefineTranscriptIntent,
+            RestartEngineIntent,
             StopRecordingIntent,
             ToggleRecordingIntent,
+            UpdateConfigIntent,
+            UpdateProjectIntent,
         )
 
         expected_intents = [
@@ -136,11 +140,16 @@ class TestHandlerRegistration:
             CancelRecordingIntent,
             ToggleRecordingIntent,
             DeleteTranscriptIntent,
+            DeleteTranscriptVariantIntent,
+            ClearTranscriptsIntent,
             CommitEditsIntent,
             RefineTranscriptIntent,
             CreateProjectIntent,
+            UpdateProjectIntent,
             DeleteProjectIntent,
             AssignProjectIntent,
+            UpdateConfigIntent,
+            RestartEngineIntent,
         ]
 
         for intent_cls in expected_intents:
@@ -150,8 +159,8 @@ class TestHandlerRegistration:
 
     def test_handler_count_matches_intent_count(self, coordinator):
         """No extra/ghost handlers registered beyond the expected set."""
-        # 11 intents are registered in _register_handlers
-        assert len(coordinator.command_bus._handlers) == 11
+        # 15 intents are registered in _register_handlers
+        assert len(coordinator.command_bus._handlers) == 15
 
     def test_handlers_are_callable(self, coordinator):
         """Every registered handler must be callable."""
@@ -161,7 +170,7 @@ class TestHandlerRegistration:
     def test_double_register_does_not_duplicate(self, coordinator):
         """Calling _register_handlers again overwrites, doesn't stack."""
         coordinator._register_handlers()
-        assert len(coordinator.command_bus._handlers) == 11
+        assert len(coordinator.command_bus._handlers) == 15
 
 
 # ── Shutdown & Cleanup ────────────────────────────────────────────────────

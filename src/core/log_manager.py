@@ -17,6 +17,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from src.core.exceptions import ConfigError
 from src.core.resource_manager import ResourceManager
 
 if TYPE_CHECKING:
@@ -111,7 +112,7 @@ class LogManager:
             log_level = getattr(logging, s.logging.level.upper(), logging.INFO)
             enable_console = s.logging.console_echo
             structured = s.logging.structured_output
-        except (RuntimeError, ImportError):
+        except (RuntimeError, ImportError, ConfigError):
             log_level = logging.INFO
             enable_console = True
             structured = False
@@ -148,9 +149,7 @@ class LogManager:
             console_handler.setFormatter(formatter)
             root_logger.addHandler(console_handler)
 
-        logger.info(
-            f"LogManager initialized. Level: {log_level}, Structured: {structured}"
-        )
+        logger.info(f"LogManager initialized. Level: {log_level}, Structured: {structured}")
         logger.info(f"Log file: {LOG_FILE}")
 
     def log_exception(
@@ -180,7 +179,7 @@ class LogManager:
         context_str = f" {context}" if context else ""
         log_message = f"Uncaught exception{context_str}: {exc_value}"
 
-        extra = {}
+        extra: dict[str, object] = {}
 
         # Log to file
         logger.error(log_message, exc_info=(exc_type, exc_value, exc_tb), extra=extra)

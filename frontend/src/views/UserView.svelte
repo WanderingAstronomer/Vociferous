@@ -262,141 +262,299 @@
     ];
 </script>
 
-<div class="user-view">
+<div class="flex flex-col h-full bg-[var(--surface-primary)]">
     <!-- Scrollable Content -->
-    <div class="scroll-container">
-        <div class="center-container">
+    <div class="flex-1 overflow-y-auto flex justify-center">
+        <div
+            class="w-full min-w-[var(--content-min-width)] py-[var(--space-5)] px-[var(--space-5)] flex flex-col gap-[var(--space-5)]"
+        >
             {#if loading}
-                <div class="loading-state">
-                    <div class="loading-spinner"></div>
+                <div class="flex flex-col items-center gap-[var(--space-3)] py-[96px] text-[var(--text-tertiary)]">
+                    <div
+                        class="w-8 h-8 border-[3px] border-[var(--shell-border)] border-t-[var(--accent)] rounded-full animate-spin"
+                    ></div>
                     <p>Loading your statistics…</p>
                 </div>
             {:else if !hasData}
                 <!-- Empty State -->
-                <div class="empty-state">
+                <div
+                    class="flex flex-col items-center gap-[var(--space-3)] py-[96px] px-[var(--space-6)] text-[var(--text-tertiary)] text-center border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)]"
+                >
                     <User size={40} strokeWidth={1.2} />
-                    <h3>No metrics yet</h3>
-                    <p>
+                    <h3 class="m-0 text-[var(--text-primary)] text-[var(--text-lg)]">No metrics yet</h3>
+                    <p class="m-0 text-[var(--text-sm)] leading-[1.6]">
                         Metrics appear after your first transcription is saved.<br />Try making a recording to see your
                         impact.
                     </p>
                 </div>
             {:else}
                 <!-- ═══ Statistics ═══ -->
-                <section class="stats-section">
-                    <h2 class="section-header">Lifetime Statistics</h2>
-                    <p class="insight-text">{insight}</p>
+                <section class="flex flex-col gap-[var(--space-5)]">
+                    <div class="flex flex-col items-center gap-[var(--space-2)]">
+                        <h2
+                            class="text-[var(--text-xl)] font-[var(--weight-emphasis)] text-[var(--text-primary)] text-center m-0"
+                        >
+                            {titleText}
+                        </h2>
+                        <div class="w-12 h-[2px] rounded-full bg-[var(--accent)]"></div>
+                        <p class="text-center text-[var(--text-sm)] text-[var(--accent)] italic m-0 max-w-[480px]">
+                            {insight}
+                        </p>
+                    </div>
 
                     <!-- Group 1: Productivity Impact -->
-                    <div class="metric-group">
-                        <span class="group-label">Productivity Impact</span>
-                        <div class="metric-row highlight-row">
-                            <div class="metric-card highlight">
-                                <div class="metric-icon"><Timer size={28} /></div>
-                                <div class="metric-value">{formatDuration(timeSavedSeconds)}</div>
-                                <div class="metric-title">Time Saved</div>
-                                <div class="metric-desc">vs manual typing</div>
+                    <div class="flex flex-col gap-[var(--space-3)]">
+                        <span
+                            class="font-[var(--weight-emphasis)] text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase tracking-[1px] text-center"
+                            >Productivity Impact</span
+                        >
+                        <div class="grid grid-cols-2 gap-[var(--space-4)]">
+                            <div
+                                class="flex flex-col items-center gap-[var(--space-1)] p-[var(--space-5)] border border-[var(--accent-muted)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] transition-[border-color] duration-[var(--transition-fast)] hover:border-[var(--accent)]"
+                            >
+                                <div class="text-[var(--accent)] mb-[var(--space-1)]"><Timer size={28} /></div>
+                                <div
+                                    class="text-[2.5rem] font-[var(--weight-emphasis)] text-[var(--accent)] leading-[var(--leading-tight)]"
+                                >
+                                    {formatDuration(timeSavedSeconds)}
+                                </div>
+                                <div
+                                    class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    Time Saved
+                                </div>
+                                <div class="text-[var(--text-xs)] text-[var(--text-tertiary)] text-center">
+                                    vs manual typing
+                                </div>
                             </div>
-                            <div class="metric-card highlight">
-                                <div class="metric-icon"><MessageSquareText size={28} /></div>
-                                <div class="metric-value">{formatCount(totalWords)}</div>
-                                <div class="metric-title">Words Captured</div>
-                                <div class="metric-desc">Total transcribed words</div>
+                            <div
+                                class="flex flex-col items-center gap-[var(--space-1)] p-[var(--space-5)] border border-[var(--accent-muted)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] transition-[border-color] duration-[var(--transition-fast)] hover:border-[var(--accent)]"
+                            >
+                                <div class="text-[var(--accent)] mb-[var(--space-1)]">
+                                    <MessageSquareText size={28} />
+                                </div>
+                                <div
+                                    class="text-[2.5rem] font-[var(--weight-emphasis)] text-[var(--accent)] leading-[var(--leading-tight)]"
+                                >
+                                    {formatCount(totalWords)}
+                                </div>
+                                <div
+                                    class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    Words Captured
+                                </div>
+                                <div class="text-[var(--text-xs)] text-[var(--text-tertiary)] text-center">
+                                    Total transcribed words
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Group 2: Usage & Activity -->
-                    <div class="metric-group">
-                        <span class="group-label">Usage & Activity</span>
-                        <div class="metric-row">
-                            <div class="metric-card">
-                                <div class="metric-icon"><BarChart3 size={24} /></div>
-                                <div class="metric-value">{formatCount(count)}</div>
-                                <div class="metric-title">Transcriptions</div>
-                                <div class="metric-desc">Total recordings</div>
+                    <div class="flex flex-col gap-[var(--space-3)]">
+                        <span
+                            class="font-[var(--weight-emphasis)] text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase tracking-[1px] text-center"
+                            >Usage & Activity</span
+                        >
+                        <div class="grid grid-cols-4 gap-[var(--space-3)]">
+                            <div
+                                class="flex-1 flex flex-col items-center gap-1 p-[var(--space-4)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] transition-[border-color] duration-[var(--transition-fast)] hover:border-[var(--accent)]"
+                            >
+                                <div class="text-[var(--text-tertiary)] mb-1"><BarChart3 size={24} /></div>
+                                <div
+                                    class="text-[var(--text-lg)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    {formatCount(count)}
+                                </div>
+                                <div
+                                    class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    Transcriptions
+                                </div>
+                                <div class="text-[var(--text-xs)] text-[var(--text-tertiary)] text-center">
+                                    Total recordings
+                                </div>
                             </div>
-                            <div class="metric-card">
-                                <div class="metric-icon"><Clock size={24} /></div>
-                                <div class="metric-value">{formatDuration(recordedSeconds)}</div>
-                                <div class="metric-title">Time Recorded</div>
-                                <div class="metric-desc">Total audio duration</div>
+                            <div
+                                class="flex-1 flex flex-col items-center gap-1 p-[var(--space-4)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] transition-[border-color] duration-[var(--transition-fast)] hover:border-[var(--accent)]"
+                            >
+                                <div class="text-[var(--text-tertiary)] mb-1"><Clock size={24} /></div>
+                                <div
+                                    class="text-[var(--text-lg)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    {formatDuration(recordedSeconds)}
+                                </div>
+                                <div
+                                    class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    Time Recorded
+                                </div>
+                                <div class="text-[var(--text-xs)] text-[var(--text-tertiary)] text-center">
+                                    Total audio duration
+                                </div>
                             </div>
-                            <div class="metric-card">
-                                <div class="metric-icon"><Gauge size={24} /></div>
-                                <div class="metric-value">{formatDuration(avgSeconds)}</div>
-                                <div class="metric-title">Avg. Length</div>
-                                <div class="metric-desc">Per recording</div>
+                            <div
+                                class="flex-1 flex flex-col items-center gap-1 p-[var(--space-4)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] transition-[border-color] duration-[var(--transition-fast)] hover:border-[var(--accent)]"
+                            >
+                                <div class="text-[var(--text-tertiary)] mb-1"><Gauge size={24} /></div>
+                                <div
+                                    class="text-[var(--text-lg)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    {formatDuration(avgSeconds)}
+                                </div>
+                                <div
+                                    class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    Avg. Length
+                                </div>
+                                <div class="text-[var(--text-xs)] text-[var(--text-tertiary)] text-center">
+                                    Per recording
+                                </div>
                             </div>
-                            <div class="metric-card">
-                                <div class="metric-icon"><PauseCircle size={24} /></div>
-                                <div class="metric-value">{totalSilence > 0 ? formatDuration(totalSilence) : "—"}</div>
-                                <div class="metric-title">Total Silence</div>
-                                <div class="metric-desc">Accumulated pauses</div>
+                            <div
+                                class="flex-1 flex flex-col items-center gap-1 p-[var(--space-4)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] transition-[border-color] duration-[var(--transition-fast)] hover:border-[var(--accent)]"
+                            >
+                                <div class="text-[var(--text-tertiary)] mb-1"><PauseCircle size={24} /></div>
+                                <div
+                                    class="text-[var(--text-lg)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    {totalSilence > 0 ? formatDuration(totalSilence) : "—"}
+                                </div>
+                                <div
+                                    class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    Total Silence
+                                </div>
+                                <div class="text-[var(--text-xs)] text-[var(--text-tertiary)] text-center">
+                                    Accumulated pauses
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Group 3: Speech Quality -->
-                    <div class="metric-group">
-                        <span class="group-label">Speech Quality</span>
-                        <div class="metric-row">
-                            <div class="metric-card">
-                                <div class="metric-icon"><BookOpen size={24} /></div>
-                                <div class="metric-value">
+                    <div class="flex flex-col gap-[var(--space-3)]">
+                        <span
+                            class="font-[var(--weight-emphasis)] text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase tracking-[1px] text-center"
+                            >Speech Quality</span
+                        >
+                        <div class="grid grid-cols-3 gap-[var(--space-3)]">
+                            <div
+                                class="flex-1 flex flex-col items-center gap-1 p-[var(--space-4)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] transition-[border-color] duration-[var(--transition-fast)] hover:border-[var(--accent)]"
+                            >
+                                <div class="text-[var(--text-tertiary)] mb-1"><BookOpen size={24} /></div>
+                                <div
+                                    class="text-[var(--text-lg)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
                                     {lexicalComplexity > 0 ? formatPercent(lexicalComplexity) : "—"}
                                 </div>
-                                <div class="metric-title">Vocabulary</div>
-                                <div class="metric-desc">Unique words ratio</div>
+                                <div
+                                    class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    Vocabulary
+                                </div>
+                                <div class="text-[var(--text-xs)] text-[var(--text-tertiary)] text-center">
+                                    Unique words ratio
+                                </div>
                             </div>
-                            <div class="metric-card">
-                                <div class="metric-icon"><Volume2 size={24} /></div>
-                                <div class="metric-value">{avgSilence > 0 ? formatDuration(avgSilence) : "—"}</div>
-                                <div class="metric-title">Avg. Pauses</div>
-                                <div class="metric-desc">Silence between speech</div>
+                            <div
+                                class="flex-1 flex flex-col items-center gap-1 p-[var(--space-4)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] transition-[border-color] duration-[var(--transition-fast)] hover:border-[var(--accent)]"
+                            >
+                                <div class="text-[var(--text-tertiary)] mb-1"><Volume2 size={24} /></div>
+                                <div
+                                    class="text-[var(--text-lg)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    {avgSilence > 0 ? formatDuration(avgSilence) : "—"}
+                                </div>
+                                <div
+                                    class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    Avg. Pauses
+                                </div>
+                                <div class="text-[var(--text-xs)] text-[var(--text-tertiary)] text-center">
+                                    Silence between speech
+                                </div>
                             </div>
-                            <div class="metric-card">
-                                <div class="metric-icon"><MessageCircle size={24} /></div>
-                                <div class="metric-value">{fillerCount > 0 ? formatCount(fillerCount) : "—"}</div>
-                                <div class="metric-title">Filler Words</div>
-                                <div class="metric-desc">um, uh, like, you know</div>
+                            <div
+                                class="flex-1 flex flex-col items-center gap-1 p-[var(--space-4)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] transition-[border-color] duration-[var(--transition-fast)] hover:border-[var(--accent)]"
+                            >
+                                <div class="text-[var(--text-tertiary)] mb-1"><MessageCircle size={24} /></div>
+                                <div
+                                    class="text-[var(--text-lg)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    {fillerCount > 0 ? formatCount(fillerCount) : "—"}
+                                </div>
+                                <div
+                                    class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
+                                    Filler Words
+                                </div>
+                                <div class="text-[var(--text-xs)] text-[var(--text-tertiary)] text-center">
+                                    um, uh, like, you know
+                                </div>
                             </div>
                         </div>
                     </div>
                 </section>
 
-                <div class="section-divider"></div>
+                <div class="h-px bg-[var(--shell-border)]"></div>
 
                 <!-- ═══ Activity Over Time ═══ -->
                 {#if count >= 2}
-                    <section class="activity-section">
-                        <h3 class="section-heading">Activity — Last 30 Days</h3>
-                        <div class="activity-summary">
-                            <span class="activity-stat">{totalActiveDays} active day{totalActiveDays !== 1 ? "s" : ""}</span>
-                            <span class="activity-stat-sep">·</span>
-                            <span class="activity-stat">{formatCount(dailyActivity.reduce((s, d) => s + d.words, 0))} words</span>
+                    <section class="flex flex-col gap-[var(--space-3)]">
+                        <h3
+                            class="text-[var(--text-xs)] font-[var(--weight-emphasis)] text-[var(--text-tertiary)] text-center uppercase tracking-[1px] m-0"
+                        >
+                            Activity — Last 30 Days
+                        </h3>
+                        <div
+                            class="flex justify-center gap-[var(--space-2)] text-[var(--text-xs)] text-[var(--text-muted)]"
+                        >
+                            <span class="font-[var(--weight-normal)]"
+                                >{totalActiveDays} active day{totalActiveDays !== 1 ? "s" : ""}</span
+                            >
+                            <span class="opacity-40">·</span>
+                            <span class="font-[var(--weight-normal)]"
+                                >{formatCount(dailyActivity.reduce((s, d) => s + d.words, 0))} words</span
+                            >
                         </div>
-                        <div class="activity-chart" role="img" aria-label="Daily transcription activity bar chart">
-                            <svg viewBox="0 0 {dailyActivity.length * 16} 120" class="chart-svg" preserveAspectRatio="none">
+                        <div class="relative" role="img" aria-label="Daily transcription activity bar chart">
+                            <svg
+                                viewBox="0 0 {dailyActivity.length * 16} 120"
+                                class="w-full h-[120px]"
+                                preserveAspectRatio="none"
+                            >
                                 {#each dailyActivity as day, i}
-                                    {@const barHeight = Math.max(day.words > 0 ? 4 : 0, (day.words / maxDailyWords) * 100)}
+                                    {@const barHeight = Math.max(
+                                        day.words > 0 ? 4 : 0,
+                                        (day.words / maxDailyWords) * 100,
+                                    )}
                                     <rect
                                         x={i * 16 + 2}
                                         y={110 - barHeight}
                                         width="12"
                                         height={barHeight}
                                         rx="2"
-                                        class="chart-bar"
-                                        class:chart-bar-empty={day.words === 0}
+                                        class="transition-opacity duration-[var(--transition-fast)] hover:opacity-100 {day.words ===
+                                        0
+                                            ? 'fill-[var(--surface-overlay)] opacity-30'
+                                            : 'fill-[var(--accent)] opacity-85'}"
                                     >
-                                        <title>{day.label}: {day.count} recording{day.count !== 1 ? "s" : ""}, {formatCount(day.words)} words</title>
+                                        <title
+                                            >{day.label}: {day.count} recording{day.count !== 1 ? "s" : ""}, {formatCount(
+                                                day.words,
+                                            )} words</title
+                                        >
                                     </rect>
                                 {/each}
                             </svg>
-                            <div class="chart-labels">
+                            <div class="relative h-[18px] mt-[var(--space-1)]">
                                 {#each dailyActivity as day, i}
                                     {#if i % 7 === 0 || i === dailyActivity.length - 1}
-                                        <span class="chart-label" style="left: {((i * 16 + 8) / (dailyActivity.length * 16)) * 100}%">
+                                        <span
+                                            class="absolute transform -translate-x-1/2 text-[10px] text-[var(--text-muted)] whitespace-nowrap"
+                                            style="left: {((i * 16 + 8) / (dailyActivity.length * 16)) * 100}%"
+                                        >
                                             {day.label}
                                         </span>
                                     {/if}
@@ -405,12 +563,15 @@
                         </div>
                     </section>
 
-                    <div class="section-divider"></div>
+                    <div class="h-px bg-[var(--shell-border)]"></div>
                 {/if}
 
                 <!-- ═══ Calculation Details (Collapsible) ═══ -->
-                <section class="explanations-section">
-                    <button class="toggle-explanations" onclick={() => (showExplanations = !showExplanations)}>
+                <section class="flex flex-col items-center gap-[var(--space-4)]">
+                    <button
+                        class="flex items-center gap-[var(--space-2)] bg-none border-none text-[var(--text-secondary)] text-[var(--text-sm)] cursor-pointer py-[var(--space-2)] px-[var(--space-4)] rounded-[var(--radius-md)] transition-[color,background] duration-[var(--transition-fast)] hover:text-[var(--accent)] hover:bg-[var(--hover-overlay)]"
+                        onclick={() => (showExplanations = !showExplanations)}
+                    >
                         {#if showExplanations}
                             <ChevronDown size={14} />
                             Hide Calculation Details
@@ -421,10 +582,12 @@
                     </button>
 
                     {#if showExplanations}
-                        <div class="explanations-list">
+                        <div class="flex flex-col gap-[var(--space-3)] w-full">
                             {#each explanations as exp}
-                                <div class="explanation-item">
-                                    <strong>{exp.title}</strong>
+                                <div
+                                    class="text-center py-[var(--space-2)] px-0 text-[var(--text-sm)] leading-[1.6] text-[var(--text-secondary)]"
+                                >
+                                    <strong class="block text-[var(--text-primary)] mb-0.5">{exp.title}</strong>
                                     <span>{exp.text}</span>
                                 </div>
                             {/each}
@@ -433,28 +596,37 @@
                 </section>
             {/if}
 
-            <div class="section-divider"></div>
+            <div class="h-px bg-[var(--shell-border)]"></div>
 
-            <!-- ═══ About Section (Always visible) ═══ -->
-            <footer class="about-section">
-                <h2 class="about-title">Vociferous</h2>
-                <p class="about-subtitle">Local AI Speech to Text</p>
+            <!-- ═══ About ═══ -->
+            <footer
+                class="rounded-[var(--radius-lg)] border border-[var(--shell-border)] bg-[var(--surface-secondary)] p-[var(--space-5)] flex flex-col items-center gap-[var(--space-3)] mb-[var(--space-4)]"
+            >
+                <h2 class="text-[var(--text-lg)] font-[var(--weight-emphasis)] text-[var(--accent)] m-0">Vociferous</h2>
+                <p class="text-[var(--text-sm)] text-[var(--text-secondary)] m-0">Local AI Speech to Text</p>
 
-                <p class="about-description">
-                    Powered by whisper.cpp and GGUF language models. A fully local, privacy-first speech-to-text solution that runs
-                    entirely on your machine. No cloud dependencies, no data collection, no internet required.
+                <p
+                    class="text-[var(--text-sm)] text-[var(--text-tertiary)] text-center leading-[var(--leading-relaxed)] max-w-[520px] m-0"
+                >
+                    Powered by whisper.cpp and GGUF language models. Fully local, privacy-first speech-to-text that runs
+                    entirely on your machine. No cloud, no data collection, no internet.
                 </p>
 
                 {#if healthInfo}
-                    <p class="about-version">v{healthInfo.version}</p>
+                    <p class="text-[var(--text-xs)] text-[var(--text-tertiary)] font-mono m-0">v{healthInfo.version}</p>
                 {/if}
 
-                <div class="about-links">
-                    <a class="about-link" href="https://www.linkedin.com/in/abrown7521/" target="_blank" rel="noopener">
+                <div class="flex gap-[var(--space-3)]">
+                    <a
+                        class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-3)] border border-[var(--shell-border)] rounded-[var(--radius-md)] text-[var(--text-secondary)] text-[var(--text-sm)] no-underline transition-[color,border-color] duration-[var(--transition-fast)] hover:text-[var(--accent)] hover:border-[var(--accent)]"
+                        href="https://www.linkedin.com/in/abrown7521/"
+                        target="_blank"
+                        rel="noopener"
+                    >
                         <Linkedin size={15} /> LinkedIn
                     </a>
                     <a
-                        class="about-link"
+                        class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-3)] border border-[var(--shell-border)] rounded-[var(--radius-md)] text-[var(--text-secondary)] text-[var(--text-sm)] no-underline transition-[color,border-color] duration-[var(--transition-fast)] hover:text-[var(--accent)] hover:border-[var(--accent)]"
                         href="https://github.com/WanderingAstronomer/Vociferous"
                         target="_blank"
                         rel="noopener"
@@ -463,378 +635,8 @@
                     </a>
                 </div>
 
-                <p class="about-creator">Created by Andrew Brown</p>
+                <p class="text-[var(--text-xs)] text-[var(--accent)] m-0">Created by Andrew Brown</p>
             </footer>
         </div>
     </div>
 </div>
-
-<style>
-    /* ── Layout ── */
-    .user-view {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        background: var(--surface-primary);
-    }
-
-    /* ── Scroll Container ── */
-    .scroll-container {
-        flex: 1;
-        overflow-y: auto;
-        display: flex;
-        justify-content: center;
-    }
-
-    .center-container {
-        width: 100%;
-        min-width: 600px;
-        max-width: 960px;
-        padding: var(--space-7) var(--space-6);
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-7);
-    }
-
-    /* ── Loading / Empty ── */
-    .loading-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: var(--space-3);
-        padding: 96px 0;
-        color: var(--text-tertiary);
-    }
-
-    .loading-spinner {
-        width: 32px;
-        height: 32px;
-        border: 3px solid var(--shell-border);
-        border-top-color: var(--accent);
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
-    }
-
-    .empty-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: var(--space-3);
-        padding: 96px var(--space-6);
-        color: var(--text-tertiary);
-        text-align: center;
-        border: 1px solid var(--shell-border);
-        border-radius: var(--radius-lg);
-        background: var(--surface-secondary);
-    }
-
-    .empty-state h3 {
-        margin: 0;
-        color: var(--text-primary);
-        font-size: var(--text-lg);
-    }
-
-    .empty-state p {
-        margin: 0;
-        font-size: var(--text-sm);
-        line-height: 1.6;
-    }
-
-    /* ── Statistics Section ── */
-    .stats-section {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-6);
-    }
-
-    .section-header {
-        font-size: var(--text-xl);
-        font-weight: var(--weight-emphasis);
-        color: var(--text-primary);
-        text-align: center;
-        margin: 0;
-    }
-
-    .insight-text {
-        text-align: center;
-        font-size: var(--text-sm);
-        color: var(--accent);
-        font-style: italic;
-        margin: 0;
-    }
-
-    /* ── Metric Groups ── */
-    .metric-group {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-3);
-    }
-
-    .group-label {
-        font-weight: var(--weight-emphasis);
-        font-size: var(--text-sm);
-        color: var(--text-tertiary);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        text-align: center;
-    }
-
-    .metric-row {
-        display: flex;
-        gap: var(--space-4);
-    }
-
-    .highlight-row {
-        justify-content: center;
-    }
-
-    /* ── Metric Card ── */
-    .metric-card {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 4px;
-        padding: var(--space-4);
-        border: 1px solid var(--shell-border);
-        border-radius: var(--radius-lg);
-        background: var(--surface-secondary);
-        transition: border-color var(--transition-fast);
-    }
-
-    .metric-card:hover {
-        border-color: var(--accent);
-    }
-
-    .metric-card.highlight {
-        max-width: 280px;
-    }
-
-    .metric-icon {
-        color: var(--text-tertiary);
-        margin-bottom: 4px;
-    }
-
-    .metric-card.highlight .metric-icon {
-        color: var(--accent);
-    }
-
-    .metric-value {
-        font-size: var(--text-lg);
-        font-weight: var(--weight-emphasis);
-        color: var(--text-primary);
-    }
-
-    .metric-card.highlight .metric-value {
-        font-size: 2.5rem;
-        color: var(--accent);
-    }
-
-    .metric-title {
-        font-size: var(--text-sm);
-        font-weight: var(--weight-emphasis);
-        color: var(--text-primary);
-    }
-
-    .metric-desc {
-        font-size: var(--text-xs);
-        color: var(--text-tertiary);
-        text-align: center;
-    }
-
-    /* ── Activity Chart ── */
-    .activity-section {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-3);
-    }
-
-    .section-heading {
-        font-size: var(--text-sm);
-        font-weight: var(--weight-emphasis);
-        color: var(--text-primary);
-        text-align: center;
-    }
-
-    .activity-summary {
-        display: flex;
-        justify-content: center;
-        gap: var(--space-2);
-        font-size: var(--text-xs);
-        color: var(--text-muted);
-    }
-
-    .activity-stat-sep {
-        opacity: 0.4;
-    }
-
-    .activity-chart {
-        position: relative;
-    }
-
-    .chart-svg {
-        width: 100%;
-        height: 120px;
-    }
-
-    .chart-bar {
-        fill: var(--accent);
-        opacity: 0.85;
-        transition: opacity var(--transition-fast);
-    }
-
-    .chart-bar:hover {
-        opacity: 1;
-    }
-
-    .chart-bar-empty {
-        fill: var(--surface-overlay);
-        opacity: 0.3;
-    }
-
-    .chart-labels {
-        position: relative;
-        height: 18px;
-        margin-top: var(--space-1);
-    }
-
-    .chart-label {
-        position: absolute;
-        transform: translateX(-50%);
-        font-size: 10px;
-        color: var(--text-muted);
-        white-space: nowrap;
-    }
-
-    /* ── Divider ── */
-    .section-divider {
-        height: 1px;
-        background: var(--shell-border);
-    }
-
-    /* ── Explanations ── */
-    .explanations-section {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: var(--space-4);
-    }
-
-    .toggle-explanations {
-        display: flex;
-        align-items: center;
-        gap: var(--space-2);
-        background: none;
-        border: none;
-        color: var(--text-secondary);
-        font-size: var(--text-sm);
-        cursor: pointer;
-        padding: var(--space-2) var(--space-4);
-        border-radius: var(--radius-md);
-        transition:
-            color var(--transition-fast),
-            background var(--transition-fast);
-    }
-
-    .toggle-explanations:hover {
-        color: var(--accent);
-        background: var(--hover-overlay);
-    }
-
-    .explanations-list {
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-3);
-        width: 100%;
-    }
-
-    .explanation-item {
-        text-align: center;
-        padding: var(--space-2) 0;
-        font-size: var(--text-sm);
-        line-height: 1.6;
-        color: var(--text-secondary);
-    }
-
-    .explanation-item strong {
-        display: block;
-        color: var(--text-primary);
-        margin-bottom: 2px;
-    }
-
-    /* ── About Section ── */
-    .about-section {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: var(--space-3);
-        padding-bottom: var(--space-7);
-    }
-
-    .about-title {
-        font-size: var(--text-xl);
-        font-weight: var(--weight-emphasis);
-        color: var(--accent);
-        margin: 0;
-    }
-
-    .about-subtitle {
-        font-size: var(--text-base);
-        color: var(--text-secondary);
-        margin: 0;
-    }
-
-    .about-description {
-        font-size: var(--text-base);
-        color: var(--text-tertiary);
-        text-align: center;
-        line-height: 1.7;
-        max-width: 560px;
-        margin: 0;
-    }
-
-    .about-version {
-        font-size: var(--text-xs);
-        color: var(--text-tertiary);
-        font-family: monospace;
-        margin: 0;
-    }
-
-    .about-links {
-        display: flex;
-        gap: var(--space-4);
-    }
-
-    .about-link {
-        display: flex;
-        align-items: center;
-        gap: var(--space-1);
-        padding: var(--space-2) var(--space-4);
-        border: 1px solid var(--shell-border);
-        border-radius: var(--radius-md);
-        color: var(--text-secondary);
-        font-size: var(--text-sm);
-        text-decoration: none;
-        transition:
-            color var(--transition-fast),
-            border-color var(--transition-fast);
-    }
-
-    .about-link:hover {
-        color: var(--accent);
-        border-color: var(--accent);
-    }
-
-    .about-creator {
-        font-size: var(--text-sm);
-        color: var(--accent);
-        margin: 0;
-    }
-
-    /* ── Spin ── */
-    @keyframes spin {
-        to {
-            transform: rotate(360deg);
-        }
-    }
-</style>

@@ -307,7 +307,7 @@ class TestFewShotExamples:
 
     def test_level_1_differs_from_level_0(self) -> None:
         engine = _make_engine()
-        ex0 = engine._get_few_shot_examples(0)
+        _ex0 = engine._get_few_shot_examples(0)
         ex1 = engine._get_few_shot_examples(1)
         # Level 1 should have filler removal examples
         assert "I I want to" in ex1 or "I want to go" in ex1

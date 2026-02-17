@@ -14,87 +14,26 @@
     }
 
     let { variant = "primary", disabled = false, onclick, children }: Props = $props();
+
+    const baseClasses =
+        "inline-flex items-center justify-center border-none font-semibold cursor-pointer transition-all duration-150 whitespace-nowrap select-none gap-2 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed";
+
+    let variantClasses = $derived.by(() => {
+        switch (variant) {
+            case "primary":
+                return "h-12 min-w-60 px-6 text-base bg-[var(--accent)] text-[var(--gray-0)] hover:not-disabled:bg-[var(--accent-hover)]";
+            case "secondary":
+                return "h-10 px-4 text-sm bg-[var(--surface-tertiary)] text-[var(--text-primary)] hover:not-disabled:bg-[var(--gray-6)]";
+            case "destructive":
+                return "h-10 px-4 text-sm bg-[var(--color-danger-surface)] text-[var(--color-danger)] hover:not-disabled:bg-[var(--red-8)]";
+            case "ghost":
+                return "h-10 px-2 text-sm bg-transparent text-[var(--text-secondary)] hover:not-disabled:text-[var(--text-primary)] hover:not-disabled:bg-[var(--hover-overlay)]";
+            default:
+                return "";
+        }
+    });
 </script>
 
-<button class="styled-btn {variant}" {disabled} {onclick}>
+<button class="{baseClasses} {variantClasses}" {disabled} {onclick}>
     {#if children}{@render children()}{/if}
 </button>
-
-<style>
-    .styled-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: var(--space-1);
-        border: none;
-        border-radius: var(--radius-md);
-        font-family: var(--font-family);
-        font-weight: var(--weight-emphasis);
-        cursor: pointer;
-        transition:
-            background var(--transition-fast),
-            color var(--transition-fast),
-            opacity var(--transition-fast);
-        white-space: nowrap;
-        user-select: none;
-    }
-
-    .styled-btn:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-    }
-
-    /* Primary */
-    .styled-btn.primary {
-        height: var(--btn-height-primary);
-        min-width: var(--btn-min-width);
-        padding: 0 var(--space-4);
-        font-size: var(--text-base);
-        background: var(--accent);
-        color: var(--gray-0);
-    }
-
-    .styled-btn.primary:hover:not(:disabled) {
-        background: var(--accent-hover);
-    }
-
-    /* Secondary */
-    .styled-btn.secondary {
-        height: var(--btn-height-secondary);
-        padding: 0 var(--space-3);
-        font-size: var(--text-sm);
-        background: var(--surface-tertiary);
-        color: var(--text-primary);
-    }
-
-    .styled-btn.secondary:hover:not(:disabled) {
-        background: var(--gray-6);
-    }
-
-    /* Destructive */
-    .styled-btn.destructive {
-        height: var(--btn-height-secondary);
-        padding: 0 var(--space-3);
-        font-size: var(--text-sm);
-        background: var(--color-danger-surface);
-        color: var(--color-danger);
-    }
-
-    .styled-btn.destructive:hover:not(:disabled) {
-        background: var(--red-8);
-    }
-
-    /* Ghost */
-    .styled-btn.ghost {
-        height: var(--btn-height-secondary);
-        padding: 0 var(--space-2);
-        font-size: var(--text-sm);
-        background: transparent;
-        color: var(--text-secondary);
-    }
-
-    .styled-btn.ghost:hover:not(:disabled) {
-        color: var(--text-primary);
-        background: var(--hover-overlay);
-    }
-</style>

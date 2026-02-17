@@ -18,6 +18,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings
 
+from src.core.exceptions import ConfigError
 from src.core.resource_manager import ResourceManager
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,7 @@ class OutputSettings(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     add_trailing_space: bool = True
+    auto_copy_to_clipboard: bool = True
 
 
 class DisplaySettings(BaseModel):
@@ -289,7 +291,7 @@ def init_settings(config_path: Path | str | None = None) -> VociferousSettings:
 def get_settings() -> VociferousSettings:
     """Return the current settings. Raises if not initialized."""
     if _settings is None:
-        raise RuntimeError("Settings not initialized. Call init_settings() first.")
+        raise ConfigError("Settings not initialized. Call init_settings() first.")
     return _settings
 
 
@@ -302,7 +304,7 @@ def save_settings(settings: VociferousSettings | None = None) -> None:
     global _settings
     s = settings or _settings
     if s is None:
-        raise RuntimeError("No settings to save.")
+        raise ConfigError("No settings to save.")
 
     path = _get_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -325,11 +327,11 @@ def save_settings(settings: VociferousSettings | None = None) -> None:
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp, str(path))
-    except Exception:
+    except Exception as e:
         logger.exception("Failed to write settings file")
         if Path(tmp).exists():
             Path(tmp).unlink(missing_ok=True)
-        raise
+        raise ConfigError(f"Failed to write settings file: {e}") from e
 
     if settings is not None:
         _settings = settings

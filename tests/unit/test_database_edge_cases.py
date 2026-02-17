@@ -14,6 +14,7 @@ Covers:
 
 import sqlite3
 import threading
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -22,7 +23,7 @@ from src.database.db import TranscriptDB
 
 
 @pytest.fixture
-def db(tmp_path: Path) -> TranscriptDB:
+def db(tmp_path: Path) -> Generator[TranscriptDB, None, None]:
     d = TranscriptDB(db_path=tmp_path / "test.db")
     yield d
     d.close()
@@ -123,7 +124,7 @@ class TestProjectScoping:
         assert results[0].project_name == "Recent"
 
     def test_project_with_color(self, db: TranscriptDB) -> None:
-        p = db.add_project(name="Colored", color="#ff00ff")
+        _p = db.add_project(name="Colored", color="#ff00ff")
         projects = db.get_projects()
         assert projects[0].color == "#ff00ff"
 

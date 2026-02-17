@@ -37,6 +37,7 @@ REQUIRED_SYSTEM_PKGS=(
     "build-essential:gcc|c++ compiler"
     "${PYTHON_DEV_PKG}:Python development headers"
     "libportaudio2:Audio library for sounddevice"
+    "xclip:Clipboard access for auto-copy"
 )
 
 MISSING_PACKAGES=()

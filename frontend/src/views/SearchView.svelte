@@ -10,10 +10,22 @@
      * - Copy/delete/refine actions
      */
 
-    import { searchTranscripts, getTranscripts, deleteTranscript, refineTranscript, type Transcript } from "../lib/api";
+    import {
+        searchTranscripts,
+        getTranscripts,
+        deleteTranscript,
+        refineTranscript,
+        getProjects,
+        batchAssignProject,
+        batchDeleteTranscripts,
+        type Transcript,
+        type Project,
+    } from "../lib/api";
     import { ws } from "../lib/ws";
+    import { nav } from "../lib/navigation.svelte";
+    import { SelectionManager } from "../lib/selection.svelte";
     import { onMount } from "svelte";
-    import { Search, Copy, Check, Trash2, Sparkles, X, FileText, Loader2, ArrowUpDown } from "lucide-svelte";
+    import { Search, Copy, Check, Trash2, Sparkles, X, FileText, Loader2, FolderOpen } from "lucide-svelte";
 
     /* ===== State ===== */
 
@@ -30,6 +42,16 @@
 
     // Preview overlay
     let previewEntry = $state<Transcript | null>(null);
+
+    // Project assignment
+    let projects: Project[] = $state([]);
+    let projectMenuOpen = $state(false);
+    let projectMenuX = $state(0);
+    let projectMenuY = $state(0);
+    let batchAssigning = $state(false);
+
+    // Multi-selection
+    const selection = new SelectionManager();
 
     // Sorting
     type SortKey = "id" | "created_at" | "project_name" | "duration_ms" | "text";
@@ -66,6 +88,22 @@
 
     let selectedEntry = $derived(displayEntries.find((e) => e.id === selectedId) ?? null);
     let resultCount = $derived(displayEntries.length);
+    let orderedIds = $derived(displayEntries.map((e) => e.id));
+
+    /** Build flat project options with parent names for sub-project disambiguation. */
+    let projectOptions = $derived.by(() => {
+        const opts: { value: string; label: string }[] = [{ value: "", label: "No Project" }];
+        const byId = new Map(projects.map((p) => [p.id, p]));
+        for (const p of projects) {
+            if (p.parent_id) {
+                const parent = byId.get(p.parent_id);
+                opts.push({ value: String(p.id), label: parent ? `${parent.name} / ${p.name}` : p.name });
+            } else {
+                opts.push({ value: String(p.id), label: p.name });
+            }
+        }
+        return opts;
+    });
 
     /* ===== Formatting ===== */
 
@@ -146,8 +184,10 @@
 
     /* ===== Actions ===== */
 
-    function selectRow(id: number) {
-        selectedId = selectedId === id ? null : id;
+    function handleRowClick(id: number, event: MouseEvent) {
+        selection.handleClick(id, event, orderedIds);
+        // Sync single-select for the action bar / preview
+        selectedId = selection.count === 1 ? selection.ids[0] : null;
     }
 
     function openPreview(entry: Transcript) {
@@ -166,11 +206,25 @@
     }
 
     async function deleteSelected() {
+        if (selection.isMulti) {
+            const ids = selection.ids;
+            try {
+                await batchDeleteTranscripts(ids);
+                allEntries = allEntries.filter((e) => !selection.isSelected(e.id));
+                results = results.filter((e) => !selection.isSelected(e.id));
+                selection.clear();
+                selectedId = null;
+            } catch (e: any) {
+                error = e.message;
+            }
+            return;
+        }
         if (selectedId == null) return;
         try {
             await deleteTranscript(selectedId);
             allEntries = allEntries.filter((e) => e.id !== selectedId);
             results = results.filter((e) => e.id !== selectedId);
+            selection.clear();
             selectedId = null;
         } catch (e: any) {
             error = e.message;
@@ -179,12 +233,64 @@
 
     async function refineSelected() {
         if (selectedId == null) return;
-        refining = selectedId;
+        nav.navigate("refine", selectedId);
+    }
+
+    /* ===== Project Menu ===== */
+
+    function openProjectMenu(event: MouseEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const menuWidth = 280;
+        const menuHeight = Math.min((projectOptions.length + 1) * 34, 360);
+        const x = Math.min(event.clientX, window.innerWidth - menuWidth - 8);
+        const y = Math.min(event.clientY, window.innerHeight - menuHeight - 8);
+
+        projectMenuX = Math.max(8, x);
+        projectMenuY = Math.max(8, y);
+        projectMenuOpen = true;
+    }
+
+    function closeProjectMenu() {
+        projectMenuOpen = false;
+    }
+
+    async function assignProjectFromContext(value: string) {
+        const projectId = value === "" ? null : parseInt(value, 10);
+        closeProjectMenu();
+
+        const ids = selection.ids;
+        if (ids.length === 0) return;
+
+        batchAssigning = true;
         try {
-            await refineTranscript(selectedId, 2);
-        } catch (e: any) {
-            error = e.message;
-            refining = null;
+            await batchAssignProject(ids, projectId);
+            loadAll();
+            if (query.trim()) handleSearch();
+        } catch (err: any) {
+            console.error("Failed to assign project:", err);
+        } finally {
+            batchAssigning = false;
+        }
+    }
+
+    function handleGlobalPointerDown() {
+        if (projectMenuOpen) closeProjectMenu();
+    }
+
+    function handleGlobalKeydown(event: KeyboardEvent) {
+        if (event.key === "Escape") {
+            if (projectMenuOpen) closeProjectMenu();
+            else if (selection.isMulti) {
+                selection.clear();
+                selectedId = null;
+            }
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key === "a" && !previewEntry) {
+            event.preventDefault();
+            selection.selectAll(orderedIds);
+            selectedId = null;
         }
     }
 
@@ -192,6 +298,13 @@
 
     onMount(() => {
         loadAll();
+        getProjects()
+            .then((p) => (projects = p))
+            .catch(() => {});
+
+        document.addEventListener("pointerdown", handleGlobalPointerDown);
+        document.addEventListener("keydown", handleGlobalKeydown);
+
         const unsubs = [
             ws.on("transcription_complete", () => loadAll()),
             ws.on("transcript_deleted", (data) => {
@@ -205,27 +318,43 @@
             ws.on("refinement_error", () => {
                 refining = null;
             }),
+            ws.on("project_created", () => {
+                getProjects()
+                    .then((p) => (projects = p))
+                    .catch(() => {});
+            }),
+            ws.on("project_deleted", () => {
+                getProjects()
+                    .then((p) => (projects = p))
+                    .catch(() => {});
+            }),
         ];
-        return () => unsubs.forEach((fn) => fn());
+        return () => {
+            unsubs.forEach((fn) => fn());
+            document.removeEventListener("pointerdown", handleGlobalPointerDown);
+            document.removeEventListener("keydown", handleGlobalKeydown);
+        };
     });
 </script>
 
-<div class="search-view">
+<div class="flex flex-col h-full overflow-hidden p-[var(--space-3)] pb-[var(--space-2)] gap-[var(--space-2)]">
     <!-- Header -->
-    <div class="search-header">
+    <div class="shrink-0 flex flex-col gap-[var(--space-2)] pb-[var(--space-2)]">
         <form
-            class="search-bar"
+            class="flex gap-[var(--space-1)]"
             onsubmit={(e) => {
                 e.preventDefault();
                 if (debounceTimer) clearTimeout(debounceTimer);
                 handleSearch();
             }}
         >
-            <div class="search-input-wrap">
+            <div
+                class="flex-1 flex items-center gap-[var(--space-1)] h-9 bg-[var(--surface-secondary)] border border-[var(--text-tertiary)] rounded-[var(--radius-sm)] px-[var(--space-2)] text-[var(--text-tertiary)] transition-[border-color] duration-[var(--transition-fast)] focus-within:border-[var(--accent)]"
+            >
                 <Search size={14} />
                 <input
                     type="text"
-                    class="search-input"
+                    class="flex-1 bg-transparent border-none outline-none text-[var(--text-primary)] font-[var(--font-family)] text-[var(--text-sm)] placeholder:text-[var(--text-tertiary)]"
                     placeholder="Filter…"
                     bind:value={query}
                     oninput={() => {
@@ -240,7 +369,7 @@
                 {#if query}
                     <button
                         type="button"
-                        class="search-clear"
+                        class="flex items-center justify-center w-[18px] h-[18px] border-none rounded-full bg-[var(--surface-tertiary)] text-[var(--text-tertiary)] cursor-pointer transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-primary)]"
                         onclick={() => {
                             query = "";
                             results = [];
@@ -250,18 +379,22 @@
                     </button>
                 {/if}
             </div>
-            <button type="submit" class="search-submit" disabled={searching || !query.trim()}>
+            <button
+                type="submit"
+                class="h-9 px-[var(--space-3)] border-none rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--gray-0)] font-[var(--font-family)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer transition-[background] duration-[var(--transition-fast)] whitespace-nowrap hover:enabled:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={searching || !query.trim()}
+            >
                 {#if searching}<Loader2 size={14} class="spin" />{:else}Search{/if}
             </button>
         </form>
     </div>
 
     {#if error}
-        <div class="search-error">{error}</div>
+        <div class="text-[var(--color-danger)] text-[var(--text-sm)] shrink-0">{error}</div>
     {/if}
 
     <!-- Result count -->
-    <div class="result-meta">
+    <div class="text-[var(--text-sm)] text-[var(--text-tertiary)] shrink-0">
         {#if query.trim() && !searching}
             {resultCount} result{resultCount !== 1 ? "s" : ""} for "{query}"
         {:else if !initialLoad}
@@ -270,61 +403,136 @@
     </div>
 
     <!-- Action bar -->
-    {#if selectedEntry}
-        <div class="action-bar">
-            <button class="action-btn secondary" onclick={copySelectedText}>
-                {#if copied}<Check size={14} /> Copied{:else}<Copy size={14} /> Copy{/if}
+    {#if selection.hasSelection}
+        <div class="flex items-center gap-[var(--space-1)] shrink-0">
+            {#if selection.isMulti}
+                <span class="text-xs text-[var(--accent)] font-semibold">{selection.count} selected</span>
+                <button
+                    class="inline-flex items-center gap-1.5 h-[34px] px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-[var(--surface-tertiary)] text-[var(--text-primary)] hover:enabled:bg-[var(--gray-6)]"
+                    onclick={(e) => openProjectMenu(e)}
+                >
+                    <FolderOpen size={14} /> Assign to Project…
+                </button>
+            {:else}
+                <button
+                    class="inline-flex items-center gap-1.5 h-[34px] px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-[var(--surface-tertiary)] text-[var(--text-primary)] hover:enabled:bg-[var(--gray-6)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    onclick={copySelectedText}
+                >
+                    {#if copied}<Check size={14} /> Copied{:else}<Copy size={14} /> Copy{/if}
+                </button>
+                <button
+                    class="inline-flex items-center gap-1.5 h-[34px] px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-transparent text-[var(--text-secondary)] hover:enabled:text-[var(--text-primary)] hover:enabled:bg-[var(--hover-overlay)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    onclick={refineSelected}
+                    disabled={refining === selectedId}
+                >
+                    {#if refining === selectedId}<Loader2 size={14} class="spin" />{:else}<Sparkles size={14} /> Refine{/if}
+                </button>
+                <button
+                    class="inline-flex items-center gap-1.5 h-[34px] px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-[var(--surface-tertiary)] text-[var(--text-primary)] hover:enabled:bg-[var(--gray-6)]"
+                    onclick={(e) => openProjectMenu(e)}
+                >
+                    <FolderOpen size={14} /> Assign…
+                </button>
+            {/if}
+            <div class="flex-1"></div>
+            <button
+                class="inline-flex items-center gap-1.5 h-[34px] px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-transparent text-[var(--text-tertiary)] hover:enabled:text-[var(--color-danger)] hover:enabled:bg-[var(--color-danger-surface)] disabled:opacity-50 disabled:cursor-not-allowed"
+                onclick={deleteSelected}
+            >
+                <Trash2 size={14} />
+                {selection.isMulti ? `Delete ${selection.count}` : "Delete"}
             </button>
-            <button class="action-btn ghost" onclick={refineSelected} disabled={refining === selectedId}>
-                {#if refining === selectedId}<Loader2 size={14} class="spin" />{:else}<Sparkles size={14} /> Refine{/if}
-            </button>
-            <div style="flex:1"></div>
-            <button class="action-btn destructive" onclick={deleteSelected}><Trash2 size={14} /> Delete</button>
         </div>
     {/if}
 
     <!-- Table -->
-    <div class="table-container">
+    <div class="flex-1 overflow-auto border border-[var(--shell-border)] rounded-[var(--radius-md)]">
         {#if initialLoad}
-            <div class="table-empty"><Loader2 size={20} class="spin" /></div>
+            <div
+                class="flex flex-col items-center justify-center gap-[var(--space-2)] h-[200px] text-[var(--text-tertiary)] text-[var(--text-sm)]"
+            >
+                <Loader2 size={20} class="spin" />
+            </div>
         {:else if displayEntries.length === 0}
-            <div class="table-empty">
+            <div
+                class="flex flex-col items-center justify-center gap-[var(--space-2)] h-[200px] text-[var(--text-tertiary)] text-[var(--text-sm)]"
+            >
                 <FileText size={24} strokeWidth={1} />
                 <span>{query.trim() ? `No results for "${query}"` : "No transcripts yet"}</span>
             </div>
         {:else}
-            <table class="search-table">
-                <thead>
+            <table class="w-full border-collapse text-[var(--text-sm)]">
+                <thead class="sticky top-0 z-[1]">
                     <tr>
-                        <th class="col-id" onclick={() => toggleSort("id")}>
-                            # <ArrowUpDown size={10} />
+                        <th
+                            class="w-[50px] text-center bg-[var(--surface-primary)] text-[var(--text-secondary)] font-[var(--weight-emphasis)] py-[var(--space-1)] px-[var(--space-2)] border-b border-[var(--shell-border)] cursor-pointer select-none whitespace-nowrap transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-primary)]"
+                            onclick={() => toggleSort("id")}
+                        >
+                            #
                         </th>
-                        <th class="col-date" onclick={() => toggleSort("created_at")}>
-                            Date <ArrowUpDown size={10} />
+                        <th
+                            class="w-[140px] text-center whitespace-nowrap bg-[var(--surface-primary)] text-[var(--text-secondary)] font-[var(--weight-emphasis)] py-[var(--space-1)] px-[var(--space-2)] border-b border-[var(--shell-border)] cursor-pointer select-none transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-primary)]"
+                            onclick={() => toggleSort("created_at")}
+                        >
+                            Date
                         </th>
-                        <th class="col-project" onclick={() => toggleSort("project_name")}>
-                            Project <ArrowUpDown size={10} />
+                        <th
+                            class="w-[100px] text-center bg-[var(--surface-primary)] text-[var(--text-secondary)] font-[var(--weight-emphasis)] py-[var(--space-1)] px-[var(--space-2)] border-b border-[var(--shell-border)] cursor-pointer select-none whitespace-nowrap transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-primary)]"
+                            onclick={() => toggleSort("project_name")}
+                        >
+                            Project
                         </th>
-                        <th class="col-duration" onclick={() => toggleSort("duration_ms")}>
-                            Duration <ArrowUpDown size={10} />
+                        <th
+                            class="w-[70px] text-center bg-[var(--surface-primary)] text-[var(--text-secondary)] font-[var(--weight-emphasis)] py-[var(--space-1)] px-[var(--space-2)] border-b border-[var(--shell-border)] cursor-pointer select-none whitespace-nowrap transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-primary)]"
+                            onclick={() => toggleSort("duration_ms")}
+                        >
+                            Duration
                         </th>
-                        <th class="col-text" onclick={() => toggleSort("text")}>
-                            Text <ArrowUpDown size={10} />
+                        <th
+                            class="text-left bg-[var(--surface-primary)] text-[var(--text-secondary)] font-[var(--weight-emphasis)] py-[var(--space-1)] px-[var(--space-2)] border-b border-[var(--shell-border)] cursor-pointer select-none whitespace-nowrap transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-primary)] leading-[var(--leading-normal)]"
+                            onclick={() => toggleSort("text")}
+                        >
+                            Text
                         </th>
                     </tr>
                 </thead>
                 <tbody>
                     {#each displayEntries as entry (entry.id)}
                         <tr
-                            class:selected={selectedId === entry.id}
-                            onclick={() => selectRow(entry.id)}
+                            class="cursor-pointer transition-[background] duration-[var(--transition-fast)] hover:bg-[var(--hover-overlay)] {selection.isSelected(
+                                entry.id,
+                            )
+                                ? 'bg-[var(--hover-overlay-blue)]'
+                                : ''}"
+                            onclick={(e) => handleRowClick(entry.id, e)}
                             ondblclick={() => openPreview(entry)}
+                            oncontextmenu={(e) => {
+                                if (!selection.isSelected(entry.id)) {
+                                    selection.selectOnly(entry.id);
+                                    selectedId = entry.id;
+                                }
+                                openProjectMenu(e);
+                            }}
                         >
-                            <td class="col-id mono">{entry.id}</td>
-                            <td class="col-date">{formatDate(entry.created_at)}</td>
-                            <td class="col-project">{entry.project_name || "—"}</td>
-                            <td class="col-duration mono">{formatDuration(entry.duration_ms)}</td>
-                            <td class="col-text">
+                            <td
+                                class="w-[50px] text-center font-[var(--font-mono)] py-[var(--space-1)] px-[var(--space-2)] border-b border-[var(--shell-border)] text-[var(--text-primary)] align-top"
+                                >{entry.id}</td
+                            >
+                            <td
+                                class="w-[140px] text-center whitespace-nowrap py-[var(--space-1)] px-[var(--space-2)] border-b border-[var(--shell-border)] text-[var(--text-primary)] align-top"
+                                >{formatDate(entry.created_at)}</td
+                            >
+                            <td
+                                class="w-[100px] text-center py-[var(--space-1)] px-[var(--space-2)] border-b border-[var(--shell-border)] text-[var(--text-primary)] align-top"
+                                >{entry.project_name || "—"}</td
+                            >
+                            <td
+                                class="w-[70px] text-center font-[var(--font-mono)] py-[var(--space-1)] px-[var(--space-2)] border-b border-[var(--shell-border)] text-[var(--text-primary)] align-top"
+                                >{formatDuration(entry.duration_ms)}</td
+                            >
+                            <td
+                                class="text-left leading-[var(--leading-normal)] py-[var(--space-1)] px-[var(--space-2)] border-b border-[var(--shell-border)] text-[var(--text-primary)] align-top"
+                            >
                                 {#if query.trim()}
                                     {@html highlight(truncate(getDisplayText(entry)), query)}
                                 {:else}
@@ -340,16 +548,35 @@
 
     <!-- Preview overlay -->
     {#if previewEntry}
-        <div class="overlay-backdrop" onclick={closePreview} role="presentation"></div>
-        <div class="preview-overlay">
-            <div class="preview-header">
-                <h3 class="preview-title">Transcript #{previewEntry.id}</h3>
-                <button class="preview-close" onclick={closePreview}><X size={16} /></button>
+        <div
+            class="fixed inset-0 bg-[var(--overlay-backdrop)] z-[100]"
+            onclick={closePreview}
+            role="presentation"
+        ></div>
+        <div
+            class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[min(85%,680px)] max-h-[75vh] bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] z-[101] flex flex-col overflow-hidden"
+        >
+            <div
+                class="flex items-center justify-between py-[var(--space-2)] px-[var(--space-3)] border-b border-[var(--shell-border)] shrink-0"
+            >
+                <h3 class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)] m-0">
+                    Transcript #{previewEntry.id}
+                </h3>
+                <button
+                    class="w-7 h-7 border-none rounded-[var(--radius-sm)] bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)]"
+                    onclick={closePreview}><X size={16} /></button
+                >
             </div>
-            <div class="preview-body">
-                <p class="preview-text">{getDisplayText(previewEntry)}</p>
+            <div class="flex-1 overflow-y-auto p-[var(--space-3)]">
+                <p
+                    class="text-[var(--text-base)] leading-[var(--leading-relaxed)] text-[var(--text-primary)] whitespace-pre-wrap break-words m-0"
+                >
+                    {getDisplayText(previewEntry)}
+                </p>
             </div>
-            <div class="preview-footer">
+            <div
+                class="py-[var(--space-1)] px-[var(--space-3)] border-t border-[var(--shell-border)] text-[var(--text-xs)] text-[var(--text-tertiary)] shrink-0"
+            >
                 {formatDate(previewEntry.created_at)}
                 {#if previewEntry.project_name}
                     · {previewEntry.project_name}{/if}
@@ -359,320 +586,39 @@
     {/if}
 </div>
 
+{#if projectMenuOpen}
+    <div
+        class="fixed min-w-[260px] max-w-[340px] max-h-[360px] overflow-y-auto bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-[var(--radius-md)] shadow-[0_12px_28px_rgba(0,0,0,0.45)] py-1 z-[200]"
+        style="left: {projectMenuX}px; top: {projectMenuY}px"
+        role="menu"
+        tabindex="-1"
+        onpointerdown={(e) => e.stopPropagation()}
+        oncontextmenu={(e) => e.preventDefault()}
+    >
+        <div class="px-3 py-1.5 text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">
+            {#if selection.isMulti}
+                Assign {selection.count} transcripts to project
+            {:else}
+                Assign to Project
+            {/if}
+        </div>
+        {#each projectOptions as option}
+            <button
+                class="w-full flex items-center justify-between gap-2 px-3 py-1.5 border-none bg-transparent text-left text-[var(--text-sm)] cursor-pointer transition-colors duration-150 hover:bg-[var(--hover-overlay-blue)] text-[var(--text-primary)]"
+                onclick={() => assignProjectFromContext(option.value)}
+                role="menuitem"
+            >
+                <span class="truncate">{option.label}</span>
+            </button>
+        {/each}
+    </div>
+{/if}
+
 <style>
-    .search-view {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        overflow: hidden;
-        padding: var(--space-3) var(--space-3) var(--space-2);
-        gap: var(--space-2);
-    }
-
-    /* ===== Header ===== */
-    .search-header {
-        flex-shrink: 0;
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-2);
-        padding-bottom: var(--space-2);
-    }
-    .search-bar {
-        display: flex;
-        gap: var(--space-1);
-    }
-    .search-input-wrap {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        gap: var(--space-1);
-        height: 36px;
-        background: var(--surface-secondary);
-        border: 1px solid var(--text-tertiary);
-        border-radius: var(--radius-sm);
-        padding: 0 var(--space-2);
-        color: var(--text-tertiary);
-        transition: border-color var(--transition-fast);
-    }
-    .search-input-wrap:focus-within {
-        border-color: var(--accent);
-    }
-    .search-input {
-        flex: 1;
-        background: transparent;
-        border: none;
-        outline: none;
-        color: var(--text-primary);
-        font-family: var(--font-family);
-        font-size: var(--text-sm);
-    }
-    .search-input::placeholder {
-        color: var(--text-tertiary);
-    }
-    .search-clear {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 18px;
-        height: 18px;
-        border: none;
-        border-radius: 50%;
-        background: var(--surface-tertiary);
-        color: var(--text-tertiary);
-        cursor: pointer;
-        transition: color var(--transition-fast);
-    }
-    .search-clear:hover {
-        color: var(--text-primary);
-    }
-    .search-submit {
-        height: 36px;
-        padding: 0 var(--space-3);
-        border: none;
-        border-radius: var(--radius-sm);
-        background: var(--accent);
-        color: var(--gray-0);
-        font-family: var(--font-family);
-        font-size: var(--text-sm);
-        font-weight: var(--weight-emphasis);
-        cursor: pointer;
-        transition: background var(--transition-fast);
-        white-space: nowrap;
-    }
-    .search-submit:hover:not(:disabled) {
-        background: var(--accent-hover);
-    }
-    .search-submit:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-
-    .search-error {
-        color: var(--color-danger);
-        font-size: var(--text-sm);
-        flex-shrink: 0;
-    }
-    .result-meta {
-        font-size: var(--text-sm);
-        color: var(--text-tertiary);
-        flex-shrink: 0;
-    }
-
-    /* ===== Action bar ===== */
-    .action-bar {
-        display: flex;
-        align-items: center;
-        gap: var(--space-1);
-        flex-shrink: 0;
-    }
-    .action-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        height: 34px;
-        padding: 0 var(--space-2);
-        border: none;
-        border-radius: var(--radius-sm);
-        font-family: var(--font-family);
-        font-size: var(--text-sm);
-        font-weight: var(--weight-emphasis);
-        cursor: pointer;
-        transition:
-            background var(--transition-fast),
-            color var(--transition-fast);
-        white-space: nowrap;
-    }
-    .action-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-    .action-btn.secondary {
-        background: var(--surface-tertiary);
-        color: var(--text-primary);
-    }
-    .action-btn.secondary:hover:not(:disabled) {
-        background: var(--gray-6);
-    }
-    .action-btn.ghost {
-        background: transparent;
-        color: var(--text-secondary);
-    }
-    .action-btn.ghost:hover:not(:disabled) {
-        color: var(--text-primary);
-        background: var(--hover-overlay);
-    }
-    .action-btn.destructive {
-        background: transparent;
-        color: var(--text-tertiary);
-    }
-    .action-btn.destructive:hover:not(:disabled) {
-        color: var(--color-danger);
-        background: var(--color-danger-surface);
-    }
-
-    /* ===== Table ===== */
-    .table-container {
-        flex: 1;
-        overflow: auto;
-        border: 1px solid var(--shell-border);
-        border-radius: var(--radius-md);
-    }
-    .table-empty {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: var(--space-2);
-        height: 200px;
-        color: var(--text-tertiary);
-        font-size: var(--text-sm);
-    }
-
-    .search-table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: var(--text-sm);
-    }
-
-    .search-table thead {
-        position: sticky;
-        top: 0;
-        z-index: 1;
-    }
-    .search-table th {
-        background: var(--surface-primary);
-        color: var(--text-secondary);
-        font-weight: var(--weight-emphasis);
-        text-align: center;
-        padding: var(--space-1) var(--space-2);
-        border-bottom: 1px solid var(--shell-border);
-        cursor: pointer;
-        user-select: none;
-        white-space: nowrap;
-        transition: color var(--transition-fast);
-    }
-    .search-table th:hover {
-        color: var(--text-primary);
-    }
-    .search-table td {
-        padding: var(--space-1) var(--space-2);
-        border-bottom: 1px solid var(--shell-border);
-        color: var(--text-primary);
-        vertical-align: top;
-    }
-    .search-table tr {
-        cursor: pointer;
-        transition: background var(--transition-fast);
-    }
-    .search-table tbody tr:hover {
-        background: var(--hover-overlay);
-    }
-    .search-table tr.selected {
-        background: var(--hover-overlay-blue);
-    }
-
-    .col-id {
-        width: 50px;
-        text-align: center;
-    }
-    .col-date {
-        width: 140px;
-        white-space: nowrap;
-        text-align: center;
-    }
-    .col-project {
-        width: 100px;
-        text-align: center;
-    }
-    .col-duration {
-        width: 70px;
-        text-align: center;
-    }
-    .col-text {
-        text-align: left;
-        line-height: var(--leading-normal);
-    }
-    .mono {
-        font-family: var(--font-mono);
-    }
-
     :global(.search-highlight) {
         background: rgba(90, 159, 212, 0.3);
         color: inherit;
         border-radius: 2px;
         padding: 0 1px;
-    }
-
-    /* ===== Preview overlay ===== */
-    .overlay-backdrop {
-        position: fixed;
-        inset: 0;
-        background: var(--overlay-backdrop);
-        z-index: 100;
-    }
-    .preview-overlay {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: min(85%, 680px);
-        max-height: 75vh;
-        background: var(--surface-secondary);
-        border: 1px solid var(--shell-border);
-        border-radius: var(--radius-lg);
-        z-index: 101;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-    }
-    .preview-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: var(--space-2) var(--space-3);
-        border-bottom: 1px solid var(--shell-border);
-        flex-shrink: 0;
-    }
-    .preview-title {
-        font-size: var(--text-sm);
-        font-weight: var(--weight-emphasis);
-        color: var(--text-primary);
-        margin: 0;
-    }
-    .preview-close {
-        width: 28px;
-        height: 28px;
-        border: none;
-        border-radius: var(--radius-sm);
-        background: transparent;
-        color: var(--text-tertiary);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .preview-close:hover {
-        color: var(--text-primary);
-        background: var(--hover-overlay);
-    }
-    .preview-body {
-        flex: 1;
-        overflow-y: auto;
-        padding: var(--space-3);
-    }
-    .preview-text {
-        font-size: var(--text-base);
-        line-height: var(--leading-relaxed);
-        color: var(--text-primary);
-        white-space: pre-wrap;
-        word-break: break-word;
-        margin: 0;
-    }
-    .preview-footer {
-        padding: var(--space-1) var(--space-3);
-        border-top: 1px solid var(--shell-border);
-        font-size: var(--text-xs);
-        color: var(--text-tertiary);
-        flex-shrink: 0;
     }
 </style>

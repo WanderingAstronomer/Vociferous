@@ -7,7 +7,7 @@ They carry no behavior — handlers are registered in the CommandBus.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
 
 from src.core.intents import InteractionIntent
@@ -146,3 +146,34 @@ class AssignProjectIntent(InteractionIntent):
     transcript_id: int = 0
     project_id: int | None = None
     source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class ClearTranscriptsIntent(InteractionIntent):
+    """Delete all transcripts."""
+
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class DeleteTranscriptVariantIntent(InteractionIntent):
+    """Delete a specific variant of a transcript."""
+
+    transcript_id: int = 0
+    variant_id: int = 0
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class UpdateConfigIntent(InteractionIntent):
+    """Update application configuration settings."""
+
+    settings: dict = field(default_factory=dict)
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class RestartEngineIntent(InteractionIntent):
+    """Restart ASR + SLM engine models."""
+
+    source: IntentSource = IntentSource.INTERNAL

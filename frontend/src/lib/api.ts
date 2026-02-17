@@ -63,6 +63,10 @@ export function deleteTranscript(id: number): Promise<{ deleted: boolean }> {
     return request(`/transcripts/${id}`, { method: "DELETE" });
 }
 
+export function clearAllTranscripts(): Promise<{ deleted: number }> {
+    return request("/transcripts", { method: "DELETE" });
+}
+
 export function deleteVariant(transcriptId: number, variantId: number): Promise<{ deleted: boolean }> {
     return request(`/transcripts/${transcriptId}/variants/${variantId}`, { method: "DELETE" });
 }
@@ -109,6 +113,46 @@ export function assignProject(transcriptId: number, projectId: number | null): P
     return dispatchIntent("assign_project", { transcript_id: transcriptId, project_id: projectId });
 }
 
+/**
+ * Batch-assign multiple transcripts to a project.
+ * Fires individual intents for each — no backend batch endpoint needed.
+ */
+export async function batchAssignProject(
+    transcriptIds: number[],
+    projectId: number | null,
+): Promise<{ succeeded: number; failed: number }> {
+    let succeeded = 0;
+    let failed = 0;
+    for (const id of transcriptIds) {
+        try {
+            await assignProject(id, projectId);
+            succeeded++;
+        } catch {
+            failed++;
+        }
+    }
+    return { succeeded, failed };
+}
+
+/**
+ * Batch-delete multiple transcripts.
+ */
+export async function batchDeleteTranscripts(
+    transcriptIds: number[],
+): Promise<{ succeeded: number; failed: number }> {
+    let succeeded = 0;
+    let failed = 0;
+    for (const id of transcriptIds) {
+        try {
+            await deleteTranscript(id);
+            succeeded++;
+        } catch {
+            failed++;
+        }
+    }
+    return { succeeded, failed };
+}
+
 // --- Config ---
 
 export function getConfig(): Promise<Record<string, unknown>> {
@@ -141,7 +185,7 @@ export function getModels(): Promise<{ asr: Record<string, ModelInfo>; slm: Reco
 
 // --- Health ---
 
-export function getHealth(): Promise<{ status: string; version: string; transcripts: number }> {
+export function getHealth(): Promise<{ status: string; version: string; transcripts: number; recording_active?: boolean }> {
     return request("/health");
 }
 
@@ -181,7 +225,7 @@ export function minimizeWindow(): Promise<{ status: string }> {
     return request("/window/minimize", { method: "POST" });
 }
 
-export function maximizeWindow(): Promise<{ status: string }> {
+export function maximizeWindow(): Promise<{ status: string; maximized?: boolean }> {
     return request("/window/maximize", { method: "POST" });
 }
 

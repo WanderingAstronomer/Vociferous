@@ -49,6 +49,7 @@ class CommandBus:
             logger.warning("No handler registered for %s", intent_type.__name__)
             return False
 
+        logger.info("Dispatching intent: %s", intent_type.__name__)
         try:
             handler(intent)
             return True

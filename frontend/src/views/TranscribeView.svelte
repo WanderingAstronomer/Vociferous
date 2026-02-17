@@ -13,27 +13,12 @@
 
     import { ws } from "../lib/ws";
     import { onMount } from "svelte";
-    import {
-        Mic,
-        Square,
-        Copy,
-        Check,
-        Pencil,
-        Trash2,
-        Save,
-        Undo2,
-        Loader2,
-    } from "lucide-svelte";
+    import { Mic, Square, Copy, Check, Pencil, Trash2, Save, Undo2, Loader2 } from "lucide-svelte";
     import WorkspacePanel from "../lib/components/WorkspacePanel.svelte";
     import BarSpectrumVisualizer from "../lib/components/BarSpectrumVisualizer.svelte";
+    import { deleteTranscript as apiDeleteTranscript, dispatchIntent, getHealth } from "../lib/api";
 
-    type WorkspaceState =
-        | "idle"
-        | "recording"
-        | "transcribing"
-        | "ready"
-        | "viewing"
-        | "editing";
+    type WorkspaceState = "idle" | "recording" | "transcribing" | "ready" | "viewing" | "editing";
 
     let viewState = $state<WorkspaceState>("idle");
     let transcriptText = $state("");
@@ -48,15 +33,13 @@
 
     /* ===== Derived state ===== */
     let wordCount = $derived(
-        viewState === "recording" || viewState === "transcribing" || viewState === "editing" || viewState === "viewing"
+        viewState !== "idle"
             ? (viewState === "editing" ? editText : transcriptText).split(/\s+/).filter(Boolean).length
-            : 0
+            : 0,
     );
     let isRecording = $derived(viewState === "recording");
     let isTranscribing = $derived(viewState === "transcribing");
-    let hasText = $derived(
-        Boolean(transcriptText) && viewState !== "idle"
-    );
+    let hasText = $derived(Boolean(transcriptText) && viewState !== "idle");
 
     /* ===== Greeting ===== */
     let greeting = $derived.by(() => {
@@ -83,6 +66,16 @@
 
     /* ===== WebSocket handlers ===== */
     onMount(() => {
+        getHealth()
+            .then((health) => {
+                if (health.recording_active) {
+                    viewState = "recording";
+                }
+            })
+            .catch(() => {
+                /* no-op */
+            });
+
         const unsubs = [
             ws.on("recording_started", () => {
                 viewState = "recording";
@@ -129,6 +122,10 @@
         ws.send("stop_recording");
     }
 
+    function cancelRecording() {
+        ws.send("cancel_recording");
+    }
+
     function toggleRecording() {
         if (isRecording) stopRecording();
         else startRecording();
@@ -150,9 +147,16 @@
     }
 
     function commitEdits() {
-        transcriptText = editText;
-        viewState = "viewing";
-        // TODO: send save to backend
+        if (!transcriptId || !editText.trim()) return;
+        dispatchIntent("commit_edits", {
+            transcript_id: transcriptId,
+            content: editText.trim(),
+        })
+            .then(() => {
+                transcriptText = editText;
+                viewState = "viewing";
+            })
+            .catch((e) => console.error("Failed to save edits:", e));
     }
 
     function discardEdits() {
@@ -160,12 +164,15 @@
         viewState = "viewing";
     }
 
-    function deleteTranscript() {
-        if (transcriptId != null) {
-            // TODO: confirm dialog, then API call
+    async function deleteTranscript() {
+        if (transcriptId == null) return;
+        try {
+            await apiDeleteTranscript(transcriptId);
             transcriptText = "";
             transcriptId = null;
             viewState = "idle";
+        } catch (e) {
+            console.error("Failed to delete transcript:", e);
         }
     }
 
@@ -178,50 +185,74 @@
     }
 </script>
 
-<div class="transcribe-view">
+<div class="flex flex-col h-full p-[var(--space-4)] gap-[var(--minor-gap)] max-w-[var(--content-max-width)] mx-auto">
     <!-- Header -->
-    <div class="workspace-header">
+    <div class="shrink-0 py-[var(--space-1)]">
         {#if viewState === "idle"}
-            <h1 class="header-greeting">{greeting}</h1>
-            <p class="header-subtitle">Press the mic or use your hotkey to begin</p>
+            <h1
+                class="text-[var(--text-xl)] font-[var(--weight-emphasis)] text-[var(--text-primary)] m-0 leading-[var(--leading-tight)]"
+            >
+                {greeting}
+            </h1>
+            <p class="text-[var(--text-sm)] text-[var(--text-tertiary)] mt-[var(--space-0)] mb-0">
+                Click the mic button or use your hotkey to start recording
+            </p>
         {:else if viewState === "recording"}
-            <div class="header-status recording-status">
-                <span class="recording-dot"></span>
-                <span>Recording</span>
+            <div class="flex items-center gap-[var(--space-1)] text-[var(--text-base)] text-[var(--color-danger)]">
+                <span
+                    class="w-2 h-2 rounded-full bg-[var(--color-danger)] animate-[pulse-dot_1.2s_ease-in-out_infinite]"
+                ></span>
+                <span>Recording in progress…</span>
             </div>
         {:else if viewState === "transcribing"}
-            <div class="header-status">
+            <div class="flex items-center gap-[var(--space-1)] text-[var(--text-base)] text-[var(--text-secondary)]">
                 <Loader2 size={18} class="spin" />
                 <span>Transcribing…</span>
             </div>
         {:else}
-            <div class="header-status">
-                <span class="header-timestamp">{transcriptTimestamp || "Transcript"}</span>
+            <div class="flex items-center gap-[var(--space-1)] text-[var(--text-base)] text-[var(--text-secondary)]">
+                <span class="font-[var(--font-mono)] text-[var(--text-sm)] text-[var(--text-tertiary)]"
+                    >{transcriptTimestamp || "Transcript"}</span
+                >
             </div>
         {/if}
     </div>
 
     <!-- Metrics strip (visible when transcript loaded) -->
     {#if hasText && durationMs > 0}
-        <div class="metrics-strip">
-            <div class="metric">
-                <span class="metric-label">Duration</span>
-                <span class="metric-value">{formatDuration(durationMs)}</span>
+        <div
+            class="flex items-center gap-[var(--space-2)] py-[var(--space-1)] px-[var(--space-2)] bg-[var(--surface-primary)] rounded-[var(--radius-sm)] shrink-0"
+        >
+            <div class="flex flex-col gap-0.5">
+                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase tracking-wider">Duration</span>
+                <span
+                    class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)] font-[var(--font-mono)]"
+                    >{formatDuration(durationMs)}</span
+                >
             </div>
-            <div class="metric-divider"></div>
-            <div class="metric">
-                <span class="metric-label">Speech</span>
-                <span class="metric-value">{formatDuration(speechDurationMs)}</span>
+            <div class="w-px h-6 bg-[var(--shell-border)] mx-[var(--space-1)]"></div>
+            <div class="flex flex-col gap-0.5">
+                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase tracking-wider">Speech</span>
+                <span
+                    class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)] font-[var(--font-mono)]"
+                    >{formatDuration(speechDurationMs)}</span
+                >
             </div>
-            <div class="metric-divider"></div>
-            <div class="metric">
-                <span class="metric-label">Words</span>
-                <span class="metric-value">{wordCount}</span>
+            <div class="w-px h-6 bg-[var(--shell-border)] mx-[var(--space-1)]"></div>
+            <div class="flex flex-col gap-0.5">
+                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase tracking-wider">Words</span>
+                <span
+                    class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)] font-[var(--font-mono)]"
+                    >{wordCount}</span
+                >
             </div>
-            <div class="metric-divider"></div>
-            <div class="metric">
-                <span class="metric-label">Pace</span>
-                <span class="metric-value">{formatWpm(wordCount, speechDurationMs || durationMs)}</span>
+            <div class="w-px h-6 bg-[var(--shell-border)] mx-[var(--space-1)]"></div>
+            <div class="flex flex-col gap-0.5">
+                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase tracking-wider">Pace</span>
+                <span
+                    class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)] font-[var(--font-mono)]"
+                    >{formatWpm(wordCount, speechDurationMs || durationMs)}</span
+                >
             </div>
         </div>
     {/if}
@@ -230,84 +261,131 @@
     <WorkspacePanel editing={viewState === "editing"} recording={isRecording || isTranscribing}>
         <!-- IDLE: centered record prompt -->
         {#if viewState === "idle"}
-            <div class="content-center">
-                <button class="record-button" onclick={startRecording} title="Start recording">
+            <div class="flex-1 flex flex-col items-center justify-center gap-[var(--space-3)]">
+                <button
+                    class="w-[88px] h-[88px] rounded-full border-2 border-[var(--accent)] bg-transparent text-[var(--accent)] cursor-pointer flex items-center justify-center transition-[background,border-color,color] duration-[var(--transition-fast)] hover:bg-[var(--hover-overlay-blue)] hover:border-[var(--accent-hover)] hover:text-[var(--accent-hover)]"
+                    onclick={startRecording}
+                    aria-label="Start recording"
+                    title="Start recording"
+                >
                     <Mic size={32} strokeWidth={1.5} />
                 </button>
-                <p class="record-hint">Tap to record</p>
+                <p class="text-[var(--text-sm)] text-[var(--text-tertiary)]">Click to record</p>
             </div>
 
-        <!-- RECORDING: visualizer + stop -->
+            <!-- RECORDING: visualizer + stop -->
         {:else if viewState === "recording"}
-            <div class="content-recording">
-                <div class="visualizer-container">
-                    <BarSpectrumVisualizer
-                        bind:this={visualizerRef}
-                        active={isRecording}
-                        numBars={64}
-                    />
+            <div class="flex-1 flex flex-col gap-[var(--space-3)]">
+                <div class="flex-1 min-h-[120px]">
+                    <BarSpectrumVisualizer bind:this={visualizerRef} active={isRecording} numBars={64} />
                 </div>
-                <button class="stop-button" onclick={stopRecording} title="Stop recording">
-                    <Square size={20} fill="currentColor" />
-                </button>
+                <div class="self-center flex items-center gap-[var(--space-1)] shrink-0">
+                    <button
+                        class="inline-flex items-center gap-1.5 h-10 px-[var(--space-2)] border border-[var(--color-danger)] rounded-[var(--radius-sm)] bg-transparent text-[var(--color-danger)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] hover:bg-[var(--color-danger-surface)]"
+                        onclick={cancelRecording}
+                        aria-label="Cancel recording and discard audio"
+                        title="Cancel recording and discard captured audio"
+                    >
+                        <Trash2 size={16} /> Cancel (Discard)
+                    </button>
+                    <button
+                        class="inline-flex items-center gap-1.5 h-10 px-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-sm)] bg-[var(--surface-primary)] text-[var(--text-primary)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] hover:bg-[var(--surface-tertiary)]"
+                        onclick={stopRecording}
+                        aria-label="Stop recording and transcribe"
+                        title="Stop recording and transcribe audio"
+                    >
+                        <Square size={16} fill="currentColor" /> Stop & Transcribe
+                    </button>
+                </div>
+                <p class="self-center text-[var(--text-xs)] text-[var(--text-tertiary)] italic">
+                    Cancel discards audio. Stop runs transcription.
+                </p>
             </div>
 
-        <!-- TRANSCRIBING: spinner -->
+            <!-- TRANSCRIBING: spinner -->
         {:else if viewState === "transcribing"}
-            <div class="content-center">
+            <div class="flex-1 flex flex-col items-center justify-center gap-[var(--space-3)]">
                 <Loader2 size={40} strokeWidth={1.5} class="spin" />
-                <p class="transcribing-text">Processing audio…</p>
+                <p class="text-[var(--text-sm)] text-[var(--text-tertiary)]">Transcribing audio…</p>
             </div>
 
-        <!-- EDITING: editable textarea -->
+            <!-- EDITING: editable textarea -->
         {:else if viewState === "editing"}
-            <div class="content-text">
+            <div class="flex-1 overflow-y-auto">
                 <textarea
-                    class="edit-area"
+                    class="w-full h-full min-h-[200px] bg-transparent text-[var(--text-primary)] border-none outline-none resize-none font-[var(--font-family)] text-[var(--text-base)] leading-[var(--leading-relaxed)] p-0 placeholder:text-[var(--text-tertiary)]"
                     bind:value={editText}
                     spellcheck="true"
                 ></textarea>
             </div>
 
-        <!-- READY / VIEWING: display transcript text -->
+            <!-- READY / VIEWING: display transcript text -->
         {:else}
-            <div class="content-text">
-                <p class="transcript-display">{transcriptText}</p>
+            <div class="flex-1 overflow-y-auto">
+                <p
+                    class="text-[var(--text-base)] leading-[var(--leading-relaxed)] text-[var(--text-primary)] whitespace-pre-wrap break-words m-0"
+                >
+                    {transcriptText}
+                </p>
             </div>
         {/if}
     </WorkspacePanel>
 
     <!-- Action bar (below panel) -->
     {#if viewState !== "idle" && viewState !== "transcribing"}
-        <div class="action-bar">
+        <div class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] shrink-0">
             {#if viewState === "recording"}
                 <!-- Recording: just the stop is in the panel -->
             {:else if viewState === "editing"}
-                <button class="action-btn primary" onclick={commitEdits} title="Save edits">
+                <button
+                    class="inline-flex items-center gap-1.5 h-8 px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-xs)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-[var(--accent)] text-[var(--gray-0)] hover:bg-[var(--accent-hover)]"
+                    onclick={commitEdits}
+                    title="Save edits"
+                >
                     <Save size={16} /> Save
                 </button>
-                <button class="action-btn ghost" onclick={discardEdits} title="Discard edits">
+                <button
+                    class="inline-flex items-center gap-1.5 h-8 px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-xs)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)]"
+                    onclick={discardEdits}
+                    title="Discard edits"
+                >
                     <Undo2 size={16} /> Discard
                 </button>
             {:else}
                 <!-- READY / VIEWING -->
-                <button class="action-btn secondary" onclick={copyToClipboard} title="Copy to clipboard">
+                <button
+                    class="inline-flex items-center gap-1.5 h-8 px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-xs)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-[var(--surface-tertiary)] text-[var(--text-primary)] hover:bg-[var(--gray-6)]"
+                    onclick={copyToClipboard}
+                    title="Copy to clipboard"
+                >
                     {#if copied}
                         <Check size={16} /> Copied
                     {:else}
                         <Copy size={16} /> Copy
                     {/if}
                 </button>
-                <button class="action-btn ghost" onclick={enterEditMode} title="Edit transcript">
+                <button
+                    class="inline-flex items-center gap-1.5 h-8 px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-xs)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)]"
+                    onclick={enterEditMode}
+                    title="Edit transcript"
+                >
                     <Pencil size={16} /> Edit
                 </button>
-                <button class="action-btn destructive" onclick={deleteTranscript} title="Delete transcript">
+                <button
+                    class="inline-flex items-center gap-1.5 h-8 px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-xs)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-transparent text-[var(--text-tertiary)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-surface)]"
+                    onclick={deleteTranscript}
+                    title="Delete transcript"
+                >
                     <Trash2 size={16} /> Delete
                 </button>
 
-                <div class="action-spacer"></div>
+                <div class="flex-1"></div>
 
-                <button class="action-btn ghost" onclick={resetToIdle} title="New recording">
+                <button
+                    class="inline-flex items-center gap-1.5 h-8 px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-xs)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)]"
+                    onclick={resetToIdle}
+                    title="New recording"
+                >
                     <Mic size={16} /> New
                 </button>
             {/if}
@@ -316,302 +394,26 @@
 </div>
 
 <style>
-    .transcribe-view {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
-        padding: var(--space-4);
-        gap: var(--minor-gap);
-        max-width: var(--content-max-width);
-        margin: 0 auto;
-    }
-
-    /* ===== Header ===== */
-
-    .workspace-header {
-        flex-shrink: 0;
-        padding: var(--space-1) 0;
-    }
-
-    .header-greeting {
-        font-size: var(--text-xl);
-        font-weight: var(--weight-emphasis);
-        color: var(--text-primary);
-        margin: 0;
-        line-height: var(--leading-tight);
-    }
-
-    .header-subtitle {
-        font-size: var(--text-sm);
-        color: var(--text-tertiary);
-        margin: var(--space-0) 0 0;
-    }
-
-    .header-status {
-        display: flex;
-        align-items: center;
-        gap: var(--space-1);
-        font-size: var(--text-base);
-        color: var(--text-secondary);
-    }
-
-    .header-timestamp {
-        font-family: var(--font-mono);
-        font-size: var(--text-sm);
-        color: var(--text-tertiary);
-    }
-
-    .recording-status {
-        color: var(--color-danger);
-    }
-
-    .recording-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: var(--color-danger);
-        animation: pulse-dot 1.2s ease-in-out infinite;
-    }
-
     @keyframes pulse-dot {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.3; }
+        0%,
+        100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.3;
+        }
     }
-
-    /* ===== Metrics strip ===== */
-
-    .metrics-strip {
-        display: flex;
-        align-items: center;
-        gap: var(--space-2);
-        padding: var(--space-1) var(--space-2);
-        background: var(--surface-primary);
-        border-radius: var(--radius-sm);
-        flex-shrink: 0;
-    }
-
-    .metric {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-
-    .metric-label {
-        font-size: var(--text-xs);
-        color: var(--text-tertiary);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-
-    .metric-value {
-        font-size: var(--text-sm);
-        font-weight: var(--weight-emphasis);
-        color: var(--text-primary);
-        font-family: var(--font-mono);
-    }
-
-    .metric-divider {
-        width: 1px;
-        height: 24px;
-        background: var(--shell-border);
-        margin: 0 var(--space-1);
-    }
-
-    /* ===== Content layouts ===== */
-
-    .content-center {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: var(--space-3);
-    }
-
-    .content-recording {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        gap: var(--space-3);
-    }
-
-    .content-text {
-        flex: 1;
-        overflow-y: auto;
-    }
-
-    /* ===== Record button ===== */
-
-    .record-button {
-        width: 88px;
-        height: 88px;
-        border-radius: 50%;
-        border: 2px solid var(--accent);
-        background: transparent;
-        color: var(--accent);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition:
-            background var(--transition-fast),
-            border-color var(--transition-fast),
-            color var(--transition-fast);
-    }
-
-    .record-button:hover {
-        background: rgba(90, 159, 212, 0.12);
-        border-color: var(--accent-hover);
-        color: var(--accent-hover);
-    }
-
-    .record-hint {
-        font-size: var(--text-sm);
-        color: var(--text-tertiary);
-    }
-
-    /* ===== Visualizer ===== */
-
-    .visualizer-container {
-        flex: 1;
-        min-height: 120px;
-    }
-
-    /* ===== Stop button ===== */
-
-    .stop-button {
-        align-self: center;
-        width: 56px;
-        height: 56px;
-        border-radius: 50%;
-        border: 2px solid var(--color-danger);
-        background: transparent;
-        color: var(--color-danger);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: background var(--transition-fast);
-        flex-shrink: 0;
-    }
-
-    .stop-button:hover {
-        background: rgba(255, 107, 107, 0.12);
-    }
-
-    /* ===== Transcribing ===== */
-
-    .transcribing-text {
-        font-size: var(--text-sm);
-        color: var(--text-tertiary);
-    }
-
-    /* ===== Transcript display ===== */
-
-    .transcript-display {
-        font-size: var(--text-base);
-        line-height: var(--leading-relaxed);
-        color: var(--text-primary);
-        white-space: pre-wrap;
-        word-break: break-word;
-        margin: 0;
-    }
-
-    /* ===== Edit area ===== */
-
-    .edit-area {
-        width: 100%;
-        height: 100%;
-        min-height: 200px;
-        background: transparent;
-        color: var(--text-primary);
-        border: none;
-        outline: none;
-        resize: none;
-        font-family: var(--font-family);
-        font-size: var(--text-base);
-        line-height: var(--leading-relaxed);
-        padding: 0;
-    }
-
-    .edit-area::placeholder {
-        color: var(--text-tertiary);
-    }
-
-    /* ===== Action bar ===== */
-
-    .action-bar {
-        display: flex;
-        align-items: center;
-        gap: var(--space-1);
-        padding: var(--space-1) 0;
-        flex-shrink: 0;
-    }
-
-    .action-spacer {
-        flex: 1;
-    }
-
-    .action-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        height: 32px;
-        padding: 0 var(--space-2);
-        border: none;
-        border-radius: var(--radius-sm);
-        font-family: var(--font-family);
-        font-size: var(--text-xs);
-        font-weight: var(--weight-emphasis);
-        cursor: pointer;
-        transition:
-            background var(--transition-fast),
-            color var(--transition-fast);
-        white-space: nowrap;
-    }
-
-    .action-btn.primary {
-        background: var(--accent);
-        color: var(--gray-0);
-    }
-    .action-btn.primary:hover {
-        background: var(--accent-hover);
-    }
-
-    .action-btn.secondary {
-        background: var(--surface-tertiary);
-        color: var(--text-primary);
-    }
-    .action-btn.secondary:hover {
-        background: var(--gray-6);
-    }
-
-    .action-btn.ghost {
-        background: transparent;
-        color: var(--text-secondary);
-    }
-    .action-btn.ghost:hover {
-        color: var(--text-primary);
-        background: var(--hover-overlay);
-    }
-
-    .action-btn.destructive {
-        background: transparent;
-        color: var(--text-tertiary);
-    }
-    .action-btn.destructive:hover {
-        color: var(--color-danger);
-        background: var(--color-danger-surface);
-    }
-
-    /* ===== Spinner ===== */
 
     :global(.spin) {
         animation: spin 1.2s linear infinite;
     }
 
     @keyframes spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
+        from {
+            transform: rotate(0deg);
+        }
+        to {
+            transform: rotate(360deg);
+        }
     }
 </style>

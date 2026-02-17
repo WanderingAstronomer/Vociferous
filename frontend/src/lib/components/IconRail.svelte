@@ -2,8 +2,7 @@
     import { Mic, ScrollText, FolderOpen, Search, Sparkles, Settings, User } from "lucide-svelte";
 
     import type { Component } from "svelte";
-
-    export type ViewId = "transcribe" | "history" | "projects" | "search" | "refine" | "settings" | "user";
+    import type { ViewId } from "../navigation.svelte";
 
     interface NavItem {
         id: ViewId;
@@ -47,8 +46,8 @@
     }
 </script>
 
-<nav class="icon-rail">
-    <div class="rail-main">
+<nav class="flex flex-col w-[var(--rail-width)] min-w-[var(--rail-width)] h-full bg-[var(--shell-bg)] border-r border-[var(--shell-border)] py-7 px-4 select-none overflow-hidden">
+    <div class="flex flex-col gap-1.5 flex-1">
         {#each mainItems as item}
             <button
                 class="rail-button"
@@ -57,17 +56,17 @@
                 title={item.label}
                 onclick={() => handleClick(item.id)}
             >
-                <span class="rail-icon">
+                <span class="flex items-center justify-center w-10 h-10 shrink-0">
                     <item.icon size={32} strokeWidth={1.5} />
                 </span>
-                <span class="rail-label">{item.label}</span>
+                <span class="text-[var(--text-sm)] font-medium leading-none tracking-wide whitespace-nowrap">{item.label}</span>
             </button>
         {/each}
     </div>
 
-    <div class="rail-separator"></div>
+    <div class="h-px bg-[var(--shell-border)] my-[var(--space-2)] shrink-0"></div>
 
-    <div class="rail-footer">
+    <div class="flex flex-col gap-1.5">
         {#each footerItems as item}
             <button
                 class="rail-button"
@@ -76,50 +75,16 @@
                 title={item.label}
                 onclick={() => handleClick(item.id)}
             >
-                <span class="rail-icon">
+                <span class="flex items-center justify-center w-10 h-10 shrink-0">
                     <item.icon size={32} strokeWidth={1.5} />
                 </span>
-                <span class="rail-label">{item.label}</span>
+                <span class="text-[var(--text-sm)] font-medium leading-none tracking-wide whitespace-nowrap">{item.label}</span>
             </button>
         {/each}
     </div>
 </nav>
 
 <style>
-    .icon-rail {
-        width: var(--rail-width);
-        min-width: var(--rail-width);
-        height: 100%;
-        background: var(--shell-bg);
-        border-right: 1px solid var(--shell-border);
-        display: flex;
-        flex-direction: column;
-        padding: 28px 16px;
-        gap: 0;
-        user-select: none;
-        overflow: hidden;
-    }
-
-    .rail-main {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        flex: 1;
-    }
-
-    .rail-separator {
-        height: 1px;
-        background: var(--shell-border);
-        margin: var(--space-2) 0;
-        flex-shrink: 0;
-    }
-
-    .rail-footer {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-    }
-
     .rail-button {
         display: flex;
         flex-direction: column;
@@ -168,23 +133,6 @@
 
     .rail-button.blink {
         animation: rail-blink 200ms ease;
-    }
-
-    .rail-icon {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 40px;
-        height: 40px;
-        flex-shrink: 0;
-    }
-
-    .rail-label {
-        font-size: var(--text-sm);
-        font-weight: 500;
-        line-height: 1;
-        letter-spacing: 0.02em;
-        white-space: nowrap;
     }
 
     @keyframes rail-blink {

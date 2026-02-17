@@ -1,4 +1,6 @@
 import logging
+import os
+import sys
 from collections.abc import Callable
 
 from src.core.plugins import PluginLoader
@@ -54,9 +56,7 @@ class KeyListener:
                     logger.info(f"Selected configured backend: {preferred_backend}")
                     return
 
-        logger.warning(
-            f"Configured backend '{preferred_backend}' not available. Falling back to auto."
-        )
+        logger.warning(f"Configured backend '{preferred_backend}' not available. Falling back to auto.")
         self.select_active_backend()
 
     def _try_set_backend(self, backend_class: type) -> None:
@@ -77,9 +77,7 @@ class KeyListener:
 
     def set_active_backend(self, backend_class: type) -> None:
         """Set a specific backend as active."""
-        new_backend = next(
-            (b for b in self.backends if isinstance(b, backend_class)), None
-        )
+        new_backend = next((b for b in self.backends if isinstance(b, backend_class)), None)
         if new_backend:
             if self.active_backend:
                 self.stop()
@@ -114,6 +112,7 @@ class KeyListener:
                 backend.start()
                 self.active_backend = backend
                 logger.info(f"Started input backend: {type(backend).__name__}")
+                self._log_backend_limitations(backend)
                 return
             except Exception as e:
                 logger.warning(f"Backend {type(backend).__name__} failed to start: {e}")
@@ -124,6 +123,23 @@ class KeyListener:
 
         logger.error("All input backends failed to start")
         self.active_backend = None
+
+    def _log_backend_limitations(self, backend: InputBackend) -> None:
+        """Emit actionable warnings for known backend/session limitations."""
+        backend_name = type(backend).__name__
+
+        if backend_name == "PynputBackend" and sys.platform.startswith("linux") and self._is_wayland_session():
+            logger.warning(
+                "PynputBackend is active under Wayland. Global key capture may fail for "
+                "native Wayland windows. Prefer EvdevBackend with /dev/input access "
+                "(input group membership required)."
+            )
+
+    @staticmethod
+    def _is_wayland_session() -> bool:
+        """Best-effort detection of an active Wayland session."""
+        session_type = os.environ.get("XDG_SESSION_TYPE", "").lower()
+        return session_type == "wayland" or bool(os.environ.get("WAYLAND_DISPLAY"))
 
     def stop(self) -> None:
         """Stop the active backend."""
@@ -136,9 +152,7 @@ class KeyListener:
         keys = self.parse_key_combination(key_combination)
         self.set_activation_keys(keys)
 
-    def parse_key_combination(
-        self, combination_string: str
-    ) -> set[KeyCode | frozenset[KeyCode]]:
+    def parse_key_combination(self, combination_string: str) -> set[KeyCode | frozenset[KeyCode]]:
         """Parse a string representation of key combination into a set of KeyCodes."""
         modifier_map: dict[str, frozenset[KeyCode]] = {
             "CTRL": frozenset({KeyCode.CTRL_LEFT, KeyCode.CTRL_RIGHT}),
@@ -191,9 +205,7 @@ class KeyListener:
             case (True, False):
                 self._trigger_callbacks("on_deactivate")
 
-    def enable_capture_mode(
-        self, callback: Callable[[KeyCode, InputEvent], None]
-    ) -> None:
+    def enable_capture_mode(self, callback: Callable[[KeyCode, InputEvent], None]) -> None:
         """Divert input events to a capture handler (used for hotkey rebinding)."""
         self.capture_mode = True
         self.capture_callback = callback

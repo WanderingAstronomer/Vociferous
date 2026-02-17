@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from src.core.exceptions import ConfigError
 from src.core.settings import (
     VociferousSettings,
     get_settings,
@@ -69,7 +70,7 @@ class TestModuleAPI:
     """Module-level settings API (init/get/save)."""
 
     def test_get_before_init_raises(self):
-        with pytest.raises(RuntimeError, match="not initialized"):
+        with pytest.raises(ConfigError, match="not initialized"):
             get_settings()
 
     def test_init_returns_settings(self):

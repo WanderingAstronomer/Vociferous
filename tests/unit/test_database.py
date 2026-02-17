@@ -102,7 +102,7 @@ class TestVariants:
 
     def test_delete_variant(self, db: TranscriptDB):
         t = db.add_transcript(raw_text="Original", duration_ms=100)
-        v1 = db.add_variant(t.id, "refined", "First refinement")
+        _v1 = db.add_variant(t.id, "refined", "First refinement")
         v2 = db.add_variant(t.id, "refined", "Second refinement")
 
         assert db.delete_variant(t.id, v2.id) is True

@@ -15,7 +15,8 @@ import webrtcvad
 from numpy.typing import NDArray
 
 from src.core.constants import FlowTiming
-from src.core.settings import get_settings
+from src.core.exceptions import AudioError
+from src.core.settings import VociferousSettings
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ class AudioService:
 
     def __init__(
         self,
+        settings_provider: Callable[[], VociferousSettings],
         on_level_update: Callable[[float], None] | None = None,
         on_spectrum_update: Callable[[List[float]], None] | None = None,
     ) -> None:
@@ -32,9 +34,11 @@ class AudioService:
         Initialize the AudioService.
 
         Args:
+            settings_provider: Callable that returns the current application settings.
             on_level_update: Optional callback for audio level updates (normalized 0-1).
             on_spectrum_update: Optional callback for FFT spectrum (list of 16 floats).
         """
+        self._settings_provider = settings_provider
         self.on_level_update = on_level_update
         self.on_spectrum_update = on_spectrum_update
         self.sample_rate = 16000
@@ -51,18 +55,17 @@ class AudioService:
     def _calculate_bin_edges(self) -> None:
         """Calculate bin edges for logarithmic FFT grouping (with optional voice calibration)."""
         # Check if user has calibrated their voice
-        cal = get_settings().voice_calibration
+        cal = self._settings_provider().voice_calibration
         calibration = cal.model_dump() if cal.fundamental_freq > 0 else {}
 
         if calibration:
             # Use personalized bins centered on user's voice
             from src.services.voice_calibration import VoiceCalibrator
 
-            calibrator = VoiceCalibrator()
+            calibrator = VoiceCalibrator(settings_provider=self._settings_provider)
             self._bin_edges = calibrator.compute_custom_bins(self._n_bins, calibration)
             logger.info(
-                f"Using voice-calibrated frequency bins "
-                f"(fundamental: {calibration.get('fundamental_freq', 0):.0f}Hz)"
+                f"Using voice-calibrated frequency bins (fundamental: {calibration.get('fundamental_freq', 0):.0f}Hz)"
             )
         else:
             # Default logarithmic bins (generic)
@@ -126,7 +129,7 @@ class AudioService:
         Returns:
             Recorded audio data or None if too short/failed.
         """
-        s = get_settings()
+        s = self._settings_provider()
         self.sample_rate = s.recording.sample_rate
         frame_duration_ms = 30  # WebRTC VAD frame duration
         frame_size = int(self.sample_rate * (frame_duration_ms / 1000.0))
@@ -134,9 +137,7 @@ class AudioService:
         silence_frames = int(silence_duration_ms / frame_duration_ms)
 
         # Skip initial audio to avoid capturing key press sounds
-        initial_frames_to_skip = int(
-            FlowTiming.HOTKEY_SOUND_SKIP * self.sample_rate / frame_size
-        )
+        initial_frames_to_skip = int(FlowTiming.HOTKEY_SOUND_SKIP * self.sample_rate / frame_size)
 
         # Create VAD for voice activity detection modes
         recording_mode = s.recording.recording_mode
@@ -178,9 +179,7 @@ class AudioService:
                     # Avg RMS: 0.054484, Max RMS: 0.377443
                     # Map 0.054 -> ~0.3-0.4 (visual baseline)
                     # Map 0.377 -> ~0.95 (near max)
-                    normalized = min(
-                        1.0, (rms / 0.4) ** 0.7
-                    )  # Gentle power curve for natural scaling
+                    normalized = min(1.0, (rms / 0.4) ** 0.7)  # Gentle power curve for natural scaling
                     try:
                         self.on_level_update(normalized)
                     except Exception:
@@ -188,10 +187,7 @@ class AudioService:
 
                 # Calculate FFT Spectrum (Rate Limited)
                 current_time = time.time()
-                if (
-                    self.on_spectrum_update
-                    and (current_time - self._last_fft_time) > self._fft_interval
-                ):
+                if self.on_spectrum_update and (current_time - self._last_fft_time) > self._fft_interval:
                     self._last_fft_time = current_time
 
                     # Manual rolling buffer update
@@ -212,16 +208,12 @@ class AudioService:
                         if start < end:
                             spectrum[i] = np.mean(magnitudes[start:end])
                         else:
-                            spectrum[i] = (
-                                magnitudes[start] if start < len(magnitudes) else 0
-                            )
+                            spectrum[i] = magnitudes[start] if start < len(magnitudes) else 0
 
                     # Spectral tilt compensation (counteract natural roll-off)
                     # Speech has ~-6dB/octave natural decay
                     # Apply gentle boost to higher frequencies for perceptual balance
-                    tilt_compensation = np.linspace(
-                        1.0, 3.0, self._n_bins
-                    )  # 3x boost at highest bin
+                    tilt_compensation = np.linspace(1.0, 3.0, self._n_bins)  # 3x boost at highest bin
                     spectrum *= tilt_compensation
 
                     # Frequency-selective noise gating (AFTER tilt compensation)
@@ -231,7 +223,7 @@ class AudioService:
                     base_gate = np.linspace(0.65, 0.35, self._n_bins)
 
                     # User-configurable gate boost (0.0 to 0.5 additional suppression)
-                    gate_boost = get_settings().visualizer.gate_aggression
+                    gate_boost = self._settings_provider().visualizer.gate_aggression
                     gate_curve = base_gate + gate_boost
 
                     # Apply frequency-dependent gating
@@ -263,7 +255,7 @@ class AudioService:
             )
         except Exception as e:
             logger.error(f"Failed to open audio stream: {e}")
-            return None
+            raise AudioError(f"Failed to open audio stream: {e}") from e
 
         # Robust recording loop
         try:
@@ -300,18 +292,27 @@ class AudioService:
                             break
         except Exception as e:
             logger.error(f"Recording loop error: {e}")
+            raise AudioError(f"Recording loop error: {e}") from e
         finally:
-            # Explicit cleanup if needed (stream context manager handles close)
-            # We clear the queue to drop any pending frames and help gc
+            # Drain any remaining frames that were captured by the audio
+            # callback but not yet consumed by the recording loop.  Without
+            # this the final fraction of a second can be silently lost,
+            # causing sentence truncation at the end of recordings.
+            drained = 0
             while not audio_queue.empty():
                 try:
-                    audio_queue.get_nowait()
+                    frame = audio_queue.get_nowait()
+                    if len(frame) >= frame_size:
+                        recording.extend(frame)
+                        drained += 1
                 except Empty:
                     break
+            if drained:
+                logger.debug("Drained %d residual frames from audio queue", drained)
 
         audio_data = np.array(recording, dtype=np.int16)
         duration = len(audio_data) / self.sample_rate
-        min_duration_ms = get_settings().recording.min_duration_ms
+        min_duration_ms = self._settings_provider().recording.min_duration_ms
 
         logger.info(f"Recording finished: {audio_data.size} samples, {duration:.2f}s")
 

@@ -127,7 +127,7 @@ class TestModelRegistry:
     def test_models_are_frozen(self):
         model = next(iter(ASR_MODELS.values()))
         with pytest.raises(AttributeError):
-            model.name = "hacked"  # type: ignore[misc]
+            model.name = "hacked"
 
     def test_no_duplicate_filenames_within_type(self):
         asr_filenames = [m.filename for m in ASR_MODELS.values()]
@@ -172,7 +172,6 @@ class TestDownloadModelFile:
             repo_id="org/repo",
             filename="model.bin",
             local_dir=str(tmp_path),
-            local_dir_use_symlinks=False,
         )
 
     @patch(HF_PATCH)
@@ -283,7 +282,6 @@ class TestProvisionWrappers:
             repo_id=model.repo,
             filename=model.filename,
             local_dir=str(tmp_path),
-            local_dir_use_symlinks=False,
         )
         assert result == tmp_path / model.filename
 
@@ -298,7 +296,6 @@ class TestProvisionWrappers:
             repo_id=model.repo,
             filename=model.filename,
             local_dir=str(tmp_path),
-            local_dir_use_symlinks=False,
         )
         assert result == tmp_path / model.filename
 

@@ -6,6 +6,7 @@ Vociferous Database — Raw sqlite3 + dataclasses.
 
 from __future__ import annotations
 
+import enum
 import logging
 import sqlite3
 from dataclasses import dataclass, field
@@ -15,6 +16,14 @@ from pathlib import Path
 from src.core.resource_manager import ResourceManager
 
 logger = logging.getLogger(__name__)
+
+
+class _Unset(enum.Enum):
+    """Sentinel for distinguishing 'not provided' from None."""
+    TOKEN = 0
+
+
+_UNSET = _Unset.TOKEN
 
 
 # --- Dataclass Models ---
@@ -243,6 +252,15 @@ class TranscriptDB:
         self._conn.commit()
         return cur.rowcount > 0
 
+    def clear_all_transcripts(self) -> int:
+        """Delete all transcripts and their variants. Returns count deleted."""
+        cur = self._conn.execute("SELECT COUNT(*) FROM transcripts")
+        count = cur.fetchone()[0]
+        self._conn.execute("DELETE FROM transcript_variants")
+        self._conn.execute("DELETE FROM transcripts")
+        self._conn.commit()
+        return count
+
     def update_normalized_text(self, transcript_id: int, text: str) -> None:
         """Update the normalized_text field (for edits)."""
         self._conn.execute(
@@ -381,7 +399,7 @@ class TranscriptDB:
             parent_id=row["parent_id"], created_at=row["created_at"],
         )
 
-    def update_project(self, project_id: int, *, name: str | None = None, color: str | None = None, parent_id: int | None = ...) -> Project | None:
+    def update_project(self, project_id: int, *, name: str | None = None, color: str | None = None, parent_id: int | None | _Unset = _UNSET) -> Project | None:
         """Update project fields. Pass parent_id=None to move to root. Omit to leave unchanged."""
         updates: list[str] = []
         params: list[str | int | None] = []
@@ -391,7 +409,7 @@ class TranscriptDB:
         if color is not None:
             updates.append("color = ?")
             params.append(color)
-        if parent_id is not ...:
+        if not isinstance(parent_id, _Unset):
             updates.append("parent_id = ?")
             params.append(parent_id)
         if not updates:
