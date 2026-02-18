@@ -73,8 +73,10 @@ async def update_config(data: dict) -> dict:
 @post("/api/engine/restart")
 async def restart_engine() -> dict:
     """Restart ASR + SLM models (background thread)."""
+    from src.core.intents.definitions import RestartEngineIntent
+
     coordinator = get_coordinator()
-    coordinator.restart_engine()
+    coordinator.command_bus.dispatch(RestartEngineIntent())
     return {"status": "restarting"}
 
 
@@ -226,8 +228,14 @@ async def download_model(data: dict) -> Response:
 # --- Health ---
 
 
+_gpu_status_cache: dict | None = None
+
+
 def _detect_gpu_status() -> dict:
-    """Detect GPU availability for ASR and SLM inference."""
+    """Detect GPU availability for ASR and SLM inference. Result is cached after first call."""
+    global _gpu_status_cache
+    if _gpu_status_cache is not None:
+        return _gpu_status_cache
     gpu: dict = {"cuda_available": False, "detail": "", "whisper_backends": "", "slm_gpu_layers": -1}
     try:
         import subprocess
@@ -265,6 +273,7 @@ def _detect_gpu_status() -> dict:
     except Exception:
         pass
 
+    _gpu_status_cache = gpu
     return gpu
 
 
@@ -275,7 +284,11 @@ async def health() -> dict:
         "status": "ok",
         "version": APP_VERSION,
         "transcripts": coordinator.db.transcript_count() if coordinator.db else 0,
-        "recording_active": bool(getattr(coordinator, "_is_recording", False)),
+        "recording_active": (
+            coordinator.recording_session.is_recording
+            if coordinator.recording_session is not None
+            else False
+        ),
         "gpu": _detect_gpu_status(),
     }
 

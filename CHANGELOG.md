@@ -4,6 +4,42 @@
 
 ---
 
+## v4.1.3 — API Correctness & Stats Extraction
+
+**Date:** 2026-02-18
+**Status:** Bugfix / Refactor Release
+
+### Overview
+
+Three targeted fixes identified during post-refactor review.
+
+### Changed
+
+- **Extracted `src/core/usage_stats.py`** — the 65-line `_compute_stats` closure
+  buried inside `ApplicationCoordinator._init_insight_manager()` is now a
+  proper module-level function `compute_usage_stats(db)`. Both `InsightManager`
+  and `MOTDManager` call the same function directly. The `# noqa: SLF001`
+  private-access workaround in `_init_motd_manager` is gone. The logic is
+  now independently testable. Incidentally also fixes a double word-iteration
+  bug in the original (single-word fillers and vocab collection were two
+  separate passes over the same list).
+- **`/api/engine/restart` now dispatches via CommandBus** — the route was
+  calling `coordinator.restart_engine()` directly, bypassing the intent
+  architecture entirely despite a `RestartEngineIntent` existing.
+- **Fixed stale `_is_recording` access in `/api/health`** — after the
+  coordinator decomposition, `_is_recording` moved to `RecordingSession`.
+  The old `getattr(coordinator, "_is_recording", False)` was silently
+  returning `False` always. Now reads `coordinator.recording_session.is_recording`.
+- **GPU detection result is cached** — `_detect_gpu_status()` previously
+  spawned an `nvidia-smi` subprocess on every `/api/health` poll. Result
+  is now cached after the first call.
+
+### Quality
+
+- All 387 tests pass.
+
+---
+
 ## v4.1.2 — Coordinator Decomposition (God Object Slain)
 
 **Date:** 2026-02-18

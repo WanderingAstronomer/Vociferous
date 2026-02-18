@@ -262,96 +262,12 @@ class ApplicationCoordinator:
         """Initialize the InsightManager for lazy UserView dashboard insight generation."""
         try:
             from src.core.insight_manager import InsightManager
-
-            SPEAKING_WPM = 150
-            TYPING_WPM = 40
-            FILLER_SINGLE = {
-                "um",
-                "uh",
-                "uhm",
-                "umm",
-                "er",
-                "err",
-                "like",
-                "basically",
-                "literally",
-                "actually",
-                "so",
-                "well",
-                "right",
-                "okay",
-            }
-            FILLER_MULTI = ["you know", "i mean", "kind of", "sort of"]
-
-            def _compute_stats() -> dict:
-                """Compute usage statistics from DB — mirrors UserView's derived metrics."""
-                if not self.db:
-                    return {}
-                transcripts = self.db.recent(limit=10000)
-                if not transcripts:
-                    return {}
-
-                count = len(transcripts)
-                total_words = 0
-                all_words: list[str] = []
-                recorded_seconds = 0.0
-                total_silence = 0.0
-                filler_count = 0
-
-                for t in transcripts:
-                    text = t.normalized_text or t.raw_text or ""
-                    words = text.split()
-                    total_words += len(words)
-
-                    lower = text.lower()
-                    # Filler multi-word
-                    for f in FILLER_MULTI:
-                        idx = 0
-                        while (idx := lower.find(f, idx)) != -1:
-                            filler_count += 1
-                            idx += len(f)
-                    # Filler single-word
-                    for w in lower.split():
-                        cleaned = w.strip(".,!?;:'\"()[]{}").lower()
-                        if cleaned in FILLER_SINGLE:
-                            filler_count += 1
-
-                    # Collect cleaned words for vocab diversity
-                    for w in lower.split():
-                        c = w.strip(".,!?;:'\"()[]{}").lower()
-                        if c:
-                            all_words.append(c)
-
-                    dur = (t.duration_ms or 0) / 1000
-                    if dur > 0:
-                        recorded_seconds += dur
-                        expected = (len(words) / SPEAKING_WPM) * 60
-                        total_silence += max(0.0, dur - expected)
-
-                # Fallback estimate if no durations available
-                if recorded_seconds == 0 and total_words > 0:
-                    recorded_seconds = (total_words / SPEAKING_WPM) * 60
-
-                typing_seconds = (total_words / TYPING_WPM) * 60
-                time_saved = max(0.0, typing_seconds - recorded_seconds)
-                avg_seconds = recorded_seconds / count if count > 0 else 0
-                vocab_ratio = len(set(all_words)) / len(all_words) if all_words else 0
-
-                return {
-                    "count": count,
-                    "total_words": total_words,
-                    "recorded_seconds": recorded_seconds,
-                    "time_saved_seconds": time_saved,
-                    "avg_seconds": avg_seconds,
-                    "vocab_ratio": vocab_ratio,
-                    "total_silence_seconds": total_silence,
-                    "filler_count": filler_count,
-                }
+            from src.core.usage_stats import compute_usage_stats
 
             self.insight_manager = InsightManager(
                 slm_runtime_provider=lambda: self.slm_runtime,
                 event_emitter=self.event_bus.emit,
-                stats_provider=_compute_stats,
+                stats_provider=lambda: compute_usage_stats(self.db) if self.db else {},
             )
             logger.info("InsightManager initialized")
         except Exception:
@@ -361,17 +277,12 @@ class ApplicationCoordinator:
         """Initialize the MOTD InsightManager for the TranscribeView header line."""
         try:
             from src.core.insight_manager import _MOTD_PROMPT, InsightManager
-
-            def _compute_stats() -> dict:
-                if self.insight_manager is None:
-                    return {}
-                # Reuse the same stats the insight_manager computes — no point duplicating
-                return self.insight_manager._get_stats()  # noqa: SLF001
+            from src.core.usage_stats import compute_usage_stats
 
             self.motd_manager = InsightManager(
                 slm_runtime_provider=lambda: self.slm_runtime,
                 event_emitter=self.event_bus.emit,
-                stats_provider=_compute_stats,
+                stats_provider=lambda: compute_usage_stats(self.db) if self.db else {},
                 prompt_template=_MOTD_PROMPT,
                 cache_filename="motd_cache.json",
                 event_name="motd_ready",
