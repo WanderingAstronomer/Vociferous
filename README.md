@@ -8,6 +8,43 @@ Vociferous captures audio from your microphone, transcribes it in real-time usin
 
 ---
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><strong>Transcribe</strong></td>
+    <td align="center"><strong>History</strong></td>
+  </tr>
+  <tr>
+    <td><img src="assets/transcribe_view.png" alt="Transcribe view" width="100%"/></td>
+    <td><img src="assets/history_view.png" alt="History view" width="100%"/></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Refine</strong></td>
+    <td align="center"><strong>Search</strong></td>
+  </tr>
+  <tr>
+    <td><img src="assets/refine_view.png" alt="Refine view" width="100%"/></td>
+    <td><img src="assets/search_view.png" alt="Search view" width="100%"/></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Projects</strong></td>
+    <td align="center"><strong>Settings</strong></td>
+  </tr>
+  <tr>
+    <td><img src="assets/projects_view.png" alt="Projects view" width="100%"/></td>
+    <td><img src="assets/settings_view.png" alt="Settings view" width="100%"/></td>
+  </tr>
+  <tr>
+    <td align="center" colspan="2"><strong>User</strong></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><img src="assets/user_view.png" alt="User view" width="50%"/></td>
+  </tr>
+</table>
+
+---
+
 ## Platform Support
 
 | Platform | Shell | Status |
