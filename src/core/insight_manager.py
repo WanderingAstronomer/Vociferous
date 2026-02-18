@@ -88,16 +88,29 @@ class InsightCache:
 
     def __init__(self, cache_path: Path) -> None:
         self._path = cache_path
+        self._data: dict = {}
+        # Pre-load on init to avoid read-on-property-access loop
+        if self._path.exists():
+            try:
+                self._data = json.loads(self._path.read_text(encoding="utf-8"))
+            except Exception:
+                logger.warning("Failed to read insight cache — starting fresh")
 
     def load(self) -> dict:
-        try:
-            if self._path.exists():
-                return json.loads(self._path.read_text(encoding="utf-8"))
-        except Exception:
-            logger.warning("Failed to read insight cache — starting fresh")
-        return {}
+        """Return cached data (in-memory)."""
+        return self._data
 
     def save(self, text: str) -> None:
+        """Update cache in memory and on disk."""
+        self._data = {
+            "text": text,
+            "created_at": time.time(),
+        }
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            self._path.write_text(json.dumps(self._data), encoding="utf-8")
+        except Exception as e:
+            logger.error("Failed to save insight cache: %s", e)
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
             self._path.write_text(

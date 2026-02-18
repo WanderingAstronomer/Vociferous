@@ -4,6 +4,24 @@
 
 ---
 
+## v4.1.4 — Database Safety & Event Bridge Fix
+
+**Date:** 2026-02-18
+**Status:** Bugfix / Stability Release
+
+### Overview
+
+Critical stability fixes for database concurrency and event propagation issues identified during post-refactor validation.
+
+### Fixed
+
+- **Event Bridge Whitelist**: Added missing `insight_ready` and `motd_ready` events to the WebSocket bridge whitelist. Frontend integrations relying on these events (like dashboard updates) now work correctly.
+- **Database Thread Safety**: Added a recursive `threading.Lock` around all write operations in `TranscriptDB`. This prevents potential race conditions when multiple threads (Apply Edit vs Refinement vs Ingestion) attempt to write to the shared SQLite connection simultaneously.
+- **InsightCache IO Thrashing**: `InsightCache` now loads data into memory once at initialization. Property access no longer triggers a disk read on every call.
+- **Database Cascade Logic**: Simplified `clear_all_transcripts` to rely on SQLite `ON DELETE CASCADE` for cleaning up variants, removing unnecessary manual deletion code.
+
+---
+
 ## v4.1.3 — API Correctness & Stats Extraction
 
 **Date:** 2026-02-18

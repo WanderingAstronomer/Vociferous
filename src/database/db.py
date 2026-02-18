@@ -9,6 +9,7 @@ from __future__ import annotations
 import enum
 import logging
 import sqlite3
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -131,6 +132,7 @@ class TranscriptDB:
             db_path = ResourceManager.get_user_data_dir() / "vociferous.db"
         self._path = Path(db_path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._write_lock = threading.Lock()
         self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
@@ -156,34 +158,35 @@ class TranscriptDB:
         """Insert a new transcript and its raw variant. Returns the created transcript."""
         ts = utc_now()
         norm = normalized_text if normalized_text is not None else raw_text
-        cur = self._conn.execute(
-            """INSERT INTO transcripts
-               (timestamp, raw_text, normalized_text, display_name,
-                duration_ms, speech_duration_ms, project_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (
-                ts,
-                raw_text,
-                norm,
-                display_name,
-                duration_ms,
-                speech_duration_ms,
-                project_id,
-                ts,
-            ),
-        )
-        tid = cur.lastrowid
-        assert tid is not None
+        with self._write_lock:
+            cur = self._conn.execute(
+                """INSERT INTO transcripts
+                   (timestamp, raw_text, normalized_text, display_name,
+                    duration_ms, speech_duration_ms, project_id, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    ts,
+                    raw_text,
+                    norm,
+                    display_name,
+                    duration_ms,
+                    speech_duration_ms,
+                    project_id,
+                    ts,
+                ),
+            )
+            tid = cur.lastrowid
+            assert tid is not None
 
-        # Create raw variant
-        vcur = self._conn.execute(
-            """INSERT INTO transcript_variants (transcript_id, kind, text, created_at)
-               VALUES (?, 'raw', ?, ?)""",
-            (tid, raw_text, ts),
-        )
-        vid = vcur.lastrowid
-        self._conn.execute("UPDATE transcripts SET current_variant_id = ? WHERE id = ?", (vid, tid))
-        self._conn.commit()
+            # Create raw variant
+            vcur = self._conn.execute(
+                """INSERT INTO transcript_variants (transcript_id, kind, text, created_at)
+                   VALUES (?, 'raw', ?, ?)""",
+                (tid, raw_text, ts),
+            )
+            vid = vcur.lastrowid
+            self._conn.execute("UPDATE transcripts SET current_variant_id = ? WHERE id = ?", (vid, tid))
+            self._conn.commit()
 
         return Transcript(
             id=tid,
@@ -249,26 +252,39 @@ class TranscriptDB:
 
     def delete_transcript(self, transcript_id: int) -> bool:
         """Delete a transcript and its variants (CASCADE)."""
-        cur = self._conn.execute("DELETE FROM transcripts WHERE id = ?", (transcript_id,))
-        self._conn.commit()
-        return cur.rowcount > 0
+        with self._write_lock:
+            cur = self._conn.execute("DELETE FROM transcripts WHERE id = ?", (transcript_id,))
+            self._conn.commit()
+            return cur.rowcount > 0
 
     def clear_all_transcripts(self) -> int:
         """Delete all transcripts and their variants. Returns count deleted."""
-        cur = self._conn.execute("SELECT COUNT(*) FROM transcripts")
-        count = cur.fetchone()[0]
-        self._conn.execute("DELETE FROM transcript_variants")
-        self._conn.execute("DELETE FROM transcripts")
-        self._conn.commit()
-        return count
+        with self._write_lock:
+            cur = self._conn.execute("SELECT COUNT(*) FROM transcripts")
+            count = cur.fetchone()[0]
+            # ON DELETE CASCADE handles variants automatically
+            self._conn.execute("DELETE FROM transcripts")
+            self._conn.commit()
+            return count
 
     def update_normalized_text(self, transcript_id: int, text: str) -> None:
         """Update the normalized_text field (for edits)."""
-        self._conn.execute(
-            "UPDATE transcripts SET normalized_text = ? WHERE id = ?",
-            (text, transcript_id),
-        )
-        self._conn.commit()
+        with self._write_lock:
+            self._conn.execute(
+                "UPDATE transcripts SET normalized_text = ? WHERE id = ?",
+                (text, transcript_id),
+            )
+            self._conn.commit()
+
+    def update_display_name(self, transcript_id: int, name: str) -> bool:
+        """Set the display_name for a transcript. Returns True if row existed."""
+        with self._write_lock:
+            cur = self._conn.execute(
+                "UPDATE transcripts SET display_name = ? WHERE id = ?",
+                (name, transcript_id),
+            )
+            self._conn.commit()
+            return cur.rowcount > 0
 
     # --- Variants ---
 
@@ -283,18 +299,19 @@ class TranscriptDB:
     ) -> TranscriptVariant:
         """Add a variant to a transcript. Optionally set as current."""
         ts = utc_now()
-        cur = self._conn.execute(
-            """INSERT INTO transcript_variants (transcript_id, kind, text, model_id, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (transcript_id, kind, text, model_id, ts),
-        )
-        vid = cur.lastrowid
-        if set_current:
-            self._conn.execute(
-                "UPDATE transcripts SET current_variant_id = ? WHERE id = ?",
-                (vid, transcript_id),
+        with self._write_lock:
+            cur = self._conn.execute(
+                """INSERT INTO transcript_variants (transcript_id, kind, text, model_id, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (transcript_id, kind, text, model_id, ts),
             )
-        self._conn.commit()
+            vid = cur.lastrowid
+            if set_current:
+                self._conn.execute(
+                    "UPDATE transcripts SET current_variant_id = ? WHERE id = ?",
+                    (vid, transcript_id),
+                )
+            self._conn.commit()
         return TranscriptVariant(
             id=vid,
             transcript_id=transcript_id,
@@ -324,32 +341,33 @@ class TranscriptDB:
     def delete_variant(self, transcript_id: int, variant_id: int) -> bool:
         """Delete a variant. If it was the current variant, reset to the latest remaining."""
         # Verify the variant belongs to this transcript
-        row = self._conn.execute(
-            "SELECT id FROM transcript_variants WHERE id = ? AND transcript_id = ?",
-            (variant_id, transcript_id),
-        ).fetchone()
-        if row is None:
-            return False
-
-        self._conn.execute("DELETE FROM transcript_variants WHERE id = ?", (variant_id,))
-
-        # If we just deleted the current variant, point to the latest remaining
-        cur_row = self._conn.execute(
-            "SELECT current_variant_id FROM transcripts WHERE id = ?", (transcript_id,)
-        ).fetchone()
-        if cur_row and cur_row["current_variant_id"] == variant_id:
-            latest = self._conn.execute(
-                "SELECT id FROM transcript_variants WHERE transcript_id = ? ORDER BY created_at DESC LIMIT 1",
-                (transcript_id,),
+        with self._write_lock:
+            row = self._conn.execute(
+                "SELECT id FROM transcript_variants WHERE id = ? AND transcript_id = ?",
+                (variant_id, transcript_id),
             ).fetchone()
-            new_current = latest["id"] if latest else None
-            self._conn.execute(
-                "UPDATE transcripts SET current_variant_id = ? WHERE id = ?",
-                (new_current, transcript_id),
-            )
+            if row is None:
+                return False
 
-        self._conn.commit()
-        return True
+            self._conn.execute("DELETE FROM transcript_variants WHERE id = ?", (variant_id,))
+
+            # If we just deleted the current variant, point to the latest remaining
+            cur_row = self._conn.execute(
+                "SELECT current_variant_id FROM transcripts WHERE id = ?", (transcript_id,)
+            ).fetchone()
+            if cur_row and cur_row["current_variant_id"] == variant_id:
+                latest = self._conn.execute(
+                    "SELECT id FROM transcript_variants WHERE transcript_id = ? ORDER BY created_at DESC LIMIT 1",
+                    (transcript_id,),
+                ).fetchone()
+                new_current = latest["id"] if latest else None
+                self._conn.execute(
+                    "UPDATE transcripts SET current_variant_id = ? WHERE id = ?",
+                    (new_current, transcript_id),
+                )
+
+            self._conn.commit()
+            return True
 
     def prune_refinement_variants(self, transcript_id: int, *, keep: int = 3) -> int:
         """Delete oldest refinement variants beyond *keep* most recent.
@@ -360,51 +378,53 @@ class TranscriptDB:
 
         Returns the number of pruned variants.
         """
-        rows = self._conn.execute(
-            """SELECT id FROM transcript_variants
-               WHERE transcript_id = ? AND kind LIKE 'refinement_%'
-               ORDER BY created_at DESC""",
-            (transcript_id,),
-        ).fetchall()
-
-        to_delete = [r["id"] for r in rows[keep:]]
-        if not to_delete:
-            return 0
-
-        placeholders = ",".join("?" * len(to_delete))
-        self._conn.execute(
-            f"DELETE FROM transcript_variants WHERE id IN ({placeholders})",
-            to_delete,
-        )
-
-        # If current_variant_id was among those deleted, reset to latest remaining
-        cur_row = self._conn.execute(
-            "SELECT current_variant_id FROM transcripts WHERE id = ?", (transcript_id,)
-        ).fetchone()
-        if cur_row and cur_row["current_variant_id"] in to_delete:
-            latest = self._conn.execute(
-                "SELECT id FROM transcript_variants WHERE transcript_id = ? ORDER BY created_at DESC LIMIT 1",
+        with self._write_lock:
+            rows = self._conn.execute(
+                """SELECT id FROM transcript_variants
+                   WHERE transcript_id = ? AND kind LIKE 'refinement_%'
+                   ORDER BY created_at DESC""",
                 (transcript_id,),
-            ).fetchone()
-            new_current = latest["id"] if latest else None
+            ).fetchall()
+
+            to_delete = [r["id"] for r in rows[keep:]]
+            if not to_delete:
+                return 0
+
+            placeholders = ",".join("?" * len(to_delete))
             self._conn.execute(
-                "UPDATE transcripts SET current_variant_id = ? WHERE id = ?",
-                (new_current, transcript_id),
+                f"DELETE FROM transcript_variants WHERE id IN ({placeholders})",
+                to_delete,
             )
 
-        self._conn.commit()
-        return len(to_delete)
+            # If current_variant_id was among those deleted, reset to latest remaining
+            cur_row = self._conn.execute(
+                "SELECT current_variant_id FROM transcripts WHERE id = ?", (transcript_id,)
+            ).fetchone()
+            if cur_row and cur_row["current_variant_id"] in to_delete:
+                latest = self._conn.execute(
+                    "SELECT id FROM transcript_variants WHERE transcript_id = ? ORDER BY created_at DESC LIMIT 1",
+                    (transcript_id,),
+                ).fetchone()
+                new_current = latest["id"] if latest else None
+                self._conn.execute(
+                    "UPDATE transcripts SET current_variant_id = ? WHERE id = ?",
+                    (new_current, transcript_id),
+                )
+
+            self._conn.commit()
+            return len(to_delete)
 
     # --- Projects ---
 
     def add_project(self, name: str, *, color: str | None = None, parent_id: int | None = None) -> Project:
         ts = utc_now()
-        cur = self._conn.execute(
-            "INSERT INTO projects (name, color, parent_id, created_at) VALUES (?, ?, ?, ?)",
-            (name, color, parent_id, ts),
-        )
-        self._conn.commit()
-        return Project(id=cur.lastrowid, name=name, color=color, parent_id=parent_id, created_at=ts)
+        with self._write_lock:
+            cur = self._conn.execute(
+                "INSERT INTO projects (name, color, parent_id, created_at) VALUES (?, ?, ?, ?)",
+                (name, color, parent_id, ts),
+            )
+            self._conn.commit()
+            return Project(id=cur.lastrowid, name=name, color=color, parent_id=parent_id, created_at=ts)
 
     def get_projects(self) -> list[Project]:
         rows = self._conn.execute("SELECT * FROM projects ORDER BY name").fetchall()
@@ -420,19 +440,20 @@ class TranscriptDB:
         ]
 
     def delete_project(self, project_id: int) -> bool:
-        # Re-parent child projects to root (one-level hierarchy)
-        self._conn.execute(
-            "UPDATE projects SET parent_id = NULL WHERE parent_id = ?",
-            (project_id,),
-        )
-        # Unlink transcripts (don't cascade-delete transcripts)
-        self._conn.execute(
-            "UPDATE transcripts SET project_id = NULL WHERE project_id = ?",
-            (project_id,),
-        )
-        cur = self._conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
-        self._conn.commit()
-        return cur.rowcount > 0
+        with self._write_lock:
+            # Re-parent child projects to root (one-level hierarchy)
+            self._conn.execute(
+                "UPDATE projects SET parent_id = NULL WHERE parent_id = ?",
+                (project_id,),
+            )
+            # Unlink transcripts (don't cascade-delete transcripts)
+            self._conn.execute(
+                "UPDATE transcripts SET project_id = NULL WHERE project_id = ?",
+                (project_id,),
+            )
+            cur = self._conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+            self._conn.commit()
+            return cur.rowcount > 0
 
     def get_project(self, project_id: int) -> Project | None:
         """Fetch a single project by ID."""
@@ -470,20 +491,22 @@ class TranscriptDB:
         if not updates:
             return self.get_project(project_id)
         params.append(project_id)
-        self._conn.execute(
-            f"UPDATE projects SET {', '.join(updates)} WHERE id = ?",
-            params,
-        )
-        self._conn.commit()
+        with self._write_lock:
+            self._conn.execute(
+                f"UPDATE projects SET {', '.join(updates)} WHERE id = ?",
+                params,
+            )
+            self._conn.commit()
         return self.get_project(project_id)
 
     def assign_project(self, transcript_id: int, project_id: int | None) -> None:
         """Assign (or unassign) a transcript to a project."""
-        self._conn.execute(
-            "UPDATE transcripts SET project_id = ? WHERE id = ?",
-            (project_id, transcript_id),
-        )
-        self._conn.commit()
+        with self._write_lock:
+            self._conn.execute(
+                "UPDATE transcripts SET project_id = ? WHERE id = ?",
+                (project_id, transcript_id),
+            )
+            self._conn.commit()
 
     # --- Helpers ---
 

@@ -302,6 +302,8 @@ def _wire_event_bridge(coordinator: ApplicationCoordinator, ws_manager: Connecti
         "key_captured",
         "transcript_updated",
         "refinement_progress",
+        "insight_ready",
+        "motd_ready",
     ]
 
     for event_type in event_types:
