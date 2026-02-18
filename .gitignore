@@ -106,3 +106,9 @@ tests/__pycache__/
 # =========================
 
 dev_tools/
+
+# =========================
+# Generated Desktop Entry (use: make install-desktop)
+# =========================
+
+vociferous.desktop

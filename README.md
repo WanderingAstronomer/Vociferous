@@ -2,7 +2,10 @@
 
 **Cross-platform, offline speech-to-text with local AI refinement.**
 
-Vociferous captures audio from your microphone, transcribes it in real-time using [whisper.cpp](https://github.com/ggerganov/whisper.cpp), and optionally refines the output with a local Small Language Model via [llama.cpp](https://github.com/ggerganov/llama.cpp). Everything runs on your hardware — no cloud, no API keys, no data leaves your machine.
+Vociferous captures audio from your microphone, transcribes it in real-time using
+[whisper.cpp](https://github.com/ggerganov/whisper.cpp), and optionally refines the
+output with a local Small Language Model via [llama.cpp](https://github.com/ggerganov/llama.cpp).
+Everything runs on your hardware — no cloud, no API keys, no data leaves your machine.
 
 **License:** AGPL-3.0-or-later
 
@@ -47,23 +50,23 @@ Vociferous captures audio from your microphone, transcribes it in real-time usin
 
 ## Platform Support
 
-| Platform | Shell | Status |
-|----------|-------|--------|
-| Linux    | GTK + WebKitGTK (pywebview) | **Primary** — actively developed |
-| macOS    | Cocoa + WebKit (pywebview) | Supported |
-| Windows  | EdgeChromium (pywebview) | Supported |
+| Platform | Shell                         | Status                           |
+|:-------- |:----------------------------- |:-------------------------------- |
+| Linux    | GTK + WebKitGTK (pywebview)   | **Primary** — actively developed |
+| macOS    | Cocoa + WebKit (pywebview)    | Supported                        |
+| Windows  | EdgeChromium (pywebview)      | Supported                        |
 
 ## Stack
 
 | Layer | Technology |
-|-------|------------|
-| Window Shell | [pywebview](https://pywebview.flowrl.com/) |
-| Frontend | Svelte 5 + Tailwind CSS v4 + Vite 6 |
-| Backend API | Litestar (REST + WebSocket) |
-| ASR Engine | pywhispercpp (whisper.cpp, GGML models) |
-| SLM Engine | llama-cpp-python (llama.cpp, GGUF models) |
-| Database | SQLite with WAL mode |
-| Config | Pydantic Settings (JSON persistence, atomic writes) |
+| ----- | ---------- |
+| Window Shell | [pywebview](https://pywebview.flowrl.com/)      |
+| Frontend | Svelte 5 + Tailwind CSS v4 + Vite 6  |
+| Backend API | Litestar (REST + WebSocket)   |
+| ASR Engine  | pywhispercpp (whisper.cpp, GGML models) |
+| SLM Engine  | llama-cpp-python (llama.cpp, GGUF models) |
+| Database    | SQLite with WAL mode          |
+| Config      | Pydantic Settings (JSON persistence, atomic)  |
 
 ---
 
@@ -151,7 +154,9 @@ docker compose --profile gpu up
 
 ## NVIDIA GPU Troubleshooting
 
-If GPU inference fails with CUDA errors, the NVIDIA UVM (Unified Virtual Memory) kernel module may not be loaded. This is a **known issue on Debian with the 550.x driver series**, especially after kernel updates or cold boots.
+If GPU inference fails with CUDA errors, the NVIDIA UVM (Unified Virtual Memory)
+kernel module may not be loaded. This is a **known issue on Debian with the
+550.x driver series**, especially after kernel updates or cold boots.
 
 ### Symptoms
 
@@ -171,22 +176,28 @@ make fix-gpu
 This script:
 
 1. Detects the correct module name (handles Debian's `nvidia-current-uvm` naming)
-2. Loads the `nvidia-uvm` kernel module via `modprobe` (falls back to `nvidia-modprobe`)
-3. Creates `/dev/nvidia-uvm` device node if missing (tries `nvidia-modprobe -u`, falls back to manual `mknod`)
+2. Loads the `nvidia-uvm` kernel module via `modprobe` (or `nvidia-modprobe`)
+3. Creates `/dev/nvidia-uvm` device node if missing (via `nvidia-modprobe -u`
+or manual `mknod`)
 4. Fixes device permissions (`chmod 666`)
-5. Hardens `pywhispercpp`'s libcuda linkage by symlinking its bundled `libcuda` stub to the system driver's actual `libcuda.so.1` — prevents version mismatch crashes
+5. Hardens `pywhispercpp`'s libcuda linkage by symlinking its bundled `libcuda`
+stub to the system driver's `libcuda.so.1` — prevents version mismatch crashes
 6. Verifies CUDA availability from Python
 
 ### WebKitGTK + NVIDIA DRM Workaround
 
-The `vociferous.sh` launcher sets two environment variables to prevent a **kernel panic** caused by the NVIDIA 550.x DRM driver conflicting with WebKitGTK's GPU compositing on Wayland:
+The `vociferous.sh` launcher sets two environment variables to prevent a **kernel
+panic** caused by the NVIDIA 550.x DRM driver conflicting with WebKitGTK's GPU
+compositing on Wayland:
 
 ```bash
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 export WEBKIT_DISABLE_DMABUF_RENDERER=1
 ```
 
-This disables WebKitGTK's GPU-accelerated rendering (which isn't needed — the GPU is reserved for inference). Without these flags, `nv_drm_revoke_modeset_permission` can crash the kernel on concurrent WebKit + CUDA GPU access.
+This disables WebKitGTK's GPU-accelerated rendering (which isn't needed — the GPU
+is reserved for inference). Without these flags, `nv_drm_revoke_modeset_permission`
+can crash the kernel on concurrent WebKit + CUDA GPU access.
 
 ---
 
@@ -272,7 +283,8 @@ cd frontend && npm run dev
 
 ## Model Provisioning
 
-Vociferous uses GGML models for ASR and GGUF models for SLM refinement. Models are downloaded from HuggingFace Hub via the provisioning system.
+Vociferous uses GGML models for ASR and GGUF models for SLM refinement. Models
+are downloaded from HuggingFace Hub via the provisioning system.
 
 ```bash
 # Interactive provisioning (select models)
