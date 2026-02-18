@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Vociferous v4.0 Launcher
+# Vociferous v4.1 Launcher
 # Runs the application using the project virtual environment.
 
 set -euo pipefail
