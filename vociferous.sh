@@ -30,4 +30,7 @@ fi
 export WEBKIT_DISABLE_COMPOSITING_MODE=1
 export WEBKIT_DISABLE_DMABUF_RENDERER=1
 
+# Change to script directory so Python can find the src module
+cd "$SCRIPT_DIR"
+
 exec "$PYTHON" -m src.main "$@"
