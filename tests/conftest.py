@@ -91,9 +91,19 @@ def coordinator(tmp_path: Path):
     coord = ApplicationCoordinator(settings)
 
     # Initialize only the lightweight parts
+    from src.core.handlers.recording_handlers import RecordingSession
     from src.database.db import TranscriptDB
 
     coord.db = TranscriptDB(db_path=tmp_path / "test.db")
+    coord.recording_session = RecordingSession(
+        audio_service_provider=lambda: coord.audio_service,
+        settings_provider=lambda: coord.settings,
+        db_provider=lambda: coord.db,
+        event_bus_emit=coord.event_bus.emit,
+        shutdown_event=coord._shutdown_event,
+        insight_manager_provider=lambda: coord.insight_manager,
+        motd_manager_provider=lambda: coord.motd_manager,
+    )
     coord._register_handlers()
 
     yield coord

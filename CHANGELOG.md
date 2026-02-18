@@ -4,6 +4,42 @@
 
 ---
 
+## v4.1.2 — Coordinator Decomposition (God Object Slain)
+
+**Date:** 2026-02-18
+**Status:** Refactor Release
+
+### Overview
+
+Structural refactor of `ApplicationCoordinator` to eliminate its God Object status.
+All intent handler logic has been extracted into focused, independently testable
+domain handler classes. The coordinator is now a true composition root.
+
+### Changed
+
+- **`ApplicationCoordinator` reduced from 1181 → 774 lines.** All 15 `_handle_*`
+  methods, the recording pipeline (`_recording_loop`, `_transcribe_and_store`),
+  and the clipboard helper have been extracted.
+- **New `src/core/handlers/` package** with five handler classes:
+  - `RecordingSession` — recording state machine, ASR model lifecycle,
+    audio→transcribe→store pipeline, system clipboard copy.
+  - `TranscriptHandlers` — delete, clear, and commit-edits intents.
+  - `ProjectHandlers` — create, update, delete, and assign-project intents.
+  - `RefinementHandlers` — SLM refinement pipeline.
+  - `SystemHandlers` — config update and engine restart intents.
+- **`_register_handlers()`** now instantiates handler objects and wires them into
+  the `CommandBus` — it no longer references `self._handle_*` methods.
+- **ASR model lifecycle** moved into `RecordingSession.load_asr_model()` /
+  `unload_asr_model()`, keeping the model co-located with the code that uses it.
+
+### Quality
+
+- All 387 tests pass.
+- Each handler class is independently constructable and testable without
+  instantiating the full coordinator or any hardware services.
+
+---
+
 ## v4.1.1 — Edit Flow & Input Reliability Fixes
 
 **Date:** 2026-02-18

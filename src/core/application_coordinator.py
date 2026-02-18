@@ -58,16 +58,12 @@ class ApplicationCoordinator:
         self.audio_service: AudioService | None = None
         self.input_listener: KeyListener | None = None
         self.slm_runtime: SLMRuntime | None = None
-        self._asr_model: Any = None  # pywhispercpp Model instance
         self._uvicorn_server: Any = None  # uvicorn.Server for graceful shutdown
         self.insight_manager: Any = None  # InsightManager | None
         self.motd_manager: Any = None  # InsightManager | None (MOTD)
 
-        # Recording state
-        self._is_recording = False
-        self._recording_lock = threading.Lock()
-        self._recording_stop = threading.Event()
-        self._recording_thread: threading.Thread | None = None
+        # Recording session (created in start())
+        self.recording_session: Any = None  # RecordingSession
 
         # Window references
         self._main_window: Any = None  # webview.Window
@@ -97,8 +93,19 @@ class ApplicationCoordinator:
         self.db = TranscriptDB()
         logger.info("Database initialized (%d transcripts)", self.db.transcript_count())
 
-        # 2. ASR model (optional warm load)
-        self._load_asr_model()
+        # 2. Recording session + ASR model warm load
+        from src.core.handlers.recording_handlers import RecordingSession
+
+        self.recording_session = RecordingSession(
+            audio_service_provider=lambda: self.audio_service,
+            settings_provider=lambda: self.settings,
+            db_provider=lambda: self.db,
+            event_bus_emit=self.event_bus.emit,
+            shutdown_event=self._shutdown_event,
+            insight_manager_provider=lambda: self.insight_manager,
+            motd_manager_provider=lambda: self.motd_manager,
+        )
+        self.recording_session.load_asr_model()
 
         # 3. SLM runtime
         self._init_slm_runtime()
@@ -138,8 +145,8 @@ class ApplicationCoordinator:
 
         # Cancel any in-progress recording so the recording loop
         # treats this as a cancellation (not a normal stop).
-        self._recording_stop.set()
-        self._is_recording = False
+        if self.recording_session is not None:
+            self.recording_session.cancel_for_shutdown()
 
         # Always signal the uvicorn server to exit — even when called from
         # the window-closing callback (stop_server=False only means we skip
@@ -178,12 +185,12 @@ class ApplicationCoordinator:
         """Actual cleanup logic, guarded by watchdog timeout."""
         # Wait for the recording thread to finish before tearing down
         # resources it may still be using (ASR model, database).
-        if self._recording_thread is not None and self._recording_thread.is_alive():
+        rec_thread = self.recording_session.thread if self.recording_session is not None else None
+        if rec_thread is not None and rec_thread.is_alive():
             logger.debug("Waiting for recording thread to finish...")
-            self._recording_thread.join(timeout=5)
-            if self._recording_thread.is_alive():
+            rec_thread.join(timeout=5)
+            if rec_thread.is_alive():
                 logger.warning("Recording thread did not finish within timeout")
-            self._recording_thread = None
 
         if self.input_listener:
             try:
@@ -197,12 +204,8 @@ class ApplicationCoordinator:
             except Exception:
                 logger.exception("SLM runtime cleanup failed")
 
-        if self._asr_model:
-            try:
-                del self._asr_model
-                self._asr_model = None
-            except Exception:
-                logger.exception("ASR model cleanup failed")
+        if self.recording_session is not None:
+            self.recording_session.unload_asr_model()
 
         if self.db:
             try:
@@ -220,17 +223,6 @@ class ApplicationCoordinator:
         logger.info("Cleanup complete.")
 
     # --- Service Initialization ---
-
-    def _load_asr_model(self) -> None:
-        """Warm-load the whisper.cpp model at startup."""
-        try:
-            from src.services.transcription_service import create_local_model
-
-            self._asr_model = create_local_model(self.settings)
-            self.event_bus.emit("engine_status", {"asr": "ready"})
-        except Exception:
-            logger.exception("ASR model failed to load (will retry on first transcription)")
-            self.event_bus.emit("engine_status", {"asr": "unavailable"})
 
     def _init_slm_runtime(self) -> None:
         """Initialize the SLM refinement runtime if enabled."""
@@ -400,12 +392,8 @@ class ApplicationCoordinator:
             self.event_bus.emit("engine_status", {"asr": "restarting", "slm": "restarting"})
 
             # Tear down ASR
-            if self._asr_model:
-                try:
-                    del self._asr_model
-                    self._asr_model = None
-                except Exception:
-                    logger.exception("ASR teardown failed during restart")
+            if self.recording_session is not None:
+                self.recording_session.unload_asr_model()
 
             # Tear down SLM
             if self.slm_runtime:
@@ -421,7 +409,8 @@ class ApplicationCoordinator:
             self.settings = get_settings()
 
             # Reload models
-            self._load_asr_model()
+            if self.recording_session is not None:
+                self.recording_session.load_asr_model()
             self._init_slm_runtime()
             logger.info("Engine restart complete.")
 
@@ -499,7 +488,11 @@ class ApplicationCoordinator:
     # --- Intent Handlers ---
 
     def _register_handlers(self) -> None:
-        """Register all intent handlers with the CommandBus."""
+        """Instantiate domain handler objects and wire them into the CommandBus."""
+        from src.core.handlers.project_handlers import ProjectHandlers
+        from src.core.handlers.refinement_handlers import RefinementHandlers
+        from src.core.handlers.system_handlers import SystemHandlers
+        from src.core.handlers.transcript_handlers import TranscriptHandlers
         from src.core.intents.definitions import (
             AssignProjectIntent,
             BeginRecordingIntent,
@@ -518,393 +511,43 @@ class ApplicationCoordinator:
             UpdateProjectIntent,
         )
 
-        self.command_bus.register(BeginRecordingIntent, self._handle_begin_recording)
-        self.command_bus.register(StopRecordingIntent, self._handle_stop_recording)
-        self.command_bus.register(CancelRecordingIntent, self._handle_cancel_recording)
-        self.command_bus.register(ToggleRecordingIntent, self._handle_toggle_recording)
-        self.command_bus.register(DeleteTranscriptIntent, self._handle_delete_transcript)
-        self.command_bus.register(DeleteTranscriptVariantIntent, self._handle_delete_transcript_variant)
-        self.command_bus.register(ClearTranscriptsIntent, self._handle_clear_transcripts)
-        self.command_bus.register(CommitEditsIntent, self._handle_commit_edits)
-        self.command_bus.register(RefineTranscriptIntent, self._handle_refine_transcript)
-        self.command_bus.register(CreateProjectIntent, self._handle_create_project)
-        self.command_bus.register(UpdateProjectIntent, self._handle_update_project)
-        self.command_bus.register(DeleteProjectIntent, self._handle_delete_project)
-        self.command_bus.register(AssignProjectIntent, self._handle_assign_project)
-        self.command_bus.register(UpdateConfigIntent, self._handle_update_config)
-        self.command_bus.register(RestartEngineIntent, self._handle_restart_engine)
-
-    def _handle_begin_recording(self, intent) -> None:
-        with self._recording_lock:
-            if self._is_recording or not self.audio_service:
-                return
-
-            # Pre-check: is the ASR model file actually available?
-            from src.core.model_registry import ASR_MODELS, get_asr_model
-            from src.core.resource_manager import ResourceManager
-
-            model_id = self.settings.model.model
-            asr_model = get_asr_model(model_id) or ASR_MODELS.get("large-v3-turbo-q5_0")
-            if asr_model:
-                model_path = ResourceManager.get_user_cache_dir("models") / asr_model.filename
-                if not model_path.exists():
-                    self.event_bus.emit(
-                        "transcription_error",
-                        {"message": "No ASR model downloaded. Go to Settings to download a speech recognition model."},
-                    )
-                    return
-
-            self._is_recording = True
-
-        self._recording_stop.clear()
-        self.event_bus.emit("recording_started", {})
-
-        t = threading.Thread(target=self._recording_loop, daemon=True, name="recording")
-        self._recording_thread = t
-        t.start()
-
-    def _handle_stop_recording(self, intent) -> None:
-        if not self._is_recording:
-            return
-        self._recording_stop.set()
-
-    def _handle_cancel_recording(self, intent) -> None:
-        if not self._is_recording:
-            return
-        self._recording_stop.set()
-        # Mark as cancelled so _recording_loop doesn't transcribe
-        self._is_recording = False
-        self.event_bus.emit("recording_stopped", {"cancelled": True})
-
-    def _handle_toggle_recording(self, intent) -> None:
-        if self._is_recording:
-            from src.core.intents.definitions import StopRecordingIntent
-
-            self.command_bus.dispatch(StopRecordingIntent())
-        else:
-            from src.core.intents.definitions import BeginRecordingIntent
-
-            self.command_bus.dispatch(BeginRecordingIntent())
-
-    def _handle_delete_transcript(self, intent) -> None:
-        if self.db:
-            self.db.delete_transcript(intent.transcript_id)
-            self.event_bus.emit("transcript_deleted", {"id": intent.transcript_id})
-
-    def _handle_delete_transcript_variant(self, intent) -> None:
-        if self.db:
-            deleted = self.db.delete_variant(intent.transcript_id, intent.variant_id)
-            if deleted:
-                # Refresh entire transcript for simplicity, or just notify variant deleted
-                # The frontend likely re-fetches or we need to send updated transcript object
-                # For now just notify updated.
-                t = self.db.get_transcript(intent.transcript_id)
-                if t:
-                    # Convert to dict manually or use a helper if available, but coordinator imports are tricky.
-                    # Ideally we just emit the ID and let frontend fetch.
-                    self.event_bus.emit("transcript_updated", {"id": intent.transcript_id})
-
-    def _handle_clear_transcripts(self, intent) -> None:
-        if self.db:
-            count = self.db.clear_all_transcripts()
-            logger.info("Cleared all transcripts: %d deleted", count)
-            self.event_bus.emit("transcripts_cleared", {"count": count})
-
-    def _handle_commit_edits(self, intent) -> None:
-        if self.db:
-            variant = self.db.add_variant(intent.transcript_id, "user_edit", intent.content, set_current=True)
-            self.event_bus.emit(
-                "transcript_updated",
-                {"id": intent.transcript_id, "variant_id": variant.id},
-            )
-
-    def _handle_create_project(self, intent) -> None:
-        """Create a new project and emit an event."""
-        if not self.db:
-            return
-        project = self.db.add_project(
-            name=intent.name,
-            color=intent.color,
-            parent_id=intent.parent_id,
+        transcript = TranscriptHandlers(
+            db_provider=lambda: self.db,
+            event_bus_emit=self.event_bus.emit,
         )
-        self.event_bus.emit(
-            "project_created",
-            {
-                "id": project.id,
-                "name": project.name,
-                "color": project.color,
-                "parent_id": project.parent_id,
-            },
+        project = ProjectHandlers(
+            db_provider=lambda: self.db,
+            event_bus_emit=self.event_bus.emit,
+        )
+        refinement = RefinementHandlers(
+            db_provider=lambda: self.db,
+            slm_runtime_provider=lambda: self.slm_runtime,
+            settings_provider=lambda: self.settings,
+            event_bus_emit=self.event_bus.emit,
+        )
+        system = SystemHandlers(
+            event_bus_emit=self.event_bus.emit,
+            input_listener_provider=lambda: self.input_listener,
+            on_settings_updated=lambda s: setattr(self, "settings", s),
+            restart_engine=self.restart_engine,
         )
 
-    def _handle_update_project(self, intent) -> None:
-        """Update a project's name/color/parent and emit an event."""
-        if not self.db:
-            return
-        kwargs: dict = {}
-        if intent.name is not None:
-            kwargs["name"] = intent.name
-        if intent.color is not None:
-            kwargs["color"] = intent.color
-        # parent_id is passed through as-is (None means move to root)
-        kwargs["parent_id"] = intent.parent_id
-        project = self.db.update_project(intent.project_id, **kwargs)
-        if project:
-            self.event_bus.emit(
-                "project_updated",
-                {
-                    "id": project.id,
-                    "name": project.name,
-                    "color": project.color,
-                    "parent_id": project.parent_id,
-                },
-            )
-
-    def _handle_delete_project(self, intent) -> None:
-        """Delete a project (re-parents children to root) and emit an event."""
-        if not self.db:
-            return
-        deleted = self.db.delete_project(intent.project_id)
-        if deleted:
-            self.event_bus.emit("project_deleted", {"id": intent.project_id})
-
-    def _handle_assign_project(self, intent) -> None:
-        """Assign or unassign a transcript to/from a project."""
-        if not self.db:
-            return
-        self.db.assign_project(intent.transcript_id, intent.project_id)
-        self.event_bus.emit(
-            "transcript_updated",
-            {"id": intent.transcript_id, "project_id": intent.project_id},
-        )
-
-    def _handle_update_config(self, intent) -> None:
-        from src.core.settings import update_settings
-
-        new_settings = update_settings(**intent.settings)
-        self.settings = new_settings
-        self.event_bus.emit("config_updated", new_settings.model_dump())
-
-        # Reload activation keys if the input handler is running
-        if self.input_listener:
-            try:
-                self.input_listener.update_activation_keys()
-                self.input_listener.reset_chord_state()
-                logger.info("Input handler activation keys reloaded")
-            except Exception:
-                logger.exception("Failed to reload activation keys")
-
-    def _handle_restart_engine(self, intent) -> None:
-        """Restart ASR + SLM models (background thread)."""
-        self.restart_engine()
-
-    def _handle_refine_transcript(self, intent) -> None:
-        """Refine a transcript using the SLM runtime."""
-        if not self.db:
-            self.event_bus.emit("refinement_error", {"message": "Database not available"})
-            return
-
-        if not self.slm_runtime:
-            self.event_bus.emit("refinement_error", {"message": "Refinement is not configured. Enable it in Settings."})
-            return
-
-        from src.services.slm_types import SLMState
-
-        state = self.slm_runtime.state
-        if state == SLMState.DISABLED:
-            self.event_bus.emit(
-                "refinement_error",
-                {"message": "Refinement is disabled. Enable it in Settings and ensure a model is downloaded."},
-            )
-            return
-        if state == SLMState.LOADING:
-            self.event_bus.emit(
-                "refinement_error",
-                {"message": "The refinement model is still loading. Please wait a moment and try again."},
-            )
-            return
-        if state == SLMState.ERROR:
-            self.event_bus.emit(
-                "refinement_error",
-                {"message": "The refinement model failed to load. Check Settings to verify a model is downloaded."},
-            )
-            return
-        if state == SLMState.INFERRING:
-            self.event_bus.emit(
-                "refinement_error", {"message": "A refinement is already in progress. Please wait for it to finish."}
-            )
-            return
-        if state != SLMState.READY:
-            self.event_bus.emit("refinement_error", {"message": f"Refinement model not ready (state: {state.value})"})
-            return
-
-        transcript = self.db.get_transcript(intent.transcript_id)
-        if not transcript:
-            self.event_bus.emit("refinement_error", {"message": "Transcript not found"})
-            return
-
-        self.event_bus.emit(
-            "refinement_started",
-            {
-                "transcript_id": intent.transcript_id,
-                "level": intent.level,
-            },
-        )
-
-        def do_refine():
-            import time
-
-            start_time = time.monotonic()
-            try:
-                # ALWAYS refine from the immutable original, never a previous variant.
-                # transcript.text returns the current variant if set, which would
-                # cause re-refining the already-refined output on subsequent runs.
-                text = transcript.normalized_text or transcript.raw_text
-
-                self.event_bus.emit(
-                    "refinement_progress",
-                    {
-                        "transcript_id": intent.transcript_id,
-                        "status": "inferring",
-                        "message": "Running inference…",
-                    },
-                )
-
-                refined = self.slm_runtime.refine_text_sync(
-                    text,
-                    level=intent.level,
-                    instructions=intent.instructions,
-                )
-
-                elapsed = round(time.monotonic() - start_time, 1)
-
-                # Store as variant
-                variant = self.db.add_variant(
-                    intent.transcript_id,
-                    f"refinement_L{intent.level}",
-                    refined,
-                    model_id=self.settings.refinement.model_id,
-                    set_current=True,
-                )
-
-                # Prune old refinement variants: keep only the 3 most recent.
-                self.db.prune_refinement_variants(intent.transcript_id, keep=3)
-
-                self.event_bus.emit(
-                    "refinement_complete",
-                    {
-                        "transcript_id": intent.transcript_id,
-                        "variant_id": variant.id,
-                        "text": refined,
-                        "level": intent.level,
-                        "elapsed_seconds": elapsed,
-                    },
-                )
-            except Exception as e:
-                logger.exception("Refinement failed for transcript %d", intent.transcript_id)
-                self.event_bus.emit(
-                    "refinement_error",
-                    {
-                        "transcript_id": intent.transcript_id,
-                        "message": str(e),
-                    },
-                )
-
-        t = threading.Thread(target=do_refine, daemon=True, name="refine")
-        t.start()
-
-    # --- Recording Pipeline ---
-
-    def _recording_loop(self) -> None:
-        """
-        Background thread: record audio → transcribe → store → emit.
-
-        Runs off the main thread. Uses EventBus for all progress reporting.
-        """
-        try:
-            audio_data = self.audio_service.record_audio(should_stop=lambda: self._recording_stop.is_set())
-
-            # Check if cancelled during recording
-            if not self._is_recording:
-                return
-
-            self._is_recording = False
-            self.event_bus.emit("recording_stopped", {"cancelled": False})
-
-            if audio_data is None or len(audio_data) == 0:
-                self.event_bus.emit("transcription_error", {"message": "Recording too short or empty"})
-                return
-
-            # Transcribe
-            self._transcribe_and_store(audio_data)
-
-        except Exception as e:
-            logger.exception("Recording loop error")
-            self._is_recording = False
-            self.event_bus.emit("recording_stopped", {"cancelled": False})
-            self.event_bus.emit("transcription_error", {"message": str(e)})
-
-    def _transcribe_and_store(self, audio_data) -> None:
-        """Run transcription on audio data, store result, and emit event."""
-        # Do not start transcription if shutdown is in progress.
-        if self._shutdown_event.is_set():
-            logger.debug("Transcription skipped — shutdown in progress")
-            return
-
-        from src.services.transcription_service import create_local_model, transcribe
-
-        try:
-            # Lazy-load ASR model if not already loaded
-            if self._asr_model is None:
-                self._asr_model = create_local_model(self.settings)
-
-            text, speech_duration_ms = transcribe(
-                audio_data,
-                settings=self.settings,
-                local_model=self._asr_model,
-            )
-
-            if not text.strip():
-                self.event_bus.emit("transcription_error", {"message": "No speech detected"})
-                return
-
-            # Store in database
-            duration_ms = int(len(audio_data) / 16000 * 1000)
-            transcript = None
-            if self.db:
-                transcript = self.db.add_transcript(
-                    raw_text=text,
-                    duration_ms=duration_ms,
-                    speech_duration_ms=speech_duration_ms,
-                    project_id=self.settings.user.active_project_id,
-                )
-
-            self.event_bus.emit(
-                "transcription_complete",
-                {
-                    "text": text,
-                    "id": transcript.id if transcript else None,
-                    "duration_ms": duration_ms,
-                    "speech_duration_ms": speech_duration_ms,
-                },
-            )
-
-            # Schedule a lazy insight generation if the cache is stale.
-            # Runs off-thread and only proceeds if the SLM is idle.
-            if self.insight_manager is not None:
-                self.insight_manager.maybe_schedule()
-            if self.motd_manager is not None:
-                self.motd_manager.maybe_schedule()
-
-            # Auto-copy to system clipboard (works without window focus)
-            if self.settings.output.auto_copy_to_clipboard:
-                self._copy_to_system_clipboard(text)
-
-            logger.info("Transcription complete: %d chars, %dms", len(text), duration_ms)
-
-        except Exception as e:
-            logger.exception("Transcription failed")
-            self.event_bus.emit("transcription_error", {"message": str(e)})
+        bus = self.command_bus
+        bus.register(BeginRecordingIntent, self.recording_session.handle_begin)
+        bus.register(StopRecordingIntent, self.recording_session.handle_stop)
+        bus.register(CancelRecordingIntent, self.recording_session.handle_cancel)
+        bus.register(ToggleRecordingIntent, self.recording_session.handle_toggle)
+        bus.register(DeleteTranscriptIntent, transcript.handle_delete)
+        bus.register(DeleteTranscriptVariantIntent, transcript.handle_delete_variant)
+        bus.register(ClearTranscriptsIntent, transcript.handle_clear)
+        bus.register(CommitEditsIntent, transcript.handle_commit_edits)
+        bus.register(RefineTranscriptIntent, refinement.handle_refine)
+        bus.register(CreateProjectIntent, project.handle_create)
+        bus.register(UpdateProjectIntent, project.handle_update)
+        bus.register(DeleteProjectIntent, project.handle_delete)
+        bus.register(AssignProjectIntent, project.handle_assign)
+        bus.register(UpdateConfigIntent, system.handle_update_config)
+        bus.register(RestartEngineIntent, system.handle_restart_engine)
 
     # --- Hotkey ---
 
@@ -927,7 +570,7 @@ class ApplicationCoordinator:
     def _on_hotkey_release(self) -> None:
         """Callback from input handler when activation key is released."""
         mode = self.settings.recording.recording_mode
-        if mode == "hold_to_record" and self._is_recording:
+        if mode == "hold_to_record" and self.recording_session is not None and self.recording_session.is_recording:
             from src.core.intents.definitions import StopRecordingIntent
 
             self.command_bus.dispatch(StopRecordingIntent())
@@ -1083,56 +726,6 @@ class ApplicationCoordinator:
             # Ensure shutdown is called even if webview exits unexpectedly
             if not self._shutdown_event.is_set():
                 self.shutdown(stop_server=False, close_windows=False)
-
-    # --- Clipboard ---
-
-    @staticmethod
-    def _copy_to_system_clipboard(text: str) -> None:
-        """Copy text to the system clipboard without requiring window focus.
-
-        Uses platform-native CLI tools so it works even when the
-        pywebview window is not focused or is hidden behind other windows.
-        """
-        system = platform.system()
-        try:
-            if system == "Linux":
-                # Try xclip first (more common), fall back to xsel
-                for cmd in (
-                    ["xclip", "-selection", "clipboard"],
-                    ["xsel", "--clipboard", "--input"],
-                ):
-                    try:
-                        subprocess.run(
-                            cmd,
-                            input=text.encode("utf-8"),
-                            check=True,
-                            timeout=3,
-                        )
-                        logger.debug("Copied %d chars to clipboard via %s", len(text), cmd[0])
-                        return
-                    except FileNotFoundError:
-                        continue
-                logger.warning("No clipboard tool found (install xclip or xsel)")
-            elif system == "Darwin":
-                subprocess.run(
-                    ["pbcopy"],
-                    input=text.encode("utf-8"),
-                    check=True,
-                    timeout=3,
-                )
-                logger.debug("Copied %d chars to clipboard via pbcopy", len(text))
-            elif system == "Windows":
-                subprocess.run(
-                    ["clip.exe"],
-                    input=text.encode("utf-16le"),
-                    check=True,
-                    timeout=3,
-                )
-                logger.debug("Copied %d chars to clipboard via clip.exe", len(text))
-            else:
-                logger.warning("Auto-copy not supported on %s", system)
-        except Exception:
-            logger.warning("Failed to copy to system clipboard", exc_info=True)
 
     # --- Window control (frameless title-bar) ---
 

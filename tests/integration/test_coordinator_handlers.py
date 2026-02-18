@@ -242,7 +242,7 @@ class TestRecordingStateMachine:
 
         coord.command_bus.dispatch(BeginRecordingIntent())
 
-        assert coord._is_recording is False
+        assert coord.recording_session._is_recording is False
         assert len(events.of_type("recording_started")) == 0
 
     def test_cancel_when_not_recording_is_noop(self, wired):
@@ -253,7 +253,7 @@ class TestRecordingStateMachine:
 
         coord.command_bus.dispatch(CancelRecordingIntent())
 
-        assert coord._is_recording is False
+        assert coord.recording_session._is_recording is False
         assert len(events.of_type("recording_stopped")) == 0
 
     def test_stop_when_not_recording_is_noop(self, wired):
@@ -264,7 +264,7 @@ class TestRecordingStateMachine:
 
         coord.command_bus.dispatch(StopRecordingIntent())
 
-        assert coord._is_recording is False
+        assert coord.recording_session._is_recording is False
 
     def test_toggle_dispatches_begin_when_idle(self, wired):
         """ToggleRecording when idle dispatches BeginRecording (which is noop without audio)."""
@@ -275,17 +275,17 @@ class TestRecordingStateMachine:
         coord.command_bus.dispatch(ToggleRecordingIntent())
 
         # No audio service → begin is noop
-        assert coord._is_recording is False
+        assert coord.recording_session._is_recording is False
 
     def test_toggle_dispatches_stop_when_recording(self, wired):
         """ToggleRecording when recording dispatches StopRecording."""
         coord, events = wired
         # Manually set recording state
-        coord._is_recording = True
+        coord.recording_session._is_recording = True
 
         from src.core.intents.definitions import ToggleRecordingIntent
 
         coord.command_bus.dispatch(ToggleRecordingIntent())
 
         # StopRecording sets the stop event
-        assert coord._recording_stop.is_set()
+        assert coord.recording_session._recording_stop.is_set()

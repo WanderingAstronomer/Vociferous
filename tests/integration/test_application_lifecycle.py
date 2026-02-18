@@ -83,12 +83,14 @@ class TestInitializationState:
         assert fresh_coordinator.audio_service is None
         assert fresh_coordinator.input_listener is None
         assert fresh_coordinator.slm_runtime is None
-        assert fresh_coordinator._asr_model is None
+        # Recording session (and its ASR model) are created during start()
+        assert fresh_coordinator.recording_session is None
 
     def test_recording_state_idle(self, fresh_coordinator):
-        """Recording state must be idle after construction."""
-        assert fresh_coordinator._is_recording is False
-        assert not fresh_coordinator._recording_stop.is_set()
+        """Recording session is not created until start(); shutdown event must be clear."""
+        # RecordingSession (which owns _is_recording / _recording_stop) is
+        # created inside start() — not in __init__.  Before start() it is None.
+        assert fresh_coordinator.recording_session is None
         assert not fresh_coordinator._shutdown_event.is_set()
 
     def test_window_refs_none(self, fresh_coordinator):
@@ -186,9 +188,9 @@ class TestShutdownLifecycle:
         assert coordinator._shutdown_event.is_set()
 
     def test_shutdown_sets_recording_stop(self, coordinator):
-        """shutdown() must signal recording to stop."""
+        """shutdown() must signal the RecordingSession to stop."""
         coordinator.shutdown()
-        assert coordinator._recording_stop.is_set()
+        assert coordinator.recording_session._recording_stop.is_set()
 
     def test_cleanup_closes_db(self, coordinator):
         """cleanup() must close the database connection."""
@@ -210,7 +212,8 @@ class TestShutdownLifecycle:
         """cleanup() on a coordinator with no services should not crash."""
         # All services are None — cleanup should be a no-op
         fresh_coordinator.cleanup()
-        assert fresh_coordinator._asr_model is None
+        # recording_session was never created (start() not called)
+        assert fresh_coordinator.recording_session is None
 
     def test_cleanup_with_mock_slm(self, coordinator):
         """cleanup() calls disable() on the SLM runtime if present."""
@@ -229,10 +232,10 @@ class TestShutdownLifecycle:
         mock_listener.stop.assert_called_once()
 
     def test_cleanup_deletes_asr_model(self, coordinator):
-        """cleanup() must delete the ASR model reference."""
-        coordinator._asr_model = MagicMock()
+        """cleanup() must release the ASR model held by RecordingSession."""
+        coordinator.recording_session._asr_model = MagicMock()
         coordinator.cleanup()
-        assert coordinator._asr_model is None
+        assert coordinator.recording_session._asr_model is None
 
     def test_cleanup_stops_uvicorn(self, coordinator):
         """cleanup() sets should_exit on the uvicorn server."""
