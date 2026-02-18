@@ -120,6 +120,7 @@ The `raw_text` column is **never modified** after insertion. All edits and refin
 The `EventBus` is a thread-safe pub/sub system. Events are emitted from service logic and broadcast to all WebSocket clients.
 
 Key events:
+
 - `transcription_complete` — new transcript captured
 - `transcript_deleted` — transcript removed
 - `refinement_complete` — SLM produced a new variant

@@ -82,6 +82,47 @@
     let projectMenuTranscriptId = $state<number | null>(null);
     let batchAssigning = $state(false);
 
+    /* ===== Resizable Panel State ===== */
+
+    /** Height of the transcript preview panel in px. null = auto (flex-1). */
+    let previewHeight: number | null = $state(null);
+    /** Which grab bar is being dragged: null | 'preview' | 'variants' */
+    let dragging: "preview" | "variants" | null = $state(null);
+    /** Reference to the detail column container for bounds calculation. */
+    let detailColumnEl: HTMLDivElement | undefined = $state(undefined);
+
+    function startDrag(bar: "preview" | "variants") {
+        return (e: PointerEvent) => {
+            e.preventDefault();
+            dragging = bar;
+            const target = e.currentTarget as HTMLElement;
+            target.setPointerCapture(e.pointerId);
+        };
+    }
+
+    function onDragMove(e: PointerEvent) {
+        if (!dragging || !detailColumnEl) return;
+
+        // Find the preview panel and variants panel by data attributes
+        const previewEl = detailColumnEl.querySelector("[data-panel='preview']") as HTMLElement | null;
+        const variantsEl = detailColumnEl.querySelector("[data-panel='variants']") as HTMLElement | null;
+
+        if (dragging === "preview" && previewEl) {
+            const rect = previewEl.getBoundingClientRect();
+            const newHeight = Math.max(80, Math.min(e.clientY - rect.top, 600));
+            previewHeight = newHeight;
+        } else if (dragging === "variants" && variantsEl) {
+            const rect = variantsEl.getBoundingClientRect();
+            const newHeight = Math.max(60, Math.min(e.clientY - rect.top, 500));
+            variantsEl.style.height = `${newHeight}px`;
+            variantsEl.style.maxHeight = `${newHeight}px`;
+        }
+    }
+
+    function onDragEnd() {
+        dragging = null;
+    }
+
     /* ===== Multi-Selection ===== */
 
     const selection = new SelectionManager();
@@ -637,7 +678,9 @@
                 </div>
             </div>
         {:else if selectedEntry}
-            <div class="flex-1 flex flex-col p-4 gap-2 overflow-hidden">
+            <div class="flex-1 flex flex-col p-4 gap-2 overflow-hidden" bind:this={detailColumnEl}
+                 onpointermove={onDragMove} onpointerup={onDragEnd} onpointercancel={onDragEnd}
+                 role="presentation">
                 <h2 class="text-xl font-semibold text-[var(--text-primary)] m-0 leading-tight text-center">
                     {getTitle(selectedEntry)}
                 </h2>
@@ -668,12 +711,13 @@
                     {/if}
                 </div>
 
-                <div class="shrink-0 overflow-hidden flex flex-col relative group">
+                <div class="overflow-hidden flex flex-col relative group" data-panel="preview"
+                     style={previewHeight != null ? `height:${previewHeight}px;max-height:${previewHeight}px;flex-shrink:0;` : 'flex:1 1 auto;min-height:80px;'}>
                     <WorkspacePanel editing={isEditing}>
-                        <div class="overflow-y-auto max-h-[340px]">
+                        <div class="overflow-y-auto h-full">
                             {#if isEditing}
                                 <textarea
-                                    class="w-full min-h-[120px] max-h-[340px] text-base leading-relaxed text-[var(--text-primary)] bg-[var(--surface-primary)] border border-[var(--accent)] rounded p-2 whitespace-pre-wrap break-words resize-y outline-none"
+                                    class="w-full min-h-[120px] h-full text-base leading-relaxed text-[var(--text-primary)] bg-[var(--surface-primary)] border border-[var(--accent)] rounded p-2 whitespace-pre-wrap break-words resize-none outline-none"
                                     bind:value={editText}
                                 ></textarea>
                             {:else}
@@ -687,8 +731,20 @@
                     </WorkspacePanel>
                 </div>
 
+                <!-- Grab bar: between preview and variants/buttons -->
+                <div
+                    class="h-1.5 shrink-0 cursor-row-resize flex items-center justify-center group/grab rounded
+                           hover:bg-[var(--hover-overlay)] transition-colors {dragging === 'preview' ? 'bg-[var(--accent)]' : ''}"
+                    onpointerdown={startDrag('preview')}
+                    role="separator"
+                    aria-orientation="horizontal"
+                    title="Drag to resize"
+                >
+                    <div class="w-8 h-0.5 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover/grab:opacity-100 transition-opacity {dragging === 'preview' ? 'opacity-100 bg-[var(--accent)]' : ''}"></div>
+                </div>
+
                 {#if visibleVariants.length > 0}
-                    <div class="shrink-0 max-h-[200px] overflow-y-auto">
+                    <div class="flex-1 min-h-[60px] overflow-y-auto" data-panel="variants">
                         <h3
                             class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide mb-2 m-0 mt-2"
                         >
@@ -714,6 +770,18 @@
                                 <p class="text-sm leading-normal text-[var(--text-secondary)] m-0">{variant.text}</p>
                             </div>
                         {/each}
+                    </div>
+
+                    <!-- Grab bar: between variants and footer -->
+                    <div
+                        class="h-1.5 shrink-0 cursor-row-resize flex items-center justify-center group/grab rounded
+                               hover:bg-[var(--hover-overlay)] transition-colors {dragging === 'variants' ? 'bg-[var(--accent)]' : ''}"
+                        onpointerdown={startDrag('variants')}
+                        role="separator"
+                        aria-orientation="horizontal"
+                        title="Drag to resize"
+                    >
+                        <div class="w-8 h-0.5 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover/grab:opacity-100 transition-opacity {dragging === 'variants' ? 'opacity-100 bg-[var(--accent)]' : ''}"></div>
                     </div>
                 {/if}
 

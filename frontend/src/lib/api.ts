@@ -189,6 +189,21 @@ export function getHealth(): Promise<{ status: string; version: string; transcri
     return request("/health");
 }
 
+export function getInsight(): Promise<{ text: string }> {
+    return request("/insight");
+}
+
+export function getMotd(): Promise<{ text: string }> {
+    return request("/motd");
+}
+
+export function exportFile(content: string, filename: string): Promise<{ path: string }> {
+    return request("/export", {
+        method: "POST",
+        body: JSON.stringify({ content, filename }),
+    });
+}
+
 export function restartEngine(): Promise<{ status: string }> {
     return request("/engine/restart", { method: "POST" });
 }

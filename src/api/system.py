@@ -4,14 +4,45 @@ System API routes — config, models, health, mini widget, key capture.
 
 from __future__ import annotations
 
+import importlib.metadata
 import logging
 import threading
+import tomllib
+from pathlib import Path
 
 from litestar import Response, get, post, put
 
 from src.api.deps import get_coordinator
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_app_version() -> str:
+    """Resolve app version from package metadata, with pyproject fallback."""
+    try:
+        return importlib.metadata.version("vociferous")
+    except importlib.metadata.PackageNotFoundError:
+        pass
+    except Exception:
+        logger.exception("Failed to read version from package metadata")
+
+    try:
+        root = Path(__file__).resolve().parents[2]
+        pyproject_path = root / "pyproject.toml"
+        if pyproject_path.is_file():
+            with pyproject_path.open("rb") as f:
+                data = tomllib.load(f)
+            project = data.get("project", {})
+            version = project.get("version")
+            if isinstance(version, str) and version.strip():
+                return version.strip()
+    except Exception:
+        logger.exception("Failed to read version from pyproject.toml")
+
+    return "unknown"
+
+
+APP_VERSION = _resolve_app_version()
 
 
 # --- Config ---
@@ -45,6 +76,58 @@ async def restart_engine() -> dict:
     coordinator = get_coordinator()
     coordinator.restart_engine()
     return {"status": "restarting"}
+
+
+@get("/api/insight")
+async def get_insight() -> dict:
+    """Return the cached UserView insight, or empty text if none exists yet."""
+    coordinator = get_coordinator()
+    text = ""
+    if coordinator.insight_manager is not None:
+        text = coordinator.insight_manager.cached_text
+    return {"text": text}
+
+
+@get("/api/motd")
+async def get_motd() -> dict:
+    """Return the cached TranscribeView header MOTD, or empty text if none exists yet."""
+    coordinator = get_coordinator()
+    text = ""
+    if coordinator.motd_manager is not None:
+        text = coordinator.motd_manager.cached_text
+    return {"text": text}
+
+
+@post("/api/export")
+async def export_file(data: dict) -> Response:
+    """
+    Write exported content to a user-chosen path via the native save dialog.
+
+    Expects: { "content": str, "filename": str }
+    Returns: { "path": str } on success, or error.
+    """
+    import asyncio
+
+    content: str = data.get("content", "")
+    filename: str = data.get("filename", "export.txt")
+
+    coordinator = get_coordinator()
+
+    # create_file_dialog must run on the main (GTK/UI) thread — use run_in_executor
+    # so we don't block the async API event loop.
+    loop = asyncio.get_event_loop()
+    save_path: str | None = await loop.run_in_executor(None, coordinator.show_save_dialog, filename)
+
+    if save_path is None:
+        return Response(content={"error": "cancelled"}, status_code=400)
+
+    try:
+        Path(save_path).write_text(content, encoding="utf-8")
+    except OSError as e:
+        logger.error("Export write failed: %s", e)
+        return Response(content={"error": str(e)}, status_code=500)
+
+    return Response(content={"path": save_path})
 
 
 @get("/api/models")
@@ -190,7 +273,7 @@ async def health() -> dict:
     coordinator = get_coordinator()
     return {
         "status": "ok",
-        "version": "4.0.0-dev",
+        "version": APP_VERSION,
         "transcripts": coordinator.db.transcript_count() if coordinator.db else 0,
         "recording_active": bool(getattr(coordinator, "_is_recording", False)),
         "gpu": _detect_gpu_status(),

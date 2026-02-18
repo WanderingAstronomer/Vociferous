@@ -59,9 +59,7 @@ def download_model_file(
         return Path(downloaded)
 
     except Exception as e:
-        raise ProvisioningError(
-            f"Failed to download {filename} from {repo_id}: {e}"
-        ) from e
+        raise ProvisioningError(f"Failed to download {filename} from {repo_id}: {e}") from e
 
 
 def provision_asr_model(

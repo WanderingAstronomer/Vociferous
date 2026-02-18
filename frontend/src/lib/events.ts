@@ -100,6 +100,10 @@ export interface KeyCapturedData {
     display: string;
 }
 
+export interface InsightReadyData {
+    text: string;
+}
+
 // --- Event type → data mapping ---
 
 export interface WSEventMap {
@@ -122,6 +126,7 @@ export interface WSEventMap {
     project_created: ProjectCreatedData;
     project_deleted: ProjectDeletedData;
     key_captured: KeyCapturedData;
+    insight_ready: InsightReadyData;
 }
 
 /** All known event type strings. */
@@ -214,4 +219,6 @@ export const wsEventValidators: {
         isObject(data) && isNumber(data.id),
     key_captured: (data): data is KeyCapturedData =>
         isObject(data) && isString(data.combo) && isString(data.display),
+    insight_ready: (data): data is InsightReadyData =>
+        isObject(data) && isString(data.text),
 };

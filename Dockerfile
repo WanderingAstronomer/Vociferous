@@ -71,22 +71,21 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
 # Copy application source
 COPY src/ src/
 COPY assets/ assets/
-COPY vociferous pyproject.toml ./
+COPY scripts/provision_models.py scripts/
+COPY pyproject.toml ./
 
 # Copy pre-built frontend from stage 1
 COPY --from=frontend-builder /build/dist/ frontend/dist/
 
-# Make launcher executable
-RUN chmod +x vociferous
-
 # ── Runtime Configuration ────────────────────────────────────────────────────
-
-# Skip venv re-exec logic inside the container
-ENV _VOCIFEROUS_ENV_READY=1
 
 # Wayland by default (X11 fallback available via compose override)
 ENV GDK_BACKEND=wayland,x11
+
+# Prevent WebKitGTK GPU compositing — avoids kernel panic with NVIDIA DRM
+# on concurrent WebKit + CUDA access (NVIDIA 550.x driver bug).
 ENV WEBKIT_DISABLE_COMPOSITING_MODE=1
+ENV WEBKIT_DISABLE_DMABUF_RENDERER=1
 
 # Default GPU device for CUDA
 ENV CUDA_VISIBLE_DEVICES=0

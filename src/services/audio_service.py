@@ -1,7 +1,7 @@
 """
-Audio capture and VAD service.
+Audio capture service.
 
-Handles microphone interaction, audio buffering, and Voice Activity Detection (VAD).
+Handles microphone interaction and audio buffering.
 """
 
 import logging
@@ -11,7 +11,6 @@ from typing import Callable, List
 
 import numpy as np
 import sounddevice as sd
-import webrtcvad
 from numpy.typing import NDArray
 
 from src.core.constants import FlowTiming
@@ -22,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class AudioService:
-    """Service for capturing audio from the microphone with VAD."""
+    """Service for capturing audio from the microphone."""
 
     def __init__(
         self,
@@ -121,32 +120,20 @@ class AudioService:
 
     def record_audio(self, should_stop: Callable[[], bool]) -> NDArray[np.int16] | None:
         """
-        Record audio until silence is detected or should_stop() returns True.
+        Record audio until should_stop() returns True.
 
         Args:
-            should_stop: Callback that returns True if recording should stop manually.
+            should_stop: Callback that returns True when recording should stop.
 
         Returns:
             Recorded audio data or None if too short/failed.
         """
         s = self._settings_provider()
         self.sample_rate = s.recording.sample_rate
-        frame_duration_ms = 30  # WebRTC VAD frame duration
+        frame_duration_ms = 30  # Frame size in ms for audio processing
         frame_size = int(self.sample_rate * (frame_duration_ms / 1000.0))
-        silence_duration_ms = s.recording.silence_duration_ms
-        silence_frames = int(silence_duration_ms / frame_duration_ms)
-
         # Skip initial audio to avoid capturing key press sounds
         initial_frames_to_skip = int(FlowTiming.HOTKEY_SOUND_SKIP * self.sample_rate / frame_size)
-
-        # Create VAD for voice activity detection modes
-        recording_mode = s.recording.recording_mode
-        vad = None
-        speech_detected = False
-        silent_frame_count = 0
-
-        if recording_mode in ("voice_activity_detection", "continuous"):
-            vad = webrtcvad.Vad(2)  # Aggressiveness: 0-3 (higher = more aggressive)
 
         # Thread-safe queue for audio callback data
         audio_queue: Queue[NDArray[np.int16]] = Queue()
@@ -275,21 +262,6 @@ class AudioService:
                         continue
 
                     recording.extend(frame)
-
-                    if vad:
-                        is_speech = vad.is_speech(frame.tobytes(), self.sample_rate)
-                        match (is_speech, speech_detected):
-                            case (True, False):
-                                logger.debug("Speech detected.")
-                                speech_detected = True
-                                silent_frame_count = 0
-                            case (True, True):
-                                silent_frame_count = 0
-                            case (False, _):
-                                silent_frame_count += 1
-
-                        if speech_detected and silent_frame_count > silence_frames:
-                            break
         except Exception as e:
             logger.error(f"Recording loop error: {e}")
             raise AudioError(f"Recording loop error: {e}") from e

@@ -179,7 +179,6 @@ class TestVariantImmutability:
 
 
 class TestSearchEdgeCases:
-
     def test_search_empty_query(self, db: TranscriptDB) -> None:
         db.add_transcript(raw_text="anything", duration_ms=100)
         # Empty query matches everything (LIKE '%%')
@@ -219,7 +218,6 @@ class TestSearchEdgeCases:
 
 
 class TestTranscriptCount:
-
     def test_count_after_delete(self, db: TranscriptDB) -> None:
         t1 = db.add_transcript(raw_text="one", duration_ms=100)
         db.add_transcript(raw_text="two", duration_ms=100)
@@ -238,7 +236,6 @@ class TestTranscriptCount:
 
 
 class TestWALMode:
-
     def test_wal_mode_enabled(self, db: TranscriptDB) -> None:
         mode = db._conn.execute("PRAGMA journal_mode").fetchone()[0]
         assert mode == "wal"
@@ -287,7 +284,6 @@ class TestConcurrentReads:
 
 
 class TestBoundaryInputs:
-
     def test_empty_string_text(self, db: TranscriptDB) -> None:
         t = db.add_transcript(raw_text="", duration_ms=0)
         fetched = db.get_transcript(t.id)
@@ -320,7 +316,6 @@ class TestBoundaryInputs:
 
 
 class TestExportBackup:
-
     def test_backup_creates_file(self, db: TranscriptDB, tmp_path: Path) -> None:
         db.add_transcript(raw_text="backup test", duration_ms=100)
         backup_path = tmp_path / "backup.db"

@@ -44,6 +44,29 @@ class TestPostProcessTranscription:
         result = post_process_transcription("The value is 3.14 exactly", get_settings())
         assert "3.14" in result
 
+    # --- Comma / semicolon / colon spacing ---
+
+    def test_missing_space_after_comma(self, fresh_settings):
+        result = post_process_transcription("Hello,world", get_settings())
+        assert "Hello, world" in result
+
+    def test_comma_in_number_unaffected(self, fresh_settings):
+        result = post_process_transcription("The count is 1,000 exactly", get_settings())
+        assert "1,000" in result
+
+    def test_missing_space_after_semicolon(self, fresh_settings):
+        result = post_process_transcription("Done;now move on", get_settings())
+        assert "Done; now" in result
+
+    def test_missing_space_after_colon(self, fresh_settings):
+        result = post_process_transcription("Note:this is important", get_settings())
+        assert "Note: this" in result
+
+    def test_existing_comma_space_not_doubled(self, fresh_settings):
+        result = post_process_transcription("Hello, world", get_settings())
+        assert "Hello, world" in result
+        assert "Hello,  world" not in result
+
     # --- Trailing space ---
 
     def test_trailing_space_added_by_default(self, fresh_settings):

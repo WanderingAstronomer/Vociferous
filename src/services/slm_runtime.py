@@ -141,19 +141,23 @@ class SLMRuntime:
                 gc.collect()
 
     @staticmethod
-    def _temperature_for_level(level: int) -> float:
-        """Return a level-specific sampling temperature.
+    def _sampling_params_for_level(level: int) -> dict[str, float | int | bool]:
+        """Return sampling profile for grammar-edit refinement.
 
-        Lower levels stay conservative; higher levels allow more rewriting freedom.
+        Thinking mode is DISABLED.  Empirical testing showed that Qwen3 models
+        (4B/8B/14B Q4_K_M) produce equal-or-better grammar edits without
+        thinking, in less time.  The <think> overhead burned tokens on reasoning
+        that added no value for mechanical text correction.
+
+        `level` is intentionally ignored — single-purpose grammar pipeline.
         """
-        table = {
-            0: 0.01,
-            1: 0.08,
-            2: 0.16,
-            3: 0.26,
-            4: 0.38,
+        _ = level
+        return {
+            "temperature": 0.3,
+            "top_p": 0.9,
+            "top_k": 20,
+            "use_thinking": False,
         }
-        return table.get(level, 0.16)
 
     def refine_text(self, text: str, level: int = 1, instructions: str = "") -> None:
         """Submit text for refinement (runs in background thread)."""
@@ -174,11 +178,15 @@ class SLMRuntime:
         with self._lock:
             if not self._engine:
                 raise RuntimeError("Engine not loaded.")
+            params = self._sampling_params_for_level(level)
             result = self._engine.refine(
                 text,
                 profile=level,
                 user_instructions=instructions,
-                temperature=self._temperature_for_level(level),
+                temperature=float(params["temperature"]),
+                top_p=float(params["top_p"]),
+                top_k=int(params["top_k"]),
+                use_thinking=bool(params["use_thinking"]),
             )
         return result.content
 
@@ -187,11 +195,15 @@ class SLMRuntime:
             with self._lock:
                 if not self._engine:
                     raise RuntimeError("Engine disappeared during inference.")
+                params = self._sampling_params_for_level(level)
                 result = self._engine.refine(
                     text,
                     profile=level,
                     user_instructions=instructions,
-                    temperature=self._temperature_for_level(level),
+                    temperature=float(params["temperature"]),
+                    top_p=float(params["top_p"]),
+                    top_k=int(params["top_k"]),
+                    use_thinking=bool(params["use_thinking"]),
                 )
 
             if self._on_text_ready:

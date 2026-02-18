@@ -22,9 +22,10 @@ All state management uses Svelte 5 Runes — **no legacy stores or `export let` 
 
 ### State Files
 
-- **`stores.svelte.ts`** — Global reactive state (transcripts, config, recording status, connection state)
 - **`selection.svelte.ts`** — Multi-selection manager (shared across HistoryView, SearchView, ProjectsView)
 - **`navigation.svelte.ts`** — View routing and navigation state
+- **`ws.ts`** — WebSocket client with auto-reconnect; routes incoming events to reactive state
+- **`events.ts`** — WebSocket event type definitions
 
 ### Patterns
 
@@ -47,19 +48,28 @@ $effect(() => {
 
 | Component | Purpose |
 |-----------|---------|
+| `TranscribeView.svelte` | Recording UI, waveform visualizer, transcription result display |
 | `HistoryView.svelte` | Transcript list with multi-select, batch delete, batch project assignment |
 | `SearchView.svelte` | Full-text search with multi-select, same batch operations |
+| `RefineView.svelte` | SLM refinement interface with level slider and custom instructions |
 | `SettingsView.svelte` | Configuration UI with grouped settings, custom dropdowns |
-| `UserView.svelte` | User profile, display name |
+| `UserView.svelte` | User profile, display name, productivity stats dashboard |
 | `ProjectsView.svelte` | Project tree with nested hierarchies, multi-select, batch operations |
 
 ### Shared Components
 
-Located in `frontend/src/lib/components/` (or inline in views):
+Located in `frontend/src/lib/components/`:
 
-- Custom `<select>` replacement for Tailwind-styled dropdowns
-- Selection toolbar (appears when items are selected)
-- Project assignment modal
+- `ActivityChart.svelte` — Activity over time chart (UserView stats)
+- `BarSpectrumVisualizer.svelte` — Real-time audio frequency visualizer
+- `CustomSelect.svelte` — Tailwind-styled `<select>` replacement
+- `IconRail.svelte` — Sidebar navigation icon rail
+- `KeyBindCapture.svelte` — Interactive key binding capture widget
+- `StatCard.svelte` — Metric display card
+- `StyledButton.svelte` — Standardized button component
+- `TitleBar.svelte` — Custom frameless window title bar
+- `ToggleSwitch.svelte` — Boolean toggle input
+- `WorkspacePanel.svelte` — Resizable panel layout wrapper
 
 ## Multi-Selection System
 
@@ -78,6 +88,7 @@ The `SelectionManager` class (`selection.svelte.ts`) provides consistent multi-s
 ### Batch Operations
 
 When items are selected, a toolbar appears with available actions:
+
 - **Delete** — Batch delete with confirmation
 - **Assign Project** — Move selected items to a project
 - **Remove from Project** — Unassign project from selected items

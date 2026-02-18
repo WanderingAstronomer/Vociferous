@@ -431,7 +431,7 @@ class TestGracefulDegradation:
 
         errors = events.of_type("refinement_error")
         assert len(errors) == 1
-        assert "SLM not available" in errors[0]["message"]
+        assert "not configured" in errors[0]["message"].lower() or "not available" in errors[0]["message"].lower()
 
     def test_db_none_all_handlers_survive(self, coordinator, event_collector):
         """With db=None, every handler returns without crashing."""

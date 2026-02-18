@@ -31,9 +31,8 @@ Settings persist to a JSON file at the platform-appropriate config directory:
 |-------|------|---------|-------------|
 | `activation_key` | `str` | `"alt_right"` | Global hotkey to start/stop recording |
 | `input_backend` | `str` | `"auto"` | Key listener backend (auto-detected per platform) |
-| `recording_mode` | `str` | `"press_to_toggle"` | Toggle vs push-to-talk |
+| `recording_mode` | `str` | `"press_to_toggle"` | `press_to_toggle` or `hold_to_record` |
 | `sample_rate` | `int` | `16000` | Audio sample rate (Hz) |
-| `silence_duration_ms` | `int` | `900` | Silence threshold before auto-stop |
 | `min_duration_ms` | `int` | `100` | Minimum recording duration |
 
 ### `user` — User Identity
@@ -69,17 +68,30 @@ Settings persist to a JSON file at the platform-appropriate config directory:
 | `peak_hold_ms` | `int` | `800` | Peak hold duration |
 | `monstercat` | `float` | `0.8` | Smoothing factor |
 | `noise_reduction` | `float` | `0.77` | Noise gate threshold |
+| `gate_aggression` | `float` | `0.0` | Noise gate aggressiveness |
 
 ### `refinement` — SLM Text Refinement
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | `bool` | `true` | Enable SLM refinement |
-| `model_id` | `str` | `"qwen4b"` | SLM model identifier |
+| `model_id` | `str` | `"qwen14b"` | SLM model identifier |
 | `n_gpu_layers` | `int` | `-1` | GPU offload layers (-1 = all, 0 = CPU only) |
-| `n_ctx` | `int` | `8192` | Context window size |
+| `n_ctx` | `int` | `32768` | Context window size |
 | `system_prompt` | `str` | *(built-in)* | Base system prompt for refinement |
+| `invariants` | `list[str]` | *(5 built-in rules)* | Cross-level invariants always injected into prompts |
 | `levels` | `dict` | *(5 levels)* | Refinement intensity levels (see below) |
+| `motd_system_prompt` | `str` | *(built-in)* | System prompt for message-of-the-day generation |
+
+### `voice_calibration` — Voice Calibration (Computed)
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `fundamental_freq` | `float` | `0.0` | Computed fundamental frequency |
+| `freq_mean` | `float` | `0.0` | Mean frequency from calibration |
+| `energy_95th` | `float` | `0.0` | 95th-percentile energy level |
+
+This section is written by the voice calibration system, not user-configured directly.
 
 ### `logging` — Log Output
 

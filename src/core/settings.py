@@ -47,7 +47,6 @@ class RecordingSettings(BaseModel):
     input_backend: str = "auto"
     recording_mode: str = "press_to_toggle"
     sample_rate: int = 16000
-    silence_duration_ms: int = 900
     min_duration_ms: int = 100
 
 
@@ -130,12 +129,10 @@ class RefinementSettings(BaseModel):
     """SLM refinement configuration."""
 
     enabled: bool = True
-    model_id: str = "qwen4b"
+    model_id: str = "qwen14b"
     n_gpu_layers: int = -1  # -1 = offload all layers to GPU, 0 = CPU only
-    n_ctx: int = 8192  # Context window size for llama.cpp
-    system_prompt: str = (
-        "You are Vociferous Refinement Engine, a high-precision copy editor for speech-to-text transcripts."
-    )
+    n_ctx: int = 32768  # Context window size for llama.cpp (Qwen3 trains at 40960)
+    system_prompt: str = "You are a professional editor and proofreader."
     invariants: list[str] = Field(
         default_factory=lambda: [
             "Preserve original meaning and intent unless explicitly overridden by user instructions.",

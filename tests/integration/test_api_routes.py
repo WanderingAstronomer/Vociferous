@@ -356,4 +356,4 @@ class TestRefinementRoute:
         # But the handler emits an error because no SLM is loaded
         errors = events.of_type("refinement_error")
         assert len(errors) == 1
-        assert "SLM not available" in errors[0]["message"]
+        assert "not configured" in errors[0]["message"].lower() or "not available" in errors[0]["message"].lower()

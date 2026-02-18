@@ -8,6 +8,7 @@ the whisper.cpp C++ library with Python bindings.
 import logging
 import re
 import time
+from inspect import signature
 from pathlib import Path
 
 import numpy as np
@@ -52,17 +53,98 @@ def create_local_model(settings: VociferousSettings):
 
     model_path = _resolve_model_path(settings)
     n_threads = settings.model.n_threads
-    logger.info("Loading whisper.cpp model from %s (n_threads=%d)...", model_path, n_threads)
+    device_pref = (settings.model.device or "auto").strip().lower()
+    logger.info(
+        "Loading whisper.cpp model from %s (n_threads=%d, device=%s)...",
+        model_path,
+        n_threads,
+        device_pref,
+    )
 
     start = time.perf_counter()
 
     try:
-        model = Model(
-            str(model_path),
-            n_threads=n_threads,
-            print_realtime=False,
-            print_progress=False,
-        )
+        init_kwargs: dict[str, object] = {
+            "n_threads": n_threads,
+            "print_realtime": False,
+            "print_progress": False,
+            # ── Anti-hallucination / anti-repetition settings ──
+            # Reduce max context tokens fed back to decoder. Default 16384
+            # causes the model to fixate on its own prior output and loop.
+            # 64 retains enough context for coherent output without looping.
+            "n_max_text_ctx": 64,
+            # Raise entropy threshold so repetitive/low-entropy segments get
+            # rejected and re-sampled at higher temperature (default 2.4).
+            "entropy_thold": 2.8,
+            # ── Break the feedback loop ──
+            # Prevent the decoder from using its own prior output as context
+            # for subsequent 30-second chunks. This is THE critical defense:
+            # without it, hallucinated text on a silent chunk gets fed back
+            # as prompt for the next chunk, priming the decoder to repeat
+            # the same garbage. For a dictation app, cross-chunk context
+            # coherence is not worth the catastrophic failure mode.
+            "no_context": True,
+            # Lower no-speech threshold (default 0.6). Segments where
+            # whisper's own model thinks prob(no_speech) > 0.5 get
+            # suppressed at the decoder level — before they ever become text.
+            "no_speech_thold": 0.5,
+        }
+
+        # params_sampling_strategy is a named __init__ arg, not a **params kwarg.
+        # 1 = BEAM_SEARCH — better decoding quality than greedy.
+        constructor_kwargs: dict[str, object] = {
+            "params_sampling_strategy": 1,
+        }
+
+        # beam_search config — only meaningful with beam search strategy.
+        whisper_params: dict[str, object] = {
+            "beam_search": {"beam_size": 5, "patience": -1.0},
+        }
+
+        try:
+            supported_kwargs = set(signature(Model.__init__).parameters.keys())
+        except Exception:
+            supported_kwargs = set()
+
+        if device_pref in {"cpu", "gpu"} and supported_kwargs:
+            if device_pref == "cpu" and "no_gpu" in supported_kwargs:
+                init_kwargs["no_gpu"] = True
+            elif device_pref == "gpu" and "use_gpu" in supported_kwargs:
+                init_kwargs["use_gpu"] = True
+            elif device_pref == "gpu" and "no_gpu" in supported_kwargs:
+                init_kwargs["no_gpu"] = False
+            else:
+                logger.info(
+                    "Device preference '%s' requested but pywhispercpp does not expose a matching init flag; using default backend selection.",
+                    device_pref,
+                )
+
+        # Merge constructor-level args (positional/keyword params of __init__)
+        # and whisper params (**params kwargs) into init_kwargs.
+        # Only include constructor kwargs the signature actually accepts.
+        for k, v in constructor_kwargs.items():
+            if k in supported_kwargs:
+                init_kwargs[k] = v
+            else:
+                logger.debug("Skipping unsupported constructor arg: %s", k)
+
+        # Whisper params go through _set_params → setattr on the C struct.
+        # Probe each one against the PARAMS_SCHEMA and skip if the C binding
+        # doesn't actually expose the attribute (schema/binding mismatches).
+        try:
+            from pywhispercpp.constants import PARAMS_SCHEMA
+
+            valid_params = set(PARAMS_SCHEMA.keys())
+        except Exception:
+            valid_params = set()
+
+        for k, v in whisper_params.items():
+            if not valid_params or k in valid_params:
+                init_kwargs[k] = v
+            else:
+                logger.debug("Skipping unsupported whisper param: %s", k)
+
+        model = Model(str(model_path), **init_kwargs)
     except Exception as e:
         raise EngineError(f"Failed to load whisper.cpp model: {e}") from e
 
@@ -136,13 +218,81 @@ def _trim_trailing_silence(
     return trimmed
 
 
+def _trim_leading_silence(
+    audio_data: NDArray[np.int16],
+    sample_rate: int = AudioConfig.DEFAULT_SAMPLE_RATE,
+    frame_ms: int = 30,
+    silence_threshold: float = 0.005,
+    min_leading_silence_ms: int = 200,
+) -> NDArray[np.int16]:
+    """
+    Remove leading silence from audio using RMS energy detection.
+
+    Walks forward through the audio in fixed-size frames and finds where
+    speech energy first exceeds the threshold. Keeps a small lead-in
+    (min_leading_silence_ms) so whisper sees a clean segment boundary.
+
+    Without this, any silence at the start of a recording (e.g. the user
+    pausing before speaking, or key-press skip not being long enough)
+    gives whisper empty frames to hallucinate on.
+
+    Args:
+        audio_data: Raw int16 audio samples.
+        sample_rate: Sample rate in Hz.
+        frame_ms: Frame size in milliseconds for energy analysis.
+        silence_threshold: RMS threshold below which a frame is silence.
+        min_leading_silence_ms: Milliseconds of silence to preserve before
+            the first voiced frame so whisper has a clean segment boundary.
+
+    Returns:
+        Trimmed audio (or original if no significant silence found).
+    """
+    frame_size = int(sample_rate * frame_ms / 1000)
+    total_frames = len(audio_data) // frame_size
+
+    if total_frames < 2:
+        return audio_data
+
+    # Walk forward to find the first frame with speech energy
+    first_speech_frame = 0
+    for i in range(total_frames):
+        frame_start = i * frame_size
+        frame_end = frame_start + frame_size
+        frame = audio_data[frame_start:frame_end].astype(np.float32) / AudioConfig.INT16_SCALE
+        rms = np.sqrt(np.mean(frame**2))
+        if rms > silence_threshold:
+            first_speech_frame = i
+            break
+    else:
+        # Entire recording is silence — return as-is
+        return audio_data
+
+    # Keep min_leading_silence_ms of silence before the first voiced frame
+    lead_frames = int(min_leading_silence_ms / frame_ms)
+    cut_frame = max(first_speech_frame - lead_frames, 0)
+    cut_sample = cut_frame * frame_size
+
+    trimmed = audio_data[cut_sample:]
+    trimmed_ms = cut_sample / sample_rate * 1000
+
+    if trimmed_ms > 100:  # Only log if we actually trimmed something meaningful
+        logger.info(
+            "Trimmed %.0fms of leading silence (kept %d of %d samples)",
+            trimmed_ms,
+            len(trimmed),
+            len(audio_data),
+        )
+
+    return trimmed
+
+
 def _strip_internal_silence(
     audio_data: NDArray[np.int16],
     sample_rate: int = AudioConfig.DEFAULT_SAMPLE_RATE,
     frame_ms: int = 30,
-    vad_aggressiveness: int = 2,
+    vad_aggressiveness: int = 3,
     pad_frames: int = 5,
-    min_silence_ms: int = 600,
+    min_silence_ms: int = 400,
 ) -> NDArray[np.int16]:
     """
     Remove long internal silence from audio using WebRTC VAD.
@@ -269,12 +419,20 @@ def transcribe(
 
     language = settings.model.language or "en"
 
-    # Strip internal silence to prevent whisper hallucinations
-    # (repeated phrases, phantom "thank you") on long pauses mid-recording.
+    # ── Audio pre-processing: strip silence before whisper sees it ──
+    # Order matters: leading → internal → trailing.
+    # Each step logs what it removed for diagnostics.
+
+    # 1. Clip leading silence (user paused before speaking, key-press
+    #    skip was too short, etc.).
+    audio_data = _trim_leading_silence(audio_data)
+
+    # 2. Collapse internal silence gaps > 400ms to short splice pads.
+    #    Prevents whisper from hallucinating on mid-recording pauses.
     audio_data = _strip_internal_silence(audio_data)
 
-    # Trim trailing silence to prevent whisper hallucinations
-    # ("thank you", "thanks for watching", etc.) on silent frames.
+    # 3. Clip trailing silence ("thank you", "thanks for watching"
+    #    hallucinations on silent frames at the end).
     audio_data = _trim_trailing_silence(audio_data)
 
     # Convert int16 → float32 (whisper.cpp expects float32 in [-1, 1])
@@ -317,6 +475,66 @@ def transcribe(
         raise EngineError(f"Transcription failed: {e}") from e
 
 
+def _collapse_repeated_phrases(text: str, min_phrase_words: int = 3, max_phrase_words: int = 30) -> str:
+    """
+    Detect and collapse repeated phrases in transcription output.
+
+    Whisper (especially v3) sometimes gets stuck in a loop, emitting the same
+    phrase or sentence 5-50+ times consecutively.  This function detects any
+    n-gram (from *min_phrase_words* to *max_phrase_words* words) that repeats
+    3 or more times in a row and collapses it to a single occurrence.
+
+    This is a safety net — the beam-search / entropy-threshold parameters on
+    the model should catch most cases, but when they don't, this prevents
+    the output from being unusable.
+    """
+    if not text:
+        return text
+
+    words = text.split()
+    if len(words) < min_phrase_words * 3:
+        return text  # Too short to contain meaningful repetition
+
+    result = text
+    # Try phrase lengths from longest to shortest (greedy — catch big loops first)
+    for phrase_len in range(min(max_phrase_words, len(words) // 3), min_phrase_words - 1, -1):
+        # Build a regex that matches the phrase repeated 3+ times
+        # We work on the current result, not the original, because a longer
+        # match may have already cleaned part of it.
+        result_words = result.split()
+        i = 0
+        cleaned_words: list[str] = []
+        while i < len(result_words):
+            # Check if the next phrase_len words repeat at least twice more
+            if i + phrase_len * 3 <= len(result_words):
+                phrase = result_words[i : i + phrase_len]
+                repeats = 1
+                j = i + phrase_len
+                while j + phrase_len <= len(result_words):
+                    candidate = result_words[j : j + phrase_len]
+                    if candidate == phrase:
+                        repeats += 1
+                        j += phrase_len
+                    else:
+                        break
+                if repeats >= 3:
+                    # Collapse: keep one occurrence, skip the rest
+                    logger.warning(
+                        "Collapsed %d consecutive repetitions of %d-word phrase: '%s'",
+                        repeats,
+                        phrase_len,
+                        " ".join(phrase[:8]) + ("..." if phrase_len > 8 else ""),
+                    )
+                    cleaned_words.extend(phrase)
+                    i = j
+                    continue
+            cleaned_words.append(result_words[i])
+            i += 1
+        result = " ".join(cleaned_words)
+
+    return result
+
+
 def post_process_transcription(
     transcription: str | None,
     settings: VociferousSettings,
@@ -331,10 +549,22 @@ def post_process_transcription(
 
     result = transcription.strip()
 
+    # Collapse repeated phrases (whisper hallucination safety net)
+    result = _collapse_repeated_phrases(result)
+
     # Ensure a space after sentence-ending punctuation (. ! ? or ellipsis)
     # when immediately followed by a letter.  Protects decimals (3.14)
     # because digits don't match [A-Za-z].
     result = re.sub(r"([.!?]+)([A-Za-z])", r"\1 \2", result)
+
+    # Ensure a space after commas when immediately followed by a letter.
+    # Whisper frequently outputs "hello,world" or "yes,but" without the space.
+    # Protects numbers like "1,000" because digits don't match [A-Za-z].
+    result = re.sub(r",([A-Za-z])", r", \1", result)
+
+    # Same treatment for semicolons and colons followed by a letter.
+    result = re.sub(r";([A-Za-z])", r"; \1", result)
+    result = re.sub(r":([A-Za-z])", r": \1", result)
 
     if settings.output.add_trailing_space:
         result += " "

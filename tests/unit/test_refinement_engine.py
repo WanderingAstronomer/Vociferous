@@ -63,7 +63,6 @@ def _make_engine(
 
 
 class TestGenerationResult:
-
     def test_content_only(self) -> None:
         r = GenerationResult(content="Hello world")
         assert r.content == "Hello world"
@@ -83,7 +82,6 @@ class TestGenerationResult:
 
 
 class TestParseOutput:
-
     def test_plain_text(self) -> None:
         engine = _make_engine()
         result = engine._parse_output("Clean output text.")
@@ -92,34 +90,26 @@ class TestParseOutput:
 
     def test_think_block_extracted(self) -> None:
         engine = _make_engine()
-        result = engine._parse_output(
-            "<think>I need to fix spelling.</think>The corrected text."
-        )
+        result = engine._parse_output("<think>I need to fix spelling.</think>The corrected text.")
         assert result.content == "The corrected text."
         assert result.reasoning == "I need to fix spelling."
 
     def test_think_block_with_newlines(self) -> None:
         engine = _make_engine()
-        result = engine._parse_output(
-            "<think>\nLine 1\nLine 2\n</think>\nOutput here."
-        )
+        result = engine._parse_output("<think>\nLine 1\nLine 2\n</think>\nOutput here.")
         assert result.content == "Output here."
         assert "Line 1" in result.reasoning
         assert "Line 2" in result.reasoning
 
     def test_unclosed_think_block(self) -> None:
         engine = _make_engine()
-        result = engine._parse_output(
-            "Before <think>reasoning without end tag"
-        )
+        result = engine._parse_output("Before <think>reasoning without end tag")
         assert result.content == "Before"
         assert "REASONING TRUNCATED" in result.reasoning
 
     def test_transcript_markers_stripped(self) -> None:
         engine = _make_engine()
-        result = engine._parse_output(
-            "<<<BEGIN TRANSCRIPT>>>Hello world<<<END TRANSCRIPT>>>"
-        )
+        result = engine._parse_output("<<<BEGIN TRANSCRIPT>>>Hello world<<<END TRANSCRIPT>>>")
         assert "<<<BEGIN TRANSCRIPT>>>" not in result.content
         assert "<<<END TRANSCRIPT>>>" not in result.content
         assert result.content == "Hello world"
@@ -144,9 +134,7 @@ class TestParseOutput:
     def test_combined_think_and_markers(self) -> None:
         engine = _make_engine()
         result = engine._parse_output(
-            "<think>Reasoning here</think>"
-            "<<<BEGIN TRANSCRIPT>>>Clean output<<<END TRANSCRIPT>>>"
-            "<|im_end|>junk"
+            "<think>Reasoning here</think><<<BEGIN TRANSCRIPT>>>Clean output<<<END TRANSCRIPT>>><|im_end|>junk"
         )
         assert result.content == "Clean output"
         assert result.reasoning == "Reasoning here"
@@ -156,7 +144,6 @@ class TestParseOutput:
 
 
 class TestFormatPrompt:
-
     def test_returns_two_messages(self) -> None:
         engine = _make_engine()
         messages = engine._format_prompt("Hello world", profile=1)
@@ -176,104 +163,147 @@ class TestFormatPrompt:
         assert "Rule one." in system
         assert "Rule two." in system
 
-    def test_level_role_in_user_message(self) -> None:
+    def test_invariants_omitted_with_custom_instructions(self) -> None:
+        """When custom instructions are provided, invariants must NOT be sent."""
+        engine = _make_engine(invariants=["Rule one.", "Rule two."])
+        messages = engine._format_prompt("text", profile=0, user_instructions="Rewrite casually.")
+        system = messages[0]["content"]
+        assert "Rule one." not in system
+        assert "Rule two." not in system
+
+    def test_default_task_present(self) -> None:
         engine = _make_engine()
         messages = engine._format_prompt("text", profile=0)
         user = messages[1]["content"]
-        assert "Mechanical text editor." in user
+        assert "Fix all grammar, spelling, punctuation, and capitalization errors." in user
 
-    def test_level_permitted_actions(self) -> None:
+    def test_rules_in_system(self) -> None:
         engine = _make_engine()
         messages = engine._format_prompt("text", profile=0)
-        user = messages[1]["content"]
-        assert "Fix spelling." in user
+        system = messages[0]["content"]
+        assert "Output ONLY the corrected text" in system
 
-    def test_level_prohibited_actions(self) -> None:
+    def test_rules_absent_with_custom_instructions(self) -> None:
+        """Custom instructions mode: system message is ONLY the identity prompt."""
+        engine = _make_engine(system_prompt="I am the editor.")
+        messages = engine._format_prompt("text", profile=0, user_instructions="Make it fancy.")
+        system = messages[0]["content"]
+        assert system == "I am the editor."
+        assert "Rules:" not in system
+        assert "Output ONLY" not in system
+
+    def test_profile_ignored_for_behavior(self) -> None:
         engine = _make_engine()
-        messages = engine._format_prompt("text", profile=0)
-        user = messages[1]["content"]
-        assert "Changing structure." in user
+        low = engine._format_prompt("text", profile=0)[1]["content"]
+        high = engine._format_prompt("text", profile=4)[1]["content"]
+        assert low == high
 
-    def test_directive_included(self) -> None:
+    def test_task_directive_in_user_content(self) -> None:
         engine = _make_engine()
         messages = engine._format_prompt("text", profile=1)
         user = messages[1]["content"]
-        assert "Clean speech noise." in user
+        assert "Fix all grammar" in user
 
-    def test_input_text_wrapped_in_markers(self) -> None:
+    def test_input_text_in_user_content(self) -> None:
         engine = _make_engine()
         messages = engine._format_prompt("My transcript text", profile=0)
         user = messages[1]["content"]
-        assert "<<<BEGIN TRANSCRIPT>>>" in user
         assert "My transcript text" in user
-        assert "<<<END TRANSCRIPT>>>" in user
+        assert "Text:" in user
 
-    def test_user_instructions_appended(self) -> None:
+    def test_user_instructions_replace_default(self) -> None:
         engine = _make_engine()
-        messages = engine._format_prompt(
-            "text", profile=0, user_instructions="Make it formal."
-        )
+        messages = engine._format_prompt("text", profile=0, user_instructions="Make it formal.")
         user = messages[1]["content"]
-        assert "User Instructions: Make it formal." in user
+        assert "Make it formal." in user
+        assert "Fix all grammar" not in user
 
-    def test_no_think_directive(self) -> None:
-        """Prompt should request /no_think mode."""
+    def test_no_think_directive_by_default(self) -> None:
+        """Prompt should default to /no_think for efficient grammar edits."""
         engine = _make_engine()
         messages = engine._format_prompt("text", profile=0)
         user = messages[1]["content"]
         assert "/no_think" in user
 
-    # --- Level selection ---
+    def test_no_think_absent_when_thinking_enabled(self) -> None:
+        """Prompt should NOT include /no_think when use_thinking=True."""
+        engine = _make_engine()
+        messages = engine._format_prompt("text", profile=2, use_thinking=True)
+        user = messages[1]["content"]
+        assert "/no_think" not in user
 
-    def test_integer_profile_selects_level(self) -> None:
+    def test_user_instruction_overrides_default_task(self) -> None:
+        """Custom instructions should replace the default task line."""
+        engine = _make_engine()
+        messages = engine._format_prompt("text", profile=0)
+        base_user = messages[1]["content"]
+        assert "Fix all grammar" in base_user
+
+        messages = engine._format_prompt("text", profile=0, user_instructions="Make formal.")
+        user = messages[1]["content"]
+        assert "Make formal." in user
+        assert "Fix all grammar" not in user
+
+    # --- Profile compatibility ---
+
+    def test_integer_profile_accepted(self) -> None:
         engine = _make_engine()
         messages = engine._format_prompt("text", profile=2)
         user = messages[1]["content"]
-        assert "Professional editor." in user
+        assert "Fix all grammar" in user
 
-    def test_string_profile_mapping(self) -> None:
+    def test_string_profile_accepted(self) -> None:
         engine = _make_engine()
-        # "MINIMAL" maps to level 0
         messages = engine._format_prompt("text", profile="MINIMAL")
         user = messages[1]["content"]
-        assert "Mechanical text editor." in user
+        assert "Fix all grammar" in user
 
-    def test_balanced_profile_maps_to_level_1(self) -> None:
+    def test_balanced_profile_accepted(self) -> None:
         engine = _make_engine()
         messages = engine._format_prompt("text", profile="BALANCED")
         user = messages[1]["content"]
-        assert "Transcription cleaner." in user
+        assert "Fix all grammar" in user
 
-    def test_unknown_string_profile_defaults_to_1(self) -> None:
+    def test_unknown_string_profile_accepted(self) -> None:
         engine = _make_engine()
         messages = engine._format_prompt("text", profile="NONEXISTENT")
         user = messages[1]["content"]
-        assert "Transcription cleaner." in user  # level 1 default
+        assert "Fix all grammar" in user
 
-    def test_missing_level_falls_back_to_1(self) -> None:
+    def test_missing_level_still_formats_prompt(self) -> None:
         engine = _make_engine()
-        # Level 99 doesn't exist, should fall back to level 1
         messages = engine._format_prompt("text", profile=99)
         user = messages[1]["content"]
-        assert "Transcription cleaner." in user
+        assert "Fix all grammar" in user
 
 
 # ── Dynamic Token Calculation ─────────────────────────────────────────────
 
 
 class TestDynamicTokenCalculation:
-
     def test_small_input(self) -> None:
         engine = _make_engine()
         result = engine._calculate_dynamic_max_tokens(10)
         # 10 + max(150, 10*0.5=5) = 10 + 150 = 160
         assert result == 160
 
+    def test_small_input_with_thinking(self) -> None:
+        engine = _make_engine()
+        result = engine._calculate_dynamic_max_tokens(10, use_thinking=True)
+        # output_budget = 10 + max(150, 5) = 160; thinking_budget = 2048 -> 2208
+        assert result == 2208
+
     def test_medium_input(self) -> None:
         engine = _make_engine()
         result = engine._calculate_dynamic_max_tokens(500)
         # 500 + max(150, 500*0.5=250) = 500 + 250 = 750
         assert result == 750
+
+    def test_medium_input_with_thinking(self) -> None:
+        engine = _make_engine()
+        result = engine._calculate_dynamic_max_tokens(500, use_thinking=True)
+        # output_budget = 500 + max(150, 250) = 750; thinking_budget = 2048 -> 2798
+        assert result == 2798
 
     def test_large_input_capped(self) -> None:
         engine = _make_engine()
@@ -298,7 +328,6 @@ class TestDynamicTokenCalculation:
 
 
 class TestFewShotExamples:
-
     def test_level_0_has_examples(self) -> None:
         engine = _make_engine()
         examples = engine._get_few_shot_examples(0)

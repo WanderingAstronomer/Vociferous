@@ -61,9 +61,7 @@ class TestDeleteTranscript:
         coord, events = wired
         from src.core.intents.definitions import DeleteTranscriptIntent
 
-        result = coord.command_bus.dispatch(
-            DeleteTranscriptIntent(transcript_id=99999)
-        )
+        result = coord.command_bus.dispatch(DeleteTranscriptIntent(transcript_id=99999))
         # Handler still runs (db.delete_transcript returns False silently)
         assert result is True
         # Event is still emitted (current behavior — handler doesn't check return)
@@ -76,9 +74,7 @@ class TestDeleteTranscript:
 
         from src.core.intents.definitions import DeleteTranscriptIntent
 
-        result = coordinator.command_bus.dispatch(
-            DeleteTranscriptIntent(transcript_id=1)
-        )
+        result = coordinator.command_bus.dispatch(DeleteTranscriptIntent(transcript_id=1))
         assert result is True
         assert len(event_collector.of_type("transcript_deleted")) == 0
 
@@ -95,9 +91,7 @@ class TestCommitEdits:
 
         from src.core.intents.definitions import CommitEditsIntent
 
-        result = coord.command_bus.dispatch(
-            CommitEditsIntent(transcript_id=t.id, content="edited text")
-        )
+        result = coord.command_bus.dispatch(CommitEditsIntent(transcript_id=t.id, content="edited text"))
         assert result is True
 
         # Reload transcript and check variant
@@ -113,9 +107,7 @@ class TestCommitEdits:
 
         from src.core.intents.definitions import CommitEditsIntent
 
-        coord.command_bus.dispatch(
-            CommitEditsIntent(transcript_id=t.id, content="new version")
-        )
+        coord.command_bus.dispatch(CommitEditsIntent(transcript_id=t.id, content="new version"))
 
         refreshed = coord.db.get_transcript(t.id)
         assert refreshed.raw_text == "original"
@@ -133,9 +125,7 @@ class TestCreateProject:
 
         from src.core.intents.definitions import CreateProjectIntent
 
-        result = coord.command_bus.dispatch(
-            CreateProjectIntent(name="Test Project", color="#ff0000")
-        )
+        result = coord.command_bus.dispatch(CreateProjectIntent(name="Test Project", color="#ff0000"))
         assert result is True
 
         created = events.of_type("project_created")
@@ -155,9 +145,7 @@ class TestCreateProject:
 
         from src.core.intents.definitions import CreateProjectIntent
 
-        result = coordinator.command_bus.dispatch(
-            CreateProjectIntent(name="Ghost")
-        )
+        result = coordinator.command_bus.dispatch(CreateProjectIntent(name="Ghost"))
         assert result is True
         assert len(event_collector.of_type("project_created")) == 0
 
@@ -174,9 +162,7 @@ class TestDeleteProject:
 
         from src.core.intents.definitions import DeleteProjectIntent
 
-        result = coord.command_bus.dispatch(
-            DeleteProjectIntent(project_id=p.id)
-        )
+        result = coord.command_bus.dispatch(DeleteProjectIntent(project_id=p.id))
         assert result is True
 
         deleted = events.of_type("project_deleted")
@@ -193,9 +179,7 @@ class TestDeleteProject:
 
         from src.core.intents.definitions import DeleteProjectIntent
 
-        result = coord.command_bus.dispatch(
-            DeleteProjectIntent(project_id=99999)
-        )
+        result = coord.command_bus.dispatch(DeleteProjectIntent(project_id=99999))
         assert result is True
         # Handler checks return value and only emits on success
         assert len(events.of_type("project_deleted")) == 0
@@ -214,26 +198,28 @@ class TestRefineTranscriptValidation:
 
         from src.core.intents.definitions import RefineTranscriptIntent
 
-        result = coord.command_bus.dispatch(
-            RefineTranscriptIntent(transcript_id=t.id, level=2)
-        )
+        result = coord.command_bus.dispatch(RefineTranscriptIntent(transcript_id=t.id, level=2))
         assert result is True
 
         errors = events.of_type("refinement_error")
         assert len(errors) == 1
-        assert "SLM not available" in errors[0]["message"]
+        assert "not configured" in errors[0]["message"].lower() or "not available" in errors[0]["message"].lower()
 
     def test_refine_nonexistent_transcript_emits_error(self, wired):
         """Refinement of a non-existent transcript should emit error."""
         coord, events = wired
-        # Give it a mock SLM runtime so it gets past the first check
-        coord.slm_runtime = object()
+        # Give it a mock SLM runtime with READY state so it passes state checks
+        from unittest.mock import MagicMock
+
+        from src.services.slm_types import SLMState
+
+        mock_slm = MagicMock()
+        mock_slm.state = SLMState.READY
+        coord.slm_runtime = mock_slm
 
         from src.core.intents.definitions import RefineTranscriptIntent
 
-        result = coord.command_bus.dispatch(
-            RefineTranscriptIntent(transcript_id=99999, level=1)
-        )
+        result = coord.command_bus.dispatch(RefineTranscriptIntent(transcript_id=99999, level=1))
         assert result is True
 
         errors = events.of_type("refinement_error")

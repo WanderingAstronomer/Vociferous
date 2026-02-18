@@ -1,26 +1,18 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import { getTranscripts, getTranscript, refineTranscript, type Transcript } from "../lib/api";
+    import { getTranscripts, getTranscript, refineTranscript, deleteVariant, type Transcript } from "../lib/api";
     import { ws } from "../lib/ws";
     import { nav } from "../lib/navigation.svelte";
     import WorkspacePanel from "../lib/components/WorkspacePanel.svelte";
     import { Sparkles, Copy, Check, RotateCcw, ThumbsUp, X, Loader2, FileText, ChevronDown } from "lucide-svelte";
 
-    /* ── Strength Levels ── */
-    const STRENGTH_LEVELS = [
-        { value: 0, label: "Literal", desc: "Mechanical cleanup only; preserve wording." },
-        { value: 1, label: "Structural", desc: "Remove disfluencies and speech noise." },
-        { value: 2, label: "Neutral", desc: "Professional clarity with moderate rewriting." },
-        { value: 3, label: "Intent", desc: "Rewrite for intent and readability." },
-        { value: 4, label: "Overkill", desc: "Aggressive restructuring and diction upgrades." },
-    ] as const;
+    const DEFAULT_REFINEMENT_LEVEL = 0;
 
     /* ── State ── */
     let transcripts: Transcript[] = $state([]);
     let selectedId: number | null = $state(null);
     let originalText = $state("");
     let refinedText = $state("");
-    let strengthLevel = $state(2); // Default: Neutral
     let customInstructions = $state("");
     let isRefining = $state(false);
     let hasRefined = $state(false);
@@ -32,8 +24,8 @@
     let refineStatus = $state("");
     let refineElapsed = $state(0);
     let refineTimer: ReturnType<typeof setInterval> | null = $state(null);
-
-    let currentStrength = $derived(STRENGTH_LEVELS[strengthLevel]);
+    /** Variant ID of the most recent refinement result (for discard/rerun cleanup). */
+    let currentVariantId: number | null = $state(null);
 
     /* ── Data ── */
     async function loadTranscripts() {
@@ -50,6 +42,7 @@
         selectedId = id;
         refinedText = "";
         hasRefined = false;
+        currentVariantId = null;
         showPicker = false;
         try {
             const t = await getTranscript(id);
@@ -83,7 +76,7 @@
         isRefining = true;
         startRefineTimer();
         try {
-            await refineTranscript(selectedId, strengthLevel, customInstructions.trim());
+            await refineTranscript(selectedId, DEFAULT_REFINEMENT_LEVEL, customInstructions.trim());
             // Wait for WebSocket event to deliver result
         } catch (e) {
             console.error("Refinement failed:", e);
@@ -100,13 +93,29 @@
     }
 
     function handleDiscard() {
+        if (selectedId != null && currentVariantId != null) {
+            // Fire-and-forget: delete the variant from persistence
+            deleteVariant(selectedId, currentVariantId).catch((e) =>
+                console.error("Failed to delete discarded variant:", e),
+            );
+        }
         refinedText = "";
         hasRefined = false;
+        currentVariantId = null;
     }
 
     async function handleRerun() {
+        // Delete the previous refinement variant before creating a new one
+        if (selectedId != null && currentVariantId != null) {
+            try {
+                await deleteVariant(selectedId, currentVariantId);
+            } catch (e) {
+                console.error("Failed to delete previous variant on rerun:", e);
+            }
+        }
         refinedText = "";
         hasRefined = false;
+        currentVariantId = null;
         await handleRefine();
     }
 
@@ -145,6 +154,7 @@
         unsubRefinement = ws.on("refinement_complete", (data) => {
             if (data.transcript_id === selectedId) {
                 refinedText = data.text;
+                currentVariantId = (data as any).variant_id ?? null;
                 isRefining = false;
                 hasRefined = true;
                 stopRefineTimer();
@@ -332,62 +342,26 @@
     </div>
 
     <!-- Footer Controls -->
-    <div class="flex gap-[var(--space-4)] px-[var(--space-4)]">
+    <div class="px-[var(--space-4)]">
         <!-- Custom Instructions Card -->
         <div
-            class="flex-[2] flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] py-[var(--space-3)] px-[var(--space-4)] bg-[var(--surface-secondary)]"
+            class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] py-[var(--space-3)] px-[var(--space-4)] bg-[var(--surface-secondary)]"
         >
             <h4
                 class="m-0 text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-secondary)] text-center"
             >
-                Custom Instructions
+                Instructions (Optional)
             </h4>
+            <p class="m-0 text-[var(--text-xs)] text-[var(--text-tertiary)] text-center">
+                Default behavior fixes grammar and punctuation with minimal wording changes.
+            </p>
             <textarea
                 class="flex-1 resize-none py-[var(--space-2)] px-[var(--space-3)] border border-[var(--shell-border)] rounded-[var(--radius-sm)] bg-[var(--surface-primary)] text-[var(--text-primary)] text-[var(--text-sm)] font-[inherit] outline-none transition-[border-color] duration-[var(--transition-fast)] focus:border-[var(--accent)] disabled:opacity-50"
                 placeholder="Add specific instructions (e.g., 'Make it bullet points', 'Fix technical jargon')…"
                 bind:value={customInstructions}
                 disabled={isRefining}
-                rows="3"
+                rows="4"
             ></textarea>
-        </div>
-
-        <!-- Strength Selector Card -->
-        <div
-            class="flex-1 flex flex-col items-center gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] py-[var(--space-3)] px-[var(--space-4)] bg-[var(--surface-secondary)]"
-        >
-            <h4
-                class="m-0 text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-secondary)] text-center"
-            >
-                Refinement Strength
-            </h4>
-            <div class="text-[var(--text-lg)] font-[var(--weight-emphasis)] text-[var(--accent)]">
-                {currentStrength.label}
-            </div>
-
-            <input
-                type="range"
-                class="w-full accent-[var(--accent)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                min="0"
-                max="4"
-                step="1"
-                bind:value={strengthLevel}
-                disabled={isRefining}
-            />
-
-            <div class="flex justify-between w-full">
-                {#each STRENGTH_LEVELS as level}
-                    <span
-                        class="text-[var(--text-xs)] transition-colors duration-[var(--transition-fast)] {strengthLevel ===
-                        level.value
-                            ? 'text-[var(--accent)] font-[var(--weight-emphasis)]'
-                            : 'text-[var(--text-tertiary)]'}">{level.label}</span
-                    >
-                {/each}
-            </div>
-
-            <p class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic text-center m-0">
-                {currentStrength.desc}
-            </p>
         </div>
     </div>
 

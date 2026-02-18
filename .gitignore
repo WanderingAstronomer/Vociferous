@@ -73,6 +73,7 @@ src/config.yaml
 node_modules/
 build/
 dist/
+*.tsbuildinfo
 *.spec
 
 # PyInstaller / frozen app artifacts

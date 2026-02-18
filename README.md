@@ -90,12 +90,25 @@ make provision
 ### Docker (Linux only — requires X11/Wayland)
 
 ```bash
+# Build the image (multi-stage: frontend + Python runtime)
+docker compose build
+
+# Provision models on first run (persisted in named volume — only needed once)
+# NOTE: --entrypoint is required to override the default ENTRYPOINT
+docker compose run --rm --entrypoint python3 vociferous scripts/provision_models.py install large-v3-turbo-q5_0
+docker compose run --rm --entrypoint python3 vociferous scripts/provision_models.py install qwen14b
+
 # CPU mode
-docker compose up --build
+docker compose up
 
 # NVIDIA GPU mode (requires nvidia-container-toolkit)
-docker compose --profile gpu up --build
+docker compose --profile gpu up
 ```
+
+> **Notes:** Docker containerization requires a Wayland or X11 display server, PulseAudio
+> (or PipeWire with PulseAudio compat) for microphone access, and `input` group membership
+> for global hotkeys via evdev. Model files are stored in a named volume and persist across
+> container restarts. See `docker-compose.yml` for available environment overrides.
 
 ---
 
@@ -233,6 +246,7 @@ make provision
 ```
 
 Default models:
+
 - **ASR**: `ggml-large-v3-turbo-q5_0.bin` (~1 GB) from `ggerganov/whisper.cpp`
 - **SLM**: `Qwen3-1.7B-Q8_0.gguf` (~2 GB) from `Qwen/Qwen3-1.7B-GGUF`
 

@@ -31,6 +31,8 @@ services:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       # PulseAudio socket (microphone access)
       - ${XDG_RUNTIME_DIR:-/run/user/1000}/pulse:/run/user/1000/pulse:ro
+      # Input devices for global hotkeys (evdev backend)
+      - /dev/input:/dev/input:ro
       # Persist application data
       - vociferous-config:/root/.config/vociferous
       - vociferous-data:/root/.local/share/vociferous
@@ -40,10 +42,13 @@ services:
     devices:
       - /dev/snd:/dev/snd
 
-    # Input device access for global hotkeys (evdev)
+    # Input device access for global hotkeys (evdev).
+    # group_add requires numeric GIDs — group names are not present in the
+    # slim container image.  Override via AUDIO_GID / INPUT_GID env vars if
+    # your host has different GIDs (check with: getent group audio input).
     group_add:
-      - audio
-      - input
+      - "${AUDIO_GID:-29}"
+      - "${INPUT_GID:-996}"
 
     # Networking — host mode for D-Bus and PulseAudio connectivity
     network_mode: host

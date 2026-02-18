@@ -16,7 +16,7 @@
 git clone https://github.com/drewpyun/Vociferous.git
 cd Vociferous
 bash scripts/install.sh
-bash scripts/provision_models.py     # downloads ASR + SLM models from Hugging Face
+python scripts/provision_models.py     # downloads ASR + SLM models from Hugging Face
 ./vociferous.sh
 ```
 
@@ -87,7 +87,7 @@ python scripts/provision_models.py
 This downloads models from Hugging Face Hub into the data directory. The provisioning system supports:
 
 - **ASR models**: whisper.cpp GGML format (default: `large-v3-turbo-q5_0`)
-- **SLM models**: llama.cpp GGUF format (default: `Phi-4-mini-instruct-Q4_K_M`)
+- **SLM models**: llama.cpp GGUF format (default: `qwen14b` — Qwen3 14B Q4_K_M)
 
 Models are stored in `~/.local/share/vociferous/models/` (Linux) or the platform-appropriate data directory.
 

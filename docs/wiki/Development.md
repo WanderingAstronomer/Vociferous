@@ -76,15 +76,16 @@ frontend/
 │   ├── main.ts                 # Mount point
 │   ├── app.css                 # Tailwind CSS v4 entry
 │   ├── lib/                    # Shared utilities
-│   │   ├── api.ts              # Backend HTTP/WS client
-│   │   ├── types.ts            # TypeScript interfaces
-│   │   ├── stores.svelte.ts    # Reactive state (Svelte 5 runes)
+│   │   ├── api.ts              # Backend HTTP client
+│   │   ├── events.ts           # WebSocket event type definitions
 │   │   ├── selection.svelte.ts # Multi-selection manager
 │   │   ├── navigation.svelte.ts # Route/view state
-│   │   └── utils.ts            # Formatting, helpers
+│   │   └── ws.ts               # WebSocket client (auto-reconnect, event routing)
 │   └── views/                  # Page-level components
+│       ├── TranscribeView.svelte # Recording, transcription, waveform
 │       ├── HistoryView.svelte  # Transcript browser + multi-select
 │       ├── SearchView.svelte   # Full-text search + multi-select
+│       ├── RefineView.svelte   # SLM refinement interface
 │       ├── SettingsView.svelte # Config UI
 │       ├── UserView.svelte     # User profile + name
 │       └── ProjectsView.svelte # Project tree + batch operations
@@ -121,7 +122,7 @@ pytest tests/integration/
 
 ### Current Stats
 
-- **374 tests**, all passing
+- **385 tests**, all passing
 - Average run time: ~3 seconds
 
 ## Linting & Type Checking
@@ -132,10 +133,8 @@ make lint
 # or
 ruff check src/ tests/
 
-# MyPy (type checking)
-make types
-# or
-mypy src/
+# MyPy (no make target — run manually)
+.venv/bin/mypy src/ tests/
 
 # Fix auto-fixable issues
 ruff check --fix src/ tests/
@@ -152,13 +151,16 @@ All tool configuration lives in `pyproject.toml`:
 ## Makefile Targets
 
 ```bash
-make dev       # Start Vite dev server + Python backend
 make build     # Build frontend for production
 make test      # Run pytest
-make lint      # Run ruff check
-make types     # Run mypy
+make lint      # Run ruff check + svelte-check
+make format    # Run ruff format + frontend format
 make clean     # Remove build artifacts
 make install   # Run the Linux install script
+make provision # Download ASR and SLM models
+make fix-gpu   # Fix NVIDIA UVM module for GPU acceleration
+make docker    # Build and run in Docker (CPU)
+make docker-gpu # Build and run in Docker (NVIDIA GPU)
 ```
 
 ## Common Development Tasks
@@ -168,7 +170,7 @@ make install   # Run the Linux install script
 1. Define the Intent dataclass in `src/core/intents/`
 2. Add the handler in `ApplicationCoordinator._register_handlers()`
 3. Add the API route in `src/api/` (thin wrapper that dispatches to CommandBus)
-4. Add the TypeScript interface in `frontend/src/lib/types.ts`
+4. Add any TypeScript types needed directly in the relevant view or in a shared `.ts` file
 5. Wire the frontend call in the appropriate view
 
 ### Adding a New Setting

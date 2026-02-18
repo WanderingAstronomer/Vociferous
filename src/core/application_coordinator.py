@@ -60,6 +60,8 @@ class ApplicationCoordinator:
         self.slm_runtime: SLMRuntime | None = None
         self._asr_model: Any = None  # pywhispercpp Model instance
         self._uvicorn_server: Any = None  # uvicorn.Server for graceful shutdown
+        self.insight_manager: Any = None  # InsightManager | None
+        self.motd_manager: Any = None  # InsightManager | None (MOTD)
 
         # Recording state
         self._is_recording = False
@@ -100,6 +102,12 @@ class ApplicationCoordinator:
 
         # 3. SLM runtime
         self._init_slm_runtime()
+
+        # 3b. Insight manager (lazy background SLM insight for idle screen)
+        self._init_insight_manager()
+
+        # 3c. MOTD manager (short punchy header line for TranscribeView)
+        self._init_motd_manager()
 
         # 4. Audio service with event callbacks
         self._init_audio_service()
@@ -231,6 +239,12 @@ class ApplicationCoordinator:
 
             def on_slm_state(state):
                 self.event_bus.emit("engine_status", {"slm": state.value})
+                # When SLM becomes idle, opportunistically try MOTD generation.
+                # This fires both on startup (LOADING→READY) and after any inference job finishes.
+                from src.services.slm_types import SLMState as _SLMState
+
+                if state == _SLMState.READY and self.motd_manager is not None:
+                    self.motd_manager.maybe_schedule()
 
             def on_slm_error(msg):
                 self.event_bus.emit("refinement_error", {"message": msg})
@@ -251,6 +265,128 @@ class ApplicationCoordinator:
 
         except Exception:
             logger.exception("SLM runtime failed to initialize (non-fatal)")
+
+    def _init_insight_manager(self) -> None:
+        """Initialize the InsightManager for lazy UserView dashboard insight generation."""
+        try:
+            from src.core.insight_manager import InsightManager
+
+            SPEAKING_WPM = 150
+            TYPING_WPM = 40
+            FILLER_SINGLE = {
+                "um",
+                "uh",
+                "uhm",
+                "umm",
+                "er",
+                "err",
+                "like",
+                "basically",
+                "literally",
+                "actually",
+                "so",
+                "well",
+                "right",
+                "okay",
+            }
+            FILLER_MULTI = ["you know", "i mean", "kind of", "sort of"]
+
+            def _compute_stats() -> dict:
+                """Compute usage statistics from DB — mirrors UserView's derived metrics."""
+                if not self.db:
+                    return {}
+                transcripts = self.db.recent(limit=10000)
+                if not transcripts:
+                    return {}
+
+                count = len(transcripts)
+                total_words = 0
+                all_words: list[str] = []
+                recorded_seconds = 0.0
+                total_silence = 0.0
+                filler_count = 0
+
+                for t in transcripts:
+                    text = t.normalized_text or t.raw_text or ""
+                    words = text.split()
+                    total_words += len(words)
+
+                    lower = text.lower()
+                    # Filler multi-word
+                    for f in FILLER_MULTI:
+                        idx = 0
+                        while (idx := lower.find(f, idx)) != -1:
+                            filler_count += 1
+                            idx += len(f)
+                    # Filler single-word
+                    for w in lower.split():
+                        cleaned = w.strip(".,!?;:'\"()[]{}").lower()
+                        if cleaned in FILLER_SINGLE:
+                            filler_count += 1
+
+                    # Collect cleaned words for vocab diversity
+                    for w in lower.split():
+                        c = w.strip(".,!?;:'\"()[]{}").lower()
+                        if c:
+                            all_words.append(c)
+
+                    dur = (t.duration_ms or 0) / 1000
+                    if dur > 0:
+                        recorded_seconds += dur
+                        expected = (len(words) / SPEAKING_WPM) * 60
+                        total_silence += max(0.0, dur - expected)
+
+                # Fallback estimate if no durations available
+                if recorded_seconds == 0 and total_words > 0:
+                    recorded_seconds = (total_words / SPEAKING_WPM) * 60
+
+                typing_seconds = (total_words / TYPING_WPM) * 60
+                time_saved = max(0.0, typing_seconds - recorded_seconds)
+                avg_seconds = recorded_seconds / count if count > 0 else 0
+                vocab_ratio = len(set(all_words)) / len(all_words) if all_words else 0
+
+                return {
+                    "count": count,
+                    "total_words": total_words,
+                    "recorded_seconds": recorded_seconds,
+                    "time_saved_seconds": time_saved,
+                    "avg_seconds": avg_seconds,
+                    "vocab_ratio": vocab_ratio,
+                    "total_silence_seconds": total_silence,
+                    "filler_count": filler_count,
+                }
+
+            self.insight_manager = InsightManager(
+                slm_runtime_provider=lambda: self.slm_runtime,
+                event_emitter=self.event_bus.emit,
+                stats_provider=_compute_stats,
+            )
+            logger.info("InsightManager initialized")
+        except Exception:
+            logger.exception("InsightManager failed to initialize (non-fatal)")
+
+    def _init_motd_manager(self) -> None:
+        """Initialize the MOTD InsightManager for the TranscribeView header line."""
+        try:
+            from src.core.insight_manager import _MOTD_PROMPT, InsightManager
+
+            def _compute_stats() -> dict:
+                if self.insight_manager is None:
+                    return {}
+                # Reuse the same stats the insight_manager computes — no point duplicating
+                return self.insight_manager._get_stats()  # noqa: SLF001
+
+            self.motd_manager = InsightManager(
+                slm_runtime_provider=lambda: self.slm_runtime,
+                event_emitter=self.event_bus.emit,
+                stats_provider=_compute_stats,
+                prompt_template=_MOTD_PROMPT,
+                cache_filename="motd_cache.json",
+                event_name="motd_ready",
+            )
+            logger.info("MOTD InsightManager initialized")
+        except Exception:
+            logger.exception("MOTD InsightManager failed to initialize (non-fatal)")
 
     def restart_engine(self) -> None:
         """Tear down and reload ASR + SLM models on a background thread.
@@ -402,6 +538,22 @@ class ApplicationCoordinator:
         with self._recording_lock:
             if self._is_recording or not self.audio_service:
                 return
+
+            # Pre-check: is the ASR model file actually available?
+            from src.core.model_registry import ASR_MODELS, get_asr_model
+            from src.core.resource_manager import ResourceManager
+
+            model_id = self.settings.model.model
+            asr_model = get_asr_model(model_id) or ASR_MODELS.get("large-v3-turbo-q5_0")
+            if asr_model:
+                model_path = ResourceManager.get_user_cache_dir("models") / asr_model.filename
+                if not model_path.exists():
+                    self.event_bus.emit(
+                        "transcription_error",
+                        {"message": "No ASR model downloaded. Go to Settings to download a speech recognition model."},
+                    )
+                    return
+
             self._is_recording = True
 
         self._recording_stop.clear()
@@ -547,8 +699,42 @@ class ApplicationCoordinator:
 
     def _handle_refine_transcript(self, intent) -> None:
         """Refine a transcript using the SLM runtime."""
-        if not self.slm_runtime or not self.db:
-            self.event_bus.emit("refinement_error", {"message": "SLM not available"})
+        if not self.db:
+            self.event_bus.emit("refinement_error", {"message": "Database not available"})
+            return
+
+        if not self.slm_runtime:
+            self.event_bus.emit("refinement_error", {"message": "Refinement is not configured. Enable it in Settings."})
+            return
+
+        from src.services.slm_types import SLMState
+
+        state = self.slm_runtime.state
+        if state == SLMState.DISABLED:
+            self.event_bus.emit(
+                "refinement_error",
+                {"message": "Refinement is disabled. Enable it in Settings and ensure a model is downloaded."},
+            )
+            return
+        if state == SLMState.LOADING:
+            self.event_bus.emit(
+                "refinement_error",
+                {"message": "The refinement model is still loading. Please wait a moment and try again."},
+            )
+            return
+        if state == SLMState.ERROR:
+            self.event_bus.emit(
+                "refinement_error",
+                {"message": "The refinement model failed to load. Check Settings to verify a model is downloaded."},
+            )
+            return
+        if state == SLMState.INFERRING:
+            self.event_bus.emit(
+                "refinement_error", {"message": "A refinement is already in progress. Please wait for it to finish."}
+            )
+            return
+        if state != SLMState.READY:
+            self.event_bus.emit("refinement_error", {"message": f"Refinement model not ready (state: {state.value})"})
             return
 
         transcript = self.db.get_transcript(intent.transcript_id)
@@ -569,7 +755,10 @@ class ApplicationCoordinator:
 
             start_time = time.monotonic()
             try:
-                text = transcript.text or transcript.raw_text
+                # ALWAYS refine from the immutable original, never a previous variant.
+                # transcript.text returns the current variant if set, which would
+                # cause re-refining the already-refined output on subsequent runs.
+                text = transcript.normalized_text or transcript.raw_text
 
                 self.event_bus.emit(
                     "refinement_progress",
@@ -589,7 +778,7 @@ class ApplicationCoordinator:
                 elapsed = round(time.monotonic() - start_time, 1)
 
                 # Store as variant
-                self.db.add_variant(
+                variant = self.db.add_variant(
                     intent.transcript_id,
                     f"refinement_L{intent.level}",
                     refined,
@@ -597,10 +786,14 @@ class ApplicationCoordinator:
                     set_current=True,
                 )
 
+                # Prune old refinement variants: keep only the 3 most recent.
+                self.db.prune_refinement_variants(intent.transcript_id, keep=3)
+
                 self.event_bus.emit(
                     "refinement_complete",
                     {
                         "transcript_id": intent.transcript_id,
+                        "variant_id": variant.id,
                         "text": refined,
                         "level": intent.level,
                         "elapsed_seconds": elapsed,
@@ -694,6 +887,13 @@ class ApplicationCoordinator:
                     "speech_duration_ms": speech_duration_ms,
                 },
             )
+
+            # Schedule a lazy insight generation if the cache is stale.
+            # Runs off-thread and only proceeds if the SLM is idle.
+            if self.insight_manager is not None:
+                self.insight_manager.maybe_schedule()
+            if self.motd_manager is not None:
+                self.motd_manager.maybe_schedule()
 
             # Auto-copy to system clipboard (works without window focus)
             if self.settings.output.auto_copy_to_clipboard:
@@ -948,3 +1148,21 @@ class ApplicationCoordinator:
         """Close the main window, triggering graceful shutdown."""
         if self._main_window is not None:
             self._main_window.destroy()
+
+    def show_save_dialog(self, suggested_name: str) -> str | None:
+        """Show a native save-file dialog and return the chosen path, or None if cancelled."""
+        if self._main_window is None:
+            return None
+        try:
+            import webview
+
+            result = self._main_window.create_file_dialog(
+                webview.SAVE_DIALOG,
+                save_filename=suggested_name,
+            )
+            if result and len(result) > 0:
+                return str(result[0])
+            return None
+        except Exception:
+            logger.exception("Native save dialog failed")
+            return None

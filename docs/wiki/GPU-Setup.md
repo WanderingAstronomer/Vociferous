@@ -9,9 +9,11 @@ NVIDIA GPU acceleration on Linux involves three separate pain points that intera
 ### Symptom
 
 CUDA initialization fails with errors like:
+
 ```
 CUDA driver version is insufficient for CUDA runtime version
 ```
+
 or whisper.cpp silently falls back to CPU inference.
 
 ### Cause
@@ -25,6 +27,7 @@ sudo bash scripts/fix_gpu.sh
 ```
 
 The script:
+
 1. Detects whether the module is named `nvidia_uvm` or `nvidia-current-uvm` (Debian naming)
 2. Loads the module via `modprobe` (or falls back to `nvidia-modprobe -u`)
 3. Creates `/dev/nvidia-uvm` if the device node is missing (via `nvidia-modprobe` or manual `mknod`)
@@ -63,6 +66,7 @@ The `fix_gpu.sh` script handles this automatically. It:
 4. Replaces it with a symlink to the system driver
 
 Manual equivalent:
+
 ```bash
 # Find system libcuda
 SYSTEM_LIBCUDA=$(ldconfig -p | awk '/libcuda\.so\.1 /{print $NF; exit}')
@@ -80,6 +84,7 @@ ln -s "$SYSTEM_LIBCUDA" "$BUNDLED"
 ### Symptom
 
 On Linux with NVIDIA proprietary drivers, the pywebview window:
+
 - Shows a blank white screen
 - Crashes with GPU-related errors in WebKitGTK
 - Logs DMA-BUF or DRM errors
