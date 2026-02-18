@@ -180,6 +180,14 @@ class KeyListener:
         """Set the activation keys for the KeyChord."""
         self.key_chord = KeyChord(keys=keys)
 
+    def reset_chord_state(self) -> None:
+        """Clear currently pressed keys for the active chord.
+
+        Useful when a backend misses release events (e.g., keyboard unplug/switch).
+        """
+        if self.key_chord:
+            self.key_chord.reset()
+
     def on_input_event(self, event: tuple[KeyCode, InputEvent]) -> None:
         """Handle input events and trigger callbacks for key chord changes."""
         key, event_type = event

@@ -5,6 +5,7 @@ Name=Vociferous
 Comment=Cross-platform speech-to-text transcription
 Exec={{INSTALL_DIR}}/vociferous.sh
 Icon={{INSTALL_DIR}}/assets/icons/vociferous_icon.png
+StartupWMClass=Vociferous
 Terminal=false
 Categories=AudioVideo;Audio;Utility;
 Keywords=speech;transcription;whisper;voice;stt;

@@ -689,6 +689,7 @@ class ApplicationCoordinator:
         if self.input_listener:
             try:
                 self.input_listener.update_activation_keys()
+                self.input_listener.reset_chord_state()
                 logger.info("Input handler activation keys reloaded")
             except Exception:
                 logger.exception("Failed to reload activation keys")
@@ -920,6 +921,8 @@ class ApplicationCoordinator:
         else:
             # Toggle mode (default): press toggles recording state
             self.command_bus.dispatch(ToggleRecordingIntent())
+            if self.input_listener:
+                self.input_listener.reset_chord_state()
 
     def _on_hotkey_release(self) -> None:
         """Callback from input handler when activation key is released."""
@@ -1029,6 +1032,15 @@ class ApplicationCoordinator:
         """Open the main pywebview window. Blocks until closed."""
         try:
             import webview
+
+            if platform.system() == "Linux":
+                try:
+                    from gi.repository import GLib
+
+                    GLib.set_prgname("vociferous")
+                    GLib.set_application_name("Vociferous")
+                except Exception:
+                    logger.debug("Could not set GTK app identity", exc_info=True)
 
             from src.core.resource_manager import ResourceManager
 

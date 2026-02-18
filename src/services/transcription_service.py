@@ -394,6 +394,55 @@ def _strip_internal_silence(
     return result
 
 
+def _is_effective_silence(
+    audio_data: NDArray[np.int16],
+    sample_rate: int = AudioConfig.DEFAULT_SAMPLE_RATE,
+    frame_ms: int = 30,
+    vad_aggressiveness: int = 3,
+    min_speech_frames: int = 2,
+    rms_threshold: float = 0.003,
+    peak_threshold: float = 0.02,
+) -> bool:
+    """Return True when audio is effectively silent.
+
+    Uses a hybrid check:
+    1) Fast energy gate (RMS + peak) to reject obvious silence/noise floor.
+    2) WebRTC VAD frame count for low-amplitude edge cases.
+    """
+    if audio_data.size == 0:
+        return True
+
+    audio_float = audio_data.astype(np.float32) / AudioConfig.INT16_SCALE
+    rms = float(np.sqrt(np.mean(audio_float**2)))
+    peak = float(np.max(np.abs(audio_float)))
+
+    if rms < rms_threshold and peak < peak_threshold:
+        return True
+
+    frame_size = int(sample_rate * frame_ms / 1000)
+    total_frames = len(audio_data) // frame_size
+    if total_frames == 0:
+        return True
+
+    vad = webrtcvad.Vad(vad_aggressiveness)
+    speech_frames = 0
+
+    for i in range(total_frames):
+        start = i * frame_size
+        end = start + frame_size
+        frame = audio_data[start:end]
+        try:
+            if vad.is_speech(frame.tobytes(), sample_rate):
+                speech_frames += 1
+                if speech_frames >= min_speech_frames:
+                    return False
+        except Exception:
+            # If VAD fails on a frame, do not hard-fail transcription.
+            continue
+
+    return True
+
+
 def transcribe(
     audio_data: NDArray[np.int16] | None,
     settings: VociferousSettings,
@@ -434,6 +483,13 @@ def transcribe(
     # 3. Clip trailing silence ("thank you", "thanks for watching"
     #    hallucinations on silent frames at the end).
     audio_data = _trim_trailing_silence(audio_data)
+
+    # 4. Explicit silence guard.  If the recording contains no effective speech,
+    #    do not call whisper at all (prevents silent hallucinations like
+    #    "thank you"/"thanks for watching").
+    if _is_effective_silence(audio_data):
+        logger.info("Detected raw silence after pre-processing; skipping transcription")
+        return "", 0
 
     # Convert int16 → float32 (whisper.cpp expects float32 in [-1, 1])
     try:

@@ -13,13 +13,16 @@
 
     import { ws } from "../lib/ws";
     import { onMount } from "svelte";
-    import { Mic, Square, Copy, Check, Pencil, Trash2, Save, Undo2, Loader2 } from "lucide-svelte";
+    import { Mic, Square, Copy, Check, Pencil, Trash2, Save, Undo2, Loader2, Sparkles } from "lucide-svelte";
+    import { nav } from "../lib/navigation.svelte";
     import WorkspacePanel from "../lib/components/WorkspacePanel.svelte";
     import BarSpectrumVisualizer from "../lib/components/BarSpectrumVisualizer.svelte";
     import {
         deleteTranscript as apiDeleteTranscript,
         dispatchIntent,
+        getConfig,
         getHealth,
+        getTranscript,
         getTranscripts,
         getMotd,
     } from "../lib/api";
@@ -35,6 +38,7 @@
     let durationMs = $state(0);
     let speechDurationMs = $state(0);
     let copied = $state(false);
+    let refinementEnabled = $state(true);
 
     let visualizerRef: BarSpectrumVisualizer | undefined = $state();
 
@@ -106,8 +110,45 @@
         return `${Math.round(words / minutes)} wpm`;
     }
 
+    function formatTranscriptTimestamp(iso: string): string {
+        if (!iso) return "";
+        const dt = new Date(iso);
+        return dt.toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+        });
+    }
+
+    async function openTranscript(id: number, mode: "view" | "edit" = "view"): Promise<void> {
+        try {
+            const t = await getTranscript(id);
+            transcriptText = t.text || t.normalized_text || t.raw_text || "";
+            transcriptId = t.id;
+            transcriptTimestamp = formatTranscriptTimestamp(t.created_at || t.timestamp || "");
+            durationMs = t.duration_ms ?? 0;
+            speechDurationMs = t.speech_duration_ms ?? 0;
+            if (mode === "edit") {
+                nav.beginEditSession();
+                editText = transcriptText;
+                viewState = "editing";
+            } else {
+                viewState = "viewing";
+            }
+        } catch (e) {
+            console.error("Failed to open transcript:", e);
+        }
+    }
+
     /* ===== WebSocket handlers ===== */
     onMount(() => {
+        getConfig()
+            .then((config) => {
+                refinementEnabled = (config as any)?.refinement?.enabled ?? true;
+            })
+            .catch(() => {});
+
         loadRecentSessions();
         getMotd()
             .then((res) => {
@@ -153,7 +194,7 @@
                 transcriptText = `Error: ${data.message}`;
                 viewState = "ready";
             }),
-            ws.on("motd_ready", (data) => {
+            ws.on("motd_ready", (data: any) => {
                 slmInsight = data.text || "";
             }),
             ws.on("audio_spectrum", (data) => {
@@ -161,8 +202,22 @@
                     visualizerRef.addSpectrum(data.bands);
                 }
             }),
+            ws.on("config_updated", (data) => {
+                const refinement = (data as any)?.refinement;
+                if (typeof refinement === "object" && refinement !== null && "enabled" in refinement) {
+                    refinementEnabled = Boolean((refinement as any).enabled);
+                }
+            }),
         ];
         return () => unsubs.forEach((fn) => fn());
+    });
+
+    $effect(() => {
+        if (nav.current !== "transcribe") return;
+        const pendingRequest = nav.consumePendingTranscriptRequest();
+        if (pendingRequest != null) {
+            void openTranscript(pendingRequest.id, pendingRequest.mode);
+        }
     });
 
     /* ===== Actions ===== */
@@ -194,6 +249,7 @@
 
     function enterEditMode() {
         if (!hasText || isRecording || isTranscribing) return;
+        nav.beginEditSession();
         editText = transcriptText;
         viewState = "editing";
     }
@@ -207,6 +263,7 @@
             .then(() => {
                 transcriptText = editText;
                 viewState = "viewing";
+                nav.completeEditSession();
             })
             .catch((e) => console.error("Failed to save edits:", e));
     }
@@ -214,6 +271,7 @@
     function discardEdits() {
         editText = "";
         viewState = "viewing";
+        nav.completeEditSession();
     }
 
     async function deleteTranscript() {
@@ -228,12 +286,18 @@
         }
     }
 
-    function resetToIdle() {
-        if (viewState === "ready" || viewState === "viewing") {
-            viewState = "idle";
-            transcriptText = "";
-            transcriptId = null;
-        }
+    function startNewRecording() {
+        transcriptText = "";
+        transcriptId = null;
+        transcriptTimestamp = "";
+        durationMs = 0;
+        speechDurationMs = 0;
+        ws.send("start_recording");
+    }
+
+    function goToRefine() {
+        if (transcriptId == null) return;
+        nav.navigate("refine", transcriptId);
     }
 </script>
 
@@ -540,11 +604,22 @@
                     <Trash2 size={16} /> Delete
                 </button>
 
+                {#if refinementEnabled}
+                    <button
+                        class="inline-flex items-center gap-1.5 h-8 px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-xs)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)]"
+                        onclick={goToRefine}
+                        title="Refine transcript"
+                        disabled={transcriptId == null}
+                    >
+                        <Sparkles size={16} /> Refine
+                    </button>
+                {/if}
+
                 <div class="flex-1"></div>
 
                 <button
                     class="inline-flex items-center gap-1.5 h-8 px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-xs)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)]"
-                    onclick={resetToIdle}
+                    onclick={startNewRecording}
                     title="New recording"
                 >
                     <Mic size={16} /> New

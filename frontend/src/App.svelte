@@ -98,13 +98,25 @@
         {#if !appReady}
             <!-- Waiting for initial status check -->
         {:else}
-            <IconRail currentView={nav.current} {hiddenViews} onNavigate={handleNavigate} />
+            <IconRail
+                currentView={nav.current}
+                navigationLocked={nav.isNavigationLocked}
+                {hiddenViews}
+                onNavigate={handleNavigate}
+            />
 
             <main class="flex-1 overflow-hidden bg-[var(--surface-secondary)]">
                 <!-- TranscribeView stays mounted to preserve recording/visualizer state -->
                 <div class="h-full" style:display={nav.current === "transcribe" ? "block" : "none"}>
                     <TranscribeView />
                 </div>
+
+                {#if refinementEnabled}
+                    <!-- RefineView stays mounted to preserve picker/instruction/result state -->
+                    <div class="h-full" style:display={nav.current === "refine" ? "block" : "none"}>
+                        <RefineView />
+                    </div>
+                {/if}
 
                 {#if nav.current === "history"}
                     <HistoryView />
@@ -114,8 +126,6 @@
                     <SettingsView />
                 {:else if nav.current === "projects"}
                     <ProjectsView />
-                {:else if nav.current === "refine"}
-                    <RefineView />
                 {:else if nav.current === "user"}
                     <UserView />
                 {/if}

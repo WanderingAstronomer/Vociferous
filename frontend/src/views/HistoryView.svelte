@@ -17,9 +17,7 @@
         deleteTranscript,
         deleteVariant,
         refineTranscript,
-        dispatchIntent,
         getProjects,
-        assignProject,
         batchAssignProject,
         batchDeleteTranscripts,
         type Transcript,
@@ -45,8 +43,6 @@
         Loader2,
         X,
         Pencil,
-        Save,
-        Undo2,
         FolderOpen,
     } from "lucide-svelte";
     import WorkspacePanel from "../lib/components/WorkspacePanel.svelte";
@@ -72,8 +68,6 @@
     let refining = $state<number | null>(null);
     let filterText = $state("");
     let collapsedDays = $state(new Set<string>());
-    let isEditing = $state(false);
-    let editText = $state("");
     let projects: Project[] = $state([]);
     let initialCollapseApplied = $state(false);
     let projectMenuOpen = $state(false);
@@ -86,12 +80,12 @@
 
     /** Height of the transcript preview panel in px. null = auto (flex-1). */
     let previewHeight: number | null = $state(null);
-    /** Which grab bar is being dragged: null | 'preview' | 'variants' */
-    let dragging: "preview" | "variants" | null = $state(null);
+    /** Which grab bar is being dragged: null | 'preview' */
+    let dragging: "preview" | null = $state(null);
     /** Reference to the detail column container for bounds calculation. */
     let detailColumnEl: HTMLDivElement | undefined = $state(undefined);
 
-    function startDrag(bar: "preview" | "variants") {
+    function startDrag(bar: "preview") {
         return (e: PointerEvent) => {
             e.preventDefault();
             dragging = bar;
@@ -105,17 +99,10 @@
 
         // Find the preview panel and variants panel by data attributes
         const previewEl = detailColumnEl.querySelector("[data-panel='preview']") as HTMLElement | null;
-        const variantsEl = detailColumnEl.querySelector("[data-panel='variants']") as HTMLElement | null;
-
         if (dragging === "preview" && previewEl) {
             const rect = previewEl.getBoundingClientRect();
             const newHeight = Math.max(80, Math.min(e.clientY - rect.top, 600));
             previewHeight = newHeight;
-        } else if (dragging === "variants" && variantsEl) {
-            const rect = variantsEl.getBoundingClientRect();
-            const newHeight = Math.max(60, Math.min(e.clientY - rect.top, 500));
-            variantsEl.style.height = `${newHeight}px`;
-            variantsEl.style.maxHeight = `${newHeight}px`;
         }
     }
 
@@ -287,18 +274,15 @@
             loadEntryDetail(singleId);
         } else {
             // Multi-select: clear detail pane
-            isEditing = false;
-            editText = "";
             selectedId = null;
             selectedEntry = null;
         }
     }
 
     async function loadEntryDetail(id: number) {
-        if (selectedId === id && !isEditing) return;
-        isEditing = false;
-        editText = "";
+        if (selectedId === id) return;
         selectedId = id;
+        previewHeight = null;
         detailLoading = true;
         try {
             selectedEntry = await getTranscript(id);
@@ -369,31 +353,9 @@
         }
     }
 
-    function enterEditMode() {
-        if (!selectedEntry || !selectedText) return;
-        editText = selectedText;
-        isEditing = true;
-    }
-
-    async function saveEdits() {
-        if (!selectedEntry || !editText.trim()) return;
-        try {
-            await dispatchIntent("commit_edits", {
-                transcript_id: selectedEntry.id,
-                content: editText.trim(),
-            });
-            selectedEntry = await getTranscript(selectedEntry.id);
-            isEditing = false;
-            editText = "";
-            loadHistory();
-        } catch (e: any) {
-            console.error("Failed to save edits:", e);
-        }
-    }
-
-    function cancelEdits() {
-        isEditing = false;
-        editText = "";
+    function editSelected() {
+        if (!selectedEntry) return;
+        nav.navigateToEdit(selectedEntry.id, { view: "history", transcriptId: selectedEntry.id });
     }
 
     function openProjectMenu(event: MouseEvent, transcriptId: number) {
@@ -458,7 +420,7 @@
             }
         }
         // Ctrl+A / Cmd+A: select all visible transcripts
-        if ((event.ctrlKey || event.metaKey) && event.key === "a" && !isEditing) {
+        if ((event.ctrlKey || event.metaKey) && event.key === "a") {
             event.preventDefault();
             selection.selectAll(orderedIds);
             selectedId = null;
@@ -469,7 +431,12 @@
     /* ===== WebSocket ===== */
 
     onMount(() => {
-        loadHistory();
+        loadHistory().then(() => {
+            const pending = nav.consumePendingTranscriptRequest();
+            if (pending && pending.id !== selectedId) {
+                selectEntry(pending.id);
+            }
+        });
         getProjects()
             .then((p) => (projects = p))
             .catch(() => {});
@@ -678,9 +645,14 @@
                 </div>
             </div>
         {:else if selectedEntry}
-            <div class="flex-1 flex flex-col p-4 gap-2 overflow-hidden" bind:this={detailColumnEl}
-                 onpointermove={onDragMove} onpointerup={onDragEnd} onpointercancel={onDragEnd}
-                 role="presentation">
+            <div
+                class="flex-1 flex flex-col p-4 gap-2 overflow-hidden"
+                bind:this={detailColumnEl}
+                onpointermove={onDragMove}
+                onpointerup={onDragEnd}
+                onpointercancel={onDragEnd}
+                role="presentation"
+            >
                 <h2 class="text-xl font-semibold text-[var(--text-primary)] m-0 leading-tight text-center">
                     {getTitle(selectedEntry)}
                 </h2>
@@ -711,22 +683,20 @@
                     {/if}
                 </div>
 
-                <div class="overflow-hidden flex flex-col relative group" data-panel="preview"
-                     style={previewHeight != null ? `height:${previewHeight}px;max-height:${previewHeight}px;flex-shrink:0;` : 'flex:1 1 auto;min-height:80px;'}>
-                    <WorkspacePanel editing={isEditing}>
+                <div
+                    class="overflow-hidden flex flex-col relative group"
+                    data-panel="preview"
+                    style={previewHeight != null
+                        ? `height:${previewHeight}px;max-height:${previewHeight}px;flex-shrink:0;`
+                        : "flex:1 1 auto;min-height:80px;"}
+                >
+                    <WorkspacePanel>
                         <div class="overflow-y-auto h-full">
-                            {#if isEditing}
-                                <textarea
-                                    class="w-full min-h-[120px] h-full text-base leading-relaxed text-[var(--text-primary)] bg-[var(--surface-primary)] border border-[var(--accent)] rounded p-2 whitespace-pre-wrap break-words resize-none outline-none"
-                                    bind:value={editText}
-                                ></textarea>
-                            {:else}
-                                <p
-                                    class="text-base leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap break-words m-0"
-                                >
-                                    {selectedText}
-                                </p>
-                            {/if}
+                            <p
+                                class="text-base leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap break-words m-0"
+                            >
+                                {selectedText}
+                            </p>
                         </div>
                     </WorkspacePanel>
                 </div>
@@ -734,13 +704,20 @@
                 <!-- Grab bar: between preview and variants/buttons -->
                 <div
                     class="h-1.5 shrink-0 cursor-row-resize flex items-center justify-center group/grab rounded
-                           hover:bg-[var(--hover-overlay)] transition-colors {dragging === 'preview' ? 'bg-[var(--accent)]' : ''}"
-                    onpointerdown={startDrag('preview')}
+                           hover:bg-[var(--hover-overlay)] transition-colors {dragging === 'preview'
+                        ? 'bg-[var(--accent)]'
+                        : ''}"
+                    onpointerdown={startDrag("preview")}
                     role="separator"
                     aria-orientation="horizontal"
                     title="Drag to resize"
                 >
-                    <div class="w-8 h-0.5 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover/grab:opacity-100 transition-opacity {dragging === 'preview' ? 'opacity-100 bg-[var(--accent)]' : ''}"></div>
+                    <div
+                        class="w-8 h-0.5 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover/grab:opacity-100 transition-opacity {dragging ===
+                        'preview'
+                            ? 'opacity-100 bg-[var(--accent)]'
+                            : ''}"
+                    ></div>
                 </div>
 
                 {#if visibleVariants.length > 0}
@@ -771,18 +748,6 @@
                             </div>
                         {/each}
                     </div>
-
-                    <!-- Grab bar: between variants and footer -->
-                    <div
-                        class="h-1.5 shrink-0 cursor-row-resize flex items-center justify-center group/grab rounded
-                               hover:bg-[var(--hover-overlay)] transition-colors {dragging === 'variants' ? 'bg-[var(--accent)]' : ''}"
-                        onpointerdown={startDrag('variants')}
-                        role="separator"
-                        aria-orientation="horizontal"
-                        title="Drag to resize"
-                    >
-                        <div class="w-8 h-0.5 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover/grab:opacity-100 transition-opacity {dragging === 'variants' ? 'opacity-100 bg-[var(--accent)]' : ''}"></div>
-                    </div>
                 {/if}
 
                 <div
@@ -797,55 +762,37 @@
                 </div>
 
                 <div class="flex items-center gap-2 shrink-0 pt-2">
-                    {#if isEditing}
-                        <button
-                            class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-[var(--accent)] text-[var(--gray-0)] hover:bg-[var(--accent-hover)] transition-colors"
-                            onclick={saveEdits}
-                            title="Save edits"
-                        >
-                            <Save size={14} /> Save
-                        </button>
-                        <button
-                            class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)] transition-colors"
-                            onclick={cancelEdits}
-                            title="Discard edits"
-                        >
-                            <Undo2 size={14} /> Cancel
-                        </button>
-                    {:else}
-                        <button
-                            class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-[var(--surface-tertiary)] text-[var(--text-primary)] hover:bg-[var(--gray-6)] transition-colors"
-                            onclick={enterEditMode}
-                            title="Edit"
-                        >
-                            <Pencil size={14} /> Edit
-                        </button>
-                        <button
-                            class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-[var(--surface-tertiary)] text-[var(--text-primary)] hover:bg-[var(--gray-6)] transition-colors"
-                            onclick={copyText}
-                            title="Copy"
-                        >
-                            {#if copied}<Check size={14} /> Copied{:else}<Copy size={14} /> Copy{/if}
-                        </button>
-                        <button
-                            class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                            onclick={handleRefine}
-                            title="Refine"
-                            disabled={refining === selectedId}
-                        >
-                            {#if refining === selectedId}<Loader2 size={14} class="animate-spin" /> Refining…{:else}<Sparkles
-                                    size={14}
-                                /> Refine{/if}
-                        </button>
-                        <span class="text-xs text-[var(--text-tertiary)]">Right-click transcript to assign project</span
-                        >
-                        <div class="flex-1"></div>
-                        <button
-                            class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-transparent text-[var(--text-tertiary)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-surface)] transition-colors"
-                            onclick={handleDelete}
-                            title="Delete"><Trash2 size={14} /> Delete</button
-                        >
-                    {/if}
+                    <button
+                        class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-[var(--surface-tertiary)] text-[var(--text-primary)] hover:bg-[var(--gray-6)] transition-colors"
+                        onclick={editSelected}
+                        title="Edit"
+                    >
+                        <Pencil size={14} /> Edit
+                    </button>
+                    <button
+                        class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-[var(--surface-tertiary)] text-[var(--text-primary)] hover:bg-[var(--gray-6)] transition-colors"
+                        onclick={copyText}
+                        title="Copy"
+                    >
+                        {#if copied}<Check size={14} /> Copied{:else}<Copy size={14} /> Copy{/if}
+                    </button>
+                    <button
+                        class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        onclick={handleRefine}
+                        title="Refine"
+                        disabled={refining === selectedId}
+                    >
+                        {#if refining === selectedId}<Loader2 size={14} class="animate-spin" /> Refining…{:else}<Sparkles
+                                size={14}
+                            /> Refine{/if}
+                    </button>
+                    <span class="text-xs text-[var(--text-tertiary)]">Right-click transcript to assign project</span>
+                    <div class="flex-1"></div>
+                    <button
+                        class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-transparent text-[var(--text-tertiary)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-surface)] transition-colors"
+                        onclick={handleDelete}
+                        title="Delete"><Trash2 size={14} /> Delete</button
+                    >
                 </div>
             </div>
         {:else}

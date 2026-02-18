@@ -105,6 +105,9 @@ bash scripts/install.sh
 # Download ASR and SLM models (~2–4 GB)
 make provision
 
+# Optional: install desktop launcher (.desktop entry)
+make install-desktop
+
 # Run the application
 ./vociferous.sh
 ```
@@ -115,6 +118,10 @@ make provision
 # Requires Homebrew
 bash scripts/install_mac.sh
 make provision
+
+# Optional: install launcher shortcut
+make install-shortcut-mac
+
 ./vociferous.sh
 ```
 
@@ -123,8 +130,33 @@ make provision
 ```powershell
 # Run from PowerShell as Administrator
 .\scripts\install_windows.ps1
+
+# Optional: install Desktop + Start Menu shortcuts
+powershell -ExecutionPolicy Bypass -File .\scripts\install_windows_shortcut.ps1
+
 # Then from cmd or PowerShell
 .\vociferous.bat
+```
+
+### Desktop Launcher / App Shortcut
+
+- **Linux**: `make install-desktop` (or `make install-shortcut-linux`) installs `vociferous.desktop` into `~/.local/share/applications/`.
+- **macOS**: `make install-shortcut-mac` creates `~/Applications/Vociferous.command` and a Desktop shortcut.
+- **Windows**: `powershell -ExecutionPolicy Bypass -File .\scripts\install_windows_shortcut.ps1` creates Desktop + Start Menu shortcuts.
+
+To remove shortcuts:
+
+```bash
+# Linux
+make uninstall-desktop
+
+# macOS
+make uninstall-shortcut-mac
+```
+
+```powershell
+# Windows
+powershell -ExecutionPolicy Bypass -File .\scripts\uninstall_windows_shortcut.ps1
 ```
 
 ### Docker (Linux only — requires X11/Wayland)

@@ -4,7 +4,18 @@
     import { ws } from "../lib/ws";
     import { nav } from "../lib/navigation.svelte";
     import WorkspacePanel from "../lib/components/WorkspacePanel.svelte";
-    import { Sparkles, Copy, Check, RotateCcw, ThumbsUp, X, Loader2, FileText, ChevronDown } from "lucide-svelte";
+    import {
+        Sparkles,
+        Copy,
+        Check,
+        RotateCcw,
+        ThumbsUp,
+        Pencil,
+        X,
+        Loader2,
+        FileText,
+        ChevronDown,
+    } from "lucide-svelte";
 
     const DEFAULT_REFINEMENT_LEVEL = 0;
 
@@ -92,6 +103,11 @@
         setTimeout(() => (accepted = false), 2000);
     }
 
+    function editSelectedTranscript() {
+        if (selectedId == null) return;
+        nav.navigateToEdit(selectedId, { view: "refine", transcriptId: selectedId });
+    }
+
     function handleDiscard() {
         if (selectedId != null && currentVariantId != null) {
             // Fire-and-forget: delete the variant from persistence
@@ -143,13 +159,7 @@
     let unsubRefinementProgress: (() => void) | undefined;
 
     onMount(() => {
-        loadTranscripts().then(() => {
-            // If navigated here with a pending transcript (e.g., from History/Search Refine button)
-            const pendingId = nav.consumePendingTranscript();
-            if (pendingId != null) {
-                selectTranscript(pendingId);
-            }
-        });
+        loadTranscripts();
 
         unsubRefinement = ws.on("refinement_complete", (data) => {
             if (data.transcript_id === selectedId) {
@@ -182,11 +192,21 @@
         unsubRefinementProgress?.();
         stopRefineTimer();
     });
+
+    $effect(() => {
+        if (nav.current !== "refine") return;
+        const pending = nav.consumePendingTranscriptRequest();
+        if (!pending) return;
+        if (pending.id === selectedId) return;
+        void selectTranscript(pending.id);
+    });
 </script>
 
 <div class="flex flex-col h-full bg-[var(--surface-primary)] overflow-hidden">
     <!-- Transcript Picker (compact top bar) -->
-    <div class="relative py-[var(--space-3)] px-[var(--space-4)] border-b border-[var(--shell-border)]">
+    <div
+        class="relative py-[var(--space-3)] px-[var(--space-4)] border-b border-[var(--shell-border)] flex justify-center"
+    >
         <button
             class="flex items-center gap-[var(--space-2)] py-[var(--space-2)] px-[var(--space-3)] border border-[var(--shell-border)] rounded-[var(--radius-md)] bg-[var(--surface-secondary)] text-[var(--text-primary)] text-[var(--text-sm)] cursor-pointer w-full max-w-[400px] text-left transition-[border-color] duration-[var(--transition-fast)] hover:border-[var(--accent)]"
             onclick={() => (showPicker = !showPicker)}
@@ -204,7 +224,7 @@
 
         {#if showPicker}
             <div
-                class="absolute top-full left-[var(--space-4)] right-[var(--space-4)] max-w-[400px] max-h-[280px] overflow-y-auto bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-[var(--radius-md)] shadow-[0_8px_24px_rgba(0,0,0,0.3)] z-10"
+                class="absolute top-full left-1/2 -translate-x-1/2 w-full max-w-[400px] max-h-[280px] overflow-y-auto bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-[var(--radius-md)] shadow-[0_8px_24px_rgba(0,0,0,0.3)] z-10"
             >
                 {#if loadingTranscripts}
                     <div
@@ -250,18 +270,28 @@
                 <h3 class="m-0 text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-secondary)]">
                     Original Transcript
                 </h3>
-                {#if originalText}
-                    <button
-                        class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
-                        onclick={handleCopyOriginal}
-                    >
-                        {#if copiedOriginal}
-                            <Check size={14} />
-                        {:else}
-                            <Copy size={14} />
-                        {/if}
-                    </button>
-                {/if}
+                <div class="flex items-center gap-1">
+                    {#if originalText}
+                        <button
+                            class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
+                            onclick={handleCopyOriginal}
+                            title="Copy original"
+                        >
+                            {#if copiedOriginal}
+                                <Check size={14} />
+                            {:else}
+                                <Copy size={14} />
+                            {/if}
+                        </button>
+                        <button
+                            class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
+                            onclick={editSelectedTranscript}
+                            title="Edit transcript"
+                        >
+                            <Pencil size={14} />
+                        </button>
+                    {/if}
+                </div>
             </div>
             <div class="flex-1 overflow-y-auto p-[var(--space-4)]">
                 {#if originalText}
@@ -293,18 +323,28 @@
                 <h3 class="m-0 text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-secondary)]">
                     Refined / AI Suggestion
                 </h3>
-                {#if refinedText}
-                    <button
-                        class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
-                        onclick={handleCopyRefined}
-                    >
-                        {#if copied}
-                            <Check size={14} />
-                        {:else}
-                            <Copy size={14} />
-                        {/if}
-                    </button>
-                {/if}
+                <div class="flex items-center gap-1">
+                    {#if refinedText}
+                        <button
+                            class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
+                            onclick={handleCopyRefined}
+                            title="Copy refined"
+                        >
+                            {#if copied}
+                                <Check size={14} />
+                            {:else}
+                                <Copy size={14} />
+                            {/if}
+                        </button>
+                        <button
+                            class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
+                            onclick={editSelectedTranscript}
+                            title="Edit transcript"
+                        >
+                            <Pencil size={14} />
+                        </button>
+                    {/if}
+                </div>
             </div>
             <div class="flex-1 overflow-y-auto p-[var(--space-4)]">
                 {#if isRefining}
@@ -382,18 +422,20 @@
                     <ThumbsUp size={15} /> Accept & Copy
                 {/if}
             </button>
-            <button
-                class="flex items-center gap-[var(--space-1)] py-[var(--space-2)] px-[var(--space-4)] border border-[var(--shell-border)] rounded-[var(--radius-md)] bg-[var(--surface-secondary)] text-[var(--text-secondary)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer transition-[color,border-color,background] duration-[var(--transition-fast)] hover:text-[var(--text-primary)] hover:border-[var(--accent)]"
-                onclick={handleRerun}
-            >
-                <RotateCcw size={15} /> Re-run
-            </button>
-            <button
-                class="flex items-center gap-[var(--space-1)] py-[var(--space-2)] px-[var(--space-4)] border border-[var(--shell-border)] rounded-[var(--radius-md)] bg-[var(--surface-secondary)] text-[var(--text-secondary)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer transition-[color,border-color,background] duration-[var(--transition-fast)] hover:text-[var(--text-primary)] hover:border-[var(--accent)]"
-                onclick={handleDiscard}
-            >
-                <X size={15} /> Discard
-            </button>
+            {#if !accepted}
+                <button
+                    class="flex items-center gap-[var(--space-1)] py-[var(--space-2)] px-[var(--space-4)] border border-[var(--shell-border)] rounded-[var(--radius-md)] bg-[var(--surface-secondary)] text-[var(--text-secondary)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer transition-[color,border-color,background] duration-[var(--transition-fast)] hover:text-[var(--text-primary)] hover:border-[var(--accent)]"
+                    onclick={handleRerun}
+                >
+                    <RotateCcw size={15} /> Re-run
+                </button>
+                <button
+                    class="flex items-center gap-[var(--space-1)] py-[var(--space-2)] px-[var(--space-4)] border border-[var(--shell-border)] rounded-[var(--radius-md)] bg-[var(--surface-secondary)] text-[var(--text-secondary)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer transition-[color,border-color,background] duration-[var(--transition-fast)] hover:text-[var(--text-primary)] hover:border-[var(--accent)]"
+                    onclick={handleDiscard}
+                >
+                    <X size={15} /> Discard
+                </button>
+            {/if}
         {:else}
             <button
                 class="flex items-center gap-[var(--space-1)] py-[var(--space-2)] px-[var(--space-4)] border border-[var(--accent)] rounded-[var(--radius-md)] bg-[var(--accent)] text-white text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer transition-[color,border-color,background] duration-[var(--transition-fast)] hover:bg-[var(--blue-5)] hover:border-[var(--blue-5)] disabled:opacity-50 disabled:cursor-not-allowed"

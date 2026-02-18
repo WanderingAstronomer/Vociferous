@@ -27,8 +27,10 @@ class KeyChord:
     def is_active(self) -> bool:
         """Check if all keys in the chord are currently pressed."""
         return all(
-            any(k in self.pressed_keys for k in key)
-            if isinstance(key, frozenset)
-            else key in self.pressed_keys
+            any(k in self.pressed_keys for k in key) if isinstance(key, frozenset) else key in self.pressed_keys
             for key in self.keys
         )
+
+    def reset(self) -> None:
+        """Clear all pressed-key state (used to recover from missed releases)."""
+        self.pressed_keys.clear()

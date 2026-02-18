@@ -25,7 +25,7 @@
     import { nav } from "../lib/navigation.svelte";
     import { SelectionManager } from "../lib/selection.svelte";
     import { onMount } from "svelte";
-    import { Search, Copy, Check, Trash2, Sparkles, X, FileText, Loader2, FolderOpen } from "lucide-svelte";
+    import { Search, Copy, Check, Trash2, Sparkles, Pencil, X, FileText, Loader2, FolderOpen } from "lucide-svelte";
 
     /* ===== State ===== */
 
@@ -236,6 +236,11 @@
         nav.navigate("refine", selectedId);
     }
 
+    function editSelected() {
+        if (selectedId == null) return;
+        nav.navigateToEdit(selectedId, { view: "search", transcriptId: selectedId });
+    }
+
     /* ===== Project Menu ===== */
 
     function openProjectMenu(event: MouseEvent) {
@@ -419,6 +424,12 @@
                     onclick={copySelectedText}
                 >
                     {#if copied}<Check size={14} /> Copied{:else}<Copy size={14} /> Copy{/if}
+                </button>
+                <button
+                    class="inline-flex items-center gap-1.5 h-[34px] px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-transparent text-[var(--text-secondary)] hover:enabled:text-[var(--text-primary)] hover:enabled:bg-[var(--hover-overlay)] disabled:opacity-50 disabled:cursor-not-allowed"
+                    onclick={editSelected}
+                >
+                    <Pencil size={14} /> Edit
                 </button>
                 <button
                     class="inline-flex items-center gap-1.5 h-[34px] px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-transparent text-[var(--text-secondary)] hover:enabled:text-[var(--text-primary)] hover:enabled:bg-[var(--hover-overlay)] disabled:opacity-50 disabled:cursor-not-allowed"

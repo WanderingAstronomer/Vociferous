@@ -44,10 +44,7 @@ class EvdevBackend:
 
         # Initialize input devices — filter to keyboards and key-capable devices
         all_devices = [evdev.InputDevice(path) for path in evdev.list_devices()]
-        self.devices = [
-            d for d in all_devices
-            if evdev.ecodes.EV_KEY in (d.capabilities() or {})
-        ]
+        self.devices = [d for d in all_devices if evdev.ecodes.EV_KEY in (d.capabilities() or {})]
         # Close devices we won't use
         for d in all_devices:
             if d not in self.devices:
@@ -55,10 +52,7 @@ class EvdevBackend:
                     d.close()
                 except Exception:
                     pass
-        logger.info(
-            f"Evdev: {len(self.devices)} key-capable devices "
-            f"(of {len(all_devices)} total)"
-        )
+        logger.info(f"Evdev: {len(self.devices)} key-capable devices (of {len(all_devices)} total)")
         if not self.devices:
             raise RuntimeError(
                 "No key-capable input devices found. "
@@ -108,9 +102,7 @@ class EvdevBackend:
 
                 r, _, _ = select.select(devices_snapshot, [], [], 0.1)
 
-                devices_to_remove = [
-                    device for device in r if not self._read_device_events(device)
-                ]
+                devices_to_remove = [device for device in r if not self._read_device_events(device)]
 
                 for device in devices_to_remove:
                     self._remove_device(device)
@@ -172,7 +164,7 @@ class EvdevBackend:
             return None, None
 
         match key_event.keystate:
-            case state if state in (key_event.key_down, key_event.key_hold):
+            case state if state == key_event.key_down:
                 return key_code, InputEvent.KEY_PRESS
             case state if state == key_event.key_up:
                 return key_code, InputEvent.KEY_RELEASE

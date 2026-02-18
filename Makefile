@@ -2,7 +2,7 @@
 # Usage: make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help install install-desktop uninstall-desktop run test format lint build clean docker docker-gpu provision fix-gpu
+.PHONY: help install install-desktop uninstall-desktop install-shortcut-linux uninstall-shortcut-linux install-shortcut-mac uninstall-shortcut-mac install-shortcut-windows uninstall-shortcut-windows run test format lint build clean docker docker-gpu provision fix-gpu
 
 DESKTOP_DEST := $(HOME)/.local/share/applications/vociferous.desktop
 
@@ -38,6 +38,24 @@ uninstall-desktop: ## Remove the installed .desktop launcher
 	@rm -f $(DESKTOP_DEST) vociferous.desktop
 	@update-desktop-database $(dir $(DESKTOP_DEST)) 2>/dev/null || true
 	@echo "Removed desktop entry"
+
+install-shortcut-linux: ## Linux alias for install-desktop
+	@$(MAKE) install-desktop
+
+uninstall-shortcut-linux: ## Linux alias for uninstall-desktop
+	@$(MAKE) uninstall-desktop
+
+install-shortcut-mac: ## Install macOS launcher shortcut (.command + Desktop link)
+	@bash scripts/install_mac_shortcut.sh
+
+uninstall-shortcut-mac: ## Remove macOS launcher shortcut
+	@bash scripts/uninstall_mac_shortcut.sh
+
+install-shortcut-windows: ## Install Windows Desktop + Start Menu shortcuts
+	@powershell -ExecutionPolicy Bypass -File scripts/install_windows_shortcut.ps1
+
+uninstall-shortcut-windows: ## Remove Windows Desktop + Start Menu shortcuts
+	@powershell -ExecutionPolicy Bypass -File scripts/uninstall_windows_shortcut.ps1
 
 fix-gpu: ## Fix NVIDIA UVM module for GPU acceleration
 	@bash scripts/fix_gpu.sh

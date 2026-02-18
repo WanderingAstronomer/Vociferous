@@ -1,7 +1,6 @@
 <script lang="ts">
     import { Mic, ScrollText, FolderOpen, Search, Sparkles, Settings, User } from "lucide-svelte";
 
-    import type { Component } from "svelte";
     import type { ViewId } from "../navigation.svelte";
 
     interface NavItem {
@@ -24,11 +23,12 @@
 
     interface Props {
         currentView: ViewId;
+        navigationLocked?: boolean;
         hiddenViews?: Set<ViewId>;
         onNavigate: (view: ViewId) => void;
     }
 
-    let { currentView, hiddenViews = new Set(), onNavigate }: Props = $props();
+    let { currentView, navigationLocked = false, hiddenViews = new Set(), onNavigate }: Props = $props();
 
     const mainItems = $derived(navItems.filter((i) => i.section === "main" && !hiddenViews.has(i.id)));
     const footerItems = $derived(navItems.filter((i) => i.section === "footer" && !hiddenViews.has(i.id)));
@@ -37,12 +37,17 @@
     let blinkTarget: ViewId | null = $state(null);
 
     function handleClick(id: ViewId) {
+        if (navigationLocked && id !== currentView) return;
         if (id === currentView) return;
         blinkTarget = id;
         setTimeout(() => {
             blinkTarget = null;
         }, 200);
         onNavigate(id);
+    }
+
+    function isLockedDestination(id: ViewId): boolean {
+        return navigationLocked && id !== currentView;
     }
 </script>
 
@@ -53,7 +58,9 @@
                 class="rail-button"
                 class:active={currentView === item.id}
                 class:blink={blinkTarget === item.id}
-                title={item.label}
+                class:locked={isLockedDestination(item.id)}
+                disabled={isLockedDestination(item.id)}
+                title={isLockedDestination(item.id) ? "Finish or discard edits first" : item.label}
                 onclick={() => handleClick(item.id)}
             >
                 <span class="flex items-center justify-center w-10 h-10 shrink-0">
@@ -72,7 +79,9 @@
                 class="rail-button"
                 class:active={currentView === item.id}
                 class:blink={blinkTarget === item.id}
-                title={item.label}
+                class:locked={isLockedDestination(item.id)}
+                disabled={isLockedDestination(item.id)}
+                title={isLockedDestination(item.id) ? "Finish or discard edits first" : item.label}
                 onclick={() => handleClick(item.id)}
             >
                 <span class="flex items-center justify-center w-10 h-10 shrink-0">
@@ -129,6 +138,11 @@
 
     .rail-button.active::before {
         height: 32px;
+    }
+
+    .rail-button.locked {
+        opacity: 0.5;
+        cursor: not-allowed;
     }
 
     .rail-button.blink {

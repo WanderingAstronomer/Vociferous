@@ -6,14 +6,13 @@
         deleteProject,
         getTranscripts,
         deleteTranscript,
-        refineTranscript,
-        assignProject,
         batchAssignProject,
         batchDeleteTranscripts,
         type Project,
         type Transcript,
     } from "../lib/api";
     import { ws } from "../lib/ws";
+    import { nav } from "../lib/navigation.svelte";
     import { SelectionManager } from "../lib/selection.svelte";
     import WorkspacePanel from "../lib/components/WorkspacePanel.svelte";
     import {
@@ -33,6 +32,7 @@
         Gauge,
         Loader2,
         ArrowUpDown,
+        Pencil,
     } from "lucide-svelte";
 
     /* ── Project Color Palette ── */
@@ -290,12 +290,12 @@
         }
     }
 
-    async function handleRefine(id: number) {
-        try {
-            await refineTranscript(id, 1);
-        } catch (e) {
-            console.error("Failed to refine:", e);
-        }
+    function handleRefine(id: number) {
+        nav.navigate("refine", id);
+    }
+
+    function handleEdit(id: number) {
+        nav.navigateToEdit(id, { view: "projects", transcriptId: id });
     }
 
     function handleCopy(text: string) {
@@ -817,6 +817,12 @@
                         {:else}
                             <Copy size={15} /> Copy
                         {/if}
+                    </button>
+                    <button
+                        class="flex items-center gap-2 p-2 px-3 border border-[var(--shell-border)] rounded-md bg-[var(--surface-primary)] text-[var(--text-secondary)] text-sm cursor-pointer transition-colors duration-150 hover:text-[var(--text-primary)] hover:border-[var(--accent)] hover:bg-[var(--hover-overlay)]"
+                        onclick={() => handleEdit(selectedTranscript!.id)}
+                    >
+                        <Pencil size={15} /> Edit
                     </button>
                     <button
                         class="flex items-center gap-2 p-2 px-3 border border-[var(--shell-border)] rounded-md bg-[var(--surface-primary)] text-[var(--text-secondary)] text-sm cursor-pointer transition-colors duration-150 hover:text-[var(--text-primary)] hover:border-[var(--accent)] hover:bg-[var(--hover-overlay)]"

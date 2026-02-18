@@ -4,6 +4,32 @@
 
 ---
 
+## v4.1.1 — Edit Flow & Input Reliability Fixes
+
+**Date:** 2026-02-18
+**Status:** Bugfix Release
+
+### Overview
+
+Patch release focused on edit-session safety, transcription edge-case handling, and launcher/input reliability.
+
+### Fixed
+
+- **Hard edit-session navigation lock:** While actively editing, sidebar navigation is blocked until Save or Discard completes, preventing accidental context loss and half-finished edits.
+- **Cross-view edit routing consistency:** Edit actions in Search, Projects, Refine, and History now open the centralized Transcribe editor directly in edit mode and return users to the originating view after completion.
+- **Transcribe "New" action behavior:** Starting a new transcript now immediately begins recording instead of waiting for extra interaction.
+- **Refine/Projects action wiring:** Refine and Edit actions now route to the intended destinations consistently across views.
+- **Silent-audio hallucination guard:** Added explicit effective-silence detection before ASR inference to prevent non-empty hallucinated output from empty/silent recordings.
+- **Hotkey stop robustness:** Improved chord/reset handling so stop/toggle hotkeys remain reliable after keyboard layout or input-device changes.
+- **Linux taskbar identity:** Updated desktop integration metadata and window identity hints so launcher/taskbar icon matching is consistent.
+
+### Quality
+
+- Frontend production build passes.
+- Regression tests for transcription silence detection pass.
+
+---
+
 ## v4.1.0 — Multi-Select & UI Polish
 
 **Date:** 2026-02-16

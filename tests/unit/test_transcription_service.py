@@ -1,9 +1,25 @@
 """Tests for transcription service post-processing."""
 
+import numpy as np
 import pytest
 
 from src.core.settings import get_settings
-from src.services.transcription_service import post_process_transcription
+from src.services.transcription_service import _is_effective_silence, post_process_transcription
+
+
+class TestSilenceDetection:
+    """Regression tests for raw silence detection guard."""
+
+    def test_detects_all_zero_audio_as_silence(self):
+        audio = np.zeros(16000, dtype=np.int16)
+        assert _is_effective_silence(audio) is True
+
+    def test_detects_tone_audio_as_non_silence(self):
+        sample_rate = 16000
+        t = np.linspace(0, 1.0, sample_rate, endpoint=False)
+        # 440Hz tone, intentionally strong enough to pass both gates.
+        tone = (0.15 * np.sin(2 * np.pi * 440 * t) * 32767).astype(np.int16)
+        assert _is_effective_silence(tone) is False
 
 
 class TestPostProcessTranscription:
