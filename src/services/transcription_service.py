@@ -515,7 +515,7 @@ def transcribe(
 
         segments = local_model.transcribe(audio_float, **transcribe_kwargs)
 
-        transcription = "".join(seg.text for seg in segments).strip()
+        transcription = _merge_segment_texts([seg.text for seg in segments])
 
         # Compute speech duration from segment timestamps.
         # Segment.t0 and .t1 are in centiseconds (10ms units).
@@ -595,6 +595,67 @@ def _collapse_repeated_phrases(text: str, min_phrase_words: int = 3, max_phrase_
     return result
 
 
+def _needs_boundary_space(left_text: str, right_text: str) -> bool:
+    """Return True when a single separator space should be inserted."""
+    if not left_text or not right_text:
+        return False
+
+    left_char = left_text[-1]
+    right_char = right_text[0]
+
+    if left_char.isspace() or right_char.isspace():
+        return False
+
+    if left_char.isalnum() and right_char.isalnum():
+        return True
+
+    if left_char in ".!?;:," and right_char.isalnum():
+        return True
+
+    return False
+
+
+def _merge_segment_texts(segment_texts: list[str]) -> str:
+    """Merge ASR segment text with boundary-aware whitespace handling."""
+    merged = ""
+
+    for chunk in segment_texts:
+        if not chunk:
+            continue
+
+        if not merged:
+            merged = chunk
+            continue
+
+        if _needs_boundary_space(merged, chunk):
+            merged += " " + chunk.lstrip()
+        else:
+            merged += chunk
+
+    return merged.strip()
+
+
+def _normalize_sentence_casing(text: str) -> str:
+    """Capitalize the first alphabetical character of each sentence."""
+    if not text:
+        return text
+
+    chars = list(text)
+    should_capitalize = True
+
+    for i, char in enumerate(chars):
+        if char.isalpha():
+            if should_capitalize:
+                chars[i] = char.upper()
+                should_capitalize = False
+            continue
+
+        if char in ".!?":
+            should_capitalize = True
+
+    return "".join(chars)
+
+
 def post_process_transcription(
     transcription: str | None,
     settings: VociferousSettings,
@@ -612,19 +673,20 @@ def post_process_transcription(
     # Collapse repeated phrases (whisper hallucination safety net)
     result = _collapse_repeated_phrases(result)
 
-    # Ensure a space after sentence-ending punctuation (. ! ? or ellipsis)
-    # when immediately followed by a letter.  Protects decimals (3.14)
-    # because digits don't match [A-Za-z].
-    result = re.sub(r"([.!?]+)([A-Za-z])", r"\1 \2", result)
+    # Deterministic whitespace normalization.
+    result = re.sub(r"\s+", " ", result).strip()
 
-    # Ensure a space after commas when immediately followed by a letter.
-    # Whisper frequently outputs "hello,world" or "yes,but" without the space.
-    # Protects numbers like "1,000" because digits don't match [A-Za-z].
-    result = re.sub(r",([A-Za-z])", r", \1", result)
+    # Remove spacing before punctuation marks.
+    result = re.sub(r"\s+([,.;:!?])", r"\1", result)
 
-    # Same treatment for semicolons and colons followed by a letter.
-    result = re.sub(r";([A-Za-z])", r"; \1", result)
-    result = re.sub(r":([A-Za-z])", r": \1", result)
+    # Ensure spacing after punctuation when followed by letters.
+    # Keep decimal numbers intact (e.g., 3.14).
+    result = re.sub(r"(\.\.\.)([A-Za-z])", r"\1 \2", result)
+    result = re.sub(r"(?<!\d)\.([A-Za-z])", r". \1", result)
+    result = re.sub(r"([!?;:,])([A-Za-z])", r"\1 \2", result)
+
+    # Deterministic sentence-start capitalization.
+    result = _normalize_sentence_casing(result)
 
     if settings.output.add_trailing_space:
         result += " "

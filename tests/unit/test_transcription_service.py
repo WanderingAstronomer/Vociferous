@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from src.core.settings import get_settings
-from src.services.transcription_service import _is_effective_silence, post_process_transcription
+from src.services.transcription_service import _is_effective_silence, _merge_segment_texts, post_process_transcription
 
 
 class TestSilenceDetection:
@@ -116,3 +116,38 @@ class TestPostProcessTranscription:
         result = post_process_transcription("  Hello world  ", get_settings())
         assert result == "Hello world"
         reset_for_tests()
+
+    # --- Segment boundary merge ---
+
+    def test_segment_boundary_inserts_missing_space(self, fresh_settings):
+        merged = _merge_segment_texts(["hello", "world"])
+        assert merged == "hello world"
+
+    def test_segment_boundary_preserves_existing_space(self, fresh_settings):
+        merged = _merge_segment_texts(["hello", " world"])
+        assert merged == "hello world"
+
+    def test_segment_boundary_inserts_space_after_sentence_punctuation(self, fresh_settings):
+        merged = _merge_segment_texts(["hello.", "world"])
+        assert merged == "hello. world"
+
+    # --- Deterministic punctuation/casing ---
+
+    def test_punctuation_spacing_is_restored_deterministically(self, fresh_settings):
+        result = post_process_transcription("hello ,world!how are you ?i am fine", get_settings())
+        assert result == "Hello, world! How are you? I am fine "
+
+    def test_sentence_start_casing_is_normalized(self, fresh_settings):
+        result = post_process_transcription("hello world. this is a test! do you copy? yes", get_settings())
+        assert result == "Hello world. This is a test! Do you copy? Yes "
+
+    def test_mixed_edge_case_boundary_punctuation_and_casing(self, fresh_settings):
+        merged = _merge_segment_texts(["hello", "world.this", "is", "a test!are", "you", "ready?yes"])
+        result = post_process_transcription(merged, get_settings())
+        assert result == "Hello world. This is a test! Are you ready? Yes "
+
+    def test_post_process_is_stable_across_repeated_runs(self, fresh_settings):
+        raw = "hello ,world!how are you ?i am fine"
+        once = post_process_transcription(raw, get_settings())
+        twice = post_process_transcription(once, get_settings())
+        assert once == twice
