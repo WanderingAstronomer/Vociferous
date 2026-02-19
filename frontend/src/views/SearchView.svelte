@@ -166,6 +166,13 @@
         }
     }
 
+    function restorePendingSelection(id: number) {
+        const exists = allEntries.some((entry) => entry.id === id);
+        if (!exists) return;
+        selection.selectOnly(id);
+        selectedId = id;
+    }
+
     async function handleSearch() {
         if (!query.trim()) {
             results = [];
@@ -302,7 +309,11 @@
     /* ===== Lifecycle ===== */
 
     onMount(() => {
-        loadAll();
+        loadAll().then(() => {
+            const pending = nav.consumePendingTranscriptRequest();
+            if (!pending) return;
+            restorePendingSelection(pending.id);
+        });
         getProjects()
             .then((p) => (projects = p))
             .catch(() => {});
@@ -571,7 +582,7 @@
                 class="flex items-center justify-between py-[var(--space-2)] px-[var(--space-3)] border-b border-[var(--shell-border)] shrink-0"
             >
                 <h3 class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)] m-0">
-                    Transcript #{previewEntry.id}
+                    {previewEntry.display_name?.trim() || `Transcript #${previewEntry.id}`}
                 </h3>
                 <button
                     class="w-7 h-7 border-none rounded-[var(--radius-sm)] bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)]"

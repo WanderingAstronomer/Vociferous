@@ -214,7 +214,7 @@
             <FileText size={15} />
             <span>
                 {#if selectedId !== null}
-                    Transcript #{selectedId}
+                    {transcripts.find(t => t.id === selectedId)?.display_name?.trim() || `Transcript #${selectedId}`}
                 {:else}
                     Select a transcript to refine…
                 {/if}
@@ -250,7 +250,7 @@
                             <span class="text-[var(--text-tertiary)] text-[var(--text-xs)] shrink-0 min-w-[32px]"
                                 >#{t.id}</span
                             >
-                            <span class="overflow-hidden text-ellipsis whitespace-nowrap">{truncateText(t.text)}</span>
+                            <span class="overflow-hidden text-ellipsis whitespace-nowrap">{t.display_name?.trim() || truncateText(t.text)}</span>
                         </button>
                     {/each}
                 {/if}

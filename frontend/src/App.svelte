@@ -10,7 +10,6 @@
     import HistoryView from "./views/HistoryView.svelte";
     import SearchView from "./views/SearchView.svelte";
     import SettingsView from "./views/SettingsView.svelte";
-    import ProjectsView from "./views/ProjectsView.svelte";
     import RefineView from "./views/RefineView.svelte";
     import UserView from "./views/UserView.svelte";
     import type { ConfigUpdatedData } from "./lib/events";
@@ -124,8 +123,6 @@
                     <SearchView />
                 {:else if nav.current === "settings"}
                     <SettingsView />
-                {:else if nav.current === "projects"}
-                    <ProjectsView />
                 {:else if nav.current === "user"}
                     <UserView />
                 {/if}

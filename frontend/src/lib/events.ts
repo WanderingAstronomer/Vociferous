@@ -63,7 +63,7 @@ export interface TranscriptDeletedData {
 
 export interface TranscriptUpdatedData {
     id: number;
-    variant_id: number;
+    variant_id?: number;
 }
 
 export interface ConfigUpdatedData {
@@ -104,6 +104,15 @@ export interface InsightReadyData {
     text: string;
 }
 
+export interface BatchRetitleProgressData {
+    status: "started" | "progress" | "complete" | "error";
+    total?: number;
+    processed?: number;
+    skipped?: number;
+    current?: number;
+    message?: string;
+}
+
 // --- Event type → data mapping ---
 
 export interface WSEventMap {
@@ -127,6 +136,7 @@ export interface WSEventMap {
     project_deleted: ProjectDeletedData;
     key_captured: KeyCapturedData;
     insight_ready: InsightReadyData;
+    batch_retitle_progress: BatchRetitleProgressData;
 }
 
 /** All known event type strings. */
@@ -197,7 +207,7 @@ export const wsEventValidators: {
     transcript_deleted: (data): data is TranscriptDeletedData =>
         isObject(data) && isNumber(data.id),
     transcript_updated: (data): data is TranscriptUpdatedData =>
-        isObject(data) && isNumber(data.id) && isNumber(data.variant_id),
+        isObject(data) && isNumber(data.id) && (data.variant_id === undefined || isNumber(data.variant_id)),
     config_updated: (data): data is ConfigUpdatedData => isObject(data),
     engine_status: (data): data is EngineStatusData =>
         isObject(data) &&
@@ -221,4 +231,6 @@ export const wsEventValidators: {
         isObject(data) && isString(data.combo) && isString(data.display),
     insight_ready: (data): data is InsightReadyData =>
         isObject(data) && isString(data.text),
+    batch_retitle_progress: (data): data is BatchRetitleProgressData =>
+        isObject(data) && isString(data.status),
 };

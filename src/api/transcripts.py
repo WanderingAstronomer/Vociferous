@@ -95,13 +95,39 @@ async def delete_variant(transcript_id: int, variant_id: int) -> Response:
     from src.core.intents.definitions import DeleteTranscriptVariantIntent
 
     coordinator = get_coordinator()
-    intent = DeleteTranscriptVariantIntent(
-        transcript_id=transcript_id, variant_id=variant_id
-    )
+    intent = DeleteTranscriptVariantIntent(transcript_id=transcript_id, variant_id=variant_id)
     success = coordinator.command_bus.dispatch(intent)
     if not success:
         return Response(content={"error": "Delete failed"}, status_code=500)
     return Response(content={"deleted": True})
+
+
+@post("/api/transcripts/{transcript_id:int}/retitle")
+async def retitle_transcript(transcript_id: int) -> Response:
+    """Re-generate the SLM title for a single transcript."""
+    from src.core.intents.definitions import RetitleTranscriptIntent
+
+    coordinator = get_coordinator()
+    intent = RetitleTranscriptIntent(transcript_id=transcript_id)
+    coordinator.command_bus.dispatch(intent)
+    return Response(content={"status": "queued"})
+
+
+@post("/api/transcripts/{transcript_id:int}/rename")
+async def rename_transcript(transcript_id: int, data: dict) -> Response:
+    """Rename a transcript (set display_name) via CommandBus intent."""
+    from src.core.intents.definitions import RenameTranscriptIntent
+
+    title = data.get("title", "").strip()
+    if not title:
+        return Response(content={"error": "Title is required"}, status_code=400)
+
+    coordinator = get_coordinator()
+    intent = RenameTranscriptIntent(transcript_id=transcript_id, title=title)
+    success = coordinator.command_bus.dispatch(intent)
+    if not success:
+        return Response(content={"error": "Rename failed"}, status_code=500)
+    return Response(content={"status": "renamed", "title": title})
 
 
 def transcript_to_dict(t, include_variants: bool = False) -> dict:

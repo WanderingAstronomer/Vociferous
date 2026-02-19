@@ -27,11 +27,13 @@ class RefinementHandlers:
         slm_runtime_provider: Callable[[], SLMRuntime | None],
         settings_provider: Callable[[], VociferousSettings],
         event_bus_emit: Callable,
+        title_generator_provider: Callable[[], Any] = lambda: None,
     ) -> None:
         self._db_provider = db_provider
         self._slm_runtime_provider = slm_runtime_provider
         self._settings_provider = settings_provider
         self._emit = event_bus_emit
+        self._title_generator_provider = title_generator_provider
 
     def handle_refine(self, intent: Any) -> None:
         db = self._db_provider()
@@ -135,6 +137,12 @@ class RefinementHandlers:
                         "elapsed_seconds": elapsed,
                     },
                 )
+
+                # Re-title after refinement if the setting is enabled
+                if settings.output.auto_retitle_on_refine:
+                    title_gen = self._title_generator_provider()
+                    if title_gen is not None:
+                        title_gen.schedule(intent.transcript_id, refined)
             except Exception as e:
                 logger.exception("Refinement failed for transcript %d", intent.transcript_id)
                 self._emit(

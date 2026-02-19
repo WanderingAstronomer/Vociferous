@@ -1,7 +1,7 @@
 /**
  * Navigation store — Svelte 5 runes-based view navigation.
  *
- * Allows any view to trigger navigation (e.g., Refine button in History
+ * Allows any view to trigger navigation (e.g., Refine button in Transcriptions
  * navigates to the RefineView with a pre-selected transcript).
  */
 
@@ -10,7 +10,6 @@ export type ViewId =
     | "history"
     | "search"
     | "settings"
-    | "projects"
     | "refine"
     | "user";
 
@@ -65,7 +64,13 @@ class NavigationStore {
     }
 
     navigateToEdit(transcriptId: number, returnTarget?: EditReturnTarget): void {
-        this.beginEditSession(returnTarget);
+        const resolvedReturnTarget =
+            returnTarget ??
+            this.editReturnTarget ?? {
+                view: this.current,
+                transcriptId,
+            };
+        this.beginEditSession(resolvedReturnTarget);
         this.navigate("transcribe", transcriptId, "edit", { force: true });
     }
 

@@ -47,6 +47,7 @@ from src.api.transcripts import (
     get_transcript,
     list_transcripts,
     refine_transcript,
+    retitle_transcript,
     search_transcripts,
 )
 from src.core.resource_manager import ResourceManager
@@ -236,6 +237,7 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             clear_all_transcripts,
             delete_variant,
             refine_transcript,
+            retitle_transcript,
             search_transcripts,
             # Projects
             list_projects,
@@ -304,6 +306,7 @@ def _wire_event_bridge(coordinator: ApplicationCoordinator, ws_manager: Connecti
         "refinement_progress",
         "insight_ready",
         "motd_ready",
+        "batch_retitle_progress",
     ]
 
     for event_type in event_types:

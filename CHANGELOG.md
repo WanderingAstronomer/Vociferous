@@ -4,6 +4,40 @@
 
 ---
 
+## v4.3.0 — Unified Transcriptions View, Batch Retitling & Auto-Title on Refine
+
+**Date:** 2026-02-19
+**Status:** Feature Release
+
+### Overview
+
+Consolidates the History and Projects views into a single **Transcriptions** view with inline project management. Adds batch retitling for existing untitled transcripts and automatic re-titling after SLM refinement.
+
+### Added
+
+- **Batch Retitling** — New "Retitle All Untitled" button in Settings → Maintenance. Scans all transcripts missing a display name, generates SLM-powered titles sequentially with skip logic for too-short or too-long text, and reports progress via WebSocket in real time (progress bar + processed/skipped counters).
+- **Auto-Retitle on Refine** — When enabled (default: on), automatically generates a new title after SLM refinement completes. Controlled by `auto_retitle_on_refine` toggle in Settings → Output & Processing.
+- **Inline Project Management** — Create, rename, and delete projects directly from the Transcriptions view, with a full color picker (wheel/gradient + swatches), optional parent selection, and confirmation-guarded deletion.
+- **`get_untitled_transcripts()`** database method for querying transcripts with NULL or empty display names.
+- **`BatchRetitleIntent`** for dispatching batch retitle operations through the CommandBus.
+- **`batch_retitle_progress`** WebSocket event type for real-time progress reporting.
+
+### Changed
+
+- **History + Projects → Transcriptions** — The sidebar now shows a single "Transcriptions" entry with a `Library` icon. The old "Projects" view and its separate route are removed. Project filtering, creation, and deletion are all inline in the unified view.
+- **Removed `ProjectsView.svelte`** — Orphaned component deleted; all project management lives in the unified Transcriptions view.
+- **Removed `"projects"` from `ViewId`** — Navigation type union no longer includes the dead route. The normalization hack (`projects → history`) is gone.
+
+### Quality
+
+- Navigation store simplified: no more view-ID aliasing or dead branches.
+
+### Fixed
+
+- **ASR Segfault on Stop/Transcribe** — Disabled `initial_prompt` passthrough for `pywhispercpp==1.4.1` in runtime transcription calls due to a binding-level pointer lifetime bug that can trigger SIGSEGV. Startup ordering still preloads `llama_cpp` before ASR model load to avoid ggml/CUDA symbol-order crashes.
+
+---
+
 ## v4.1.4 — Database Safety & Event Bridge Fix
 
 **Date:** 2026-02-18

@@ -1,6 +1,6 @@
 [project]
 name = "vociferous"
-version = "4.1.4"
+version = "4.3.0"
 description = "Cross-platform speech-to-text with offline transcription and SLM refinement"
 requires-python = ">=3.12"
 license = "AGPL-3.0-or-later"

@@ -20,6 +20,7 @@
         getTranscripts,
         clearAllTranscripts,
         exportFile,
+        batchRetitle,
     } from "../lib/api";
     import type { ModelInfo } from "../lib/api";
     import { ws } from "../lib/ws";
@@ -43,7 +44,7 @@
     import StyledButton from "../lib/components/StyledButton.svelte";
     import CustomSelect from "../lib/components/CustomSelect.svelte";
     import KeyBindCapture from "../lib/components/KeyBindCapture.svelte";
-    import type { DownloadProgressData, EngineStatusData } from "../lib/events";
+    import type { DownloadProgressData, EngineStatusData, BatchRetitleProgressData } from "../lib/events";
 
     /* ===== State ===== */
 
@@ -82,6 +83,7 @@
 
     let unsubDownload: (() => void) | null = null;
     let unsubEngineStatus: (() => void) | null = null;
+    let unsubBatchRetitle: (() => void) | null = null;
 
     onMount(async () => {
         // Subscribe to download progress events
@@ -120,6 +122,32 @@
             }
         });
 
+        unsubBatchRetitle = ws.on("batch_retitle_progress", (data: BatchRetitleProgressData) => {
+            if (data.status === "started") {
+                batchRetitling = true;
+                batchRetitleTotal = data.total ?? 0;
+                batchRetitleProcessed = 0;
+                batchRetitleSkipped = 0;
+                batchRetitleCurrent = 0;
+                batchRetitleMessage = `Retitling 0 / ${data.total ?? 0}…`;
+            } else if (data.status === "progress") {
+                batchRetitleProcessed = data.processed ?? 0;
+                batchRetitleSkipped = data.skipped ?? 0;
+                batchRetitleCurrent = data.current ?? 0;
+                batchRetitleTotal = data.total ?? batchRetitleTotal;
+                batchRetitleMessage = `Retitling ${data.current ?? 0} / ${data.total ?? batchRetitleTotal}…`;
+            } else if (data.status === "complete") {
+                batchRetitling = false;
+                const msg = `Retitled ${data.processed ?? 0} transcript${(data.processed ?? 0) !== 1 ? "s" : ""}${(data.skipped ?? 0) > 0 ? `, ${data.skipped} skipped` : ""}`;
+                showMessage(msg, "success");
+                batchRetitleMessage = "";
+            } else if (data.status === "error") {
+                batchRetitling = false;
+                showMessage(data.message ?? "Batch retitle failed", "error");
+                batchRetitleMessage = "";
+            }
+        });
+
         try {
             const [c, m, h] = await Promise.all([getConfig(), getModels(), getHealth()]);
             config = c;
@@ -142,6 +170,7 @@
     onDestroy(() => {
         unsubDownload?.();
         unsubEngineStatus?.();
+        unsubBatchRetitle?.();
     });
 
     /* ===== Actions ===== */
@@ -206,6 +235,14 @@
     let clearingHistory = $state(false);
     let showClearHistoryConfirm = $state(false);
     let showGpuDetails = $state(false);
+
+    /* ===== Batch Retitle State ===== */
+    let batchRetitling = $state(false);
+    let batchRetitleTotal = $state(0);
+    let batchRetitleProcessed = $state(0);
+    let batchRetitleSkipped = $state(0);
+    let batchRetitleCurrent = $state(0);
+    let batchRetitleMessage = $state("");
 
     function escapeCsvValue(value: unknown): string {
         const text = String(value ?? "").replace(/"/g, '""');
@@ -331,6 +368,18 @@
         } catch (e: any) {
             message = e.message || "Engine restart failed";
             messageType = "error";
+        }
+    }
+
+    async function handleBatchRetitle() {
+        batchRetitling = true;
+        batchRetitleMessage = "Starting batch retitle…";
+        try {
+            await batchRetitle();
+        } catch (e: any) {
+            batchRetitling = false;
+            showMessage(e.message || "Batch retitle failed", "error");
+            batchRetitleMessage = "";
         }
     }
 </script>
@@ -800,6 +849,27 @@
                             >
                                 <label
                                     class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
+                                    for="setting-retitle-refine">Auto-Retitle on Refine</label
+                                >
+                                <div class="flex flex-col gap-1 flex-1">
+                                    <ToggleSwitch
+                                        checked={getSafe(config, "output.auto_retitle_on_refine", true)}
+                                        onChange={() =>
+                                            setSafe(
+                                                "output.auto_retitle_on_refine",
+                                                !getSafe(config, "output.auto_retitle_on_refine", true),
+                                            )}
+                                    />
+                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
+                                        >Automatically regenerates the transcript title when a refinement completes. Uses the refined text for a more accurate title.</span
+                                    >
+                                </div>
+                            </div>
+                            <div
+                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
+                            >
+                                <label
+                                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
                                     for="setting-refinement">Grammar Refinement</label
                                 >
                                 <div class="flex flex-col gap-1 flex-1">
@@ -961,7 +1031,7 @@
                             >
                                 <span
                                     class="text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]"
-                                    >History</span
+                                    >Transcriptions</span
                                 >
                                 <div class="flex flex-col gap-[var(--space-2)] mb-[var(--space-1)]">
                                     <div class="flex items-center justify-between gap-[var(--space-3)]">
@@ -1001,15 +1071,52 @@
                                 </div>
                                 <div class="flex gap-[var(--space-2)] flex-wrap">
                                     <StyledButton variant="secondary" onclick={handleExportHistory}
-                                        >Export History</StyledButton
+                                        >Export Transcriptions</StyledButton
                                     >
                                     <StyledButton
                                         variant="destructive"
                                         onclick={handleClearHistory}
                                         disabled={clearingHistory}
                                     >
-                                        {clearingHistory ? "Clearing…" : "Clear All History"}</StyledButton
+                                        {clearingHistory ? "Clearing…" : "Clear All Transcriptions"}</StyledButton
                                     >
+                                </div>
+                            </div>
+                            <div
+                                class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
+                            >
+                                <span
+                                    class="text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]"
+                                    >Titles</span
+                                >
+                                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
+                                    >Generate SLM-powered titles for all untitled transcripts. This may take several minutes if you have many transcripts. Recordings shorter than ~25 words are skipped.</span
+                                >
+                                {#if batchRetitling}
+                                    <div class="flex items-center gap-2 text-[var(--text-xs)] text-[var(--accent)]">
+                                        <Loader2 size={14} class="spin" />
+                                        <span>{batchRetitleMessage}</span>
+                                    </div>
+                                    {#if batchRetitleTotal > 0}
+                                        <div class="w-full h-1.5 bg-[var(--surface-primary)] rounded-full overflow-hidden">
+                                            <div
+                                                class="h-full bg-[var(--accent)] transition-all duration-300 rounded-full"
+                                                style="width: {Math.round((batchRetitleCurrent / batchRetitleTotal) * 100)}%"
+                                            ></div>
+                                        </div>
+                                        <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
+                                            {batchRetitleProcessed} titled, {batchRetitleSkipped} skipped
+                                        </span>
+                                    {/if}
+                                {/if}
+                                <div class="flex gap-[var(--space-2)] flex-wrap">
+                                    <StyledButton
+                                        variant="secondary"
+                                        onclick={handleBatchRetitle}
+                                        disabled={batchRetitling}
+                                    >
+                                        {batchRetitling ? "Retitling…" : "Retitle All Untitled"}
+                                    </StyledButton>
                                 </div>
                             </div>
                             <div
@@ -1065,7 +1172,7 @@
                         id="clear-history-title"
                         class="m-0 text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
                     >
-                        Clear all history?
+                        Clear all transcriptions?
                     </h3>
                     <p id="clear-history-description" class="m-0 text-[var(--text-sm)] text-[var(--text-secondary)]">
                         This permanently deletes all transcripts and their variants. This action cannot be undone.

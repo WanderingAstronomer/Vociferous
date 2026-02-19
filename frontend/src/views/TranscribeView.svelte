@@ -130,7 +130,9 @@
             durationMs = t.duration_ms ?? 0;
             speechDurationMs = t.speech_duration_ms ?? 0;
             if (mode === "edit") {
-                nav.beginEditSession();
+                if (!nav.isNavigationLocked) {
+                    nav.beginEditSession({ view: "transcribe", transcriptId: t.id });
+                }
                 editText = transcriptText;
                 viewState = "editing";
             } else {

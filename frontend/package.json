@@ -25,6 +25,7 @@
     "vite": "^6.3.5"
   },
   "dependencies": {
-    "lucide-svelte": "^0.564.0"
+    "lucide-svelte": "^0.564.0",
+    "svelte-awesome-color-picker": "^4.1.0"
   }
 }

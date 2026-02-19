@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Mic, ScrollText, FolderOpen, Search, Sparkles, Settings, User } from "lucide-svelte";
+    import { Mic, Library, Search, Sparkles, Settings, User } from "lucide-svelte";
 
     import type { ViewId } from "../navigation.svelte";
 
@@ -13,8 +13,7 @@
 
     const navItems: NavItem[] = [
         { id: "transcribe", label: "Transcribe", icon: Mic, section: "main" },
-        { id: "history", label: "History", icon: ScrollText, section: "main" },
-        { id: "projects", label: "Projects", icon: FolderOpen, section: "main" },
+        { id: "history", label: "Transcriptions", icon: Library, section: "main" },
         { id: "search", label: "Search", icon: Search, section: "main" },
         { id: "refine", label: "Refine", icon: Sparkles, section: "main" },
         { id: "settings", label: "Settings", icon: Settings, section: "footer" },

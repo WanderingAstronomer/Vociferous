@@ -17,9 +17,20 @@ _TYPING_WPM = 40
 
 _FILLER_SINGLE: frozenset[str] = frozenset(
     {
-        "um", "uh", "uhm", "umm", "er", "err",
-        "like", "basically", "literally", "actually",
-        "so", "well", "right", "okay",
+        "um",
+        "uh",
+        "uhm",
+        "umm",
+        "er",
+        "err",
+        "like",
+        "basically",
+        "literally",
+        "actually",
+        "so",
+        "well",
+        "right",
+        "okay",
     }
 )
 _FILLER_MULTI: tuple[str, ...] = ("you know", "i mean", "kind of", "sort of")

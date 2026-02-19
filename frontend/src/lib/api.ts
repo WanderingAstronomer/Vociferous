@@ -82,6 +82,21 @@ export function refineTranscript(id: number, level: number, instructions = ""): 
     });
 }
 
+export function renameTranscript(id: number, title: string): Promise<{ status: string; title: string }> {
+    return request(`/transcripts/${id}/rename`, {
+        method: "POST",
+        body: JSON.stringify({ title }),
+    });
+}
+
+export function batchRetitle(): Promise<{ dispatched: boolean }> {
+    return dispatchIntent("batch_retitle");
+}
+
+export function retitleTranscript(id: number): Promise<{ status: string }> {
+    return request(`/transcripts/${id}/retitle`, { method: "POST" });
+}
+
 // --- Projects ---
 
 export function getProjects(): Promise<Project[]> {

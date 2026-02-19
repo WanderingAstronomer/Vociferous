@@ -36,6 +36,14 @@ class ModelSettings(BaseModel):
     device: str = "auto"  # Legacy field — GPU is compile-time for whisper.cpp
     language: str = "en"
     n_threads: int = 4
+    # Stylistic anchor for the Whisper decoder.  This text is prepended to
+    # the decoder's token context before each chunk.  At higher temperatures
+    # (triggered by Whisper's quality-based fallback), punctuation and
+    # capitalisation degrade because they aren't acoustically encoded — the
+    # model learned them from training transcripts.  A well-punctuated prompt
+    # biases every decoding pass, including fallback passes, toward properly
+    # formatted output.  Empty string disables the prompt entirely.
+    initial_prompt: str = "Hello. This is a voice transcription."
 
 
 class RecordingSettings(BaseModel):
@@ -103,6 +111,7 @@ class OutputSettings(BaseModel):
 
     add_trailing_space: bool = True
     auto_copy_to_clipboard: bool = True
+    auto_retitle_on_refine: bool = True
 
 
 class DisplaySettings(BaseModel):

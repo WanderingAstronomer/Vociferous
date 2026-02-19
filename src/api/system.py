@@ -285,9 +285,7 @@ async def health() -> dict:
         "version": APP_VERSION,
         "transcripts": coordinator.db.transcript_count() if coordinator.db else 0,
         "recording_active": (
-            coordinator.recording_session.is_recording
-            if coordinator.recording_session is not None
-            else False
+            coordinator.recording_session.is_recording if coordinator.recording_session is not None else False
         ),
         "gpu": _detect_gpu_status(),
     }
@@ -442,6 +440,9 @@ async def dispatch_intent(data: dict) -> Response:
         "delete_transcript": defs.DeleteTranscriptIntent,
         "commit_edits": defs.CommitEditsIntent,
         "refine_transcript": defs.RefineTranscriptIntent,
+        "rename_transcript": defs.RenameTranscriptIntent,
+        "batch_retitle": defs.BatchRetitleIntent,
+        "retitle_transcript": defs.RetitleTranscriptIntent,
         "create_project": defs.CreateProjectIntent,
         "delete_project": defs.DeleteProjectIntent,
         "assign_project": defs.AssignProjectIntent,

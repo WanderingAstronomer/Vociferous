@@ -55,3 +55,13 @@ class TranscriptHandlers:
                 "transcript_updated",
                 {"id": intent.transcript_id, "variant_id": variant.id},
             )
+
+    def handle_rename(self, intent: Any) -> None:
+        """Set or update a transcript's display_name."""
+        db = self._db_provider()
+        if db:
+            title = (intent.title or "").strip()
+            if not title:
+                return
+            db.update_display_name(intent.transcript_id, title)
+            self._emit("transcript_updated", {"id": intent.transcript_id})

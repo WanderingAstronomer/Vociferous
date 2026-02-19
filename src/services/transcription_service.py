@@ -505,11 +505,15 @@ def transcribe(
         )
 
         # pywhispercpp transcribe returns a list of Segment objects.
-        # Keep parameters compatible with installed pywhispercpp versions.
-        segments = local_model.transcribe(
-            audio_float,
-            language=language,
-        )
+        # NOTE: initial_prompt is intentionally NOT passed here.
+        # pywhispercpp 1.4.1 has a dangling pointer bug: _set_params() stores a
+        # raw const char* to the Python str's internal buffer, but that object
+        # may be GC'd before whisper_full() dereferences the pointer → SIGSEGV.
+        # The setting is preserved in ModelSettings for future use once the
+        # pywhispercpp binding is fixed upstream.
+        transcribe_kwargs: dict[str, object] = {"language": language}
+
+        segments = local_model.transcribe(audio_float, **transcribe_kwargs)
 
         transcription = "".join(seg.text for seg in segments).strip()
 

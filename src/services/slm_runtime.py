@@ -190,6 +190,25 @@ class SLMRuntime:
             )
         return result.content
 
+    def generate_custom_sync(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int = 150,
+        temperature: float = 0.7,
+    ) -> str:
+        """Synchronous freeform generation — blocks until complete. Returns generated text."""
+        with self._lock:
+            if not self._engine:
+                raise RuntimeError("Engine not loaded.")
+            result = self._engine.generate_custom(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        return result.content
+
     def _inference_task(self, text: str, level: int, instructions: str = "") -> None:
         try:
             with self._lock:

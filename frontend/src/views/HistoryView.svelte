@@ -1,14 +1,12 @@
 <script lang="ts">
     /**
-     * HistoryView — Master-detail transcript browser.
+     * TranscriptionsView — Hierarchical project-tree transcript browser.
      *
-     * Layout: [Day-grouped list (40%)] | [Detail panel (60%)]
+     * Layout: [Project tree list (50%)] | [Detail panel (50%)]
      *
-     * Ported from PyQt6 HistoryView with:
-     * - Day-grouped collapsible sections (newest first)
-     * - Selection highlighting with accent indicator bar
-     * - Detail panel: full transcript, metadata, variants, actions
-     * - Real-time WebSocket updates
+     * Transcripts are grouped under their parent project/subproject headers
+     * in a collapsible tree. Unassigned transcripts live at the bottom.
+     * Project management (create/rename/delete) uses a focused modal.
      */
 
     import {
@@ -16,8 +14,12 @@
         getTranscript,
         deleteTranscript,
         deleteVariant,
-        refineTranscript,
+        renameTranscript,
+        retitleTranscript,
         getProjects,
+        createProject,
+        updateProject,
+        deleteProject,
         batchAssignProject,
         batchDeleteTranscripts,
         type Transcript,
@@ -37,23 +39,50 @@
         ChevronRight,
         FileText,
         Calendar,
-        Clock,
-        Hash,
-        Gauge,
         Loader2,
         X,
         Pencil,
         FolderOpen,
+        Plus,
     } from "lucide-svelte";
     import WorkspacePanel from "../lib/components/WorkspacePanel.svelte";
+    import ProjectModal from "../lib/components/ProjectModal.svelte";
+    import type { ProjectModalResult } from "../lib/components/ProjectModal.svelte";
 
-    /* ===== Types ===== */
+    /* ===== Tree Node Types ===== */
 
-    interface DayGroup {
+    type TreeNode = ProjectHeaderNode | TranscriptNode | UnassignedHeaderNode | DateHeaderNode;
+
+    interface ProjectHeaderNode {
+        type: "project-header";
+        key: string;
+        project: Project;
+        depth: number;
+        collapsed: boolean;
+        count: number;
+    }
+
+    interface TranscriptNode {
+        type: "transcript";
+        entry: Transcript;
+        depth: number;
+        parentColor: string | null;
+        isLastChild: boolean;
+    }
+
+    interface UnassignedHeaderNode {
+        type: "unassigned-header";
+        key: string;
+        collapsed: boolean;
+        count: number;
+    }
+
+    interface DateHeaderNode {
+        type: "date-header";
         key: string;
         label: string;
-        entries: Transcript[];
         collapsed: boolean;
+        count: number;
     }
 
     /* ===== State ===== */
@@ -67,48 +96,25 @@
     let copied = $state(false);
     let refining = $state<number | null>(null);
     let filterText = $state("");
-    let collapsedDays = $state(new Set<string>());
+    let collapsedSections = $state(new Set<string>());
     let projects: Project[] = $state([]);
-    let initialCollapseApplied = $state(false);
     let projectMenuOpen = $state(false);
     let projectMenuX = $state(0);
     let projectMenuY = $state(0);
     let projectMenuTranscriptId = $state<number | null>(null);
     let batchAssigning = $state(false);
 
-    /* ===== Resizable Panel State ===== */
+    /* ===== Project Modal State ===== */
 
-    /** Height of the transcript preview panel in px. null = auto (flex-1). */
-    let previewHeight: number | null = $state(null);
-    /** Which grab bar is being dragged: null | 'preview' */
-    let dragging: "preview" | null = $state(null);
-    /** Reference to the detail column container for bounds calculation. */
-    let detailColumnEl: HTMLDivElement | undefined = $state(undefined);
+    let showProjectModal = $state(false);
+    let projectModalMode = $state<"create" | "rename" | "delete">("create");
+    let projectModalTarget = $state<Project | null>(null);
 
-    function startDrag(bar: "preview") {
-        return (e: PointerEvent) => {
-            e.preventDefault();
-            dragging = bar;
-            const target = e.currentTarget as HTMLElement;
-            target.setPointerCapture(e.pointerId);
-        };
-    }
+    /* ===== Title Editing State ===== */
 
-    function onDragMove(e: PointerEvent) {
-        if (!dragging || !detailColumnEl) return;
-
-        // Find the preview panel and variants panel by data attributes
-        const previewEl = detailColumnEl.querySelector("[data-panel='preview']") as HTMLElement | null;
-        if (dragging === "preview" && previewEl) {
-            const rect = previewEl.getBoundingClientRect();
-            const newHeight = Math.max(80, Math.min(e.clientY - rect.top, 600));
-            previewHeight = newHeight;
-        }
-    }
-
-    function onDragEnd() {
-        dragging = null;
-    }
+    let editingTitle = $state(false);
+    let editTitleValue = $state("");
+    let retitling = $state(false);
 
     /* ===== Multi-Selection ===== */
 
@@ -116,40 +122,170 @@
 
     /* ===== Derived ===== */
 
-    /** Fast color lookup by project id */
-    let projectById = $derived(new Map(projects.map((p) => [p.id, p])));
+    /** Filter entries by search text. */
+    let filteredEntries = $derived.by((): Transcript[] => {
+        if (!filterText.trim()) return entries;
+        const q = filterText.toLowerCase();
+        return entries.filter((e) => {
+            const text = (e.normalized_text || e.raw_text || "").toLowerCase();
+            const name = (e.display_name || "").toLowerCase();
+            return text.includes(q) || name.includes(q);
+        });
+    });
 
-    let dayGroups = $derived.by((): DayGroup[] => {
-        const filtered = filterText.trim()
-            ? entries.filter((e) => {
-                  const text = (e.normalized_text || e.raw_text || "").toLowerCase();
-                  const name = (e.display_name || "").toLowerCase();
-                  const q = filterText.toLowerCase();
-                  return text.includes(q) || name.includes(q);
-              })
-            : entries;
+    /** Build the hierarchical tree: project headers → transcripts → unassigned (date-grouped). */
+    let treeNodes = $derived.by((): TreeNode[] => {
+        const nodes: TreeNode[] = [];
+        const byProject = new Map<number, Transcript[]>();
+        const unassigned: Transcript[] = [];
 
-        const groups = new Map<string, Transcript[]>();
-        for (const entry of filtered) {
-            const dt = new Date(entry.created_at);
-            const key = dt.toISOString().slice(0, 10);
-            if (!groups.has(key)) groups.set(key, []);
-            groups.get(key)!.push(entry);
+        for (const e of filteredEntries) {
+            if (e.project_id != null) {
+                if (!byProject.has(e.project_id)) byProject.set(e.project_id, []);
+                byProject.get(e.project_id)!.push(e);
+            } else {
+                unassigned.push(e);
+            }
         }
 
-        const sortedKeys = [...groups.keys()].sort().reverse();
-        return sortedKeys.map((key) => ({
-            key,
-            label: formatDayHeader(new Date(key + "T00:00:00")),
-            entries: groups
-                .get(key)!
-                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
-            collapsed: collapsedDays.has(key),
-        }));
+        const sortDesc = (a: Transcript, b: Transcript) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+
+        // Top-level projects sorted alphabetically
+        const topLevel = projects.filter((p) => !p.parent_id).sort((a, b) => a.name.localeCompare(b.name));
+
+        function addProject(project: Project, depth: number) {
+            const children = projects
+                .filter((p) => p.parent_id === project.id)
+                .sort((a, b) => a.name.localeCompare(b.name));
+
+            // Count transcripts belonging to this project + its sub-projects
+            const directTranscripts = byProject.get(project.id) ?? [];
+            let totalCount = directTranscripts.length;
+            for (const child of children) {
+                totalCount += (byProject.get(child.id) ?? []).length;
+            }
+
+            // Skip empty project sections when filtering
+            if (filterText.trim() && totalCount === 0) return;
+
+            const key = `project-${project.id}`;
+            const collapsed = collapsedSections.has(key);
+
+            nodes.push({
+                type: "project-header",
+                key,
+                project,
+                depth,
+                collapsed,
+                count: totalCount,
+            });
+
+            if (!collapsed) {
+                const sorted = directTranscripts.sort(sortDesc);
+                const lastDirectIdx = sorted.length - 1;
+                const hasSubProjects = children.length > 0;
+                // Direct transcripts under this project
+                for (let i = 0; i < sorted.length; i++) {
+                    nodes.push({
+                        type: "transcript",
+                        entry: sorted[i],
+                        depth: depth + 1,
+                        parentColor: project.color ?? null,
+                        isLastChild: i === lastDirectIdx && !hasSubProjects,
+                    });
+                }
+                // Sub-projects
+                for (const child of children) {
+                    addProject(child, depth + 1);
+                }
+            }
+        }
+
+        for (const p of topLevel) {
+            addProject(p, 0);
+        }
+
+        // --- Unassigned section: date-grouped ---
+        if (!filterText.trim() || unassigned.length > 0) {
+            const key = "unassigned";
+            const collapsed = collapsedSections.has(key);
+            nodes.push({
+                type: "unassigned-header",
+                key,
+                collapsed,
+                count: unassigned.length,
+            });
+            if (!collapsed) {
+                const sorted = unassigned.sort(sortDesc);
+                // Group by date bucket
+                const now = new Date();
+                const todayStr = now.toDateString();
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                const yesterdayStr = yesterday.toDateString();
+
+                const buckets = new Map<string, { label: string; entries: Transcript[] }>();
+                const bucketOrder: string[] = [];
+
+                for (const e of sorted) {
+                    const dt = new Date(e.created_at);
+                    const ds = dt.toDateString();
+                    let bucketKey: string;
+                    let label: string;
+                    if (ds === todayStr) {
+                        bucketKey = "date-today";
+                        label = "Today";
+                    } else if (ds === yesterdayStr) {
+                        bucketKey = "date-yesterday";
+                        label = "Yesterday";
+                    } else {
+                        bucketKey = `date-${ds}`;
+                        label = formatDayHeader(dt);
+                    }
+                    if (!buckets.has(bucketKey)) {
+                        buckets.set(bucketKey, { label, entries: [] });
+                        bucketOrder.push(bucketKey);
+                    }
+                    buckets.get(bucketKey)!.entries.push(e);
+                }
+
+                for (const bk of bucketOrder) {
+                    const bucket = buckets.get(bk)!;
+                    // Auto-expand Today on first render, collapse others by default
+                    const dateKey = bk;
+                    const dateCollapsed =
+                        collapsedSections.has(dateKey) ||
+                        (!collapsedSections.has(`_init_${dateKey}`) && bk !== "date-today");
+                    nodes.push({
+                        type: "date-header",
+                        key: dateKey,
+                        label: bucket.label,
+                        collapsed: dateCollapsed,
+                        count: bucket.entries.length,
+                    });
+                    if (!dateCollapsed) {
+                        for (const e of bucket.entries) {
+                            nodes.push({
+                                type: "transcript",
+                                entry: e,
+                                depth: 2,
+                                parentColor: null,
+                                isLastChild: false,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        return nodes;
     });
 
     /** Flat list of visible transcript IDs in display order, for range selection. */
-    let orderedIds = $derived(dayGroups.filter((g) => !g.collapsed).flatMap((g) => g.entries.map((e) => e.id)));
+    let orderedIds = $derived(
+        treeNodes.filter((n): n is TranscriptNode => n.type === "transcript").map((n) => n.entry.id),
+    );
 
     let selectedText = $derived(
         selectedEntry ? selectedEntry.text || selectedEntry.normalized_text || selectedEntry.raw_text || "" : "",
@@ -157,7 +293,7 @@
 
     let selectedWordCount = $derived(selectedText ? selectedText.split(/\s+/).filter(Boolean).length : 0);
 
-    /** Build flat project options with parent names for sub-project disambiguation. */
+    /** Build flat project options for context menu (with parent name prefix). */
     let projectOptions = $derived.by(() => {
         const opts: { value: string; label: string }[] = [{ value: "", label: "No Project" }];
         const byId = new Map(projects.map((p) => [p.id, p]));
@@ -176,31 +312,13 @@
         (selectedEntry?.variants ?? []).filter((variant) => variant.kind.trim().toLowerCase() !== "raw"),
     );
 
-    /* ===== Collapse tracking ===== */
+    /* ===== Section collapse ===== */
 
-    /** Auto-collapse older day groups on first load.
-     *  Today stays expanded; everything else collapses. */
-    $effect(() => {
-        if (!initialCollapseApplied && dayGroups.length > 0) {
-            const todayKey = new Date().toISOString().slice(0, 10);
-            const toCollapse = new Set<string>();
-            for (const group of dayGroups) {
-                if (group.key !== todayKey) {
-                    toCollapse.add(group.key);
-                }
-            }
-            if (toCollapse.size > 0) {
-                collapsedDays = toCollapse;
-            }
-            initialCollapseApplied = true;
-        }
-    });
-
-    function toggleDay(key: string) {
-        const next = new Set(collapsedDays);
+    function toggleSection(key: string) {
+        const next = new Set(collapsedSections);
         if (next.has(key)) next.delete(key);
         else next.add(key);
-        collapsedDays = next;
+        collapsedSections = next;
     }
 
     /* ===== Formatting ===== */
@@ -235,19 +353,17 @@
         return `${Math.round(words / (ms / 60000))} wpm`;
     }
 
-    function truncate(text: string, max = 80): string {
-        if (text.length <= max) return text;
-        const cut = text.lastIndexOf(" ", max);
-        return (cut > 0 ? text.slice(0, cut) : text.slice(0, max)) + "…";
-    }
-
     function getDisplayText(entry: Transcript): string {
         return entry.normalized_text || entry.raw_text || "";
     }
 
     function getTitle(entry: Transcript): string {
         if (entry.display_name?.trim()) return entry.display_name.trim();
-        return truncate(getDisplayText(entry), 40);
+        return `Transcript #${entry.id}`;
+    }
+
+    function wordCount(text: string): number {
+        return text ? text.split(/\s+/).filter(Boolean).length : 0;
     }
 
     /* ===== Data loading ===== */
@@ -268,12 +384,10 @@
     function handleEntryClick(id: number, event: MouseEvent) {
         selection.handleClick(id, event, orderedIds);
 
-        // If exactly one item is selected, load its detail
         if (selection.count === 1) {
             const singleId = selection.ids[0];
             loadEntryDetail(singleId);
         } else {
-            // Multi-select: clear detail pane
             selectedId = null;
             selectedEntry = null;
         }
@@ -282,7 +396,7 @@
     async function loadEntryDetail(id: number) {
         if (selectedId === id) return;
         selectedId = id;
-        previewHeight = null;
+        editingTitle = false;
         detailLoading = true;
         try {
             selectedEntry = await getTranscript(id);
@@ -294,7 +408,6 @@
         }
     }
 
-    /** Legacy compat: still used by WS event handlers that reload a specific entry. */
     async function selectEntry(id: number) {
         selection.selectOnly(id);
         await loadEntryDetail(id);
@@ -304,7 +417,6 @@
 
     async function handleDelete() {
         if (selection.isMulti) {
-            // Batch delete
             const ids = selection.ids;
             try {
                 await batchDeleteTranscripts(ids);
@@ -344,7 +456,6 @@
     async function handleDeleteVariant(transcriptId: number, variantId: number) {
         try {
             await deleteVariant(transcriptId, variantId);
-            // Refresh the selected entry to reflect the deletion
             if (selectedEntry && selectedEntry.id === transcriptId) {
                 selectedEntry = await getTranscript(transcriptId);
             }
@@ -358,11 +469,58 @@
         nav.navigateToEdit(selectedEntry.id, { view: "history", transcriptId: selectedEntry.id });
     }
 
+    function startEditTitle() {
+        if (!selectedEntry) return;
+        editTitleValue = getTitle(selectedEntry);
+        editingTitle = true;
+    }
+
+    async function commitTitle() {
+        if (!selectedEntry || !editTitleValue.trim()) {
+            editingTitle = false;
+            return;
+        }
+        const newTitle = editTitleValue.trim();
+        editingTitle = false;
+        try {
+            await renameTranscript(selectedEntry.id, newTitle);
+        } catch (e: any) {
+            console.error("Failed to rename transcript:", e);
+        }
+    }
+
+    function cancelEditTitle() {
+        editingTitle = false;
+    }
+
+    async function handleRetitle() {
+        if (!selectedEntry || retitling) return;
+        retitling = true;
+        try {
+            await retitleTranscript(selectedEntry.id);
+        } catch (e: any) {
+            console.error("Failed to retitle transcript:", e);
+        } finally {
+            retitling = false;
+        }
+    }
+
+    function handleTitleKeydown(e: KeyboardEvent) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            commitTitle();
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancelEditTitle();
+        }
+    }
+
+    /* ===== Context Menu (project assignment) ===== */
+
     function openProjectMenu(event: MouseEvent, transcriptId: number) {
         event.preventDefault();
         event.stopPropagation();
 
-        // If right-clicking a non-selected item, select it first
         if (!selection.isSelected(transcriptId)) {
             selection.selectOnly(transcriptId);
             loadEntryDetail(transcriptId);
@@ -388,7 +546,6 @@
         const projectId = value === "" ? null : parseInt(value, 10);
         closeProjectMenu();
 
-        // Batch assign all selected items
         const ids = selection.ids;
         if (ids.length === 0) return;
 
@@ -406,6 +563,37 @@
         }
     }
 
+    /* ===== Project Modal ===== */
+
+    function openProjectModal(mode: "create" | "rename" | "delete", target: Project | null = null) {
+        projectModalMode = mode;
+        projectModalTarget = target;
+        showProjectModal = true;
+    }
+
+    async function handleProjectModalConfirm(result: ProjectModalResult) {
+        showProjectModal = false;
+        try {
+            if (result.mode === "create") {
+                await createProject(result.name, result.color, result.parentId);
+            } else if (result.mode === "rename") {
+                await updateProject(result.id, { name: result.name, color: result.color });
+            } else if (result.mode === "delete") {
+                await deleteProject(result.id);
+            }
+            projects = await getProjects();
+            await loadHistory();
+        } catch (e: any) {
+            console.error(`Project ${result.mode} failed:`, e);
+        }
+    }
+
+    function handleProjectModalCancel() {
+        showProjectModal = false;
+    }
+
+    /* ===== Globals ===== */
+
     function handleGlobalPointerDown() {
         if (projectMenuOpen) closeProjectMenu();
     }
@@ -419,7 +607,6 @@
                 selectedEntry = null;
             }
         }
-        // Ctrl+A / Cmd+A: select all visible transcripts
         if ((event.ctrlKey || event.metaKey) && event.key === "a") {
             event.preventDefault();
             selection.selectAll(orderedIds);
@@ -491,11 +678,18 @@
 </script>
 
 <div class="flex h-full overflow-hidden">
-    <!-- Master: List Panel -->
-    <div class="w-2/5 min-w-[280px] flex flex-col border-r border-[var(--shell-border)] bg-[var(--surface-primary)]">
-        <div class="flex items-center justify-end p-2 px-3 shrink-0 h-auto gap-2">
+    <!-- Master: List Panel (50%) -->
+    <div class="w-1/2 min-w-[280px] flex flex-col border-r border-[var(--shell-border)] bg-[var(--surface-primary)]">
+        <!-- Toolbar: selection info / refresh / new project / filter -->
+        <div class="flex items-center gap-2 p-2 px-3 shrink-0">
+            <button
+                class="inline-flex items-center gap-1 h-7 px-2.5 border-none rounded text-xs font-semibold text-[var(--text-tertiary)] bg-transparent cursor-pointer transition-colors duration-150 hover:text-[var(--accent)] hover:bg-[var(--hover-overlay)]"
+                onclick={() => openProjectModal("create")}
+            >
+                <Plus size={12} /> Create Project
+            </button>
             {#if selection.isMulti}
-                <span class="text-xs text-[var(--accent)] font-semibold mr-auto">{selection.count} selected</span>
+                <span class="text-xs text-[var(--accent)] font-semibold">{selection.count} selected</span>
                 <button
                     class="text-xs text-[var(--text-tertiary)] bg-transparent border-none cursor-pointer hover:text-[var(--text-primary)] transition-colors"
                     onclick={() => {
@@ -505,6 +699,7 @@
                     }}>Clear</button
                 >
             {/if}
+            <div class="flex-1"></div>
             <button
                 class="w-7 h-7 border-none rounded bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)]"
                 onclick={loadHistory}
@@ -523,12 +718,13 @@
             />
         </div>
 
+        <!-- Tree list -->
         <div class="flex-1 overflow-y-auto pb-2">
             {#if loading}
                 <div
                     class="flex flex-col items-center justify-center gap-1 h-[200px] text-[var(--text-tertiary)] text-sm"
                 >
-                    <Loader2 size={20} class="animate-spin" /><span>Loading history…</span>
+                    <Loader2 size={20} class="animate-spin" /><span>Loading transcriptions…</span>
                 </div>
             {:else if error}
                 <div
@@ -536,67 +732,165 @@
                 >
                     {error}
                 </div>
-            {:else if dayGroups.length === 0}
+            {:else if treeNodes.length === 0}
                 <div
                     class="flex flex-col items-center justify-center gap-1 h-[200px] text-[var(--text-tertiary)] text-sm"
                 >
                     {filterText ? "No matches found" : "No transcripts yet"}
                 </div>
             {:else}
-                {#each dayGroups as group, groupIdx (group.key)}
-                    {#if groupIdx > 0}
-                        <div class="h-px mx-3 my-1 bg-[var(--accent)]"></div>
-                    {/if}
-                    <button
-                        class="flex items-center gap-1 w-full p-1 px-3 border-none bg-transparent text-[var(--text-secondary)] text-xs font-semibold uppercase tracking-wide cursor-pointer text-left transition-colors duration-150 hover:text-[var(--text-primary)]"
-                        onclick={() => toggleDay(group.key)}
-                    >
-                        <span class="flex items-center text-[var(--text-tertiary)]">
-                            {#if group.collapsed}<ChevronRight size={14} />{:else}<ChevronDown size={14} />{/if}
-                        </span>
-                        <span class="flex-1">{group.label}</span>
-                        <span
-                            class="text-xs text-[var(--text-tertiary)] bg-[var(--surface-tertiary)] px-1.5 py-px rounded-lg"
-                            >{group.entries.length}</span
+                {#each treeNodes as node, nodeIdx (node.type === "transcript" ? `t-${node.entry.id}` : node.type === "project-header" ? node.key : node.type === "date-header" ? node.key : "unassigned")}
+                    {#if node.type === "project-header"}
+                        <!-- Project header row -->
+                        <div
+                            class="group/hdr flex items-center gap-1.5 w-full p-1.5 border-none rounded-md cursor-pointer text-left transition-colors duration-150 hover:brightness-110"
+                            style="padding-left: {12 + node.depth * 16}px; background: {node.project.color
+                                ? `color-mix(in srgb, ${node.project.color} 18%, transparent)`
+                                : 'var(--surface-secondary)'}"
+                            role="button"
+                            tabindex="0"
+                            onclick={() => toggleSection(node.key)}
+                            onkeydown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    toggleSection(node.key);
+                                }
+                            }}
                         >
-                    </button>
-                    {#if !group.collapsed}
-                        {#each group.entries as entry (entry.id)}
-                            <button
-                                class="flex items-stretch w-full p-1 px-3 border-none bg-transparent cursor-pointer text-left transition-colors duration-150 hover:bg-[var(--hover-overlay)]"
-                                class:bg-[var(--hover-overlay-blue)]={selection.isSelected(entry.id)}
-                                onclick={(e) => handleEntryClick(entry.id, e)}
-                                oncontextmenu={(e) => openProjectMenu(e, entry.id)}
+                            <span class="flex items-center text-[var(--text-tertiary)] shrink-0">
+                                {#if node.collapsed}<ChevronRight size={14} />{:else}<ChevronDown size={14} />{/if}
+                            </span>
+                            <span
+                                class="flex-1 text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide truncate {node.depth > 0 ? 'text-left' : 'text-center'}"
                             >
-                                {#if entry.project_id && projectById.get(entry.project_id)?.color}
-                                    <span
-                                        class="w-1.5 h-1.5 rounded-full shrink-0 self-center mr-2"
-                                        style="background: {projectById.get(entry.project_id)!.color}"
-                                        title={projectById.get(entry.project_id)!.name}
-                                    ></span>
-                                {/if}
+                                {node.project.name}
+                            </span>
+                            <span
+                                class="text-xs text-[var(--text-tertiary)] bg-[var(--surface-tertiary)] px-1.5 py-px rounded-lg shrink-0"
+                            >
+                                {node.count}
+                            </span>
+                            <!-- Hover actions: rename / delete -->
+                            <button
+                                class="w-5 h-5 border-none rounded bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center opacity-0 group-hover/hdr:opacity-100 hover:text-[var(--accent)] transition-all shrink-0"
+                                onclick={(e) => {
+                                    e.stopPropagation();
+                                    openProjectModal("rename", node.project);
+                                }}
+                                title="Rename project"
+                            >
+                                <Pencil size={11} />
+                            </button>
+                            <button
+                                class="w-5 h-5 border-none rounded bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center opacity-0 group-hover/hdr:opacity-100 hover:text-[var(--color-danger)] transition-all shrink-0"
+                                onclick={(e) => {
+                                    e.stopPropagation();
+                                    openProjectModal("delete", node.project);
+                                }}
+                                title="Delete project"
+                            >
+                                <Trash2 size={11} />
+                            </button>
+                        </div>
+                    {:else if node.type === "unassigned-header"}
+                        <!-- Unassigned section header -->
+                        {#if nodeIdx > 0}
+                            <div class="h-px mx-3 my-2 bg-[var(--accent)] opacity-40"></div>
+                        {/if}
+                        <button
+                            class="flex items-center gap-1.5 w-full p-1.5 px-3 border-none rounded-md bg-[var(--surface-secondary)] cursor-pointer text-left transition-colors duration-150 hover:brightness-110"
+                            onclick={() => toggleSection(node.key)}
+                        >
+                            <span class="flex items-center text-[var(--text-tertiary)] shrink-0">
+                                {#if node.collapsed}<ChevronRight size={14} />{:else}<ChevronDown size={14} />{/if}
+                            </span>
+                            <span
+                                class="flex-1 text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wide text-center"
+                            >
+                                Unassigned
+                            </span>
+                            <span
+                                class="text-xs text-[var(--text-tertiary)] bg-[var(--surface-tertiary)] px-1.5 py-px rounded-lg shrink-0"
+                            >
+                                {node.count}
+                            </span>
+                        </button>
+                    {:else if node.type === "date-header"}
+                        <!-- Date group header (under Unassigned) -->
+                        <button
+                            class="flex items-center gap-1.5 w-full p-1 px-3 border-none bg-transparent cursor-pointer text-left transition-colors duration-150 hover:bg-[var(--hover-overlay)]"
+                            style="padding-left: 28px"
+                            onclick={() => toggleSection(node.key)}
+                        >
+                            <span class="flex items-center text-[var(--text-tertiary)] shrink-0">
+                                {#if node.collapsed}<ChevronRight size={12} />{:else}<ChevronDown size={12} />{/if}
+                            </span>
+                            <span class="flex-1 text-xs font-semibold text-[var(--accent)] tracking-wide text-center">
+                                {node.label}
+                            </span>
+                            <span
+                                class="text-[10px] text-[var(--text-tertiary)] bg-[var(--surface-tertiary)] px-1 py-px rounded-lg shrink-0"
+                            >
+                                {node.count}
+                            </span>
+                        </button>
+                    {:else}
+                        <!-- Transcript row -->
+                        <button
+                            class="flex items-stretch w-full p-1 border-none bg-transparent cursor-pointer text-left transition-colors duration-150 hover:bg-[var(--hover-overlay)]"
+                            class:bg-[var(--hover-overlay-blue)]={selection.isSelected(node.entry.id)}
+                            style="padding-left: {12 + node.depth * 16}px"
+                            onclick={(e) => handleEntryClick(node.entry.id, e)}
+                            oncontextmenu={(e) => openProjectMenu(e, node.entry.id)}
+                        >
+                            <!-- Tree connecting line -->
+                            {#if node.parentColor}
+                                <div class="relative w-4 shrink-0 mr-1">
+                                    <!-- Vertical line -->
+                                    <div
+                                        class="absolute left-1 top-0 w-px"
+                                        style="background: {node.parentColor}; opacity: 0.35; height: {node.isLastChild
+                                            ? '50%'
+                                            : '100%'}"
+                                    ></div>
+                                    <!-- Horizontal connector -->
+                                    <div
+                                        class="absolute left-1 top-1/2 h-px w-2.5"
+                                        style="background: {node.parentColor}; opacity: 0.35"
+                                    ></div>
+                                </div>
+                            {:else}
                                 <div
                                     class="w-0.5 rounded-sm shrink-0 mr-2 transition-colors duration-150"
-                                    class:bg-[var(--accent)]={selection.isSelected(entry.id)}
+                                    class:bg-[var(--accent)]={selection.isSelected(node.entry.id)}
                                 ></div>
-                                <div class="flex-1 min-w-0 flex flex-col gap-0.5 py-0.5">
-                                    <span
-                                        class="text-sm text-[var(--text-primary)] leading-normal overflow-hidden text-ellipsis whitespace-nowrap"
-                                        >{truncate(getDisplayText(entry))}</span
-                                    >
-                                    <span class="text-xs text-[var(--text-tertiary)] font-mono"
-                                        >{formatTime(entry.created_at)}</span
-                                    >
-                                </div>
-                            </button>
-                        {/each}
+                            {/if}
+                            <div class="flex-1 min-w-0 flex flex-col gap-0.5 py-0.5">
+                                <span
+                                    class="text-sm font-semibold text-[var(--text-primary)] leading-normal overflow-hidden text-ellipsis whitespace-nowrap"
+                                >
+                                    {getTitle(node.entry)}
+                                </span>
+                                <span
+                                    class="text-xs text-[var(--text-secondary)] leading-snug overflow-hidden text-ellipsis whitespace-nowrap"
+                                >
+                                    {getDisplayText(node.entry)}
+                                </span>
+                                <span
+                                    class="flex items-center justify-between text-xs text-[var(--text-tertiary)] font-mono"
+                                >
+                                    <span>{formatTime(node.entry.created_at)}</span>
+                                    <span>{wordCount(getDisplayText(node.entry)).toLocaleString()} words</span>
+                                </span>
+                            </div>
+                        </button>
                     {/if}
                 {/each}
             {/if}
         </div>
     </div>
 
-    <!-- Detail: Content Panel -->
+    <!-- Detail: Content Panel (50%) -->
     <div class="flex-1 flex flex-col overflow-hidden bg-[var(--surface-secondary)]">
         {#if detailLoading}
             <div class="flex-1 flex flex-col items-center justify-center gap-2 text-[var(--text-tertiary)] text-sm">
@@ -645,51 +939,68 @@
                 </div>
             </div>
         {:else if selectedEntry}
-            <div
-                class="flex-1 flex flex-col p-4 gap-2 overflow-hidden"
-                bind:this={detailColumnEl}
-                onpointermove={onDragMove}
-                onpointerup={onDragEnd}
-                onpointercancel={onDragEnd}
-                role="presentation"
-            >
-                <h2 class="text-xl font-semibold text-[var(--text-primary)] m-0 leading-tight text-center">
-                    {getTitle(selectedEntry)}
-                </h2>
-                <div class="h-px bg-[var(--shell-border)] shrink-0"></div>
-
-                <div class="flex flex-wrap justify-center gap-2 shrink-0">
-                    <div class="flex items-center gap-1 text-sm text-[var(--text-secondary)] font-mono">
-                        <Clock size={12} /><span>{formatDuration(selectedEntry.duration_ms)}</span>
-                    </div>
-                    <div class="flex items-center gap-1 text-sm text-[var(--text-secondary)] font-mono">
-                        <Gauge size={12} /><span>{formatDuration(selectedEntry.speech_duration_ms)}</span>
-                    </div>
-                    <div class="flex items-center gap-1 text-sm text-[var(--text-secondary)] font-mono">
-                        <Hash size={12} /><span>{selectedWordCount} words</span>
-                    </div>
-                    <div class="flex items-center gap-1 text-sm text-[var(--text-secondary)] font-mono">
-                        <FileText size={12} /><span
-                            >{formatWpm(
-                                selectedWordCount,
-                                selectedEntry.speech_duration_ms || selectedEntry.duration_ms,
-                            )}</span
+            <div class="flex-1 flex flex-col p-4 gap-2 overflow-hidden group/detail">
+                <!-- Title row: [Generate Title] — Title — [Edit Pencil] -->
+                <div class="flex items-center gap-2 shrink-0">
+                    <button
+                        class="w-7 h-7 shrink-0 border-none rounded bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:text-[var(--accent)] hover:bg-[var(--hover-overlay)] disabled:opacity-40 disabled:cursor-not-allowed"
+                        onclick={handleRetitle}
+                        disabled={retitling}
+                        title="Generate title"
+                    >
+                        {#if retitling}
+                            <Loader2 size={14} class="animate-spin" />
+                        {:else}
+                            <RefreshCw size={14} />
+                        {/if}
+                    </button>
+                    <h2
+                        class="flex-1 text-xl font-semibold text-[var(--text-primary)] m-0 leading-tight text-center truncate"
+                    >
+                        {#if editingTitle}
+                            <input
+                                type="text"
+                                class="w-full text-xl font-semibold text-[var(--text-primary)] bg-[var(--surface-primary)] border border-[var(--accent)] rounded px-2 py-1 text-center outline-none"
+                                bind:value={editTitleValue}
+                                onkeydown={handleTitleKeydown}
+                                onblur={commitTitle}
+                            />
+                        {:else}
+                            {getTitle(selectedEntry)}
+                        {/if}
+                    </h2>
+                    {#if !editingTitle}
+                        <button
+                            class="w-7 h-7 shrink-0 border-none rounded bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center opacity-0 group-hover/detail:opacity-100 transition-all duration-150 hover:text-[var(--accent)] hover:bg-[var(--hover-overlay)]"
+                            onclick={startEditTitle}
+                            title="Rename transcript"
                         >
-                    </div>
-                    {#if selectedEntry.project_name}
-                        <div class="flex items-center gap-1 text-sm text-[var(--accent)]">
-                            <span>📁 {selectedEntry.project_name}</span>
-                        </div>
+                            <Pencil size={14} />
+                        </button>
+                    {:else}
+                        <div class="w-7 shrink-0"></div>
                     {/if}
                 </div>
+                <div class="h-px bg-[var(--shell-border)] shrink-0"></div>
 
                 <div
-                    class="overflow-hidden flex flex-col relative group"
-                    data-panel="preview"
-                    style={previewHeight != null
-                        ? `height:${previewHeight}px;max-height:${previewHeight}px;flex-shrink:0;`
-                        : "flex:1 1 auto;min-height:80px;"}
+                    class="flex flex-wrap justify-center items-center gap-1 shrink-0 text-sm text-[var(--text-secondary)] font-mono"
                 >
+                    <span>{formatDuration(selectedEntry.duration_ms)}</span>
+                    <span class="text-[var(--text-tertiary)]">|</span>
+                    <span>{formatDuration(selectedEntry.speech_duration_ms)}</span>
+                    <span class="text-[var(--text-tertiary)]">|</span>
+                    <span>{selectedWordCount} words</span>
+                    <span class="text-[var(--text-tertiary)]">|</span>
+                    <span
+                        >{formatWpm(
+                            selectedWordCount,
+                            selectedEntry.speech_duration_ms || selectedEntry.duration_ms,
+                        )}</span
+                    >
+                </div>
+
+                <div class="overflow-hidden flex flex-col relative group flex-1 min-h-[80px]">
                     <WorkspacePanel>
                         <div class="overflow-y-auto h-full">
                             <p
@@ -701,27 +1012,8 @@
                     </WorkspacePanel>
                 </div>
 
-                <!-- Grab bar: between preview and variants/buttons -->
-                <div
-                    class="h-1.5 shrink-0 cursor-row-resize flex items-center justify-center group/grab rounded
-                           hover:bg-[var(--hover-overlay)] transition-colors {dragging === 'preview'
-                        ? 'bg-[var(--accent)]'
-                        : ''}"
-                    onpointerdown={startDrag("preview")}
-                    role="separator"
-                    aria-orientation="horizontal"
-                    title="Drag to resize"
-                >
-                    <div
-                        class="w-8 h-0.5 rounded-full bg-[var(--text-tertiary)] opacity-40 group-hover/grab:opacity-100 transition-opacity {dragging ===
-                        'preview'
-                            ? 'opacity-100 bg-[var(--accent)]'
-                            : ''}"
-                    ></div>
-                </div>
-
                 {#if visibleVariants.length > 0}
-                    <div class="flex-1 min-h-[60px] overflow-y-auto" data-panel="variants">
+                    <div class="flex-1 min-h-[60px] overflow-y-auto">
                         <h3
                             class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide mb-2 m-0 mt-2"
                         >
@@ -804,6 +1096,7 @@
     </div>
 </div>
 
+<!-- Context menu: project assignment -->
 {#if projectMenuOpen}
     <div
         class="fixed min-w-[260px] max-w-[340px] max-h-[360px] overflow-y-auto bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-[var(--radius-md)] shadow-[0_12px_28px_rgba(0,0,0,0.45)] py-1 z-[200]"
@@ -836,4 +1129,15 @@
             </button>
         {/each}
     </div>
+{/if}
+
+<!-- Project modal: create / rename / delete -->
+{#if showProjectModal}
+    <ProjectModal
+        mode={projectModalMode}
+        target={projectModalTarget}
+        {projects}
+        onconfirm={handleProjectModalConfirm}
+        oncancel={handleProjectModalCancel}
+    />
 {/if}

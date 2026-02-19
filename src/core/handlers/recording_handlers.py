@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 # Clipboard helper (platform-native, no window focus required)
 # ---------------------------------------------------------------------------
 
+
 def _copy_to_system_clipboard(text: str) -> None:
     """Copy text to the system clipboard using platform-native CLI tools."""
     system = platform.system()
@@ -57,6 +58,7 @@ def _copy_to_system_clipboard(text: str) -> None:
 # RecordingSession
 # ---------------------------------------------------------------------------
 
+
 class RecordingSession:
     """
     Owns the recording state machine and the audio→transcribe→store pipeline.
@@ -76,6 +78,7 @@ class RecordingSession:
         shutdown_event: threading.Event,
         insight_manager_provider: Callable[[], Any],
         motd_manager_provider: Callable[[], Any],
+        title_generator_provider: Callable[[], Any] = lambda: None,
     ) -> None:
         self._audio_service_provider = audio_service_provider
         self._settings_provider = settings_provider
@@ -84,6 +87,7 @@ class RecordingSession:
         self._shutdown_event = shutdown_event
         self._insight_manager_provider = insight_manager_provider
         self._motd_manager_provider = motd_manager_provider
+        self._title_generator_provider = title_generator_provider
 
         self._is_recording = False
         self._recording_lock = threading.Lock()
@@ -258,6 +262,11 @@ class RecordingSession:
             motd_manager = self._motd_manager_provider()
             if motd_manager is not None:
                 motd_manager.maybe_schedule()
+
+            # Schedule SLM-based auto-titling for the new transcript.
+            title_gen = self._title_generator_provider()
+            if title_gen is not None and transcript is not None:
+                title_gen.schedule(transcript.id, text)
 
             if settings.output.auto_copy_to_clipboard:
                 _copy_to_system_clipboard(text)

@@ -286,6 +286,17 @@ class TranscriptDB:
             self._conn.commit()
             return cur.rowcount > 0
 
+    def get_untitled_transcripts(self) -> list[Transcript]:
+        """Get all transcripts that have no display_name set (NULL or empty string)."""
+        rows = self._conn.execute(
+            """SELECT t.*, p.name as project_name
+               FROM transcripts t
+               LEFT JOIN projects p ON t.project_id = p.id
+               WHERE t.display_name IS NULL OR TRIM(t.display_name) = ''
+               ORDER BY t.created_at DESC""",
+        ).fetchall()
+        return [self._row_to_transcript(r) for r in rows]
+
     # --- Variants ---
 
     def add_variant(

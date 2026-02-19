@@ -173,6 +173,30 @@ class UpdateConfigIntent(InteractionIntent):
 
 
 @dataclass(frozen=True, slots=True)
+class RenameTranscriptIntent(InteractionIntent):
+    """Manually rename a transcript (set display_name)."""
+
+    transcript_id: int = 0
+    title: str = ""
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class BatchRetitleIntent(InteractionIntent):
+    """Trigger batch retitling of all untitled transcripts via SLM."""
+
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class RetitleTranscriptIntent(InteractionIntent):
+    """Re-generate the SLM title for a single transcript."""
+
+    transcript_id: int = 0
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
 class RestartEngineIntent(InteractionIntent):
     """Restart ASR + SLM engine models."""
 

@@ -16,11 +16,11 @@ Everything runs on your hardware — no cloud, no API keys, no data leaves your 
 <table>
   <tr>
     <td align="center"><strong>Transcribe</strong></td>
-    <td align="center"><strong>History</strong></td>
+    <td align="center"><strong>Transcriptions</strong></td>
   </tr>
   <tr>
     <td><img src="assets/transcribe_view.png" alt="Transcribe view" width="100%"/></td>
-    <td><img src="assets/history_view.png" alt="History view" width="100%"/></td>
+    <td><img src="assets/transcriptions_view.png" alt="Transcriptions view" width="100%"/></td>
   </tr>
   <tr>
     <td align="center"><strong>Refine</strong></td>
@@ -31,18 +31,12 @@ Everything runs on your hardware — no cloud, no API keys, no data leaves your 
     <td><img src="assets/search_view.png" alt="Search view" width="100%"/></td>
   </tr>
   <tr>
-    <td align="center"><strong>Projects</strong></td>
     <td align="center"><strong>Settings</strong></td>
+    <td align="center"><strong>User</strong></td>
   </tr>
   <tr>
-    <td><img src="assets/projects_view.png" alt="Projects view" width="100%"/></td>
     <td><img src="assets/settings_view.png" alt="Settings view" width="100%"/></td>
-  </tr>
-  <tr>
-    <td align="center" colspan="2"><strong>User</strong></td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center"><img src="assets/user_view.png" alt="User view" width="50%"/></td>
+    <td><img src="assets/user_view.png" alt="User view" width="100%"/></td>
   </tr>
 </table>
 
@@ -339,8 +333,9 @@ Models are cached in `~/.cache/vociferous/models/` (XDG-compliant).
 
 - **Real-time transcription** with configurable ASR model quality
 - **SLM-powered refinement** with multi-level profiles (minimal → aggressive cleanup)
-- **Project organization** — assign transcripts to hierarchical projects with color coding
-- **Multi-select** — Ctrl+Click, Shift+Click, Ctrl+A across History, Search, and Projects views
+- **Unified Transcriptions view** — browse, filter by project, create/rename/delete projects, and manage transcripts in one place with an inline full-spectrum color picker
+- **Auto-titling** — SLM-generated titles for new transcripts, with batch retitling for existing untitled entries
+- **Multi-select** — Ctrl+Click, Shift+Click, Ctrl+A across Transcriptions and Search views
 - **Batch operations** — assign/delete multiple transcripts at once
 - **Global hotkey** — configurable push-to-talk key binding
 - **Search** — full-text search across all transcripts

@@ -16,6 +16,16 @@ class AudioConfig:
     INT16_SCALE = 32768.0  # 2^15 - int16 to float32 normalization factor
 
 
+class TitleGeneration:
+    """Constants for SLM-based auto-titling of transcripts."""
+
+    MIN_TEXT_CHARS = 100  # Skip titling for tiny recordings (<25 words)
+    MAX_TEXT_CHARS = 30_000  # Cap at ~7500 words to avoid stuffing a novel into the SLM
+    MAX_TITLE_TOKENS = 30  # Short titles: 5-10 words max
+    TEMPERATURE = 0.4  # Slightly creative but grounded
+    FALLBACK_PREFIX = "Transcript"  # Default: "Transcript #57"
+
+
 class FlowTiming:
     """
     Timing constants for core logic flows.

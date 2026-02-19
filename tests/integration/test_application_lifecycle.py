@@ -129,6 +129,7 @@ class TestHandlerRegistration:
             DeleteTranscriptIntent,
             DeleteTranscriptVariantIntent,
             RefineTranscriptIntent,
+            RenameTranscriptIntent,
             RestartEngineIntent,
             StopRecordingIntent,
             ToggleRecordingIntent,
@@ -145,6 +146,7 @@ class TestHandlerRegistration:
             DeleteTranscriptVariantIntent,
             ClearTranscriptsIntent,
             CommitEditsIntent,
+            RenameTranscriptIntent,
             RefineTranscriptIntent,
             CreateProjectIntent,
             UpdateProjectIntent,
@@ -161,8 +163,8 @@ class TestHandlerRegistration:
 
     def test_handler_count_matches_intent_count(self, coordinator):
         """No extra/ghost handlers registered beyond the expected set."""
-        # 15 intents are registered in _register_handlers
-        assert len(coordinator.command_bus._handlers) == 15
+        # 18 intents are registered in _register_handlers
+        assert len(coordinator.command_bus._handlers) == 18
 
     def test_handlers_are_callable(self, coordinator):
         """Every registered handler must be callable."""
@@ -172,7 +174,7 @@ class TestHandlerRegistration:
     def test_double_register_does_not_duplicate(self, coordinator):
         """Calling _register_handlers again overwrites, doesn't stack."""
         coordinator._register_handlers()
-        assert len(coordinator.command_bus._handlers) == 15
+        assert len(coordinator.command_bus._handlers) == 18
 
 
 # ── Shutdown & Cleanup ────────────────────────────────────────────────────
