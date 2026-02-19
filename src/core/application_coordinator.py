@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 import os
 import platform
-import subprocess
 import threading
 from typing import TYPE_CHECKING, Any
 

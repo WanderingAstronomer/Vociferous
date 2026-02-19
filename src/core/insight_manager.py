@@ -28,7 +28,6 @@ from src.core.resource_manager import ResourceManager
 
 if TYPE_CHECKING:
     from src.services.slm_runtime import SLMRuntime
-    from src.services.slm_types import SLMState
 
 logger = logging.getLogger(__name__)
 

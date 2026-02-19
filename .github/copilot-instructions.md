@@ -199,7 +199,7 @@ Mandatory behavior:
 
 ### 9.2 Changing ASR/SLM Logic
 
-1. Logic belongs in `src/services` or `src/core_runtime`.
+1. Logic belongs in `src/services` or `src/refinement`.
 2. Ensure inference remains off the API event loop.
 3. Validate IPC message definitions if protocol changes.
 
