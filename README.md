@@ -7,8 +7,6 @@
 </div>
 
 > In January 2026, Vociferous was a PyQt6 desktop application running faster-whisper through CTranslate2, using SQLAlchemy for persistence, with 73 Qt widget files and a hand-rolled YAML configuration system. By February 14 it had been completely rebuilt: PyQt6 replaced by a Svelte 5 SPA inside a pywebview shell, a Litestar REST+WebSocket API, whisper.cpp for ASR, llama.cpp for SLM refinement, raw SQLite3, and Pydantic Settings. The God Object coordinator was decomposed into domain handler classes. File-explorer-style multi-select landed across all views. The History and Projects views were merged into a single unified Transcriptions view with inline project management. And v4.4 shipped a full project management overhaul: a full-spectrum color picker, a conditional delete modal with subproject promotion logic, dark-themed parent selectors, and a comprehensive UI polish pass covering multi-select visual correctness, stats staleness, search input consistency, and destructive action clarity.
->
-> Three weeks. One month ago this was a different application entirely.
 
 ---
 
