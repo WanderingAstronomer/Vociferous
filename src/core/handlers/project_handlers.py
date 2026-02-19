@@ -71,7 +71,12 @@ class ProjectHandlers:
         db = self._db_provider()
         if not db:
             return
-        deleted = db.delete_project(intent.project_id)
+        deleted = db.delete_project(
+            intent.project_id,
+            delete_transcripts=getattr(intent, "delete_transcripts", False),
+            promote_subprojects=getattr(intent, "promote_subprojects", True),
+            delete_subproject_transcripts=getattr(intent, "delete_subproject_transcripts", False),
+        )
         if deleted:
             self._emit("project_deleted", {"id": intent.project_id})
 

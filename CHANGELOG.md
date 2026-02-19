@@ -4,9 +4,59 @@
 
 ---
 
+## v4.4.0 — Project Management Overhaul & UI Consistency Pass
+
+**Date:** 2026-02-18
+**Status:** Feature Release
+
+### Overview
+
+Complete overhaul of the Transcriptions view's project management system. Eliminates all legacy "History View" / "Projects View" naming, renames the rename workflow to edit, adds a full conditional delete modal with transcript/subproject fate options, fixes the color picker (removes muting/lightness override system), replaces native selects with dark-themed custom dropdowns, and fixes project header layout, icon ordering, count badge contrast, and inter-group dividers. Followed by a full UI polish pass covering multi-select visual correctness, stats staleness, search layout, and destructive action clarity.
+
+### Changed
+
+- **Transcriptions View naming finalized** — All references to "History View" and "Projects View" purged across the entire codebase. `loadHistory` → `loadTranscripts`, all related state/handler names updated.
+- **"Rename Project" → "Edit Project"** — Modal mode `"rename"` renamed to `"edit"` throughout. `RenameResult` → `EditResult`. Tooltip updated.
+- **Project header layout corrected** — DOM order is now `[chevron] [name] [edit-btn] [delete-btn] [count]`. Count badge is always rightmost and uses `var(--text-primary)` for legibility.
+- **Color picker muting removed** — Entire HSL lightness override system (`hexToHsl`, `hslToHex`, `lightness`, `colorHsl`, `colorSafe`) deleted. Picked hex is used as-is.
+- **Swatch grid balanced** — Expanded to 36 swatches (6×6 perfect grid), all vibrant and dark-UI readable.
+- **Parent dropdown dark-themed** — Native `<select>` replaced with `CustomSelect` component in both Create and Edit modes.
+- **Edit modal shows parent selector** — Parent field now visible when editing a project (hidden only if the project has subprojects, to enforce hierarchy depth limit).
+- **`parent_id` passed through edit** — `EditResult` carries `parentId`; `updateProject` call now sends it.
+- **Project group dividers** — Increased prominence (`opacity-60`, `my-3`) between top-level project groups.
+- **`project_updated` WebSocket handler** — Frontend now reacts to live project update events.
+
+### Delete modal overhaul
+
+- Conditional checkbox layout based on project structure:
+  - Always: "Delete transcripts assigned to this project" (unchecked = unassign)
+  - Top-level with subprojects: "Promote subprojects to top-level" (unchecked = also delete them)
+  - When deleting subprojects: "Also delete transcripts in subprojects"
+- Button order: **Delete (left) | Cancel (right)** with `justify-between`.
+- Full-stack implementation: `DeleteProjectIntent` carries three new boolean flags; `delete_project()` in DB implements conditional logic for all combinations within a single write-lock transaction.
+
+### UI Polish Pass
+
+- **Multi-select accent bar** — Selection highlight bar (`w-0.5` blue left edge) now renders on all transcript rows, including project-assigned ones. Previously only appeared in the Unassigned section due to an `{:else}` branch error.
+- **TranscribeView stats corrected** — `loadRecentSessions()` was called with a hard limit of 20 transcripts, producing a wrong session count. Limit raised to 500. Stats now also reload on every navigation to the Transcribe view, not only on `transcription_complete`.
+- **UNASSIGNED count badge removed** — The total count on the Unassigned section header was redundant noise — it always equaled the sum of the child date-group badges beneath it. Removed. Date-group counts remain.
+- **Project row spacing** — Project header rows gain `4px` left and `8px` right margin so they don't butt against the scrollbar. Unassigned header matches.
+- **Date-stamp count badge** — Promoted from `text-[10px] text-[var(--text-tertiary)]` (near-invisible) to `text-xs font-semibold text-[var(--text-primary)]`.
+- **Search input border** — Fixed. All other inputs in the app use `border-[var(--shell-border)]`; the SearchView input was incorrectly using `border-[var(--text-tertiary)]`.
+- **Search placeholder** — Changed from "Filter…" (wrong mental model) to "Search transcripts…".
+- **RefineView "Discard" → "Delete Result"** — "Discard" had the same visual weight as "Re-run" but calls `deleteVariant()` — permanent storage deletion. Renamed to "Delete Result", given Trash2 icon, danger red hover styling, and a tooltip: "Permanently removes this refinement from storage."
+- **Settings maintenance grid** — Card layout promoted to `lg:grid-cols-3` so all three maintenance cards (Transcriptions, Titles, Engine) display in a balanced three-column row at large viewports.
+
+### Fixed
+
+- **`ProjectModal` Svelte 5 warnings** — Prop-initialized `$state` now uses `$effect` for reactive initialization from `mode`/`target` props. `heading` converted to `$derived`. `tabindex="-1"` added to dialog element. `onchange` callback typed explicitly.
+- **Frontend typecheck** — `npm run check` passes with 0 errors and 0 warnings.
+
+---
+
 ## v4.3.0 — Unified Transcriptions View, Batch Retitling & Auto-Title on Refine
 
-**Date:** 2026-02-19
+**Date:** 2026-02-18
 **Status:** Feature Release
 
 ### Overview
@@ -166,9 +216,9 @@ File-explorer-style multi-selection across all transcript views, batch project a
 ### Added — Multi-Selection System
 
 - **`SelectionManager`** (`frontend/src/lib/selection.svelte.ts`): Reusable Svelte 5 rune-based selection manager with Click (select one), Ctrl+Click (toggle), Shift+Click (range select), Ctrl+Shift+Click (add range), Ctrl+A (select all), Escape (clear).
-- **HistoryView multi-select**: Selection count header, multi-select detail panel with bulk Assign/Delete buttons, keyboard hints, right-click auto-select for context menus.
+- **TranscriptsView multi-select**: Selection count header, multi-select detail panel with bulk Assign/Delete buttons, keyboard hints, right-click auto-select for context menus.
 - **SearchView multi-select**: Same selection UX plus newly added project assignment system (was previously missing from SearchView entirely). Conditional single/multi action bar.
-- **ProjectsView multi-select**: Selection across expanded project transcript trees. Range selection walks the full display-order tree (root projects → children → expanded transcripts).
+- **TranscriptsView multi-select (project trees)**: Selection across expanded project transcript trees. Range selection walks the full display-order tree (root projects → children → expanded transcripts).
 - **Batch API functions** (`batchAssignProject`, `batchDeleteTranscripts`): Sequential loop over individual intent dispatches — no backend changes required.
 
 ### Changed — UI Polish
@@ -284,7 +334,7 @@ Complete architectural rebuild from PyQt6 desktop application to a modern web-na
 
 ### Fixed
 
-- **History view project colors:** `HistoryView._handle_data_changed` now handles `entity_type == "project"` events by calling `TranscriptionModel.refresh_project_colors()`, so color-identifier badges update without a manual refresh.
+- **TranscriptsView project colors:** `TranscriptsView._handle_data_changed` now handles `entity_type == "project"` events by calling `TranscriptionModel.refresh_project_colors()`, so color-identifier badges update without a manual refresh.
 
 ---
 

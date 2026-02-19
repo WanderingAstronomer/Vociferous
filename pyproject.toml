@@ -1,9 +1,15 @@
 [project]
 name = "vociferous"
-version = "4.3.0"
+version = "4.4.0"
 description = "Cross-platform speech-to-text with offline transcription and SLM refinement"
+readme = "README.md"
 requires-python = ">=3.12"
 license = "AGPL-3.0-or-later"
+
+[project.urls]
+"Homepage" = "https://github.com/WanderingAstronomer/Vociferous"
+"Changelog" = "https://github.com/WanderingAstronomer/Vociferous/blob/main/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/WanderingAstronomer/Vociferous/issues"
 
 [project.scripts]
 vociferous = "src.main:main"

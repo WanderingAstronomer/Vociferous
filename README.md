@@ -1,3 +1,17 @@
+<div align="center">
+
+## Vociferous v4.4
+
+**February 2026**
+
+</div>
+
+> In January 2026, Vociferous was a PyQt6 desktop application running faster-whisper through CTranslate2, using SQLAlchemy for persistence, with 73 Qt widget files and a hand-rolled YAML configuration system. By February 14 it had been completely rebuilt: PyQt6 replaced by a Svelte 5 SPA inside a pywebview shell, a Litestar REST+WebSocket API, whisper.cpp for ASR, llama.cpp for SLM refinement, raw SQLite3, and Pydantic Settings. The God Object coordinator was decomposed into domain handler classes. File-explorer-style multi-select landed across all views. The History and Projects views were merged into a single unified Transcriptions view with inline project management. And v4.4 shipped a full project management overhaul: a full-spectrum color picker, a conditional delete modal with subproject promotion logic, dark-themed parent selectors, and a comprehensive UI polish pass covering multi-select visual correctness, stats staleness, search input consistency, and destructive action clarity.
+>
+> Three weeks. One month ago this was a different application entirely.
+
+---
+
 # Vociferous
 
 **Cross-platform, offline speech-to-text with local AI refinement.**
@@ -333,12 +347,13 @@ Models are cached in `~/.cache/vociferous/models/` (XDG-compliant).
 
 - **Real-time transcription** with configurable ASR model quality
 - **SLM-powered refinement** with multi-level profiles (minimal → aggressive cleanup)
-- **Unified Transcriptions view** — browse, filter by project, create/rename/delete projects, and manage transcripts in one place with an inline full-spectrum color picker
+- **Unified Transcriptions view** — browse, filter by project, create/edit/delete projects with inline full-spectrum color picker, nested subprojects, conditional delete with subproject promotion logic
 - **Auto-titling** — SLM-generated titles for new transcripts, with batch retitling for existing untitled entries
-- **Multi-select** — Ctrl+Click, Shift+Click, Ctrl+A across Transcriptions and Search views
+- **SLM refinement** — multi-level profiles (Literal → Structural → Neutral → Intent → Overkill), re-run and delete result workflows
+- **Multi-select** — Ctrl+Click, Shift+Click, Ctrl+A with visual accent bar feedback across Transcriptions and Search views
 - **Batch operations** — assign/delete multiple transcripts at once
 - **Global hotkey** — configurable push-to-talk key binding
-- **Search** — full-text search across all transcripts
+- **Search** — full-text search with sortable columns across all transcripts
 - **Transcript variants** — immutable raw captures with editable refinement variants
 - **Voice calibration** — ambient noise profiling for better VAD
 - **Audio spectrum visualization** — real-time frequency display during recording

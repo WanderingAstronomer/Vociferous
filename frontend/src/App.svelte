@@ -7,7 +7,7 @@
     import IconRail from "./lib/components/IconRail.svelte";
     import TitleBar from "./lib/components/TitleBar.svelte";
     import TranscribeView from "./views/TranscribeView.svelte";
-    import HistoryView from "./views/HistoryView.svelte";
+    import TranscriptsView from "./views/TranscriptsView.svelte";
     import SearchView from "./views/SearchView.svelte";
     import SettingsView from "./views/SettingsView.svelte";
     import RefineView from "./views/RefineView.svelte";
@@ -117,8 +117,8 @@
                     </div>
                 {/if}
 
-                {#if nav.current === "history"}
-                    <HistoryView />
+                {#if nav.current === "transcripts"}
+                    <TranscriptsView />
                 {:else if nav.current === "search"}
                     <SearchView />
                 {:else if nav.current === "settings"}

@@ -49,7 +49,7 @@
     let recentSessions = $state<Transcript[]>([]);
 
     function loadRecentSessions() {
-        getTranscripts(20)
+        getTranscripts(500)
             .then((t) => (recentSessions = t))
             .catch(() => {});
     }
@@ -216,6 +216,7 @@
 
     $effect(() => {
         if (nav.current !== "transcribe") return;
+        loadRecentSessions();
         const pendingRequest = nav.consumePendingTranscriptRequest();
         if (pendingRequest != null) {
             void openTranscript(pendingRequest.id, pendingRequest.mode);

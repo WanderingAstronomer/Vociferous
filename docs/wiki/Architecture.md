@@ -63,7 +63,7 @@ API Controller
     │
     ▼ CommandBus.dispatch(intent)
     │
-Handler (in ApplicationCoordinator)
+Handler (src/core/handlers/)
     │
     ▼ Service logic (database, audio, SLM)
     │
@@ -126,9 +126,11 @@ Key events:
 - `refinement_complete` — SLM produced a new variant
 - `refinement_error` — SLM inference failed
 - `config_updated` — settings changed
-- `project_created` / `project_deleted` — project mutations
+- `project_created` / `project_updated` / `project_deleted` — project mutations
 - `recording_started` / `recording_stopped` — audio state changes
 - `onboarding_required` — ASR model not provisioned
+- `batch_retitle_progress` — batch retitling progress update
+- `insight_ready` / `motd_ready` — SLM-generated content available
 
 ## Service Isolation
 

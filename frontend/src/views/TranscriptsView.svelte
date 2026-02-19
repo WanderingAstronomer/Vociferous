@@ -107,7 +107,7 @@
     /* ===== Project Modal State ===== */
 
     let showProjectModal = $state(false);
-    let projectModalMode = $state<"create" | "rename" | "delete">("create");
+    let projectModalMode = $state<"create" | "edit" | "delete">("create");
     let projectModalTarget = $state<Project | null>(null);
 
     /* ===== Title Editing State ===== */
@@ -368,7 +368,7 @@
 
     /* ===== Data loading ===== */
 
-    async function loadHistory() {
+    async function loadTranscripts() {
         loading = entries.length === 0;
         error = "";
         try {
@@ -466,7 +466,7 @@
 
     function editSelected() {
         if (!selectedEntry) return;
-        nav.navigateToEdit(selectedEntry.id, { view: "history", transcriptId: selectedEntry.id });
+        nav.navigateToEdit(selectedEntry.id, { view: "transcripts", transcriptId: selectedEntry.id });
     }
 
     function startEditTitle() {
@@ -555,7 +555,7 @@
             if (selectedEntry && ids.includes(selectedEntry.id)) {
                 selectedEntry = await getTranscript(selectedEntry.id);
             }
-            loadHistory();
+            loadTranscripts();
         } catch (err: any) {
             console.error("Failed to assign project:", err);
         } finally {
@@ -565,7 +565,7 @@
 
     /* ===== Project Modal ===== */
 
-    function openProjectModal(mode: "create" | "rename" | "delete", target: Project | null = null) {
+    function openProjectModal(mode: "create" | "edit" | "delete", target: Project | null = null) {
         projectModalMode = mode;
         projectModalTarget = target;
         showProjectModal = true;
@@ -576,13 +576,17 @@
         try {
             if (result.mode === "create") {
                 await createProject(result.name, result.color, result.parentId);
-            } else if (result.mode === "rename") {
-                await updateProject(result.id, { name: result.name, color: result.color });
+            } else if (result.mode === "edit") {
+                await updateProject(result.id, { name: result.name, color: result.color, parent_id: result.parentId });
             } else if (result.mode === "delete") {
-                await deleteProject(result.id);
+                await deleteProject(result.id, {
+                    deleteTranscripts: result.deleteTranscripts,
+                    promoteSubprojects: result.promoteSubprojects,
+                    deleteSubprojectTranscripts: result.deleteSubprojectTranscripts,
+                });
             }
             projects = await getProjects();
-            await loadHistory();
+            await loadTranscripts();
         } catch (e: any) {
             console.error(`Project ${result.mode} failed:`, e);
         }
@@ -618,7 +622,7 @@
     /* ===== WebSocket ===== */
 
     onMount(() => {
-        loadHistory().then(() => {
+        loadTranscripts().then(() => {
             const pending = nav.consumePendingTranscriptRequest();
             if (pending && pending.id !== selectedId) {
                 selectEntry(pending.id);
@@ -632,7 +636,7 @@
         document.addEventListener("keydown", handleGlobalKeydown);
 
         const unsubs = [
-            ws.on("transcription_complete", () => loadHistory()),
+            ws.on("transcription_complete", () => loadTranscripts()),
             ws.on("transcript_deleted", (data) => {
                 entries = entries.filter((e) => e.id !== data.id);
                 if (selectedId === data.id) {
@@ -643,16 +647,21 @@
             ws.on("refinement_complete", (data) => {
                 refining = null;
                 if (selectedId === data.transcript_id) selectEntry(data.transcript_id);
-                loadHistory();
+                loadTranscripts();
             }),
             ws.on("refinement_error", () => {
                 refining = null;
             }),
             ws.on("transcript_updated", (data) => {
                 if (selectedId === data.id) selectEntry(data.id);
-                loadHistory();
+                loadTranscripts();
             }),
             ws.on("project_created", () => {
+                getProjects()
+                    .then((p) => (projects = p))
+                    .catch(() => {});
+            }),
+            ws.on("project_updated", () => {
                 getProjects()
                     .then((p) => (projects = p))
                     .catch(() => {});
@@ -661,7 +670,7 @@
                 getProjects()
                     .then((p) => (projects = p))
                     .catch(() => {});
-                loadHistory();
+                loadTranscripts();
             }),
         ];
         return () => {
@@ -702,7 +711,7 @@
             <div class="flex-1"></div>
             <button
                 class="w-7 h-7 border-none rounded bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)]"
-                onclick={loadHistory}
+                onclick={loadTranscripts}
                 title="Refresh"
             >
                 <RefreshCw size={14} />
@@ -741,12 +750,22 @@
             {:else}
                 {#each treeNodes as node, nodeIdx (node.type === "transcript" ? `t-${node.entry.id}` : node.type === "project-header" ? node.key : node.type === "date-header" ? node.key : "unassigned")}
                     {#if node.type === "project-header"}
+                        <!-- Divider before each top-level project except the first node -->
+                        {#if node.depth === 0 && nodeIdx > 0}
+                            <div class="h-px mx-3 my-3 bg-[var(--accent)] opacity-60"></div>
+                        {/if}
                         <!-- Project header row -->
                         <div
-                            class="group/hdr flex items-center gap-1.5 w-full p-1.5 border-none rounded-md cursor-pointer text-left transition-colors duration-150 hover:brightness-110"
-                            style="padding-left: {12 + node.depth * 16}px; background: {node.project.color
-                                ? `color-mix(in srgb, ${node.project.color} 18%, transparent)`
-                                : 'var(--surface-secondary)'}"
+                            class="group/hdr flex items-center gap-1.5 pl-3 pr-1.5 rounded-md cursor-pointer text-left transition-colors duration-150 hover:brightness-110 {node.depth ===
+                            0
+                                ? 'py-2'
+                                : 'py-1.5'}"
+                            style="margin-left: calc({node.depth * 16}px + 4px); width: calc(100% - {node.depth *
+                                16}px - 12px); background: {node.project.color
+                                ? `color-mix(in srgb, ${node.project.color} 35%, transparent)`
+                                : 'var(--surface-secondary)'}; {node.depth === 0
+                                ? `border-left: 3px solid ${node.project.color ?? 'var(--accent-muted)'};`
+                                : ''}"
                             role="button"
                             tabindex="0"
                             onclick={() => toggleSection(node.key)}
@@ -760,24 +779,29 @@
                             <span class="flex items-center text-[var(--text-tertiary)] shrink-0">
                                 {#if node.collapsed}<ChevronRight size={14} />{:else}<ChevronDown size={14} />{/if}
                             </span>
+                            {#if node.depth > 0 && node.project.color}
+                                <span
+                                    class="shrink-0 rounded-full"
+                                    style="width: 7px; height: 7px; background: {node.project.color}; opacity: 0.85;"
+                                ></span>
+                            {/if}
                             <span
-                                class="flex-1 text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide truncate {node.depth > 0 ? 'text-left' : 'text-center'}"
+                                class="flex-1 text-xs font-semibold {node.depth === 0
+                                    ? 'text-[var(--text-primary)]'
+                                    : 'text-[var(--text-secondary)]'} uppercase tracking-wide truncate {node.depth > 0
+                                    ? 'text-left'
+                                    : 'text-center'}"
                             >
                                 {node.project.name}
                             </span>
-                            <span
-                                class="text-xs text-[var(--text-tertiary)] bg-[var(--surface-tertiary)] px-1.5 py-px rounded-lg shrink-0"
-                            >
-                                {node.count}
-                            </span>
-                            <!-- Hover actions: rename / delete -->
+                            <!-- Hover actions: edit / delete (left of count) -->
                             <button
                                 class="w-5 h-5 border-none rounded bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center opacity-0 group-hover/hdr:opacity-100 hover:text-[var(--accent)] transition-all shrink-0"
                                 onclick={(e) => {
                                     e.stopPropagation();
-                                    openProjectModal("rename", node.project);
+                                    openProjectModal("edit", node.project);
                                 }}
-                                title="Rename project"
+                                title="Edit project"
                             >
                                 <Pencil size={11} />
                             </button>
@@ -791,14 +815,24 @@
                             >
                                 <Trash2 size={11} />
                             </button>
+                            <!-- Count badge (always rightmost) -->
+                            <span
+                                class="text-xs font-semibold px-1.5 py-px rounded-lg shrink-0"
+                                style={node.project.color
+                                    ? `background: color-mix(in srgb, ${node.project.color} 25%, var(--surface-tertiary)); color: var(--text-primary);`
+                                    : "background: var(--surface-tertiary); color: var(--text-primary);"}
+                            >
+                                {node.count}
+                            </span>
                         </div>
                     {:else if node.type === "unassigned-header"}
                         <!-- Unassigned section header -->
                         {#if nodeIdx > 0}
-                            <div class="h-px mx-3 my-2 bg-[var(--accent)] opacity-40"></div>
+                            <div class="h-px mx-3 my-3 bg-[var(--accent)] opacity-60"></div>
                         {/if}
                         <button
-                            class="flex items-center gap-1.5 w-full p-1.5 px-3 border-none rounded-md bg-[var(--surface-secondary)] cursor-pointer text-left transition-colors duration-150 hover:brightness-110"
+                            class="flex items-center gap-1.5 p-1.5 px-3 border-none rounded-md bg-[var(--surface-secondary)] cursor-pointer text-left transition-colors duration-150 hover:brightness-110"
+                            style="margin-left: 4px; width: calc(100% - 12px);"
                             onclick={() => toggleSection(node.key)}
                         >
                             <span class="flex items-center text-[var(--text-tertiary)] shrink-0">
@@ -808,11 +842,6 @@
                                 class="flex-1 text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wide text-center"
                             >
                                 Unassigned
-                            </span>
-                            <span
-                                class="text-xs text-[var(--text-tertiary)] bg-[var(--surface-tertiary)] px-1.5 py-px rounded-lg shrink-0"
-                            >
-                                {node.count}
                             </span>
                         </button>
                     {:else if node.type === "date-header"}
@@ -829,7 +858,7 @@
                                 {node.label}
                             </span>
                             <span
-                                class="text-[10px] text-[var(--text-tertiary)] bg-[var(--surface-tertiary)] px-1 py-px rounded-lg shrink-0"
+                                class="text-xs font-semibold text-[var(--text-primary)] bg-[var(--surface-tertiary)] px-1.5 py-px rounded-lg shrink-0"
                             >
                                 {node.count}
                             </span>
@@ -843,27 +872,27 @@
                             onclick={(e) => handleEntryClick(node.entry.id, e)}
                             oncontextmenu={(e) => openProjectMenu(e, node.entry.id)}
                         >
-                            <!-- Tree connecting line -->
+                            <!-- Selection accent bar (always shown) -->
+                            <div
+                                class="w-0.5 rounded-sm shrink-0 mr-1 transition-colors duration-150"
+                                class:bg-[var(--accent)]={selection.isSelected(node.entry.id)}
+                            ></div>
+                            <!-- Tree connecting line (project-assigned only) -->
                             {#if node.parentColor}
                                 <div class="relative w-4 shrink-0 mr-1">
                                     <!-- Vertical line -->
                                     <div
                                         class="absolute left-1 top-0 w-px"
-                                        style="background: {node.parentColor}; opacity: 0.35; height: {node.isLastChild
+                                        style="background: {node.parentColor}; opacity: 0.6; height: {node.isLastChild
                                             ? '50%'
                                             : '100%'}"
                                     ></div>
                                     <!-- Horizontal connector -->
                                     <div
                                         class="absolute left-1 top-1/2 h-px w-2.5"
-                                        style="background: {node.parentColor}; opacity: 0.35"
+                                        style="background: {node.parentColor}; opacity: 0.6"
                                     ></div>
                                 </div>
-                            {:else}
-                                <div
-                                    class="w-0.5 rounded-sm shrink-0 mr-2 transition-colors duration-150"
-                                    class:bg-[var(--accent)]={selection.isSelected(node.entry.id)}
-                                ></div>
                             {/if}
                             <div class="flex-1 min-w-0 flex flex-col gap-0.5 py-0.5">
                                 <span

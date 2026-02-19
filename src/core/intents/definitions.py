@@ -122,9 +122,12 @@ class CreateProjectIntent(InteractionIntent):
 
 @dataclass(frozen=True, slots=True)
 class DeleteProjectIntent(InteractionIntent):
-    """Delete a project."""
+    """Delete a project with conditional transcript/subproject handling."""
 
     project_id: int = 0
+    delete_transcripts: bool = False
+    promote_subprojects: bool = True
+    delete_subproject_transcripts: bool = False
     source: IntentSource = IntentSource.API
 
 

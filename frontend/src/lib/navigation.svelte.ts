@@ -7,7 +7,7 @@
 
 export type ViewId =
     | "transcribe"
-    | "history"
+    | "transcripts"
     | "search"
     | "settings"
     | "refine"

@@ -89,7 +89,7 @@ This downloads models from Hugging Face Hub into the data directory. The provisi
 - **ASR models**: whisper.cpp GGML format (default: `large-v3-turbo-q5_0`)
 - **SLM models**: llama.cpp GGUF format (default: `qwen14b` — Qwen3 14B Q4_K_M)
 
-Models are stored in `~/.local/share/vociferous/models/` (Linux) or the platform-appropriate data directory.
+Models are stored in `~/.cache/vociferous/models/` (Linux) or the platform-appropriate XDG cache directory.
 
 ## NVIDIA GPU Users
 

@@ -365,13 +365,13 @@
             }}
         >
             <div
-                class="flex-1 flex items-center gap-[var(--space-1)] h-9 bg-[var(--surface-secondary)] border border-[var(--text-tertiary)] rounded-[var(--radius-sm)] px-[var(--space-2)] text-[var(--text-tertiary)] transition-[border-color] duration-[var(--transition-fast)] focus-within:border-[var(--accent)]"
+                class="flex-1 flex items-center gap-[var(--space-1)] h-9 bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-[var(--radius-sm)] px-[var(--space-2)] text-[var(--text-tertiary)] transition-[border-color] duration-[var(--transition-fast)] focus-within:border-[var(--accent)]"
             >
                 <Search size={14} />
                 <input
                     type="text"
                     class="flex-1 bg-transparent border-none outline-none text-[var(--text-primary)] font-[var(--font-family)] text-[var(--text-sm)] placeholder:text-[var(--text-tertiary)]"
-                    placeholder="Filter…"
+                    placeholder="Search transcripts…"
                     bind:value={query}
                     oninput={() => {
                         if (debounceTimer) clearTimeout(debounceTimer);
@@ -511,7 +511,7 @@
                             Duration
                         </th>
                         <th
-                            class="text-left bg-[var(--surface-primary)] text-[var(--text-secondary)] font-[var(--weight-emphasis)] py-[var(--space-1)] px-[var(--space-2)] border-b border-[var(--shell-border)] cursor-pointer select-none whitespace-nowrap transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-primary)] leading-[var(--leading-normal)]"
+                            class="text-center bg-[var(--surface-primary)] text-[var(--text-secondary)] font-[var(--weight-emphasis)] py-[var(--space-1)] px-[var(--space-2)] border-b border-[var(--shell-border)] cursor-pointer select-none whitespace-nowrap transition-colors duration-[var(--transition-fast)] hover:text-[var(--text-primary)] leading-[var(--leading-normal)]"
                             onclick={() => toggleSort("text")}
                         >
                             Text

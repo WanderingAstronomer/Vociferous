@@ -6,7 +6,7 @@
      * - Scrollable content centered within min/max width
      * - Card-based sections: ASR, Recording, Output, Visualization, Calibration
      * - ToggleSwitch for boolean settings
-     * - History and application controls
+     * - Data management and application controls
      * - Save/cancel footer
      */
 
@@ -231,9 +231,9 @@
         }
     }
 
-    /* ── History controls ── */
-    let clearingHistory = $state(false);
-    let showClearHistoryConfirm = $state(false);
+    /* ── Data controls ── */
+    let clearingTranscripts = $state(false);
+    let showClearTranscriptsConfirm = $state(false);
     let showGpuDetails = $state(false);
 
     /* ===== Batch Retitle State ===== */
@@ -304,7 +304,7 @@
         return { filename: `vociferous-export-${datePart}.json`, content };
     }
 
-    async function handleExportHistory() {
+    async function handleExportTranscripts() {
         try {
             const transcripts = await getTranscripts(99999);
             const { filename, content } = buildExportPayload(
@@ -341,13 +341,13 @@
         }
     }
 
-    async function handleClearHistory() {
-        showClearHistoryConfirm = true;
+    async function handleClearTranscripts() {
+        showClearTranscriptsConfirm = true;
     }
 
-    async function confirmClearHistory() {
-        showClearHistoryConfirm = false;
-        clearingHistory = true;
+    async function confirmClearTranscripts() {
+        showClearTranscriptsConfirm = false;
+        clearingTranscripts = true;
         try {
             const result = await clearAllTranscripts();
             message = `Cleared ${result.deleted} transcript${result.deleted !== 1 ? "s" : ""}`;
@@ -356,7 +356,7 @@
             message = e.message || "Clear failed";
             messageType = "error";
         } finally {
-            clearingHistory = false;
+            clearingTranscripts = false;
         }
     }
 
@@ -861,7 +861,8 @@
                                             )}
                                     />
                                     <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                        >Automatically regenerates the transcript title when a refinement completes. Uses the refined text for a more accurate title.</span
+                                        >Automatically regenerates the transcript title when a refinement completes.
+                                        Uses the refined text for a more accurate title.</span
                                     >
                                 </div>
                             </div>
@@ -1025,7 +1026,7 @@
                         >
                             <RotateCcw size={18} class="text-[var(--accent)]" /><span>Maintenance</span>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-[var(--space-3)]">
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-[var(--space-3)]">
                             <div
                                 class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
                             >
@@ -1070,15 +1071,15 @@
                                     >
                                 </div>
                                 <div class="flex gap-[var(--space-2)] flex-wrap">
-                                    <StyledButton variant="secondary" onclick={handleExportHistory}
+                                    <StyledButton variant="secondary" onclick={handleExportTranscripts}
                                         >Export Transcriptions</StyledButton
                                     >
                                     <StyledButton
                                         variant="destructive"
-                                        onclick={handleClearHistory}
-                                        disabled={clearingHistory}
+                                        onclick={handleClearTranscripts}
+                                        disabled={clearingTranscripts}
                                     >
-                                        {clearingHistory ? "Clearing…" : "Clear All Transcriptions"}</StyledButton
+                                        {clearingTranscripts ? "Clearing…" : "Clear All Transcriptions"}</StyledButton
                                     >
                                 </div>
                             </div>
@@ -1090,7 +1091,8 @@
                                     >Titles</span
                                 >
                                 <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                    >Generate SLM-powered titles for all untitled transcripts. This may take several minutes if you have many transcripts. Recordings shorter than ~25 words are skipped.</span
+                                    >Generate SLM-powered titles for all untitled transcripts. This may take several
+                                    minutes if you have many transcripts. Recordings shorter than ~25 words are skipped.</span
                                 >
                                 {#if batchRetitling}
                                     <div class="flex items-center gap-2 text-[var(--text-xs)] text-[var(--accent)]">
@@ -1098,10 +1100,14 @@
                                         <span>{batchRetitleMessage}</span>
                                     </div>
                                     {#if batchRetitleTotal > 0}
-                                        <div class="w-full h-1.5 bg-[var(--surface-primary)] rounded-full overflow-hidden">
+                                        <div
+                                            class="w-full h-1.5 bg-[var(--surface-primary)] rounded-full overflow-hidden"
+                                        >
                                             <div
                                                 class="h-full bg-[var(--accent)] transition-all duration-300 rounded-full"
-                                                style="width: {Math.round((batchRetitleCurrent / batchRetitleTotal) * 100)}%"
+                                                style="width: {Math.round(
+                                                    (batchRetitleCurrent / batchRetitleTotal) * 100,
+                                                )}%"
                                             ></div>
                                         </div>
                                         <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
@@ -1153,38 +1159,44 @@
             </div>
         </div>
 
-        {#if showClearHistoryConfirm}
+        {#if showClearTranscriptsConfirm}
             <div
                 class="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-[var(--space-4)]"
                 role="presentation"
                 onclick={(e) => {
-                    if (e.target === e.currentTarget) showClearHistoryConfirm = false;
+                    if (e.target === e.currentTarget) showClearTranscriptsConfirm = false;
                 }}
             >
                 <div
                     class="w-full max-w-[520px] bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] p-[var(--space-4)] flex flex-col gap-[var(--space-3)]"
                     role="dialog"
                     aria-modal="true"
-                    aria-labelledby="clear-history-title"
-                    aria-describedby="clear-history-description"
+                    aria-labelledby="clear-transcripts-title"
+                    aria-describedby="clear-transcripts-description"
                 >
                     <h3
-                        id="clear-history-title"
+                        id="clear-transcripts-title"
                         class="m-0 text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
                     >
                         Clear all transcriptions?
                     </h3>
-                    <p id="clear-history-description" class="m-0 text-[var(--text-sm)] text-[var(--text-secondary)]">
+                    <p
+                        id="clear-transcripts-description"
+                        class="m-0 text-[var(--text-sm)] text-[var(--text-secondary)]"
+                    >
                         This permanently deletes all transcripts and their variants. This action cannot be undone.
                     </p>
                     <div class="flex justify-end gap-[var(--space-2)] pt-[var(--space-1)]">
                         <StyledButton
                             variant="secondary"
-                            onclick={() => (showClearHistoryConfirm = false)}
-                            disabled={clearingHistory}>Cancel</StyledButton
+                            onclick={() => (showClearTranscriptsConfirm = false)}
+                            disabled={clearingTranscripts}>Cancel</StyledButton
                         >
-                        <StyledButton variant="destructive" onclick={confirmClearHistory} disabled={clearingHistory}
-                            >{clearingHistory ? "Clearing…" : "Delete Everything"}</StyledButton
+                        <StyledButton
+                            variant="destructive"
+                            onclick={confirmClearTranscripts}
+                            disabled={clearingTranscripts}
+                            >{clearingTranscripts ? "Clearing…" : "Delete Everything"}</StyledButton
                         >
                     </div>
                 </div>

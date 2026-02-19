@@ -24,7 +24,7 @@
     /* ── Constants ── */
     const SPEAKING_SPEED_WPM = 150;
     const TYPING_SPEED_WPM = 40;
-    const HISTORY_EXPORT_LIMIT = 10000;
+    const TRANSCRIPT_EXPORT_LIMIT = 10000;
 
     const FILLER_SINGLE = new Set([
         "um",
@@ -164,7 +164,7 @@
         loading = true;
         try {
             const [transcripts, health, config, insightRes] = await Promise.all([
-                getTranscripts(HISTORY_EXPORT_LIMIT),
+                getTranscripts(TRANSCRIPT_EXPORT_LIMIT),
                 getHealth().catch(() => null),
                 getConfig().catch(() => ({})),
                 getInsight().catch(() => ({ text: "" })),
@@ -198,7 +198,7 @@
 
     /* ── Explanations content ── */
     const explanations = [
-        { title: "Transcriptions", text: "Total count of all transcription entries stored in your history database." },
+        { title: "Transcriptions", text: "Total count of all transcription entries stored in your database." },
         {
             title: "Words Captured",
             text: "Sum of word counts across all transcriptions. Each entry's words are counted individually.",

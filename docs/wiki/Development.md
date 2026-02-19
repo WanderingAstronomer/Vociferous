@@ -83,12 +83,12 @@ frontend/
 │   │   └── ws.ts               # WebSocket client (auto-reconnect, event routing)
 │   └── views/                  # Page-level components
 │       ├── TranscribeView.svelte # Recording, transcription, waveform
-│       ├── HistoryView.svelte  # Transcript browser + multi-select
+│       ├── TranscriptsView.svelte  # Transcript browser + multi-select
 │       ├── SearchView.svelte   # Full-text search + multi-select
 │       ├── RefineView.svelte   # SLM refinement interface
 │       ├── SettingsView.svelte # Config UI
 │       ├── UserView.svelte     # User profile + name
-│       └── ProjectsView.svelte # Project tree + batch operations
+│       └── (merged into TranscriptsView)
 └── public/                     # Static assets
 ```
 
@@ -122,7 +122,7 @@ pytest tests/integration/
 
 ### Current Stats
 
-- **385 tests**, all passing
+- **374+ tests**, all passing
 - Average run time: ~3 seconds
 
 ## Linting & Type Checking

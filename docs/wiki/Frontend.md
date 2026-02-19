@@ -22,7 +22,7 @@ All state management uses Svelte 5 Runes — **no legacy stores or `export let` 
 
 ### State Files
 
-- **`selection.svelte.ts`** — Multi-selection manager (shared across HistoryView, SearchView, ProjectsView)
+- **`selection.svelte.ts`** — Multi-selection manager (shared across TranscriptsView, SearchView)
 - **`navigation.svelte.ts`** — View routing and navigation state
 - **`ws.ts`** — WebSocket client with auto-reconnect; routes incoming events to reactive state
 - **`events.ts`** — WebSocket event type definitions
@@ -48,13 +48,12 @@ $effect(() => {
 
 | Component | Purpose |
 |-----------|---------|
-| `TranscribeView.svelte` | Recording UI, waveform visualizer, transcription result display |
-| `HistoryView.svelte` | Transcript list with multi-select, batch delete, batch project assignment |
-| `SearchView.svelte` | Full-text search with multi-select, same batch operations |
-| `RefineView.svelte` | SLM refinement interface with level slider and custom instructions |
-| `SettingsView.svelte` | Configuration UI with grouped settings, custom dropdowns |
+| `TranscribeView.svelte` | Recording UI, waveform visualizer, transcription result display, session stats |
+| `TranscriptsView.svelte` | Unified transcript browser: collapsible project tree, multi-select, batch assign/delete, inline project management |
+| `SearchView.svelte` | Full-text search with sortable columns, multi-select, batch operations |
+| `RefineView.svelte` | SLM refinement interface with level slider, custom instructions, re-run and delete result |
+| `SettingsView.svelte` | Configuration UI with grouped settings, custom dropdowns, maintenance actions |
 | `UserView.svelte` | User profile, display name, productivity stats dashboard |
-| `ProjectsView.svelte` | Project tree with nested hierarchies, multi-select, batch operations |
 
 ### Shared Components
 

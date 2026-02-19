@@ -21,10 +21,7 @@ async def list_projects() -> list[dict]:
     if coordinator.db is None:
         return []
     projects = coordinator.db.get_projects()
-    return [
-        {"id": p.id, "name": p.name, "color": p.color, "parent_id": p.parent_id}
-        for p in projects
-    ]
+    return [{"id": p.id, "name": p.name, "color": p.color, "parent_id": p.parent_id} for p in projects]
 
 
 @post("/api/projects")
@@ -45,12 +42,18 @@ async def create_project(data: dict) -> Response:
 
 
 @delete("/api/projects/{project_id:int}", status_code=200)
-async def delete_project(project_id: int) -> Response:
+async def delete_project(project_id: int, data: dict | None = None) -> Response:
     """Delete a project via CommandBus intent."""
     from src.core.intents.definitions import DeleteProjectIntent
 
     coordinator = get_coordinator()
-    intent = DeleteProjectIntent(project_id=project_id)
+    opts = data or {}
+    intent = DeleteProjectIntent(
+        project_id=project_id,
+        delete_transcripts=bool(opts.get("delete_transcripts", False)),
+        promote_subprojects=bool(opts.get("promote_subprojects", True)),
+        delete_subproject_transcripts=bool(opts.get("delete_subproject_transcripts", False)),
+    )
     success = coordinator.command_bus.dispatch(intent)
     if not success:
         return Response(content={"error": "Delete failed"}, status_code=500)

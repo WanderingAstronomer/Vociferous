@@ -86,7 +86,7 @@ class ApplicationCoordinator:
         7. Start API server (background thread)
         8. Open pywebview window (blocks until closed)
         """
-        logger.info("Starting Vociferous v4.0...")
+        logger.info("Starting Vociferous v4.4...")
 
         # 1. Database
         from src.database.db import TranscriptDB

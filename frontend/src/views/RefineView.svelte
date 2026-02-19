@@ -12,6 +12,7 @@
         ThumbsUp,
         Pencil,
         X,
+        Trash2,
         Loader2,
         FileText,
         ChevronDown,
@@ -214,7 +215,7 @@
             <FileText size={15} />
             <span>
                 {#if selectedId !== null}
-                    {transcripts.find(t => t.id === selectedId)?.display_name?.trim() || `Transcript #${selectedId}`}
+                    {transcripts.find((t) => t.id === selectedId)?.display_name?.trim() || `Transcript #${selectedId}`}
                 {:else}
                     Select a transcript to refine…
                 {/if}
@@ -250,7 +251,9 @@
                             <span class="text-[var(--text-tertiary)] text-[var(--text-xs)] shrink-0 min-w-[32px]"
                                 >#{t.id}</span
                             >
-                            <span class="overflow-hidden text-ellipsis whitespace-nowrap">{t.display_name?.trim() || truncateText(t.text)}</span>
+                            <span class="overflow-hidden text-ellipsis whitespace-nowrap"
+                                >{t.display_name?.trim() || truncateText(t.text)}</span
+                            >
                         </button>
                     {/each}
                 {/if}
@@ -430,10 +433,11 @@
                     <RotateCcw size={15} /> Re-run
                 </button>
                 <button
-                    class="flex items-center gap-[var(--space-1)] py-[var(--space-2)] px-[var(--space-4)] border border-[var(--shell-border)] rounded-[var(--radius-md)] bg-[var(--surface-secondary)] text-[var(--text-secondary)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer transition-[color,border-color,background] duration-[var(--transition-fast)] hover:text-[var(--text-primary)] hover:border-[var(--accent)]"
+                    class="flex items-center gap-[var(--space-1)] py-[var(--space-2)] px-[var(--space-4)] border border-[var(--shell-border)] rounded-[var(--radius-md)] bg-[var(--surface-secondary)] text-[var(--text-secondary)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer transition-[color,border-color,background] duration-[var(--transition-fast)] hover:text-[var(--color-danger)] hover:border-[var(--color-danger)] hover:bg-[var(--color-danger-surface)]"
+                    title="Permanently removes this refinement from storage"
                     onclick={handleDiscard}
                 >
-                    <X size={15} /> Discard
+                    <Trash2 size={15} /> Delete Result
                 </button>
             {/if}
         {:else}

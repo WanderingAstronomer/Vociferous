@@ -450,18 +450,58 @@ class TranscriptDB:
             for r in rows
         ]
 
-    def delete_project(self, project_id: int) -> bool:
+    def delete_project(
+        self,
+        project_id: int,
+        *,
+        delete_transcripts: bool = False,
+        promote_subprojects: bool = True,
+        delete_subproject_transcripts: bool = False,
+    ) -> bool:
         with self._write_lock:
-            # Re-parent child projects to root (one-level hierarchy)
-            self._conn.execute(
-                "UPDATE projects SET parent_id = NULL WHERE parent_id = ?",
-                (project_id,),
-            )
-            # Unlink transcripts (don't cascade-delete transcripts)
-            self._conn.execute(
-                "UPDATE transcripts SET project_id = NULL WHERE project_id = ?",
-                (project_id,),
-            )
+            # Collect child project IDs
+            child_ids = [
+                r["id"]
+                for r in self._conn.execute("SELECT id FROM projects WHERE parent_id = ?", (project_id,)).fetchall()
+            ]
+
+            if child_ids:
+                if promote_subprojects:
+                    # Promote children to top-level
+                    self._conn.execute(
+                        "UPDATE projects SET parent_id = NULL WHERE parent_id = ?",
+                        (project_id,),
+                    )
+                else:
+                    # Delete subprojects and handle their transcripts
+                    placeholders = ",".join("?" * len(child_ids))
+                    if delete_subproject_transcripts:
+                        self._conn.execute(
+                            f"DELETE FROM transcripts WHERE project_id IN ({placeholders})",
+                            child_ids,
+                        )
+                    else:
+                        self._conn.execute(
+                            f"UPDATE transcripts SET project_id = NULL WHERE project_id IN ({placeholders})",
+                            child_ids,
+                        )
+                    self._conn.execute(
+                        f"DELETE FROM projects WHERE id IN ({placeholders})",
+                        child_ids,
+                    )
+
+            # Handle this project's own transcripts
+            if delete_transcripts:
+                self._conn.execute(
+                    "DELETE FROM transcripts WHERE project_id = ?",
+                    (project_id,),
+                )
+            else:
+                self._conn.execute(
+                    "UPDATE transcripts SET project_id = NULL WHERE project_id = ?",
+                    (project_id,),
+                )
+
             cur = self._conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
             self._conn.commit()
             return cur.rowcount > 0

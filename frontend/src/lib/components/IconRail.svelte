@@ -13,7 +13,7 @@
 
     const navItems: NavItem[] = [
         { id: "transcribe", label: "Transcribe", icon: Mic, section: "main" },
-        { id: "history", label: "Transcriptions", icon: Library, section: "main" },
+        { id: "transcripts", label: "Transcriptions", icon: Library, section: "main" },
         { id: "search", label: "Search", icon: Search, section: "main" },
         { id: "refine", label: "Refine", icon: Sparkles, section: "main" },
         { id: "settings", label: "Settings", icon: Settings, section: "footer" },

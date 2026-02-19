@@ -120,8 +120,22 @@ export function updateProject(
     });
 }
 
-export function deleteProject(id: number): Promise<{ deleted: boolean }> {
-    return request(`/projects/${id}`, { method: "DELETE" });
+export function deleteProject(
+    id: number,
+    options?: {
+        deleteTranscripts?: boolean;
+        promoteSubprojects?: boolean;
+        deleteSubprojectTranscripts?: boolean;
+    },
+): Promise<{ deleted: boolean }> {
+    return request(`/projects/${id}`, {
+        method: "DELETE",
+        body: JSON.stringify({
+            delete_transcripts: options?.deleteTranscripts ?? false,
+            promote_subprojects: options?.promoteSubprojects ?? true,
+            delete_subproject_transcripts: options?.deleteSubprojectTranscripts ?? false,
+        }),
+    });
 }
 
 export function assignProject(transcriptId: number, projectId: number | null): Promise<{ dispatched: boolean }> {
