@@ -254,9 +254,10 @@
                     const bucket = buckets.get(bk)!;
                     // Auto-expand Today on first render, collapse others by default
                     const dateKey = bk;
-                    const dateCollapsed =
-                        collapsedSections.has(dateKey) ||
-                        (!collapsedSections.has(`_init_${dateKey}`) && bk !== "date-today");
+                    const isToday = bk === "date-today";
+                    const dateCollapsed = isToday
+                        ? collapsedSections.has(dateKey)
+                        : !collapsedSections.has(dateKey);
                     nodes.push({
                         type: "date-header",
                         key: dateKey,
