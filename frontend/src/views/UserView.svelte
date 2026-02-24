@@ -53,9 +53,13 @@
     let slmInsight = $state("");
 
     /* ── Derived Metrics ── */
+    function safeText(e: { text: string }): string {
+        return e.text || "";
+    }
+
     let hasData = $derived(entries.length > 0);
     let count = $derived(entries.length);
-    let totalWords = $derived(entries.reduce((s, e) => s + e.text.split(/\s+/).filter(Boolean).length, 0));
+    let totalWords = $derived(entries.reduce((s, e) => s + safeText(e).split(/\s+/).filter(Boolean).length, 0));
 
     let recordedSeconds = $derived.by(() => {
         const dur = entries.reduce((s, e) => s + (e.duration_ms || 0), 0) / 1000;
@@ -71,7 +75,7 @@
     let lexicalComplexity = $derived.by(() => {
         const allWords: string[] = [];
         for (const e of entries) {
-            const words = e.text.toLowerCase().split(/\s+/);
+            const words = safeText(e).toLowerCase().split(/\s+/);
             for (const w of words) {
                 const c = w.replace(/^[.,!?;:'"()\[\]{}]+|[.,!?;:'"()\[\]{}]+$/g, "");
                 if (c) allWords.push(c);
@@ -86,7 +90,7 @@
         for (const e of entries) {
             if (e.duration_ms && e.duration_ms > 0) {
                 const dur = e.duration_ms / 1000;
-                const expected = (e.text.split(/\s+/).filter(Boolean).length / SPEAKING_SPEED_WPM) * 60;
+                const expected = (safeText(e).split(/\s+/).filter(Boolean).length / SPEAKING_SPEED_WPM) * 60;
                 total += Math.max(0, dur - expected);
             }
         }
@@ -99,7 +103,7 @@
         for (const e of entries) {
             if (e.duration_ms && e.duration_ms > 0) {
                 const dur = e.duration_ms / 1000;
-                const expected = (e.text.split(/\s+/).filter(Boolean).length / SPEAKING_SPEED_WPM) * 60;
+                const expected = (safeText(e).split(/\s+/).filter(Boolean).length / SPEAKING_SPEED_WPM) * 60;
                 total += Math.max(0, dur - expected);
                 withDuration++;
             }
@@ -110,7 +114,7 @@
     let fillerCount = $derived.by(() => {
         let total = 0;
         for (const e of entries) {
-            const lower = e.text.toLowerCase();
+            const lower = safeText(e).toLowerCase();
             for (const f of FILLER_MULTI) {
                 let idx = 0;
                 while ((idx = lower.indexOf(f, idx)) !== -1) {

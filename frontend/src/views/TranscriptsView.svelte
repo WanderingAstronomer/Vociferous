@@ -28,7 +28,7 @@
     import { ws } from "../lib/ws";
     import { nav } from "../lib/navigation.svelte";
     import { SelectionManager } from "../lib/selection.svelte";
-    import { onMount, onDestroy } from "svelte";
+    import { onMount } from "svelte";
     import {
         Copy,
         Check,
@@ -96,7 +96,7 @@
     let copied = $state(false);
     let refining = $state<number | null>(null);
     let filterText = $state("");
-    let collapsedSections = $state(new Set<string>());
+    let sectionCollapsed = $state(new Map<string, boolean>());
     let projects: Project[] = $state([]);
     let projectMenuOpen = $state(false);
     let projectMenuX = $state(0);
@@ -170,7 +170,7 @@
             if (filterText.trim() && totalCount === 0) return;
 
             const key = `project-${project.id}`;
-            const collapsed = collapsedSections.has(key);
+            const collapsed = isSectionCollapsed(key);
 
             nodes.push({
                 type: "project-header",
@@ -209,7 +209,7 @@
         // --- Unassigned section: date-grouped ---
         if (!filterText.trim() || unassigned.length > 0) {
             const key = "unassigned";
-            const collapsed = collapsedSections.has(key);
+            const collapsed = isSectionCollapsed(key);
             nodes.push({
                 type: "unassigned-header",
                 key,
@@ -252,12 +252,8 @@
 
                 for (const bk of bucketOrder) {
                     const bucket = buckets.get(bk)!;
-                    // Auto-expand Today on first render, collapse others by default
                     const dateKey = bk;
-                    const isToday = bk === "date-today";
-                    const dateCollapsed = isToday
-                        ? collapsedSections.has(dateKey)
-                        : !collapsedSections.has(dateKey);
+                    const dateCollapsed = isSectionCollapsed(dateKey);
                     nodes.push({
                         type: "date-header",
                         key: dateKey,
@@ -315,11 +311,21 @@
 
     /* ===== Section collapse ===== */
 
+    /** Returns the default collapsed state for a section key. Prior-day dates default collapsed; everything else defaults expanded. */
+    function defaultCollapsed(key: string): boolean {
+        return key.startsWith("date-") && key !== "date-today";
+    }
+
+    /** Returns whether a section is currently collapsed, respecting user overrides and defaults. */
+    function isSectionCollapsed(key: string): boolean {
+        const explicit = sectionCollapsed.get(key);
+        return explicit !== undefined ? explicit : defaultCollapsed(key);
+    }
+
     function toggleSection(key: string) {
-        const next = new Set(collapsedSections);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
-        collapsedSections = next;
+        const next = new Map(sectionCollapsed);
+        next.set(key, !isSectionCollapsed(key));
+        sectionCollapsed = next;
     }
 
     /* ===== Formatting ===== */
@@ -476,17 +482,30 @@
         editingTitle = true;
     }
 
+    let commitTitleInFlight = false;
     async function commitTitle() {
+        if (commitTitleInFlight) return;
         if (!selectedEntry || !editTitleValue.trim()) {
             editingTitle = false;
             return;
         }
         const newTitle = editTitleValue.trim();
+        const entryId = selectedEntry.id;
+        commitTitleInFlight = true;
         editingTitle = false;
         try {
-            await renameTranscript(selectedEntry.id, newTitle);
+            await renameTranscript(entryId, newTitle);
+            // Update local state immediately so title doesn't appear stale
+            if (selectedEntry && selectedEntry.id === entryId) {
+                selectedEntry.display_name = newTitle;
+            }
+            const idx = entries.findIndex((e) => e.id === entryId);
+            if (idx >= 0) entries[idx].display_name = newTitle;
+            entries = [...entries]; // trigger reactivity
         } catch (e: any) {
             console.error("Failed to rename transcript:", e);
+        } finally {
+            commitTitleInFlight = false;
         }
     }
 
@@ -613,6 +632,8 @@
             }
         }
         if ((event.ctrlKey || event.metaKey) && event.key === "a") {
+            const tag = (event.target as HTMLElement)?.tagName;
+            if (tag === "INPUT" || tag === "TEXTAREA") return;
             event.preventDefault();
             selection.selectAll(orderedIds);
             selectedId = null;
@@ -679,11 +700,6 @@
             document.removeEventListener("pointerdown", handleGlobalPointerDown);
             document.removeEventListener("keydown", handleGlobalKeydown);
         };
-    });
-
-    onDestroy(() => {
-        document.removeEventListener("pointerdown", handleGlobalPointerDown);
-        document.removeEventListener("keydown", handleGlobalKeydown);
     });
 </script>
 

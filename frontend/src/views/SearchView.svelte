@@ -300,6 +300,8 @@
             }
         }
         if ((event.ctrlKey || event.metaKey) && event.key === "a" && !previewEntry) {
+            const tag = (event.target as HTMLElement)?.tagName;
+            if (tag === "INPUT" || tag === "TEXTAREA") return;
             event.preventDefault();
             selection.selectAll(orderedIds);
             selectedId = null;
@@ -349,6 +351,7 @@
             unsubs.forEach((fn) => fn());
             document.removeEventListener("pointerdown", handleGlobalPointerDown);
             document.removeEventListener("keydown", handleGlobalKeydown);
+            if (debounceTimer) clearTimeout(debounceTimer);
         };
     });
 </script>

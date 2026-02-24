@@ -56,9 +56,13 @@
         hasRefined = false;
         currentVariantId = null;
         showPicker = false;
+        if (isRefining) {
+            isRefining = false;
+            stopRefineTimer();
+        }
         try {
             const t = await getTranscript(id);
-            originalText = t.text;
+            originalText = t.text || t.normalized_text || t.raw_text || "";
         } catch (e) {
             console.error("Failed to load transcript:", e);
             originalText = "";

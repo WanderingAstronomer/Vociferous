@@ -111,7 +111,7 @@ async def export_file(data: dict) -> Response:
     import asyncio
 
     content: str = data.get("content", "")
-    filename: str = data.get("filename", "export.txt")
+    filename: str = Path(data.get("filename", "export.txt")).name
 
     coordinator = get_coordinator()
 

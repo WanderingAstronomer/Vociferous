@@ -4,6 +4,28 @@
 
 ---
 
+## v4.4.2 — Security Hardening & Frontend Bug Fixes
+
+**Date:** 2026-02-24
+**Status:** Maintenance Release
+
+### Security
+
+- **Export filename sanitized** — `Path(...).name` is now applied to the `filename` parameter in the `/api/export` route before it reaches the native save dialog. This prevents path traversal sequences in the suggested filename from misdirecting the GTK file chooser to an unintended directory.
+
+### Fixed
+
+- **Section collapse state corrected** — Replaced the `Set`-based collapse tracker in TranscriptsView with a `Map<string, boolean>` that stores explicit user overrides. Sections now have correct defaults (prior-day date groups collapsed, today and project groups expanded) and user toggles are preserved independently of those defaults.
+- **Refine state not cleared on transcript switch** — `isRefining` flag and the refine timer are now reset when loading a new transcript in RefineView, preventing a stale spinner from persisting after navigation.
+- **Text fallback for sparse transcripts** — RefineView and UserView now use a fallback chain (`text → normalized_text → raw_text`) when accessing transcript content, preventing crashes on transcripts with a null primary text field.
+- **Ctrl+A select-all skips input fields** — The global Ctrl+A handler in TranscriptsView and SearchView now returns early when focus is inside an `INPUT` or `TEXTAREA`, restoring native browser select-all behaviour in those contexts.
+- **Rename transcript double-submit guard** — `commitTitle` in TranscriptsView is now guarded by an in-flight flag, preventing a duplicate API call if the handler fires twice in quick succession.
+- **Transcript title updates immediately after rename** — Local entry state and the entries list are updated optimistically after a successful rename so the new title appears without waiting for a WebSocket event.
+- **Debounce timer cleared on SearchView destroy** — The pending debounce timer is now cancelled in the `onMount` cleanup function, preventing a stale search dispatch after the component unmounts.
+- **Duplicate event listener removal removed** — The `onDestroy` block in TranscriptsView that duplicated the `onMount` cleanup was removed; listeners are cleaned up once in the existing `onMount` return function.
+
+---
+
 ## v4.4.1 — Expansion Fix & Insight Refinement
 
 **Date:** 2026-02-21
