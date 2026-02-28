@@ -15,8 +15,8 @@ from src.api.deps import get_coordinator
 logger = logging.getLogger(__name__)
 
 
-@get("/api/projects")
-async def list_projects() -> list[dict]:
+@get("/api/projects", sync_to_thread=True)
+def list_projects() -> list[dict]:
     coordinator = get_coordinator()
     if coordinator.db is None:
         return []

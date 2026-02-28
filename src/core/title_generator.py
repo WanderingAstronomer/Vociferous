@@ -76,7 +76,9 @@ class TitleGenerator:
         if text_len < TitleGeneration.MIN_TEXT_CHARS:
             logger.debug(
                 "Title gen: text too short (%d chars < %d min), skipping transcript %d",
-                text_len, TitleGeneration.MIN_TEXT_CHARS, transcript_id,
+                text_len,
+                TitleGeneration.MIN_TEXT_CHARS,
+                transcript_id,
             )
             return
 
@@ -126,10 +128,13 @@ class TitleGenerator:
         from src.services.slm_types import SLMState
 
         if slm.state != SLMState.READY:
-            self._emit("batch_retitle_progress", {
-                "status": "error",
-                "message": f"SLM not ready (state: {slm.state.value}). Enable refinement and ensure a model is downloaded.",
-            })
+            self._emit(
+                "batch_retitle_progress",
+                {
+                    "status": "error",
+                    "message": f"SLM not ready (state: {slm.state.value}). Enable refinement and ensure a model is downloaded.",
+                },
+            )
             return
 
         untitled = db.get_untitled_transcripts()
@@ -148,16 +153,20 @@ class TitleGenerator:
 
     def _batch_retitle_task(self, transcripts: list) -> None:
         """Background thread: iterate untitled transcripts, generate titles sequentially."""
+        db = self._db_provider()
         total = len(transcripts)
         processed = 0
         skipped = 0
 
-        self._emit("batch_retitle_progress", {
-            "status": "started",
-            "total": total,
-            "processed": 0,
-            "skipped": 0,
-        })
+        self._emit(
+            "batch_retitle_progress",
+            {
+                "status": "started",
+                "total": total,
+                "processed": 0,
+                "skipped": 0,
+            },
+        )
 
         for i, transcript in enumerate(transcripts):
             text = transcript.normalized_text or transcript.raw_text or ""
@@ -168,15 +177,19 @@ class TitleGenerator:
                 skipped += 1
                 logger.debug(
                     "Batch retitle: skipping transcript %d (%d chars — out of bounds)",
-                    transcript.id, text_len,
+                    transcript.id,
+                    text_len,
                 )
-                self._emit("batch_retitle_progress", {
-                    "status": "progress",
-                    "total": total,
-                    "processed": processed,
-                    "skipped": skipped,
-                    "current": i + 1,
-                })
+                self._emit(
+                    "batch_retitle_progress",
+                    {
+                        "status": "progress",
+                        "total": total,
+                        "processed": processed,
+                        "skipped": skipped,
+                        "current": i + 1,
+                    },
+                )
                 continue
 
             try:
@@ -191,12 +204,13 @@ class TitleGenerator:
                     logger.warning("Batch retitle: SLM no longer ready at transcript %d", transcript.id)
                     # Wait a moment and retry once — SLM might be between calls
                     import time
+
                     time.sleep(2)
                     if slm.state != SLMState.READY:
                         logger.warning("Batch retitle: SLM still not ready, aborting batch")
                         break
 
-                input_text = text[:TitleGeneration.MAX_TEXT_CHARS]
+                input_text = text[: TitleGeneration.MAX_TEXT_CHARS]
                 title = slm.generate_custom_sync(
                     system_prompt=_TITLE_SYSTEM_PROMPT,
                     user_prompt=input_text,
@@ -212,7 +226,6 @@ class TitleGenerator:
                     if "\n" in title:
                         title = title.split("\n")[0].strip()
 
-                    db = self._db_provider()
                     if db is not None:
                         db.update_display_name(transcript.id, title)
                         self._emit("transcript_updated", {"id": transcript.id})
@@ -223,20 +236,26 @@ class TitleGenerator:
                 logger.exception("Batch retitle: failed for transcript %d", transcript.id)
                 skipped += 1
 
-            self._emit("batch_retitle_progress", {
-                "status": "progress",
+            self._emit(
+                "batch_retitle_progress",
+                {
+                    "status": "progress",
+                    "total": total,
+                    "processed": processed,
+                    "skipped": skipped,
+                    "current": i + 1,
+                },
+            )
+
+        self._emit(
+            "batch_retitle_progress",
+            {
+                "status": "complete",
                 "total": total,
                 "processed": processed,
                 "skipped": skipped,
-                "current": i + 1,
-            })
-
-        self._emit("batch_retitle_progress", {
-            "status": "complete",
-            "total": total,
-            "processed": processed,
-            "skipped": skipped,
-        })
+            },
+        )
         logger.info("Batch retitle complete: %d processed, %d skipped out of %d total", processed, skipped, total)
 
     def _generate_task(self, transcript_id: int, text: str) -> None:
@@ -254,7 +273,7 @@ class TitleGenerator:
                 return
 
             # Truncate input to the max bound — don't feed a whole novel
-            input_text = text[:TitleGeneration.MAX_TEXT_CHARS]
+            input_text = text[: TitleGeneration.MAX_TEXT_CHARS]
 
             logger.info("Title gen: running SLM inference for transcript %d...", transcript_id)
             title = slm.generate_custom_sync(

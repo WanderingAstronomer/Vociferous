@@ -15,8 +15,8 @@ from src.api.deps import get_coordinator
 logger = logging.getLogger(__name__)
 
 
-@get("/api/transcripts")
-async def list_transcripts(limit: int = 50, project_id: int | None = None) -> list[dict]:
+@get("/api/transcripts", sync_to_thread=True)
+def list_transcripts(limit: int = 50, project_id: int | None = None) -> list[dict]:
     coordinator = get_coordinator()
     if coordinator.db is None:
         return []
@@ -26,10 +26,12 @@ async def list_transcripts(limit: int = 50, project_id: int | None = None) -> li
 
 @get("/api/transcripts/{transcript_id:int}")
 async def get_transcript(transcript_id: int) -> Response:
+    import asyncio
+
     coordinator = get_coordinator()
     if coordinator.db is None:
         return Response(content={"error": "Database not available"}, status_code=503)
-    t = coordinator.db.get_transcript(transcript_id)
+    t = await asyncio.to_thread(coordinator.db.get_transcript, transcript_id)
     if t is None:
         return Response(content={"error": "Not found"}, status_code=404)
     return Response(content=transcript_to_dict(t, include_variants=True))
@@ -65,8 +67,8 @@ async def clear_all_transcripts() -> Response:
     return Response(content={"status": "cleared"})
 
 
-@get("/api/transcripts/search")
-async def search_transcripts(q: str, limit: int = 50) -> list[dict]:
+@get("/api/transcripts/search", sync_to_thread=True)
+def search_transcripts(q: str, limit: int = 50) -> list[dict]:
     coordinator = get_coordinator()
     if coordinator.db is None:
         return []
@@ -77,12 +79,16 @@ async def search_transcripts(q: str, limit: int = 50) -> list[dict]:
 @post("/api/transcripts/{transcript_id:int}/refine")
 async def refine_transcript(transcript_id: int, data: dict) -> Response:
     """Queue a refinement via CommandBus intent."""
+    level = data.get("level", 2)
+    if not isinstance(level, int) or not (1 <= level <= 5):
+        return Response(content={"error": "level must be an integer between 1 and 5"}, status_code=400)
+
     coordinator = get_coordinator()
     from src.core.intents.definitions import RefineTranscriptIntent
 
     intent = RefineTranscriptIntent(
         transcript_id=transcript_id,
-        level=data.get("level", 2),
+        level=level,
         instructions=data.get("instructions", ""),
     )
     coordinator.command_bus.dispatch(intent)

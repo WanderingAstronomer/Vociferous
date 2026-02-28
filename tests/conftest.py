@@ -23,6 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
 # Database fixture —— real SQLite in a temp directory
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def db(tmp_path: Path):
     """Fresh TranscriptDB backed by a temporary file."""
@@ -37,6 +38,7 @@ def db(tmp_path: Path):
 # Event collector —— captures EventBus emissions for assertions
 # ---------------------------------------------------------------------------
 
+
 class EventCollector:
     """Subscribes to an EventBus and records every emission."""
 
@@ -45,8 +47,10 @@ class EventCollector:
 
     def handler(self, event_type: str):
         """Return a handler that records events of the given type."""
+
         def _handler(data: dict) -> None:
             self.events.append((event_type, data))
+
         return _handler
 
     def subscribe_all(self, event_bus, event_types: list[str]) -> None:
@@ -71,6 +75,7 @@ def event_collector() -> EventCollector:
 # ---------------------------------------------------------------------------
 # Coordinator fixture —— real buses + real DB, mocked heavy services
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def coordinator(tmp_path: Path):
@@ -119,6 +124,7 @@ def coordinator(tmp_path: Path):
 # Settings reset —— ensures isolated settings per test module
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def fresh_settings(tmp_path: Path):
     """Provide clean, isolated settings backed by a temp directory."""
@@ -128,3 +134,22 @@ def fresh_settings(tmp_path: Path):
     settings = init_settings(config_path=tmp_path / "config" / "settings.json")
     yield settings
     reset_for_tests()
+
+
+# ---------------------------------------------------------------------------
+# Coordinator global reset —— safety-net against leaked state
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _reset_coordinator_global():
+    """Guarantee the API coordinator global is None after every test.
+
+    Integration test fixtures call set_coordinator() and clean up via yield,
+    but if a test fails mid-setup that teardown may be skipped. This autouse
+    fixture runs unconditionally after every test as a safety net.
+    """
+    yield
+    from src.api.deps import set_coordinator
+
+    set_coordinator(None)

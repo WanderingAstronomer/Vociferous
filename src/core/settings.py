@@ -56,6 +56,7 @@ class RecordingSettings(BaseModel):
     recording_mode: str = "press_to_toggle"
     sample_rate: int = 16000
     min_duration_ms: int = 100
+    max_recording_minutes: float = 30.0
 
 
 class UserSettings(BaseModel):

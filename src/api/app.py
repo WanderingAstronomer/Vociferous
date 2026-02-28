@@ -14,16 +14,18 @@ import logging
 import threading
 from typing import TYPE_CHECKING, Any
 
-from litestar import Litestar, MediaType, WebSocket, get
+from litestar import Litestar, MediaType, Request, WebSocket, get
 from litestar.config.cors import CORSConfig
-from litestar.exceptions import WebSocketDisconnect
+from litestar.exceptions import HTTPException, WebSocketDisconnect
 from litestar.handlers import websocket
-from litestar.response import File
+from litestar.openapi import OpenAPIConfig
+from litestar.response import File, Response
 from litestar.static_files import StaticFilesConfig
 
 from src.api.deps import set_coordinator
 from src.api.projects import create_project, delete_project, list_projects, update_project
 from src.api.system import (
+    APP_VERSION,
     close_window,
     dispatch_intent,
     download_model,
@@ -35,6 +37,7 @@ from src.api.system import (
     list_models,
     maximize_window,
     minimize_window,
+    prewarm_health_cache,
     restart_engine,
     start_key_capture,
     stop_key_capture,
@@ -140,11 +143,25 @@ class ConnectionManager:
             pass
 
 
+def _http_exception_handler(request: Request, exc: HTTPException) -> Response:
+    """Return a consistent JSON body for all HTTP exceptions."""
+    return Response(content={"error": exc.detail}, status_code=exc.status_code)
+
+
+def _server_error_handler(request: Request, exc: Exception) -> Response:
+    """Catch-all for unhandled exceptions — log and return a clean 500."""
+    logger.exception("Unhandled exception: %s %s", request.method, request.url)
+    return Response(content={"error": "Internal server error"}, status_code=500)
+
+
 def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     """Create the Litestar application with all routes."""
 
     # Make coordinator available to route modules
     set_coordinator(coordinator)
+
+    # Pre-warm the GPU status cache so the first GET /api/health returns fast
+    prewarm_health_cache()
 
     ws_manager = ConnectionManager()
 
@@ -270,6 +287,11 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             allow_headers=["*"],
         ),
         static_files_config=static_configs if static_configs else None,
+        exception_handlers={
+            HTTPException: _http_exception_handler,
+            Exception: _server_error_handler,
+        },
+        openapi_config=OpenAPIConfig(title="Vociferous API", version=APP_VERSION),
         debug=False,
     )
 

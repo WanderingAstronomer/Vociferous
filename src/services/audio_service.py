@@ -134,6 +134,7 @@ class AudioService:
         frame_size = int(self.sample_rate * (frame_duration_ms / 1000.0))
         # Skip initial audio to avoid capturing key press sounds
         initial_frames_to_skip = int(FlowTiming.HOTKEY_SOUND_SKIP * self.sample_rate / frame_size)
+        max_recording_samples = int(s.recording.max_recording_minutes * 60 * self.sample_rate)
 
         # Thread-safe queue for audio callback data
         audio_queue: Queue[NDArray[np.int16]] = Queue()
@@ -262,6 +263,13 @@ class AudioService:
                         continue
 
                     recording.extend(frame)
+
+                    if len(recording) >= max_recording_samples:
+                        logger.warning(
+                            "Recording exceeded max duration (%.1f min) — stopping automatically",
+                            s.recording.max_recording_minutes,
+                        )
+                        break
         except Exception as e:
             logger.error(f"Recording loop error: {e}")
             raise AudioError(f"Recording loop error: {e}") from e

@@ -181,7 +181,7 @@ class TestVariantImmutability:
 class TestSearchEdgeCases:
     def test_search_empty_query(self, db: TranscriptDB) -> None:
         db.add_transcript(raw_text="anything", duration_ms=100)
-        # Empty query matches everything (LIKE '%%')
+        # Empty query falls back to recent() — returns all transcripts
         results = db.search("")
         assert len(results) == 1
 
@@ -202,8 +202,6 @@ class TestSearchEdgeCases:
 
     def test_search_special_characters(self, db: TranscriptDB) -> None:
         db.add_transcript(raw_text="foo % bar _ baz", duration_ms=100)
-        # LIKE patterns: % and _ are wildcards. Our search wraps in %...%
-        # so searching for literal "%" will match because it's embedded.
         results = db.search("foo")
         assert len(results) == 1
 

@@ -4,6 +4,41 @@
 
 ---
 
+## v4.4.3 — Backend Quality Hardening
+
+**Date:** 2026-02-28
+**Status:** Maintenance Release
+
+### Overview
+
+Comprehensive backend audit pass addressing 14 issues spanning async correctness, database integrity, search performance, API robustness, and test isolation. No user-visible behaviour changes; all improvements are in reliability, correctness, and observability.
+
+### Fixed
+
+- **Blocking SQLite on async event loop (#28)** — Route handlers returning plain `dict` or `list[dict]` now run in a thread pool via `sync_to_thread=True`. Handlers that return a Litestar `Response` stay `async def` and use `asyncio.to_thread()` for individual slow DB calls, keeping the event loop free throughout.
+- **`update_config` silent failure (#32)** — The `PUT /api/config` handler now raises `InternalServerException` instead of returning HTTP 200 when the `UpdateConfigIntent` dispatch fails. Previously a failed config write was invisible to the caller.
+- **Refinement level not validated (#33)** — `POST /api/transcripts/{id}/refine` now validates that `level` is an integer in `[1, 5]` and returns HTTP 400 with a descriptive message before constructing the intent.
+- **LIKE wildcard injection (#31)** — `db.search()` now escapes `%`, `_`, and `\` before building the LIKE pattern. *(Superseded by the FTS5 migration below; escape logic removed from that path.)*
+- **Shared DB reads unguarded (#41)** — All read methods (`get_transcript`, `recent`, `search`, `get_projects`, `get_project`, `get_untitled_transcripts`, `transcript_count`) now acquire `_write_lock` before executing, preventing a concurrent multi-step write from being observed in a partial state.
+
+### Changed
+
+- **Full-text search migrated to FTS5 (#30)** — `db.search()` now queries a SQLite FTS5 content-table index (`transcripts_fts`) instead of a full-table LIKE scan. Search is O(log n) rather than O(n), case-insensitive, and uses per-token prefix matching (`"word"*` syntax). An empty query falls back to `recent()`. Three triggers (`transcripts_ai/ad/au`) keep the index in sync automatically; existing rows are backfilled on the v2 migration run.
+- **Schema migration system added (#29)** — New `src/database/migrations.py` implements a lightweight forward-only migration runner using a `schema_version` table. No Alembic dependency; future schema changes append to the `MIGRATIONS` list. v1 is the baseline no-op; v2 adds the FTS5 index.
+- **GPU status cache converted to `lru_cache` (#34)** — `_detect_gpu_status()` in `system.py` is now decorated with `@functools.lru_cache(maxsize=1)`, replacing a manual module-level `_gpu_status_cache` dict. Tests can call `.cache_clear()` for isolation.
+- **GPU status pre-warmed at startup (#37)** — `create_app()` now calls `prewarm_health_cache()`, which fires `_detect_gpu_status()` in a background daemon thread. The first `GET /api/health` returns immediately instead of blocking up to 5 s while `nvidia-smi` runs.
+- **Audio recording buffer bounded (#36)** — `RecordingSettings` gains `max_recording_minutes: float = 30.0`. The `AudioService` recording loop breaks when the accumulated sample count reaches this limit and logs a warning, preventing unbounded memory growth for runaway recordings.
+- **Global exception middleware added (#39)** — `Litestar` is now constructed with `exception_handlers` for both `HTTPException` (consistent `{"error": "..."}` JSON body) and bare `Exception` (logged 500 with no stack-trace leak).
+- **OpenAPI spec enabled (#40)** — `Litestar` is now constructed with `OpenAPIConfig(title="Vociferous API", version=APP_VERSION)`. The `/schema`, `/schema/swagger`, and `/schema/elements` endpoints are live.
+- **`TitleGenerator` batch DB reference cached (#38)** — `_batch_retitle_task` now fetches the DB reference once at the top of the method rather than calling `self._db_provider()` on every loop iteration for title writes.
+
+### Quality
+
+- **Coordinator global safety-net fixture (#35)** — `tests/conftest.py` gains an `autouse=True` fixture (`_reset_coordinator_global`) that calls `set_coordinator(None)` after every test unconditionally, guaranteeing no leaked coordinator state even if a test fails before its own teardown.
+- All 394 tests pass.
+
+---
+
 ## v4.4.2 — Security Hardening & Frontend Bug Fixes
 
 **Date:** 2026-02-24

@@ -4,6 +4,7 @@ System API routes — config, models, health, mini widget, key capture.
 
 from __future__ import annotations
 
+import functools
 import importlib.metadata
 import logging
 import threading
@@ -48,14 +49,16 @@ APP_VERSION = _resolve_app_version()
 # --- Config ---
 
 
-@get("/api/config")
-async def get_config() -> dict:
+@get("/api/config", sync_to_thread=True)
+def get_config() -> dict:
     coordinator = get_coordinator()
     return coordinator.settings.model_dump()
 
 
-@put("/api/config")
-async def update_config(data: dict) -> dict:
+@put("/api/config", sync_to_thread=True)
+def update_config(data: dict) -> dict:
+    from litestar.exceptions import InternalServerException
+
     from src.core.intents.definitions import UpdateConfigIntent
 
     coordinator = get_coordinator()
@@ -64,14 +67,13 @@ async def update_config(data: dict) -> dict:
 
     if not success:
         logger.error("Failed to update config via intent")
-        # Fallback or error?
-        # Assuming success for now as handlers are registered.
+        raise InternalServerException(detail="Config update failed")
 
     return coordinator.settings.model_dump()
 
 
-@post("/api/engine/restart")
-async def restart_engine() -> dict:
+@post("/api/engine/restart", sync_to_thread=True)
+def restart_engine() -> dict:
     """Restart ASR + SLM models (background thread)."""
     from src.core.intents.definitions import RestartEngineIntent
 
@@ -80,8 +82,8 @@ async def restart_engine() -> dict:
     return {"status": "restarting"}
 
 
-@get("/api/insight")
-async def get_insight() -> dict:
+@get("/api/insight", sync_to_thread=True)
+def get_insight() -> dict:
     """Return the cached UserView insight, or empty text if none exists yet."""
     coordinator = get_coordinator()
     text = ""
@@ -90,8 +92,8 @@ async def get_insight() -> dict:
     return {"text": text}
 
 
-@get("/api/motd")
-async def get_motd() -> dict:
+@get("/api/motd", sync_to_thread=True)
+def get_motd() -> dict:
     """Return the cached TranscribeView header MOTD, or empty text if none exists yet."""
     coordinator = get_coordinator()
     text = ""
@@ -132,8 +134,8 @@ async def export_file(data: dict) -> Response:
     return Response(content={"path": save_path})
 
 
-@get("/api/models")
-async def list_models() -> dict:
+@get("/api/models", sync_to_thread=True)
+def list_models() -> dict:
     from src.core.model_registry import get_model_catalog
     from src.core.resource_manager import ResourceManager
 
@@ -228,14 +230,14 @@ async def download_model(data: dict) -> Response:
 # --- Health ---
 
 
-_gpu_status_cache: dict | None = None
-
-
+@functools.lru_cache(maxsize=1)
 def _detect_gpu_status() -> dict:
-    """Detect GPU availability for ASR and SLM inference. Result is cached after first call."""
-    global _gpu_status_cache
-    if _gpu_status_cache is not None:
-        return _gpu_status_cache
+    """Detect GPU availability for ASR and SLM inference.
+
+    Result is cached via lru_cache after the first call. Call
+    _detect_gpu_status.cache_clear() to reset (e.g. in tests or after
+    engine restart).
+    """
     gpu: dict = {"cuda_available": False, "detail": "", "whisper_backends": "", "slm_gpu_layers": -1}
     try:
         import subprocess
@@ -273,12 +275,23 @@ def _detect_gpu_status() -> dict:
     except Exception:
         pass
 
-    _gpu_status_cache = gpu
     return gpu
 
 
-@get("/api/health")
-async def health() -> dict:
+def prewarm_health_cache() -> None:
+    """Trigger GPU status detection in a background thread to warm the lru_cache.
+
+    Called once from ``create_app()`` so the first ``GET /api/health`` response
+    is fast — without this, the first request blocks for up to 5 s while
+    ``nvidia-smi`` runs.
+    """
+    import threading
+
+    threading.Thread(target=_detect_gpu_status, daemon=True, name="gpu-prewarm").start()
+
+
+@get("/api/health", sync_to_thread=True)
+def health() -> dict:
     coordinator = get_coordinator()
     return {
         "status": "ok",
@@ -294,24 +307,24 @@ async def health() -> dict:
 # --- Window control (frameless title-bar) ---
 
 
-@post("/api/window/minimize")
-async def minimize_window() -> dict:
+@post("/api/window/minimize", sync_to_thread=True)
+def minimize_window() -> dict:
     """Minimize the main window."""
     coordinator = get_coordinator()
     coordinator.minimize_window()
     return {"status": "ok"}
 
 
-@post("/api/window/maximize")
-async def maximize_window() -> dict:
+@post("/api/window/maximize", sync_to_thread=True)
+def maximize_window() -> dict:
     """Toggle maximize/restore on the main window."""
     coordinator = get_coordinator()
     coordinator.maximize_window()
     return {"status": "ok", "maximized": coordinator.is_window_maximized()}
 
 
-@post("/api/window/close")
-async def close_window() -> dict:
+@post("/api/window/close", sync_to_thread=True)
+def close_window() -> dict:
     """Close the main window and shut down."""
     coordinator = get_coordinator()
     coordinator.close_window()

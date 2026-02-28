@@ -1,7 +1,9 @@
 """
 Vociferous Database — Raw sqlite3 + dataclasses.
 
-3 tables, WAL mode, ~120 lines. Replaces SQLAlchemy ORM.
+5 tables (projects, transcripts, transcript_variants, schema_version,
+transcripts_fts), WAL mode. Replaces SQLAlchemy ORM. Schema evolution is
+managed by src/database/migrations.py.
 """
 
 from __future__ import annotations
@@ -117,6 +119,10 @@ CREATE TABLE IF NOT EXISTS transcript_variants (
 CREATE INDEX IF NOT EXISTS idx_transcripts_timestamp ON transcripts(timestamp);
 CREATE INDEX IF NOT EXISTS idx_transcripts_project ON transcripts(project_id);
 CREATE INDEX IF NOT EXISTS idx_variants_transcript ON transcript_variants(transcript_id);
+
+CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER NOT NULL
+);
 """
 
 
@@ -139,6 +145,10 @@ class TranscriptDB:
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.executescript(_CREATE_SQL)
         self._conn.commit()
+
+        from src.database.migrations import run_migrations
+
+        run_migrations(self._conn)
 
     def close(self) -> None:
         self._conn.close()
@@ -203,51 +213,65 @@ class TranscriptDB:
 
     def get_transcript(self, transcript_id: int) -> Transcript | None:
         """Get a single transcript with its variants."""
-        row = self._conn.execute(
-            """SELECT t.*, p.name as project_name
-               FROM transcripts t
-               LEFT JOIN projects p ON t.project_id = p.id
-               WHERE t.id = ?""",
-            (transcript_id,),
-        ).fetchone()
-        if row is None:
-            return None
-        t = self._row_to_transcript(row)
-        t.variants = self._get_variants(transcript_id)
+        with self._write_lock:
+            row = self._conn.execute(
+                """SELECT t.*, p.name as project_name
+                   FROM transcripts t
+                   LEFT JOIN projects p ON t.project_id = p.id
+                   WHERE t.id = ?""",
+                (transcript_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            t = self._row_to_transcript(row)
+            t.variants = self._get_variants(transcript_id)
         return t
 
     def recent(self, limit: int = 50, project_id: int | None = None) -> list[Transcript]:
         """Get recent transcripts, newest first."""
-        if project_id is not None:
-            rows = self._conn.execute(
-                """SELECT t.*, p.name as project_name
-                   FROM transcripts t
-                   LEFT JOIN projects p ON t.project_id = p.id
-                   WHERE t.project_id = ?
-                   ORDER BY t.created_at DESC LIMIT ?""",
-                (project_id, limit),
-            ).fetchall()
-        else:
-            rows = self._conn.execute(
-                """SELECT t.*, p.name as project_name
-                   FROM transcripts t
-                   LEFT JOIN projects p ON t.project_id = p.id
-                   ORDER BY t.created_at DESC LIMIT ?""",
-                (limit,),
-            ).fetchall()
+        with self._write_lock:
+            if project_id is not None:
+                rows = self._conn.execute(
+                    """SELECT t.*, p.name as project_name
+                       FROM transcripts t
+                       LEFT JOIN projects p ON t.project_id = p.id
+                       WHERE t.project_id = ?
+                       ORDER BY t.created_at DESC LIMIT ?""",
+                    (project_id, limit),
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    """SELECT t.*, p.name as project_name
+                       FROM transcripts t
+                       LEFT JOIN projects p ON t.project_id = p.id
+                       ORDER BY t.created_at DESC LIMIT ?""",
+                    (limit,),
+                ).fetchall()
         return [self._row_to_transcript(r) for r in rows]
 
     def search(self, query: str, limit: int = 50) -> list[Transcript]:
-        """Full-text search across transcript text."""
-        pattern = f"%{query}%"
-        rows = self._conn.execute(
-            """SELECT t.*, p.name as project_name
-               FROM transcripts t
-               LEFT JOIN projects p ON t.project_id = p.id
-               WHERE t.raw_text LIKE ? OR t.normalized_text LIKE ?
-               ORDER BY t.created_at DESC LIMIT ?""",
-            (pattern, pattern, limit),
-        ).fetchall()
+        """Full-text search across transcript text using FTS5.
+
+        An empty *query* returns the most-recent transcripts (same as
+        ``recent(limit=limit)``). Multi-word queries are split on whitespace
+        and each token is matched as a prefix, so ``"py prog"`` finds
+        "Python programming".
+        """
+        if not query.strip():
+            return self.recent(limit=limit)
+        tokens = query.split()
+        # Wrap each token in double-quotes (FTS5 phrase) with prefix wildcard.
+        # Inner double-quotes are escaped by doubling them per FTS5 syntax.
+        fts_terms = " ".join(f'"{t.replace(chr(34), "")}"*' for t in tokens)
+        with self._write_lock:
+            rows = self._conn.execute(
+                """SELECT t.*, p.name as project_name
+                   FROM transcripts t
+                   LEFT JOIN projects p ON t.project_id = p.id
+                   WHERE t.id IN (SELECT rowid FROM transcripts_fts WHERE transcripts_fts MATCH ?)
+                   ORDER BY t.created_at DESC LIMIT ?""",
+                (fts_terms, limit),
+            ).fetchall()
         return [self._row_to_transcript(r) for r in rows]
 
     def delete_transcript(self, transcript_id: int) -> bool:
@@ -288,13 +312,14 @@ class TranscriptDB:
 
     def get_untitled_transcripts(self) -> list[Transcript]:
         """Get all transcripts that have no display_name set (NULL or empty string)."""
-        rows = self._conn.execute(
-            """SELECT t.*, p.name as project_name
-               FROM transcripts t
-               LEFT JOIN projects p ON t.project_id = p.id
-               WHERE t.display_name IS NULL OR TRIM(t.display_name) = ''
-               ORDER BY t.created_at DESC""",
-        ).fetchall()
+        with self._write_lock:
+            rows = self._conn.execute(
+                """SELECT t.*, p.name as project_name
+                   FROM transcripts t
+                   LEFT JOIN projects p ON t.project_id = p.id
+                   WHERE t.display_name IS NULL OR TRIM(t.display_name) = ''
+                   ORDER BY t.created_at DESC""",
+            ).fetchall()
         return [self._row_to_transcript(r) for r in rows]
 
     # --- Variants ---
@@ -438,7 +463,8 @@ class TranscriptDB:
             return Project(id=cur.lastrowid, name=name, color=color, parent_id=parent_id, created_at=ts)
 
     def get_projects(self) -> list[Project]:
-        rows = self._conn.execute("SELECT * FROM projects ORDER BY name").fetchall()
+        with self._write_lock:
+            rows = self._conn.execute("SELECT * FROM projects ORDER BY name").fetchall()
         return [
             Project(
                 id=r["id"],
@@ -508,7 +534,8 @@ class TranscriptDB:
 
     def get_project(self, project_id: int) -> Project | None:
         """Fetch a single project by ID."""
-        row = self._conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+        with self._write_lock:
+            row = self._conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
         if row is None:
             return None
         return Project(
@@ -585,5 +612,6 @@ class TranscriptDB:
         shutil.copy2(self._path, dest)
 
     def transcript_count(self) -> int:
-        row = self._conn.execute("SELECT COUNT(*) FROM transcripts").fetchone()
+        with self._write_lock:
+            row = self._conn.execute("SELECT COUNT(*) FROM transcripts").fetchone()
         return row[0] if row else 0
