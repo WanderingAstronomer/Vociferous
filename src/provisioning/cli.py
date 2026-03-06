@@ -10,10 +10,11 @@ import logging
 import typer
 
 from src.core.resource_manager import ResourceManager
-from src.core.model_registry import ASR_MODELS, SLM_MODELS, get_asr_model, get_slm_model
+from src.core.model_registry import ASR_MODELS, SLM_MODELS, SILERO_VAD, get_asr_model, get_slm_model
 from src.provisioning.core import (
     provision_asr_model,
     provision_slm_model,
+    provision_vad_model,
     ProvisioningError,
 )
 from src.provisioning.requirements import (
@@ -57,6 +58,11 @@ def list_models():
         path = cache_dir / model.filename
         status = "INSTALLED" if path.exists() else "MISSING"
         print(f"{model_id:<25} {model.name:<30} {model.size_mb}MB{'':<5} {status:<10}")
+
+    print("\n=== VAD Models (ONNX) ===")
+    vad_path = cache_dir / SILERO_VAD.filename
+    vad_status = "INSTALLED" if vad_path.exists() else "MISSING"
+    print(f"{SILERO_VAD.id:<25} {SILERO_VAD.name:<30} {SILERO_VAD.size_mb}MB{'':<5} {vad_status:<10}")
     print()
 
 
@@ -96,9 +102,10 @@ def install(
     # Determine if it's an ASR or SLM model
     asr_model = get_asr_model(model_id)
     slm_model = get_slm_model(model_id)
+    is_vad = model_id == SILERO_VAD.id
 
-    if asr_model is None and slm_model is None:
-        all_ids = list(ASR_MODELS.keys()) + list(SLM_MODELS.keys())
+    if asr_model is None and slm_model is None and not is_vad:
+        all_ids = list(ASR_MODELS.keys()) + list(SLM_MODELS.keys()) + [SILERO_VAD.id]
         logger.error("Unknown model ID: %s", model_id)
         logger.info("Available models: %s", ", ".join(all_ids))
         raise typer.Exit(code=1)
@@ -114,14 +121,20 @@ def install(
                 logger.info("Use --force to re-download.")
                 return
             provision_asr_model(asr_model, cache_dir, progress_callback=on_progress)
-        else:
-            assert slm_model is not None
+        elif slm_model:
             target = cache_dir / slm_model.filename
             if target.exists() and not force:
                 logger.info("Model '%s' already installed at %s", model_id, target)
                 logger.info("Use --force to re-download.")
                 return
             provision_slm_model(slm_model, cache_dir, progress_callback=on_progress)
+        elif is_vad:
+            target = cache_dir / SILERO_VAD.filename
+            if target.exists() and not force:
+                logger.info("VAD model already installed at %s", target)
+                logger.info("Use --force to re-download.")
+                return
+            provision_vad_model(SILERO_VAD, cache_dir, progress_callback=on_progress)
 
         logger.info("Successfully installed %s.", model_id)
 

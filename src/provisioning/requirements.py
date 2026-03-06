@@ -12,7 +12,7 @@ REQUIRED_DEPENDENCIES = [
     "llama_cpp",
     "numpy",
     "sounddevice",
-    "webrtcvad",
+    "onnxruntime",
     "huggingface_hub",
 ]
 

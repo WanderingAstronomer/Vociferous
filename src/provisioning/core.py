@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from typing import Callable, Optional
 
-from src.core.model_registry import ASRModel, SLMModel
+from src.core.model_registry import ASRModel, SLMModel, VADModel
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +89,24 @@ def provision_slm_model(
     Provision an SLM (llama.cpp) model.
 
     Downloads the GGUF file from the model's HuggingFace repo.
+    """
+    return download_model_file(
+        repo_id=model.repo,
+        filename=model.filename,
+        target_dir=cache_dir,
+        progress_callback=progress_callback,
+    )
+
+
+def provision_vad_model(
+    model: VADModel,
+    cache_dir: Path,
+    progress_callback: Optional[ProgressCallback] = None,
+) -> Path:
+    """
+    Provision the Silero VAD ONNX model.
+
+    Downloads the ONNX file from the model's HuggingFace repo.
     """
     return download_model_file(
         repo_id=model.repo,

@@ -94,6 +94,7 @@ class RecordingSession:
         self._recording_stop = threading.Event()
         self._recording_thread: threading.Thread | None = None
         self._asr_model: Any = None
+        self._audio_pipeline: Any = None  # lazy AudioPipeline instance
 
     # --- Public lifecycle interface ---
 
@@ -223,10 +224,17 @@ class RecordingSession:
             if self._asr_model is None:
                 self._asr_model = create_local_model(settings)
 
+            # Lazy-create the AudioPipeline (holds cached Silero VAD session)
+            if self._audio_pipeline is None:
+                from src.services.audio_pipeline import AudioPipeline
+
+                self._audio_pipeline = AudioPipeline()
+
             text, speech_duration_ms = transcribe(
                 audio_data,
                 settings=settings,
                 local_model=self._asr_model,
+                audio_pipeline=self._audio_pipeline,
             )
 
             if not text.strip():

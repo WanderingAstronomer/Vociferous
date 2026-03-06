@@ -34,6 +34,16 @@ class SLMModel:
     quant: str
 
 
+@dataclass(frozen=True, slots=True)
+class VADModel:
+    """A Voice Activity Detection ONNX model entry."""
+
+    id: str
+    name: str
+    filename: str
+    repo: str
+    size_mb: int
+
 # --- ASR Models (whisper.cpp GGML) ---
 
 ASR_MODELS: dict[str, ASRModel] = {
@@ -103,6 +113,17 @@ SLM_MODELS: dict[str, SLMModel] = {
         quant="Q4_K_M",
     ),
 }
+
+
+# --- VAD Models (ONNX) ---
+
+SILERO_VAD = VADModel(
+    id="silero_vad",
+    name="Silero VAD v5",
+    filename="silero_vad.onnx",
+    repo="snakers4/silero-vad",
+    size_mb=2,
+)
 
 
 def get_asr_model(model_id: str) -> ASRModel | None:

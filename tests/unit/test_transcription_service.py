@@ -1,25 +1,63 @@
-"""Tests for transcription service post-processing."""
+"""Tests for transcription service post-processing and audio pipeline stages."""
 
 import numpy as np
 import pytest
 
 from src.core.settings import get_settings
-from src.services.transcription_service import _is_effective_silence, _merge_segment_texts, post_process_transcription
+from src.services.audio_pipeline import AudioPipeline
+from src.services.transcription_service import _merge_segment_texts, post_process_transcription
 
 
-class TestSilenceDetection:
-    """Regression tests for raw silence detection guard."""
+class TestAudioPipelineStages:
+    """Unit tests for AudioPipeline pre-processing stages (no ONNX model needed)."""
 
-    def test_detects_all_zero_audio_as_silence(self):
+    def test_dead_silence_returns_none(self):
+        """Pipeline.process short-circuits on all-zero audio."""
+        pipeline = AudioPipeline(sample_rate=16000)
         audio = np.zeros(16000, dtype=np.int16)
-        assert _is_effective_silence(audio) is True
+        result = pipeline.process(audio)
+        assert result is None
 
-    def test_detects_tone_audio_as_non_silence(self):
-        sample_rate = 16000
-        t = np.linspace(0, 1.0, sample_rate, endpoint=False)
-        # 440Hz tone, intentionally strong enough to pass both gates.
-        tone = (0.15 * np.sin(2 * np.pi * 440 * t) * 32767).astype(np.int16)
-        assert _is_effective_silence(tone) is False
+    def test_empty_audio_returns_none(self):
+        pipeline = AudioPipeline(sample_rate=16000)
+        audio = np.array([], dtype=np.int16)
+        result = pipeline.process(audio)
+        assert result is None
+
+    def test_rms_normalize_scales_quiet_audio(self):
+        pipeline = AudioPipeline(sample_rate=16000)
+        quiet = np.full(1000, 10, dtype=np.float32) / 32768.0  # very quiet
+        normalised = pipeline._rms_normalize(quiet)
+        new_rms = float(np.sqrt(np.mean(normalised**2)))
+        assert new_rms > float(np.sqrt(np.mean(quiet**2)))
+
+    def test_rms_normalize_clamps_gain(self):
+        """Gain is clamped to 10× — near-silent audio doesn't explode."""
+        pipeline = AudioPipeline(sample_rate=16000)
+        near_zero = np.full(1000, 1e-6, dtype=np.float32)
+        normalised = pipeline._rms_normalize(near_zero)
+        assert np.all(np.abs(normalised) <= 1.0)
+
+    def test_highpass_removes_dc_offset(self):
+        pipeline = AudioPipeline(sample_rate=16000)
+        # DC offset + a 440Hz tone
+        t = np.linspace(0, 1.0, 16000, endpoint=False, dtype=np.float32)
+        signal = 0.3 + 0.1 * np.sin(2 * np.pi * 440 * t)
+        filtered = pipeline._highpass(signal.astype(np.float32))
+        # DC component should be attenuated significantly
+        assert abs(float(np.mean(filtered[1000:]))) < 0.05
+
+    def test_noise_gate_zeros_quiet_frames(self):
+        pipeline = AudioPipeline(sample_rate=16000)
+        # One chunk of silence, one chunk of speech-level signal
+        chunk = AudioPipeline._CHUNK_SIZE
+        silence = np.full(chunk, 1e-5, dtype=np.float32)
+        speech = np.full(chunk, 0.1, dtype=np.float32)
+        audio = np.concatenate([silence, speech])
+        gated = pipeline._noise_gate(audio)
+        # First chunk should be zeroed, second should survive
+        assert float(np.max(np.abs(gated[:chunk]))) == 0.0
+        assert float(np.max(np.abs(gated[chunk:]))) > 0.0
 
 
 class TestPostProcessTranscription:
