@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from src.core.command_bus import CommandBus
 from src.core.event_bus import EventBus
 from src.core.settings import VociferousSettings
+from src.core.window_controller import WindowController
 
 if TYPE_CHECKING:
     from src.database.db import TranscriptDB
@@ -65,9 +66,8 @@ class ApplicationCoordinator:
         # Recording session (created in start())
         self.recording_session: Any = None  # RecordingSession
 
-        # Window references
-        self._main_window: Any = None  # webview.Window
-        self._window_maximized: bool = False
+        # Window controller (frameless title-bar + native dialogs)
+        self.window = WindowController()
 
         self._server_thread: threading.Thread | None = None
 
@@ -167,12 +167,7 @@ class ApplicationCoordinator:
             self._uvicorn_server.should_exit = True
 
         if close_windows:
-            try:
-                if self._main_window is not None:
-                    self._main_window.destroy()
-            except Exception:
-                # Window may already be in close sequence.
-                logger.debug("Window destroy skipped during shutdown", exc_info=True)
+            self.window.destroy_for_shutdown()
 
     def cleanup(self) -> None:
         """Release resources after event loop exits."""
@@ -446,6 +441,7 @@ class ApplicationCoordinator:
         from src.core.handlers.project_handlers import ProjectHandlers
         from src.core.handlers.refinement_handlers import RefinementHandlers
         from src.core.handlers.system_handlers import SystemHandlers
+        from src.core.handlers.title_handlers import TitleHandlers
         from src.core.handlers.transcript_handlers import TranscriptHandlers
         from src.core.intents.definitions import (
             AssignProjectIntent,
@@ -489,6 +485,11 @@ class ApplicationCoordinator:
             on_settings_updated=lambda s: setattr(self, "settings", s),
             restart_engine=self.restart_engine,
         )
+        title = TitleHandlers(
+            db_provider=lambda: self.db,
+            title_generator_provider=lambda: self.title_generator,
+            event_bus_emit=self.event_bus.emit,
+        )
 
         bus = self.command_bus
         bus.register(BeginRecordingIntent, self.recording_session.handle_begin)
@@ -507,33 +508,8 @@ class ApplicationCoordinator:
         bus.register(AssignProjectIntent, project.handle_assign)
         bus.register(UpdateConfigIntent, system.handle_update_config)
         bus.register(RestartEngineIntent, system.handle_restart_engine)
-        bus.register(BatchRetitleIntent, self._handle_batch_retitle)
-        bus.register(RetitleTranscriptIntent, self._handle_retitle_transcript)
-
-    def _handle_retitle_transcript(self, intent: Any) -> None:
-        """Re-generate the SLM title for a single transcript."""
-        if self.title_generator is None or self.db is None:
-            return
-        t = self.db.get_transcript(intent.transcript_id)
-        if t is None:
-            return
-        text = t.normalized_text or t.raw_text or ""
-        if not text.strip():
-            return
-        self.title_generator.schedule(intent.transcript_id, text)
-
-    def _handle_batch_retitle(self, intent: Any) -> None:
-        """Dispatch batch retitling to TitleGenerator."""
-        if self.title_generator is None:
-            self.event_bus.emit(
-                "batch_retitle_progress",
-                {
-                    "status": "error",
-                    "message": "Title generator not initialized.",
-                },
-            )
-            return
-        self.title_generator.batch_retitle()
+        bus.register(BatchRetitleIntent, title.handle_batch_retitle)
+        bus.register(RetitleTranscriptIntent, title.handle_retitle)
 
     # --- Hotkey ---
 
@@ -682,12 +658,6 @@ class ApplicationCoordinator:
                 self.shutdown(stop_server=True, close_windows=False)
                 return True  # Allow main window to close naturally
 
-            def on_maximized() -> None:
-                self._window_maximized = True
-
-            def on_restored() -> None:
-                self._window_maximized = False
-
             self._main_window = webview.create_window(
                 title="Vociferous",
                 url="http://127.0.0.1:18900",
@@ -698,9 +668,10 @@ class ApplicationCoordinator:
                 easy_drag=False,
                 background_color="#1e1e1e",
             )
+            self.window.set_window(self._main_window)
             self._main_window.events.closing += on_closing
-            self._main_window.events.maximized += on_maximized
-            self._main_window.events.restored += on_restored
+            self._main_window.events.maximized += self.window.on_maximized
+            self._main_window.events.restored += self.window.on_restored
 
             webview.start(debug=False, icon=icon_path)
         except Exception:
@@ -713,47 +684,24 @@ class ApplicationCoordinator:
             if not self._shutdown_event.is_set():
                 self.shutdown(stop_server=False, close_windows=False)
 
-    # --- Window control (frameless title-bar) ---
+    # --- Window control (delegated to WindowController) ---
 
     def minimize_window(self) -> None:
         """Minimize the main window."""
-        if self._main_window is not None:
-            self._main_window.minimize()
+        self.window.minimize()
 
     def maximize_window(self) -> None:
         """Toggle maximize/restore on the main window."""
-        if self._main_window is None:
-            return
-        if self._window_maximized:
-            self._main_window.restore()
-            self._window_maximized = False
-        else:
-            self._main_window.maximize()
-            self._window_maximized = True
+        self.window.maximize()
 
     def is_window_maximized(self) -> bool:
         """Return current maximize state tracked by window events."""
-        return self._window_maximized
+        return self.window.is_maximized
 
     def close_window(self) -> None:
         """Close the main window, triggering graceful shutdown."""
-        if self._main_window is not None:
-            self._main_window.destroy()
+        self.window.close()
 
     def show_save_dialog(self, suggested_name: str) -> str | None:
         """Show a native save-file dialog and return the chosen path, or None if cancelled."""
-        if self._main_window is None:
-            return None
-        try:
-            import webview
-
-            result = self._main_window.create_file_dialog(
-                webview.SAVE_DIALOG,
-                save_filename=suggested_name,
-            )
-            if result and len(result) > 0:
-                return str(result[0])
-            return None
-        except Exception:
-            logger.exception("Native save dialog failed")
-            return None
+        return self.window.show_save_dialog(suggested_name)

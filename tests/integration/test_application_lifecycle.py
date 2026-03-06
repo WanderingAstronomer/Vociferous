@@ -95,7 +95,7 @@ class TestInitializationState:
 
     def test_window_refs_none(self, fresh_coordinator):
         """Window references must be None before start()."""
-        assert fresh_coordinator._main_window is None
+        assert fresh_coordinator.window._main_window is None
 
     def test_server_thread_none(self, fresh_coordinator):
         """Server thread not started until start()."""

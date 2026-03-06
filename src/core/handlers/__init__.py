@@ -7,4 +7,5 @@ Each class is responsible for one cohesive slice of the command surface:
 - ProjectHandlers     — create / update / delete / assign
 - RefinementHandlers  — SLM refinement pipeline
 - SystemHandlers      — config updates + engine restart
+- TitleHandlers       — retitle / batch-retitle
 """
