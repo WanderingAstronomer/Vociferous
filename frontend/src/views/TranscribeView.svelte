@@ -17,6 +17,7 @@
     import { nav } from "../lib/navigation.svelte";
     import WorkspacePanel from "../lib/components/WorkspacePanel.svelte";
     import BarSpectrumVisualizer from "../lib/components/BarSpectrumVisualizer.svelte";
+    import { formatDuration, formatWpm } from "../lib/formatters";
     import {
         deleteTranscript as apiDeleteTranscript,
         dispatchIntent,
@@ -94,21 +95,6 @@
         const sparkMax = Math.max(...sparkWords, 1);
         return { todayWords, avgWpm, sparkWords, sparkMax, count: recentSessions.length };
     });
-
-    /* ===== Metrics formatting ===== */
-    function formatDuration(ms: number): string {
-        if (ms <= 0) return "—";
-        const secs = Math.round(ms / 1000);
-        const m = Math.floor(secs / 60);
-        const s = secs % 60;
-        return m > 0 ? `${m}m ${s}s` : `${s}s`;
-    }
-
-    function formatWpm(words: number, ms: number): string {
-        if (ms <= 0 || words <= 0) return "—";
-        const minutes = ms / 60000;
-        return `${Math.round(words / minutes)} wpm`;
-    }
 
     function formatTranscriptTimestamp(iso: string): string {
         if (!iso) return "";

@@ -13,9 +13,6 @@
         getTranscripts,
         getTranscript,
         deleteTranscript,
-        deleteVariant,
-        renameTranscript,
-        retitleTranscript,
         getProjects,
         createProject,
         updateProject,
@@ -30,24 +27,21 @@
     import { SelectionManager } from "../lib/selection.svelte";
     import { onMount } from "svelte";
     import {
-        Copy,
-        Check,
         Trash2,
-        Sparkles,
         RefreshCw,
         ChevronDown,
         ChevronRight,
         FileText,
-        Calendar,
         Loader2,
-        X,
         Pencil,
-        FolderOpen,
         Plus,
     } from "lucide-svelte";
-    import WorkspacePanel from "../lib/components/WorkspacePanel.svelte";
     import ProjectModal from "../lib/components/ProjectModal.svelte";
     import type { ProjectModalResult } from "../lib/components/ProjectModal.svelte";
+    import TranscriptDetailPanel from "../lib/components/TranscriptDetailPanel.svelte";
+    import BulkActionsPanel from "../lib/components/BulkActionsPanel.svelte";
+    import ProjectContextMenu from "../lib/components/ProjectContextMenu.svelte";
+    import { formatDayHeader, formatTime, formatDuration, formatWpm, wordCount } from "../lib/formatters";
 
     /* ===== Tree Node Types ===== */
 
@@ -93,7 +87,6 @@
     let selectedId = $state<number | null>(null);
     let selectedEntry = $state<Transcript | null>(null);
     let detailLoading = $state(false);
-    let copied = $state(false);
     let refining = $state<number | null>(null);
     let filterText = $state("");
     let sectionCollapsed = $state(new Map<string, boolean>());
@@ -101,7 +94,7 @@
     let projectMenuOpen = $state(false);
     let projectMenuX = $state(0);
     let projectMenuY = $state(0);
-    let projectMenuTranscriptId = $state<number | null>(null);
+
     let batchAssigning = $state(false);
 
     /* ===== Project Modal State ===== */
@@ -109,12 +102,6 @@
     let showProjectModal = $state(false);
     let projectModalMode = $state<"create" | "edit" | "delete">("create");
     let projectModalTarget = $state<Project | null>(null);
-
-    /* ===== Title Editing State ===== */
-
-    let editingTitle = $state(false);
-    let editTitleValue = $state("");
-    let retitling = $state(false);
 
     /* ===== Multi-Selection ===== */
 
@@ -284,12 +271,6 @@
         treeNodes.filter((n): n is TranscriptNode => n.type === "transcript").map((n) => n.entry.id),
     );
 
-    let selectedText = $derived(
-        selectedEntry ? selectedEntry.text || selectedEntry.normalized_text || selectedEntry.raw_text || "" : "",
-    );
-
-    let selectedWordCount = $derived(selectedText ? selectedText.split(/\s+/).filter(Boolean).length : 0);
-
     /** Build flat project options for context menu (with parent name prefix). */
     let projectOptions = $derived.by(() => {
         const opts: { value: string; label: string }[] = [{ value: "", label: "No Project" }];
@@ -304,10 +285,6 @@
         }
         return opts;
     });
-
-    let visibleVariants = $derived(
-        (selectedEntry?.variants ?? []).filter((variant) => variant.kind.trim().toLowerCase() !== "raw"),
-    );
 
     /* ===== Section collapse ===== */
 
@@ -330,36 +307,6 @@
 
     /* ===== Formatting ===== */
 
-    function formatDayHeader(dt: Date): string {
-        const day = dt.getDate();
-        let suffix: string;
-        if (day >= 11 && day <= 13) suffix = "th";
-        else suffix = ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[day % 10] ?? "th";
-        return dt.toLocaleDateString("en-US", { month: "long" }) + ` ${day}${suffix}`;
-    }
-
-    function formatTime(iso: string): string {
-        const dt = new Date(iso);
-        let h = dt.getHours();
-        const m = dt.getMinutes();
-        const period = h < 12 ? "a.m." : "p.m.";
-        h = h % 12 || 12;
-        return `${h}:${m.toString().padStart(2, "0")} ${period}`;
-    }
-
-    function formatDuration(ms: number): string {
-        if (ms <= 0) return "—";
-        const secs = Math.round(ms / 1000);
-        const m = Math.floor(secs / 60);
-        const s = secs % 60;
-        return m > 0 ? `${m}m ${s}s` : `${s}s`;
-    }
-
-    function formatWpm(words: number, ms: number): string {
-        if (ms <= 0 || words <= 0) return "—";
-        return `${Math.round(words / (ms / 60000))} wpm`;
-    }
-
     function getDisplayText(entry: Transcript): string {
         return entry.normalized_text || entry.raw_text || "";
     }
@@ -367,10 +314,6 @@
     function getTitle(entry: Transcript): string {
         if (entry.display_name?.trim()) return entry.display_name.trim();
         return `Transcript #${entry.id}`;
-    }
-
-    function wordCount(text: string): number {
-        return text ? text.split(/\s+/).filter(Boolean).length : 0;
     }
 
     /* ===== Data loading ===== */
@@ -403,7 +346,6 @@
     async function loadEntryDetail(id: number, force = false) {
         if (selectedId === id && !force) return;
         selectedId = id;
-        editingTitle = false;
         detailLoading = true;
         try {
             selectedEntry = await getTranscript(id);
@@ -453,86 +395,24 @@
         nav.navigate("refine", selectedId);
     }
 
-    function copyText() {
-        if (!selectedText) return;
-        navigator.clipboard.writeText(selectedText);
-        copied = true;
-        setTimeout(() => (copied = false), 1500);
-    }
-
-    async function handleDeleteVariant(transcriptId: number, variantId: number) {
-        try {
-            await deleteVariant(transcriptId, variantId);
-            if (selectedEntry && selectedEntry.id === transcriptId) {
-                selectedEntry = await getTranscript(transcriptId);
-            }
-        } catch (e: any) {
-            console.error("Failed to delete variant:", e);
-        }
-    }
-
     function editSelected() {
         if (!selectedEntry) return;
         nav.navigateToEdit(selectedEntry.id, { view: "transcripts", transcriptId: selectedEntry.id });
     }
 
-    function startEditTitle() {
-        if (!selectedEntry) return;
-        editTitleValue = getTitle(selectedEntry);
-        editingTitle = true;
+    /** Called by TranscriptDetailPanel when a title is renamed inline. */
+    function handleTitleRenamed(id: number, newTitle: string) {
+        if (selectedEntry && selectedEntry.id === id) {
+            selectedEntry.display_name = newTitle;
+        }
+        const idx = entries.findIndex((e) => e.id === id);
+        if (idx >= 0) entries[idx].display_name = newTitle;
+        entries = [...entries];
     }
 
-    let commitTitleInFlight = false;
-    async function commitTitle() {
-        if (commitTitleInFlight) return;
-        if (!selectedEntry || !editTitleValue.trim()) {
-            editingTitle = false;
-            return;
-        }
-        const newTitle = editTitleValue.trim();
-        const entryId = selectedEntry.id;
-        commitTitleInFlight = true;
-        editingTitle = false;
-        try {
-            await renameTranscript(entryId, newTitle);
-            // Update local state immediately so title doesn't appear stale
-            if (selectedEntry && selectedEntry.id === entryId) {
-                selectedEntry.display_name = newTitle;
-            }
-            const idx = entries.findIndex((e) => e.id === entryId);
-            if (idx >= 0) entries[idx].display_name = newTitle;
-            entries = [...entries]; // trigger reactivity
-        } catch (e: any) {
-            console.error("Failed to rename transcript:", e);
-        } finally {
-            commitTitleInFlight = false;
-        }
-    }
-
-    function cancelEditTitle() {
-        editingTitle = false;
-    }
-
-    async function handleRetitle() {
-        if (!selectedEntry || retitling) return;
-        retitling = true;
-        try {
-            await retitleTranscript(selectedEntry.id);
-        } catch (e: any) {
-            console.error("Failed to retitle transcript:", e);
-        } finally {
-            retitling = false;
-        }
-    }
-
-    function handleTitleKeydown(e: KeyboardEvent) {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            commitTitle();
-        } else if (e.key === "Escape") {
-            e.preventDefault();
-            cancelEditTitle();
-        }
+    /** Called by TranscriptDetailPanel after a variant is deleted. */
+    function handleVariantDeleted() {
+        if (selectedEntry) loadEntryDetail(selectedEntry.id, true);
     }
 
     /* ===== Context Menu (project assignment) ===== */
@@ -553,13 +433,11 @@
 
         projectMenuX = Math.max(8, x);
         projectMenuY = Math.max(8, y);
-        projectMenuTranscriptId = transcriptId;
         projectMenuOpen = true;
     }
 
     function closeProjectMenu() {
         projectMenuOpen = false;
-        projectMenuTranscriptId = null;
     }
 
     async function assignProjectFromContext(value: string) {
@@ -943,196 +821,21 @@
                 <Loader2 size={24} class="animate-spin" />
             </div>
         {:else if selection.isMulti}
-            <!-- Multi-Select Bulk Actions Panel -->
-            <div class="flex-1 flex flex-col items-center justify-center gap-[var(--space-4)] p-[var(--space-5)]">
-                <div
-                    class="w-16 h-16 rounded-2xl bg-[var(--surface-primary)] border border-[var(--accent-muted)] flex items-center justify-center"
-                >
-                    <FileText size={28} strokeWidth={1.2} class="text-[var(--accent)]" />
-                </div>
-                <h3 class="m-0 text-[var(--text-primary)] text-lg font-semibold">
-                    {selection.count} transcripts selected
-                </h3>
-                <p class="m-0 text-[var(--text-tertiary)] text-sm">
-                    Right-click to assign to project, or use actions below
-                </p>
-
-                <div class="flex flex-col gap-[var(--space-2)] w-full max-w-[320px]">
-                    <button
-                        class="inline-flex items-center justify-center gap-2 h-10 px-4 border-none rounded-[var(--radius-md)] text-sm font-semibold cursor-pointer whitespace-nowrap bg-[var(--surface-primary)] border border-[var(--shell-border)] text-[var(--text-primary)] hover:bg-[var(--hover-overlay)] hover:border-[var(--accent)] transition-colors"
-                        onclick={(e) => openProjectMenu(e, selection.ids[0])}
-                    >
-                        <FolderOpen size={15} /> Assign {selection.count} to Project…
-                    </button>
-                    <button
-                        class="inline-flex items-center justify-center gap-2 h-10 px-4 border border-[var(--shell-border)] rounded-[var(--radius-md)] text-sm font-semibold cursor-pointer whitespace-nowrap bg-transparent text-[var(--text-tertiary)] hover:text-[var(--color-danger)] hover:border-[var(--color-danger)] hover:bg-[var(--color-danger-surface)] transition-colors"
-                        onclick={handleDelete}
-                    >
-                        <Trash2 size={15} /> Delete {selection.count} Transcripts
-                    </button>
-                </div>
-
-                <div class="text-xs text-[var(--text-tertiary)] mt-[var(--space-2)]">
-                    <kbd
-                        class="px-1.5 py-0.5 bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded text-[10px] font-mono"
-                        >Esc</kbd
-                    >
-                    to clear selection ·
-                    <kbd
-                        class="px-1.5 py-0.5 bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded text-[10px] font-mono"
-                        >Ctrl+A</kbd
-                    > to select all
-                </div>
-            </div>
+            <BulkActionsPanel
+                count={selection.count}
+                onAssignProject={(e) => openProjectMenu(e, selection.ids[0])}
+                onDelete={handleDelete}
+            />
         {:else if selectedEntry}
-            <div class="flex-1 flex flex-col p-4 gap-2 overflow-hidden group/detail">
-                <!-- Title row: [Generate Title] — Title — [Edit Pencil] -->
-                <div class="flex items-center gap-2 shrink-0">
-                    <button
-                        class="w-7 h-7 shrink-0 border-none rounded bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:text-[var(--accent)] hover:bg-[var(--hover-overlay)] disabled:opacity-40 disabled:cursor-not-allowed"
-                        onclick={handleRetitle}
-                        disabled={retitling}
-                        title="Generate title"
-                    >
-                        {#if retitling}
-                            <Loader2 size={14} class="animate-spin" />
-                        {:else}
-                            <RefreshCw size={14} />
-                        {/if}
-                    </button>
-                    <h2
-                        class="flex-1 text-xl font-semibold text-[var(--text-primary)] m-0 leading-tight text-center truncate"
-                    >
-                        {#if editingTitle}
-                            <input
-                                type="text"
-                                class="w-full text-xl font-semibold text-[var(--text-primary)] bg-[var(--surface-primary)] border border-[var(--accent)] rounded px-2 py-1 text-center outline-none"
-                                bind:value={editTitleValue}
-                                onkeydown={handleTitleKeydown}
-                                onblur={commitTitle}
-                            />
-                        {:else}
-                            {getTitle(selectedEntry)}
-                        {/if}
-                    </h2>
-                    {#if !editingTitle}
-                        <button
-                            class="w-7 h-7 shrink-0 border-none rounded bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center opacity-0 group-hover/detail:opacity-100 transition-all duration-150 hover:text-[var(--accent)] hover:bg-[var(--hover-overlay)]"
-                            onclick={startEditTitle}
-                            title="Rename transcript"
-                        >
-                            <Pencil size={14} />
-                        </button>
-                    {:else}
-                        <div class="w-7 shrink-0"></div>
-                    {/if}
-                </div>
-                <div class="h-px bg-[var(--shell-border)] shrink-0"></div>
-
-                <div
-                    class="flex flex-wrap justify-center items-center gap-1 shrink-0 text-sm text-[var(--text-secondary)] font-mono"
-                >
-                    <span>{formatDuration(selectedEntry.duration_ms)}</span>
-                    <span class="text-[var(--text-tertiary)]">|</span>
-                    <span>{formatDuration(selectedEntry.speech_duration_ms)}</span>
-                    <span class="text-[var(--text-tertiary)]">|</span>
-                    <span>{selectedWordCount} words</span>
-                    <span class="text-[var(--text-tertiary)]">|</span>
-                    <span
-                        >{formatWpm(
-                            selectedWordCount,
-                            selectedEntry.speech_duration_ms || selectedEntry.duration_ms,
-                        )}</span
-                    >
-                </div>
-
-                <div class="overflow-hidden flex flex-col relative group flex-1 min-h-[80px]">
-                    <WorkspacePanel>
-                        <div class="overflow-y-auto h-full">
-                            <p
-                                class="text-base leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap break-words m-0"
-                            >
-                                {selectedText}
-                            </p>
-                        </div>
-                    </WorkspacePanel>
-                </div>
-
-                {#if visibleVariants.length > 0}
-                    <div class="flex-1 min-h-[60px] overflow-y-auto">
-                        <h3
-                            class="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide mb-2 m-0 mt-2"
-                        >
-                            Variants
-                        </h3>
-                        {#each visibleVariants as variant (variant.id)}
-                            <div class="p-2 px-3 bg-[var(--surface-primary)] rounded mb-2 group/variant">
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-xs font-semibold text-[var(--accent)] uppercase tracking-wide"
-                                        >{variant.kind}</span
-                                    >
-                                    <span class="text-xs text-[var(--text-tertiary)] font-mono"
-                                        >{formatTime(variant.created_at)}</span
-                                    >
-                                    <button
-                                        class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-0.5 rounded flex items-center opacity-0 transition-opacity duration-150 group-hover/variant:opacity-100 hover:text-[var(--color-danger)]"
-                                        title="Delete variant"
-                                        onclick={() => handleDeleteVariant(selectedEntry!.id, variant.id)}
-                                    >
-                                        <X size={12} />
-                                    </button>
-                                </div>
-                                <p class="text-sm leading-normal text-[var(--text-secondary)] m-0">{variant.text}</p>
-                            </div>
-                        {/each}
-                    </div>
-                {/if}
-
-                <div
-                    class="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)] shrink-0 pt-2 border-t border-[var(--shell-border)]"
-                >
-                    <Calendar size={12} />
-                    <span>
-                        {formatDayHeader(new Date(selectedEntry.created_at))} · {formatTime(selectedEntry.created_at)}
-                        {#if selectedEntry.project_name}
-                            · Project: {selectedEntry.project_name}{/if}
-                    </span>
-                </div>
-
-                <div class="flex items-center gap-2 shrink-0 pt-2">
-                    <button
-                        class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-[var(--surface-tertiary)] text-[var(--text-primary)] hover:bg-[var(--gray-6)] transition-colors"
-                        onclick={editSelected}
-                        title="Edit"
-                    >
-                        <Pencil size={14} /> Edit
-                    </button>
-                    <button
-                        class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-[var(--surface-tertiary)] text-[var(--text-primary)] hover:bg-[var(--gray-6)] transition-colors"
-                        onclick={copyText}
-                        title="Copy"
-                    >
-                        {#if copied}<Check size={14} /> Copied{:else}<Copy size={14} /> Copy{/if}
-                    </button>
-                    <button
-                        class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        onclick={handleRefine}
-                        title="Refine"
-                        disabled={refining === selectedId}
-                    >
-                        {#if refining === selectedId}<Loader2 size={14} class="animate-spin" /> Refining…{:else}<Sparkles
-                                size={14}
-                            /> Refine{/if}
-                    </button>
-                    <span class="text-xs text-[var(--text-tertiary)]">Right-click transcript to assign project</span>
-                    <div class="flex-1"></div>
-                    <button
-                        class="inline-flex items-center gap-1.5 h-9 px-3 border-none rounded text-sm font-semibold cursor-pointer whitespace-nowrap bg-transparent text-[var(--text-tertiary)] hover:text-[var(--color-danger)] hover:bg-[var(--color-danger-surface)] transition-colors"
-                        onclick={handleDelete}
-                        title="Delete"><Trash2 size={14} /> Delete</button
-                    >
-                </div>
-            </div>
+            <TranscriptDetailPanel
+                entry={selectedEntry}
+                {refining}
+                onEdit={editSelected}
+                onRefine={handleRefine}
+                onDelete={handleDelete}
+                onTitleRenamed={handleTitleRenamed}
+                onVariantDeleted={handleVariantDeleted}
+            />
         {:else}
             <div class="flex-1 flex flex-col items-center justify-center gap-2 text-[var(--text-tertiary)] text-sm">
                 <FileText size={32} strokeWidth={1} />
@@ -1144,37 +847,15 @@
 
 <!-- Context menu: project assignment -->
 {#if projectMenuOpen}
-    <div
-        class="fixed min-w-[260px] max-w-[340px] max-h-[360px] overflow-y-auto bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-[var(--radius-md)] shadow-[0_12px_28px_rgba(0,0,0,0.45)] py-1 z-[200]"
-        style="left: {projectMenuX}px; top: {projectMenuY}px"
-        role="menu"
-        tabindex="-1"
-        onpointerdown={(e) => e.stopPropagation()}
-        oncontextmenu={(e) => e.preventDefault()}
-    >
-        <div class="px-3 py-1.5 text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">
-            {#if selection.isMulti}
-                Assign {selection.count} transcripts to project
-            {:else}
-                Assign to Project
-            {/if}
-        </div>
-        {#each projectOptions as option}
-            <button
-                class="w-full flex items-center justify-between gap-2 px-3 py-1.5 border-none bg-transparent text-left text-[var(--text-sm)] cursor-pointer transition-colors duration-150 hover:bg-[var(--hover-overlay-blue)] {selectedEntry?.id ===
-                    projectMenuTranscriptId && (selectedEntry?.project_id?.toString() ?? '') === option.value
-                    ? 'text-[var(--accent)]'
-                    : 'text-[var(--text-primary)]'}"
-                onclick={() => assignProjectFromContext(option.value)}
-                role="menuitem"
-            >
-                <span class="truncate">{option.label}</span>
-                {#if selectedEntry?.id === projectMenuTranscriptId && (selectedEntry?.project_id?.toString() ?? "") === option.value}
-                    <Check size={12} />
-                {/if}
-            </button>
-        {/each}
-    </div>
+    <ProjectContextMenu
+        x={projectMenuX}
+        y={projectMenuY}
+        options={projectOptions}
+        isMulti={selection.isMulti}
+        selectionCount={selection.count}
+        currentProjectId={selectedEntry?.project_id?.toString() ?? ""}
+        onSelect={assignProjectFromContext}
+    />
 {/if}
 
 <!-- Project modal: create / rename / delete -->
