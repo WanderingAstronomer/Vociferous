@@ -95,16 +95,6 @@ class VisualizerSettings(BaseModel):
     gate_aggression: float = 0.0
 
 
-class VoiceCalibrationSettings(BaseModel):
-    """Voice calibration results (computed, not user-set)."""
-
-    model_config = ConfigDict(frozen=True)
-
-    fundamental_freq: float = 0.0
-    freq_mean: float = 0.0
-    energy_95th: float = 0.0
-
-
 class OutputSettings(BaseModel):
     """Text output configuration."""
 
@@ -247,7 +237,6 @@ class VociferousSettings(BaseSettings):
     user: UserSettings = Field(default_factory=UserSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     visualizer: VisualizerSettings = Field(default_factory=VisualizerSettings)
-    voice_calibration: VoiceCalibrationSettings = Field(default_factory=VoiceCalibrationSettings)
     output: OutputSettings = Field(default_factory=OutputSettings)
     refinement: RefinementSettings = Field(default_factory=RefinementSettings)
     display: DisplaySettings = Field(default_factory=DisplaySettings)

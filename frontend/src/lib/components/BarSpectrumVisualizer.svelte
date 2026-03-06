@@ -20,9 +20,9 @@
         peakFallRate?: number;
         /** Whether the visualizer is active */
         active?: boolean;
-        /** Voice calibration frequency mean (0-1 normalized) */
+        /** Emphasis center position (0-1 normalized, default speech band) */
         freqMean?: number;
-        /** Voice calibration frequency std (0-1 normalized) */
+        /** Emphasis width (0-1 normalized, controls Gaussian spread) */
         freqStd?: number;
         /** Filter profile: classic spread or Vociferous fast-math */
         shape?: "classic" | "vociferous";

@@ -83,16 +83,6 @@ Settings persist to a JSON file at the platform-appropriate config directory:
 | `levels` | `dict` | *(5 levels)* | Refinement intensity levels (see below) |
 | `motd_system_prompt` | `str` | *(built-in)* | System prompt for message-of-the-day generation |
 
-### `voice_calibration` — Voice Calibration (Computed)
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `fundamental_freq` | `float` | `0.0` | Computed fundamental frequency |
-| `freq_mean` | `float` | `0.0` | Mean frequency from calibration |
-| `energy_95th` | `float` | `0.0` | 95th-percentile energy level |
-
-This section is written by the voice calibration system, not user-configured directly.
-
 ### `logging` — Log Output
 
 | Field | Type | Default | Description |

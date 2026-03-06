@@ -4,7 +4,7 @@
      *
      * Ported from PyQt6 SettingsView with:
      * - Scrollable content centered within min/max width
-     * - Card-based sections: ASR, Recording, Output, Visualization, Calibration
+     * - Card-based sections: ASR, Recording, Output, Visualization
      * - ToggleSwitch for boolean settings
      * - Data management and application controls
      * - Save/cancel footer

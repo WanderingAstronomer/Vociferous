@@ -256,7 +256,6 @@ class TestRoundtripFidelity:
             "user",
             "logging",
             "visualizer",
-            "voice_calibration",
             "output",
             "refinement",
         ]

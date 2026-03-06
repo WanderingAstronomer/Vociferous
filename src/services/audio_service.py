@@ -1,10 +1,17 @@
 """
 Audio capture service.
 
-Handles microphone interaction and audio buffering.
+Handles microphone interaction, audio buffering, and real-time spectrum
+analysis for the visualizer.
+
+FFT computation runs on a dedicated spectrum thread — never on the
+PortAudio C callback thread.  The callback does only: copy frame,
+enqueue for the recording loop, compute cheap RMS for the level meter,
+and enqueue float data for the spectrum thread.
 """
 
 import logging
+import threading
 import time
 from queue import Empty, Queue
 from typing import Callable, List
@@ -21,7 +28,25 @@ logger = logging.getLogger(__name__)
 
 
 class AudioService:
-    """Service for capturing audio from the microphone."""
+    """Service for capturing audio from the microphone.
+
+    Spectrum analysis runs on a dedicated background thread that drains a
+    small queue fed by the PortAudio callback.  This keeps the C-level
+    audio callback fast and deterministic (copy + RMS only).
+
+    Frequency bins are a fixed log distribution across the speech band
+    (100–3400 Hz).  This replaces the deleted VoiceCalibrator — every adult
+    human speaks in roughly the same frequency range, so per-user
+    calibration was pure ceremony.
+    """
+
+    # Fixed speech-optimized frequency bin parameters.
+    _FFT_WINDOW_SIZE: int = 512
+    _FFT_BUFFER_SIZE: int = 1024
+    _N_BINS: int = 64
+    _SPEECH_FREQ_MIN: float = 100.0  # Hz — bottom of speech fundamental range
+    _SPEECH_FREQ_MAX: float = 3400.0  # Hz — telephone band upper limit
+    _FFT_INTERVAL: float = 0.033  # ~30 Hz spectrum update rate
 
     def __init__(
         self,
@@ -35,53 +60,39 @@ class AudioService:
         Args:
             settings_provider: Callable that returns the current application settings.
             on_level_update: Optional callback for audio level updates (normalized 0-1).
-            on_spectrum_update: Optional callback for FFT spectrum (list of 16 floats).
+            on_spectrum_update: Optional callback for FFT spectrum (list of 64 floats).
         """
         self._settings_provider = settings_provider
         self.on_level_update = on_level_update
         self.on_spectrum_update = on_spectrum_update
         self.sample_rate = 16000
 
-        # FFT State
-        self._last_fft_time = 0.0
-        self._fft_interval = 0.033  # ~30Hz update rate
-        self._fft_buffer = np.zeros(1024, dtype=np.float32)  # Rolling buffer
+        # Pre-calculate fixed speech-optimized frequency bins.
+        self._bin_edges = self._compute_speech_bins()
 
-        # Pre-calculate FFT logarithmic bins (default 64 bands for CAVA-like resolution)
-        self._n_bins = 64
-        self._calculate_bin_edges()
+    # ------------------------------------------------------------------
+    # Frequency bin calculation
+    # ------------------------------------------------------------------
 
-    def _calculate_bin_edges(self) -> None:
-        """Calculate bin edges for logarithmic FFT grouping (with optional voice calibration)."""
-        # Check if user has calibrated their voice
-        cal = self._settings_provider().voice_calibration
-        calibration = cal.model_dump() if cal.fundamental_freq > 0 else {}
+    def _compute_speech_bins(self) -> NDArray[np.intp]:
+        """Fixed log-spaced frequency bins across the speech band.
 
-        if calibration:
-            # Use personalized bins centered on user's voice
-            from src.services.voice_calibration import VoiceCalibrator
+        512-point FFT at 16 kHz → 257 real bins.  We map 64 display bands
+        logarithmically across 100–3400 Hz — the telephone speech band that
+        covers fundamentals through ~10th harmonic for all adult voices.
+        No per-user calibration needed.
+        """
+        fft_freqs = np.fft.rfftfreq(self._FFT_WINDOW_SIZE, 1.0 / self.sample_rate)
+        freq_edges = np.geomspace(
+            self._SPEECH_FREQ_MIN,
+            self._SPEECH_FREQ_MAX,
+            self._N_BINS + 1,
+        )
+        return np.searchsorted(fft_freqs, freq_edges)
 
-            calibrator = VoiceCalibrator(settings_provider=self._settings_provider)
-            self._bin_edges = calibrator.compute_custom_bins(self._n_bins, calibration)
-            logger.info(
-                f"Using voice-calibrated frequency bins (fundamental: {calibration.get('fundamental_freq', 0):.0f}Hz)"
-            )
-        else:
-            # Default logarithmic bins (generic)
-            # 512-point FFT gives 257 real bins at 16kHz sample rate.
-            # Start at bin 7 (~218 Hz) to filter out low-frequency rumble/hum
-            min_bin = 7
-            max_bin = 256  # Nyquist at 8kHz
-
-            edges = [min_bin]
-            for i in range(1, self._n_bins + 1):
-                next_edge = max(
-                    edges[-1] + 1,
-                    int(min_bin * (max_bin / min_bin) ** (i / self._n_bins)),
-                )
-                edges.append(next_edge)
-            self._bin_edges = np.array(edges)
-            logger.info("Using default frequency bins (no voice calibration)")
+    # ------------------------------------------------------------------
+    # Microphone validation
+    # ------------------------------------------------------------------
 
     @staticmethod
     def validate_microphone() -> tuple[bool, str]:
@@ -118,6 +129,85 @@ class AudioService:
             logger.error(f"Microphone validation failed: {e}")
             return False, f"Audio system error: {e}"
 
+    # ------------------------------------------------------------------
+    # Spectrum worker (dedicated thread — off the PortAudio callback)
+    # ------------------------------------------------------------------
+
+    def _spectrum_worker(
+        self,
+        spectrum_queue: "Queue[NDArray[np.float32]]",
+        stop_event: threading.Event,
+        hann_window: NDArray[np.float64],
+    ) -> None:
+        """Drain float frames from the queue, compute FFT, emit spectrum.
+
+        Runs at ~30 Hz regardless of how fast the callback pushes frames.
+        All numpy/FFT work happens here — never in the C callback.
+        """
+        fft_buffer = np.zeros(self._FFT_BUFFER_SIZE, dtype=np.float32)
+        last_fft_time = 0.0
+
+        while not stop_event.is_set():
+            # Drain queue — keep only the latest frame for buffer update.
+            latest: NDArray[np.float32] | None = None
+            try:
+                while True:
+                    latest = spectrum_queue.get_nowait()
+            except Empty:
+                pass
+
+            if latest is None:
+                stop_event.wait(0.01)
+                continue
+
+            # Rate limit to ~30 Hz
+            now = time.monotonic()
+            if (now - last_fft_time) < self._FFT_INTERVAL:
+                continue
+            last_fft_time = now
+
+            # Rolling buffer update
+            n = len(latest)
+            fft_buffer = np.roll(fft_buffer, -n)
+            fft_buffer[-n:] = latest
+
+            # Windowed FFT
+            fft_slice = fft_buffer[-self._FFT_WINDOW_SIZE :] * hann_window
+            magnitudes = np.abs(np.fft.rfft(fft_slice))
+
+            # Logarithmic binning to 64 speech-optimized bands
+            spectrum = np.zeros(self._N_BINS)
+            for i in range(self._N_BINS):
+                lo = int(self._bin_edges[i])
+                hi = int(self._bin_edges[i + 1])
+                if lo < hi:
+                    spectrum[i] = np.mean(magnitudes[lo:hi])
+                elif lo < len(magnitudes):
+                    spectrum[i] = magnitudes[lo]
+
+            # Spectral tilt compensation (~-6 dB/octave natural speech roll-off)
+            tilt = np.linspace(1.0, 3.0, self._N_BINS)
+            spectrum *= tilt
+
+            # Frequency-selective noise gating
+            base_gate = np.linspace(0.65, 0.35, self._N_BINS)
+            gate_boost = self._settings_provider().visualizer.gate_aggression
+            gated = np.maximum(0, spectrum - (base_gate + gate_boost))
+
+            # Log scaling for perceptual dynamics
+            result = np.log10(1 + gated * 95.0) / 1.9
+            result_list = np.clip(result, 0.0, 1.0).tolist()
+
+            try:
+                if self.on_spectrum_update:
+                    self.on_spectrum_update(result_list)
+            except Exception:
+                pass  # UI callback errors during shutdown
+
+    # ------------------------------------------------------------------
+    # Recording
+    # ------------------------------------------------------------------
+
     def record_audio(self, should_stop: Callable[[], bool]) -> NDArray[np.int16] | None:
         """
         Record audio until should_stop() returns True.
@@ -140,94 +230,57 @@ class AudioService:
         audio_queue: Queue[NDArray[np.int16]] = Queue()
         recording: list[np.int16] = []
 
-        # Pre-allocate window for FFT
-        fft_window_size = 512
-        hann_window = np.hanning(fft_window_size)
+        # ── Spectrum thread plumbing ──
+        # Only spin up the thread if a spectrum callback is registered.
+        spectrum_queue: Queue[NDArray[np.float32]] | None = None
+        spectrum_stop = threading.Event()
+        spectrum_thread: threading.Thread | None = None
+
+        if self.on_spectrum_update:
+            spectrum_queue = Queue(maxsize=64)
+            hann_window = np.hanning(self._FFT_WINDOW_SIZE)
+            # Recalculate bins in case sample_rate changed since __init__
+            self._bin_edges = self._compute_speech_bins()
+            spectrum_thread = threading.Thread(
+                target=self._spectrum_worker,
+                args=(spectrum_queue, spectrum_stop, hann_window),
+                daemon=True,
+                name="spectrum",
+            )
+            spectrum_thread.start()
 
         def audio_callback(indata, frames, time_info, status) -> None:
+            """PortAudio C callback — kept minimal: copy, enqueue, RMS only."""
             try:
                 if status:
                     logger.debug(f"Audio callback status: {status}")
 
-                # Copy audio data - numpy arrays share memory
+                # Copy audio data — numpy arrays share memory with PortAudio
                 frame_data = indata[:, 0].copy()
-
-                # Check directly if we should still be running to avoid pushing to closed queue
-                # We can't easily check the lambda here as it might block or be complex,
-                # but we can rely on exception handling for the queue.
                 audio_queue.put(frame_data, block=False)
 
-                # Normalize float data for calculations
+                # Float conversion — reused for both RMS and spectrum enqueue
                 float_data = frame_data.astype(np.float32) / 32768.0
 
-                # Calculate RMS amplitude for waveform visualization
+                # Cheap RMS for the level meter (3 numpy ops, stays on callback)
                 if self.on_level_update:
                     rms = np.sqrt(np.mean(float_data**2))
                     # Normalize based on measured loudness profile:
                     # Avg RMS: 0.054484, Max RMS: 0.377443
                     # Map 0.054 -> ~0.3-0.4 (visual baseline)
                     # Map 0.377 -> ~0.95 (near max)
-                    normalized = min(1.0, (rms / 0.4) ** 0.7)  # Gentle power curve for natural scaling
+                    normalized = min(1.0, (rms / 0.4) ** 0.7)
                     try:
                         self.on_level_update(normalized)
                     except Exception:
                         pass  # Ignore UI update errors during shutdown
 
-                # Calculate FFT Spectrum (Rate Limited)
-                current_time = time.time()
-                if self.on_spectrum_update and (current_time - self._last_fft_time) > self._fft_interval:
-                    self._last_fft_time = current_time
-
-                    # Manual rolling buffer update
-                    self._fft_buffer = np.roll(self._fft_buffer, -len(float_data))
-                    self._fft_buffer[-len(float_data) :] = float_data
-
-                    # Take latest slice
-                    fft_slice = self._fft_buffer[-fft_window_size:] * hann_window
-
-                    # Compute FFT
-                    magnitudes = np.abs(np.fft.rfft(fft_slice))
-
-                    # Logarithmic binning to 64 bands
-                    spectrum = np.zeros(self._n_bins)
-                    for i in range(self._n_bins):
-                        start = self._bin_edges[i]
-                        end = self._bin_edges[i + 1]
-                        if start < end:
-                            spectrum[i] = np.mean(magnitudes[start:end])
-                        else:
-                            spectrum[i] = magnitudes[start] if start < len(magnitudes) else 0
-
-                    # Spectral tilt compensation (counteract natural roll-off)
-                    # Speech has ~-6dB/octave natural decay
-                    # Apply gentle boost to higher frequencies for perceptual balance
-                    tilt_compensation = np.linspace(1.0, 3.0, self._n_bins)  # 3x boost at highest bin
-                    spectrum *= tilt_compensation
-
-                    # Frequency-selective noise gating (AFTER tilt compensation)
-                    # Low frequencies (machine hum, fans, electrical noise) need aggressive gating
-                    # High frequencies get less aggressive gating now that tilt is compensated
-                    # Base gate gradient from aggressive to moderate
-                    base_gate = np.linspace(0.65, 0.35, self._n_bins)
-
-                    # User-configurable gate boost (0.0 to 0.5 additional suppression)
-                    gate_boost = self._settings_provider().visualizer.gate_aggression
-                    gate_curve = base_gate + gate_boost
-
-                    # Apply frequency-dependent gating
-                    gated_spectrum = np.maximum(0, spectrum - gate_curve)
-
-                    # Logarithmic scaling calibrated to measured loudness profile:
-                    # Avg speech (RMS 0.054) -> mid-range visualization (~0.4-0.6)
-                    # Peak speech (RMS 0.377) -> high visualization (~0.85-0.95)
-                    # Using log curve with tuned multiplier for natural dynamics
-                    spectrum = np.log10(1 + gated_spectrum * 95.0) / 1.9
-                    spectrum = np.clip(spectrum, 0.0, 1.0).tolist()
-
+                # Enqueue for spectrum thread (non-blocking, drop if full)
+                if spectrum_queue is not None:
                     try:
-                        self.on_spectrum_update(spectrum)
+                        spectrum_queue.put_nowait(float_data)
                     except Exception:
-                        pass
+                        pass  # Queue full — spectrum thread will catch up
 
             except Exception:
                 # Don't let exceptions bubble up to C-layer (PortAudio)
@@ -274,6 +327,11 @@ class AudioService:
             logger.error(f"Recording loop error: {e}")
             raise AudioError(f"Recording loop error: {e}") from e
         finally:
+            # Stop the spectrum thread before draining — it's no longer needed.
+            spectrum_stop.set()
+            if spectrum_thread is not None:
+                spectrum_thread.join(timeout=1.0)
+
             # Drain any remaining frames that were captured by the audio
             # callback but not yet consumed by the recording loop.  Without
             # this the final fraction of a second can be silently lost,

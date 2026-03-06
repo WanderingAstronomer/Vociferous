@@ -57,8 +57,7 @@ src/
 │   ├── audio_service.py        # Recording pipeline (sounddevice → WAV → ASR)
 │   ├── transcription_service.py # ASR inference wrapper
 │   ├── slm_runtime.py          # SLM lifecycle management
-│   ├── slm_types.py            # SLM data types
-│   └── voice_calibration.py    # Voice frequency analysis
+│   └── slm_types.py            # SLM data types
 ├── refinement/
 │   └── engine.py               # SLM text refinement (llama-cpp-python)
 ├── input_handler/              # Global hotkey detection
