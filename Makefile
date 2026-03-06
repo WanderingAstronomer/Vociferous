@@ -2,15 +2,11 @@
 # Usage: make <target>
 
 .DEFAULT_GOAL := help
-.PHONY: help install install-desktop uninstall-desktop install-shortcut-linux uninstall-shortcut-linux install-shortcut-mac uninstall-shortcut-mac install-shortcut-windows uninstall-shortcut-windows run test format lint build clean docker docker-gpu provision fix-gpu
+.PHONY: help install sync install-desktop uninstall-desktop install-shortcut-linux uninstall-shortcut-linux install-shortcut-mac uninstall-shortcut-mac install-shortcut-windows uninstall-shortcut-windows run test format lint build export-requirements clean docker docker-gpu provision fix-gpu
 
 DESKTOP_DEST := $(HOME)/.local/share/applications/vociferous.desktop
 
-VENV     := .venv
-PYTHON   := $(VENV)/bin/python
-PIP      := $(VENV)/bin/pip
-RUFF     := $(VENV)/bin/ruff
-PYTEST   := $(VENV)/bin/pytest
+UV       := uv
 NPM      := npm
 
 # ── Help ─────────────────────────────────────────────────────────────────────
@@ -24,8 +20,11 @@ help: ## Show this help
 install: ## Install all dependencies (system check + venv + frontend)
 	@bash scripts/install.sh
 
+sync: ## Sync venv with locked dependencies
+	$(UV) sync
+
 provision: ## Download ASR and SLM models
-	$(PYTHON) scripts/provision_models.py
+	$(UV) run python scripts/provision_models.py
 
 install-desktop: ## Install the .desktop launcher for the current location
 	@sed 's|{{INSTALL_DIR}}|$(CURDIR)|g' vociferous.desktop.template > vociferous.desktop
@@ -66,18 +65,22 @@ run: ## Run the application
 	./vociferous
 
 test: ## Run the test suite
-	$(PYTEST)
+	$(UV) run pytest
 
-lint: ## Run linters (Ruff + frontend type check)
-	$(RUFF) check src/ tests/ scripts/
+lint: ## Run linters (Ruff + mypy + frontend type check)
+	$(UV) run ruff check src/ tests/ scripts/
+	$(UV) run mypy
 	cd frontend && $(NPM) run check
 
 format: ## Auto-format all code (Python + frontend)
-	$(RUFF) format src/ tests/ scripts/
+	$(UV) run ruff format src/ tests/ scripts/
 	cd frontend && $(NPM) run format
 
 build: ## Build the frontend
 	cd frontend && $(NPM) install --silent && npx vite build
+
+export-requirements: ## Regenerate requirements.txt from lockfile
+	$(UV) export --no-hashes --no-dev --no-emit-project 2>/dev/null > requirements.txt
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 

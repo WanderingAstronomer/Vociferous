@@ -1,3 +1,7 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "vociferous"
 version = "4.4.3"
@@ -5,6 +9,47 @@ description = "Cross-platform speech-to-text with offline transcription and SLM 
 readme = "README.md"
 requires-python = ">=3.12"
 license = "AGPL-3.0-or-later"
+dependencies = [
+    # Window Shell
+    "pywebview>=5.0",
+    "pywebview[gtk]>=5.0; sys_platform == 'linux'",
+    # API Server
+    "litestar>=2.0",
+    "uvicorn>=0.30.0",
+    "websockets>=13.0",
+    # ASR Inference (whisper.cpp)
+    "pywhispercpp>=1.4.0",
+    # SLM Inference (llama.cpp)
+    "llama-cpp-python>=0.3.0",
+    # Configuration
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    # Audio Capture & Processing
+    "sounddevice>=0.5.0",
+    "numpy>=2.0.0",
+    "webrtcvad-wheels>=2.0.11",
+    # Cross-platform path resolution
+    "platformdirs>=4.0",
+    # System utilities
+    "psutil>=6.0.0",
+    # Input Handling
+    "pynput>=1.8.0",
+    "evdev>=1.9.0; sys_platform == 'linux'",
+    "python-xlib>=0.33; sys_platform == 'linux'",
+    # Model Downloads
+    "huggingface-hub>=0.26.0",
+    "tqdm>=4.67.0",
+    "filelock>=3.20.0",
+    "httpx>=0.28.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.0",
+    "pytest-timeout>=2.4.0",
+    "ruff>=0.14.0",
+    "mypy>=1.0.0",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/WanderingAstronomer/Vociferous"
@@ -13,6 +58,9 @@ license = "AGPL-3.0-or-later"
 
 [project.scripts]
 vociferous = "src.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
 
 [tool.ruff]
 target-version = "py312"

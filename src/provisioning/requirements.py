@@ -52,7 +52,7 @@ def get_missing_dependency_message(missing: List[str]) -> str:
         "Please install the missing dependencies:\n\n"
         f"  {sys.executable} -m pip install {' '.join(missing)}\n\n"
         "Or re-run the full installation:\n"
-        "  pip install -r requirements.txt"
+        "  uv sync"
     )
 
 

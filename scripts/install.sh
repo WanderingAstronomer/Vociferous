@@ -67,58 +67,43 @@ fi
 
 # Create virtual environment if it doesn't exist
 echo ""
-echo "=========================================="
-echo "Creating virtual environment"
-echo "=========================================="
-if [ ! -d "$PROJECT_DIR/.venv" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv "$PROJECT_DIR/.venv"
-    echo "✓ Virtual environment created"
-else
-    echo "✓ Virtual environment already exists"
-fi
-
-# Activate virtual environment
-echo "Activating virtual environment..."
-source "$PROJECT_DIR/.venv/bin/activate"
-
-# Use venv Python explicitly (in case PATH is not updated yet)
-VENV_PYTHON="$PROJECT_DIR/.venv/bin/python"
-
-# Upgrade pip and build tools
+# Check for uv
 echo ""
 echo "=========================================="
-echo "Upgrading build tools"
+echo "Checking for uv package manager"
 echo "=========================================="
-pip install --upgrade pip setuptools wheel
-echo "✓ Build tools upgraded"
+if ! command -v uv &> /dev/null; then
+    echo "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+    echo "✓ uv installed"
+else
+    echo "✓ uv $(uv --version | cut -d' ' -f2) found"
+fi
 
-# Install all requirements
+# Install all dependencies via uv (handles venv creation automatically)
 echo ""
 echo "=========================================="
 echo "Installing dependencies"
 echo "=========================================="
 
 # GPU/CUDA Detection for Linux
-CUDA_BUILD_FLAGS=""
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    if command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
-        echo "NVIDIA GPU detected. Enabling CUDA build flags."
-        # GGML_CUDA=on is for both whisper.cpp and llama.cpp
-        CUDA_BUILD_FLAGS="CMAKE_ARGS=\"-DGGML_CUDA=on\""
-    fi
-fi
-
 cd "$PROJECT_DIR"
 
-if [ -n "$CUDA_BUILD_FLAGS" ]; then
+if [[ "$OSTYPE" == "linux-gnu"* ]] && command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
+    echo "NVIDIA GPU detected. Enabling CUDA build flags."
     echo "Building with CUDA support (this may take a few minutes)..."
-    # We must force source builds to ensure CUDA is compiled in
-    eval "$CUDA_BUILD_FLAGS" pip install --no-binary pywhispercpp,llama-cpp-python -r requirements.txt
+    # First sync all deps from lockfile
+    uv sync
+    # Then rebuild CUDA-critical packages from source with CUDA flags
+    CMAKE_ARGS="-DGGML_CUDA=on" uv pip install --reinstall --no-binary pywhispercpp,llama-cpp-python pywhispercpp llama-cpp-python
 else
-    pip install -r requirements.txt
+    uv sync
 fi
 echo "✓ Dependencies installed"
+
+# Use venv Python explicitly for verification
+VENV_PYTHON="$PROJECT_DIR/.venv/bin/python"
 
 # Verify critical dependencies (use venv Python, not system Python)
 echo ""
