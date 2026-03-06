@@ -16,35 +16,24 @@
         getModels,
         getHealth,
         downloadModel,
-        restartEngine,
-        getTranscripts,
-        clearAllTranscripts,
-        exportFile,
-        batchRetitle,
     } from "../lib/api";
-    import type { ModelInfo } from "../lib/api";
     import { ws } from "../lib/ws";
     import { onMount, onDestroy } from "svelte";
     import {
         Save,
         Undo2,
         Loader2,
-        Cpu,
         Mic,
-        Sliders,
         Eye,
-        RotateCcw,
         Activity,
         Check,
-        Download,
-        CheckCircle,
-        AlertCircle,
     } from "lucide-svelte";
-    import ToggleSwitch from "../lib/components/ToggleSwitch.svelte";
-    import StyledButton from "../lib/components/StyledButton.svelte";
     import CustomSelect from "../lib/components/CustomSelect.svelte";
     import KeyBindCapture from "../lib/components/KeyBindCapture.svelte";
-    import type { DownloadProgressData, EngineStatusData, BatchRetitleProgressData } from "../lib/events";
+    import MaintenanceCard from "../lib/components/MaintenanceCard.svelte";
+    import OutputCard from "../lib/components/OutputCard.svelte";
+    import AsrModelCard from "../lib/components/AsrModelCard.svelte";
+    import type { DownloadProgressData, EngineStatusData } from "../lib/events";
 
     /* ===== State ===== */
 
@@ -65,8 +54,6 @@
     let saving = $state(false);
     let message = $state("");
     let messageType = $state<"success" | "error">("success");
-    let exportFormat = $state<"json" | "csv" | "txt">("json");
-    let preferSaveDialog = $state(true);
 
     /* ===== Download state ===== */
 
@@ -83,7 +70,6 @@
 
     let unsubDownload: (() => void) | null = null;
     let unsubEngineStatus: (() => void) | null = null;
-    let unsubBatchRetitle: (() => void) | null = null;
 
     onMount(async () => {
         // Subscribe to download progress events
@@ -122,32 +108,6 @@
             }
         });
 
-        unsubBatchRetitle = ws.on("batch_retitle_progress", (data: BatchRetitleProgressData) => {
-            if (data.status === "started") {
-                batchRetitling = true;
-                batchRetitleTotal = data.total ?? 0;
-                batchRetitleProcessed = 0;
-                batchRetitleSkipped = 0;
-                batchRetitleCurrent = 0;
-                batchRetitleMessage = `Retitling 0 / ${data.total ?? 0}…`;
-            } else if (data.status === "progress") {
-                batchRetitleProcessed = data.processed ?? 0;
-                batchRetitleSkipped = data.skipped ?? 0;
-                batchRetitleCurrent = data.current ?? 0;
-                batchRetitleTotal = data.total ?? batchRetitleTotal;
-                batchRetitleMessage = `Retitling ${data.current ?? 0} / ${data.total ?? batchRetitleTotal}…`;
-            } else if (data.status === "complete") {
-                batchRetitling = false;
-                const msg = `Retitled ${data.processed ?? 0} transcript${(data.processed ?? 0) !== 1 ? "s" : ""}${(data.skipped ?? 0) > 0 ? `, ${data.skipped} skipped` : ""}`;
-                showMessage(msg, "success");
-                batchRetitleMessage = "";
-            } else if (data.status === "error") {
-                batchRetitling = false;
-                showMessage(data.message ?? "Batch retitle failed", "error");
-                batchRetitleMessage = "";
-            }
-        });
-
         try {
             const [c, m, h] = await Promise.all([getConfig(), getModels(), getHealth()]);
             config = c;
@@ -170,7 +130,6 @@
     onDestroy(() => {
         unsubDownload?.();
         unsubEngineStatus?.();
-        unsubBatchRetitle?.();
     });
 
     /* ===== Actions ===== */
@@ -230,158 +189,6 @@
             downloadMessage = "";
         }
     }
-
-    /* ── Data controls ── */
-    let clearingTranscripts = $state(false);
-    let showClearTranscriptsConfirm = $state(false);
-    let showGpuDetails = $state(false);
-
-    /* ===== Batch Retitle State ===== */
-    let batchRetitling = $state(false);
-    let batchRetitleTotal = $state(0);
-    let batchRetitleProcessed = $state(0);
-    let batchRetitleSkipped = $state(0);
-    let batchRetitleCurrent = $state(0);
-    let batchRetitleMessage = $state("");
-
-    function escapeCsvValue(value: unknown): string {
-        const text = String(value ?? "").replace(/"/g, '""');
-        return `"${text}"`;
-    }
-
-    function transcriptsToCsv(transcripts: Record<string, unknown>[]): string {
-        const headers = [
-            "id",
-            "timestamp",
-            "project_name",
-            "text",
-            "raw_text",
-            "normalized_text",
-            "duration_ms",
-            "speech_duration_ms",
-        ];
-
-        const lines = [headers.join(",")];
-        for (const transcript of transcripts) {
-            const row = [
-                transcript.id,
-                transcript.timestamp,
-                transcript.project_name,
-                transcript.text,
-                transcript.raw_text,
-                transcript.normalized_text,
-                transcript.duration_ms,
-                transcript.speech_duration_ms,
-            ].map(escapeCsvValue);
-            lines.push(row.join(","));
-        }
-        return lines.join("\n");
-    }
-
-    function transcriptsToTxt(transcripts: Record<string, unknown>[]): string {
-        return transcripts
-            .map((transcript, index) => {
-                const title = `Transcript ${index + 1}`;
-                const timestamp = `Timestamp: ${String(transcript.timestamp ?? "unknown")}`;
-                const project = `Project: ${String(transcript.project_name ?? "unassigned")}`;
-                const text = String(transcript.text ?? transcript.normalized_text ?? transcript.raw_text ?? "");
-                return `${title}\n${timestamp}\n${project}\n\n${text}`;
-            })
-            .join("\n\n---\n\n");
-    }
-
-    function buildExportPayload(transcripts: Record<string, unknown>[], format: "json" | "csv" | "txt") {
-        const datePart = new Date().toISOString().slice(0, 10);
-        if (format === "csv") {
-            const content = transcriptsToCsv(transcripts);
-            return { filename: `vociferous-export-${datePart}.csv`, content };
-        }
-        if (format === "txt") {
-            const content = transcriptsToTxt(transcripts);
-            return { filename: `vociferous-export-${datePart}.txt`, content };
-        }
-        const content = JSON.stringify(transcripts, null, 2);
-        return { filename: `vociferous-export-${datePart}.json`, content };
-    }
-
-    async function handleExportTranscripts() {
-        try {
-            const transcripts = await getTranscripts(99999);
-            const { filename, content } = buildExportPayload(
-                transcripts as unknown as Record<string, unknown>[],
-                exportFormat,
-            );
-
-            if (preferSaveDialog) {
-                // Backend opens the native GNOME/GTK save dialog and writes the file.
-                const result = await exportFile(content, filename);
-                message = `Exported ${transcripts.length} transcript${transcripts.length !== 1 ? "s" : ""} to ${result.path}`;
-                messageType = "success";
-                return;
-            }
-
-            // Fallback: browser download (shouldn't be needed in pywebview, but keeps the toggle useful)
-            const blob = new Blob([content], { type: "application/octet-stream" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = filename;
-            a.click();
-            URL.revokeObjectURL(url);
-            message = `Exported ${transcripts.length} transcript${transcripts.length !== 1 ? "s" : ""} to default download location`;
-            messageType = "success";
-        } catch (e: any) {
-            if ((e as any)?.error === "cancelled" || e?.message?.includes("cancelled")) {
-                message = "Export cancelled";
-                messageType = "error";
-                return;
-            }
-            message = (e as any).message || "Export failed";
-            messageType = "error";
-        }
-    }
-
-    async function handleClearTranscripts() {
-        showClearTranscriptsConfirm = true;
-    }
-
-    async function confirmClearTranscripts() {
-        showClearTranscriptsConfirm = false;
-        clearingTranscripts = true;
-        try {
-            const result = await clearAllTranscripts();
-            message = `Cleared ${result.deleted} transcript${result.deleted !== 1 ? "s" : ""}`;
-            messageType = "success";
-        } catch (e: any) {
-            message = e.message || "Clear failed";
-            messageType = "error";
-        } finally {
-            clearingTranscripts = false;
-        }
-    }
-
-    async function handleRestartEngine() {
-        message = "Restarting engine…";
-        messageType = "success";
-        try {
-            await restartEngine();
-        } catch (e: any) {
-            message = e.message || "Engine restart failed";
-            messageType = "error";
-        }
-    }
-
-    async function handleBatchRetitle() {
-        batchRetitling = true;
-        batchRetitleMessage = "Starting batch retitle…";
-        try {
-            await batchRetitle();
-        } catch (e: any) {
-            batchRetitling = false;
-            showMessage(e.message || "Batch retitle failed", "error");
-            batchRetitleMessage = "";
-        }
-    }
 </script>
 
 <div class="flex flex-col h-full overflow-hidden">
@@ -418,256 +225,17 @@
 
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-[var(--space-4)] items-start">
                     <!-- ASR Model Settings -->
-                    <div
-                        class="bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] p-[var(--space-4)] xl:col-span-2"
-                    >
-                        <div
-                            class="flex items-center gap-[var(--space-2)] text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-primary)] mb-[var(--space-4)] pb-[var(--space-2)] border-b border-[var(--shell-border)]"
-                        >
-                            <Cpu size={18} class="text-[var(--accent)]" /><span>Whisper ASR</span>
-                        </div>
-                        <div class="flex flex-col gap-[var(--space-3)]">
-                            <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-                            >
-                                <label
-                                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                    for="setting-model">Whisper Architecture</label
-                                >
-                                <div class="flex flex-col gap-1 flex-1">
-                                    <div class="flex items-center gap-[var(--space-2)]">
-                                        <div class="w-full max-w-[460px]">
-                                            <CustomSelect
-                                                id="setting-model"
-                                                options={Object.entries(models.asr).map(([id, m]) => ({
-                                                    value: id,
-                                                    label: `${(m as any).name} (${(m as any).size_mb}MB)${(m as any).downloaded ? "" : " ⬇"}`,
-                                                }))}
-                                                value={String(getSafe(config, "model.model", ""))}
-                                                onchange={(v: string) => setSafe("model.model", v)}
-                                                placeholder="Select model…"
-                                            />
-                                        </div>
-                                        {#if models.asr[getSafe(config, "model.model")]}
-                                            {@const selectedAsr = models.asr[getSafe(config, "model.model")] as any}
-                                            {#if !selectedAsr.downloaded}
-                                                {#if downloadingModel === getSafe(config, "model.model")}
-                                                    <span
-                                                        class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--accent)] shrink overflow-hidden"
-                                                    >
-                                                        <Loader2 size={14} class="spin" />
-                                                        <span class="overflow-hidden text-ellipsis whitespace-nowrap"
-                                                            >{downloadMessage}</span
-                                                        >
-                                                    </span>
-                                                {:else}
-                                                    <button
-                                                        class="inline-flex items-center gap-1 py-1.5 px-3 border border-[var(--accent)] rounded-[var(--radius-sm)] bg-transparent text-[var(--accent)] font-[var(--font-family)] text-[var(--text-xs)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] hover:bg-[var(--accent)] hover:text-[var(--gray-0)]"
-                                                        onclick={() =>
-                                                            handleDownload("asr", getSafe(config, "model.model"))}
-                                                    >
-                                                        <Download size={14} /> Download
-                                                    </button>
-                                                {/if}
-                                            {:else}
-                                                <span
-                                                    class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--color-success)]"
-                                                    ><CheckCircle size={14} /></span
-                                                >
-                                            {/if}
-                                        {/if}
-                                    </div>
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                        >Larger models are slower but more accurate. Tiny/Base are fast; Small/Medium
-                                        offer better quality.</span
-                                    >
-                                </div>
-                            </div>
-                            {#if downloadErrorAsr && !downloadingModel}
-                                <div
-                                    class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-danger)] py-1"
-                                >
-                                    <AlertCircle size={14} />
-                                    <span class="break-words leading-[var(--leading-normal)]">{downloadErrorAsr}</span>
-                                </div>
-                            {/if}
-                            <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-                            >
-                                <div class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2">GPU Status</div>
-                                <div class="flex flex-col gap-1 flex-1">
-                                    <div
-                                        class="gpu-status-badge"
-                                        class:gpu-available={health.gpu?.cuda_available}
-                                        class:gpu-unavailable={!health.gpu?.cuda_available}
-                                    >
-                                        {#if health.gpu?.cuda_available}
-                                            <CheckCircle size={14} />
-                                            <span>{health.gpu.detail || "CUDA available"}</span>
-                                        {:else}
-                                            <AlertCircle size={14} />
-                                            <span>{health.gpu?.detail || "No GPU detected"}</span>
-                                        {/if}
-                                    </div>
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic">
-                                        ASR GPU acceleration requires pywhispercpp compiled with GGML_CUDA=1.
-                                    </span>
-                                    {#if health.gpu?.whisper_backends && health.gpu.whisper_backends !== "unavailable"}
-                                        <button
-                                            class="w-fit mt-1 text-[var(--text-xs)] text-[var(--text-tertiary)] bg-transparent border-none p-0 cursor-pointer transition-[color] duration-[var(--transition-fast)] hover:text-[var(--accent)]"
-                                            onclick={() => (showGpuDetails = !showGpuDetails)}
-                                        >
-                                            {showGpuDetails ? "Hide backend details" : "Show backend details"}
-                                        </button>
-                                        {#if showGpuDetails}
-                                            {@const features = health.gpu.whisper_backends
-                                                .split("|")
-                                                .map((s: string) => s.trim().split(" = "))
-                                                .filter((p: string[]) => p.length === 2 && p[1] === "1")
-                                                .map((p: string[]) => p[0])}
-                                            {#if features.length}
-                                                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                                    >Active backends: {features.join(", ")}</span
-                                                >
-                                            {/if}
-                                        {/if}
-                                    {/if}
-                                </div>
-                            </div>
-                            <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-                            >
-                                <label
-                                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                    for="setting-device">ASR Device</label
-                                >
-                                <div class="flex flex-col gap-1 flex-1">
-                                    <div class="w-full max-w-[460px]">
-                                        <CustomSelect
-                                            id="setting-device"
-                                            options={[
-                                                { value: "auto", label: "Automatic" },
-                                                { value: "gpu", label: "Prefer GPU" },
-                                                { value: "cpu", label: "Force CPU" },
-                                            ]}
-                                            value={String(getSafe(config, "model.device", "auto"))}
-                                            onchange={(v: string) => setSafe("model.device", v)}
-                                        />
-                                    </div>
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                        >Preference for ASR backend selection. Requires engine restart after saving; if
-                                        unsupported by your whisper build, automatic fallback is used.</span
-                                    >
-                                </div>
-                            </div>
-                            <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-                            >
-                                <label
-                                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                    for="setting-threads">ASR Threads</label
-                                >
-                                <div class="flex flex-col gap-1 flex-1">
-                                    <input
-                                        id="setting-threads"
-                                        class="flex-1 h-10 max-w-[280px] bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-[var(--radius-sm)] text-[var(--text-primary)] font-[var(--font-family)] text-[var(--text-sm)] px-[var(--space-2)] outline-none transition-[border-color] duration-[var(--transition-fast)] focus:border-[var(--accent)] placeholder:text-[var(--text-tertiary)]"
-                                        type="number"
-                                        min="1"
-                                        max="32"
-                                        value={getSafe(config, "model.n_threads", 4)}
-                                        oninput={(e) => {
-                                            const v = parseInt((e.target as HTMLInputElement).value);
-                                            if (!isNaN(v) && v >= 1 && v <= 32) setSafe("model.n_threads", v);
-                                        }}
-                                    />
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                        >CPU threads for whisper.cpp inference. Used when running on CPU paths. Default
-                                        4. Higher values use more cores but may improve speed.</span
-                                    >
-                                </div>
-                            </div>
-                            <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-                            >
-                                <label
-                                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                    for="setting-language">Language</label
-                                >
-                                <div class="flex flex-col gap-1 flex-1">
-                                    <div class="w-full max-w-[460px]">
-                                        <CustomSelect
-                                            id="setting-language"
-                                            options={[
-                                                { value: "", label: "Auto-detect" },
-                                                { value: "af", label: "Afrikaans" },
-                                                { value: "ar", label: "Arabic" },
-                                                { value: "hy", label: "Armenian" },
-                                                { value: "az", label: "Azerbaijani" },
-                                                { value: "be", label: "Belarusian" },
-                                                { value: "bs", label: "Bosnian" },
-                                                { value: "bg", label: "Bulgarian" },
-                                                { value: "ca", label: "Catalan" },
-                                                { value: "zh", label: "Chinese" },
-                                                { value: "hr", label: "Croatian" },
-                                                { value: "cs", label: "Czech" },
-                                                { value: "da", label: "Danish" },
-                                                { value: "nl", label: "Dutch" },
-                                                { value: "en", label: "English" },
-                                                { value: "et", label: "Estonian" },
-                                                { value: "fi", label: "Finnish" },
-                                                { value: "fr", label: "French" },
-                                                { value: "gl", label: "Galician" },
-                                                { value: "de", label: "German" },
-                                                { value: "el", label: "Greek" },
-                                                { value: "he", label: "Hebrew" },
-                                                { value: "hi", label: "Hindi" },
-                                                { value: "hu", label: "Hungarian" },
-                                                { value: "id", label: "Indonesian" },
-                                                { value: "it", label: "Italian" },
-                                                { value: "ja", label: "Japanese" },
-                                                { value: "kn", label: "Kannada" },
-                                                { value: "kk", label: "Kazakh" },
-                                                { value: "ko", label: "Korean" },
-                                                { value: "lv", label: "Latvian" },
-                                                { value: "lt", label: "Lithuanian" },
-                                                { value: "mk", label: "Macedonian" },
-                                                { value: "ms", label: "Malay" },
-                                                { value: "mr", label: "Marathi" },
-                                                { value: "mi", label: "Māori" },
-                                                { value: "ne", label: "Nepali" },
-                                                { value: "no", label: "Norwegian" },
-                                                { value: "fa", label: "Persian" },
-                                                { value: "pl", label: "Polish" },
-                                                { value: "pt", label: "Portuguese" },
-                                                { value: "ro", label: "Romanian" },
-                                                { value: "ru", label: "Russian" },
-                                                { value: "sr", label: "Serbian" },
-                                                { value: "sk", label: "Slovak" },
-                                                { value: "sl", label: "Slovenian" },
-                                                { value: "es", label: "Spanish" },
-                                                { value: "sw", label: "Swahili" },
-                                                { value: "sv", label: "Swedish" },
-                                                { value: "tl", label: "Tagalog" },
-                                                { value: "ta", label: "Tamil" },
-                                                { value: "th", label: "Thai" },
-                                                { value: "tr", label: "Turkish" },
-                                                { value: "uk", label: "Ukrainian" },
-                                                { value: "ur", label: "Urdu" },
-                                                { value: "vi", label: "Vietnamese" },
-                                                { value: "cy", label: "Welsh" },
-                                            ]}
-                                            value={getSafe(config, "model.language", "en")}
-                                            onchange={(v: string) => setSafe("model.language", v)}
-                                        />
-                                    </div>
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                        >Transcription language. Auto-detect works but is slower and slightly less
-                                        accurate than specifying explicitly.</span
-                                    >
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <AsrModelCard
+                        {config}
+                        {models}
+                        {health}
+                        {downloadingModel}
+                        {downloadMessage}
+                        {downloadErrorAsr}
+                        {getSafe}
+                        {setSafe}
+                        {handleDownload}
+                    />
 
                     <!-- Recording Settings -->
                     <div
@@ -791,417 +359,28 @@
                     </div>
 
                     <!-- Output & Processing -->
-                    <div
-                        class="bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] p-[var(--space-4)] xl:col-span-2"
-                    >
-                        <div
-                            class="flex items-center gap-[var(--space-2)] text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-primary)] mb-[var(--space-4)] pb-[var(--space-2)] border-b border-[var(--shell-border)]"
-                        >
-                            <Sliders size={18} class="text-[var(--accent)]" /><span>Output & Processing</span>
-                        </div>
-                        <div class="flex flex-col gap-[var(--space-3)]">
-                            <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-                            >
-                                <label
-                                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                    for="setting-trailing">Add Trailing Space</label
-                                >
-                                <div class="flex flex-col gap-1 flex-1">
-                                    <ToggleSwitch
-                                        checked={getSafe(config, "output.add_trailing_space", false)}
-                                        onChange={() =>
-                                            setSafe(
-                                                "output.add_trailing_space",
-                                                !getSafe(config, "output.add_trailing_space", false),
-                                            )}
-                                    />
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                        >Appends a space after each transcription for seamless dictation into text
-                                        fields.</span
-                                    >
-                                </div>
-                            </div>
-                            <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-                            >
-                                <label
-                                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                    for="setting-autocopy">Auto-Copy to Clipboard</label
-                                >
-                                <div class="flex flex-col gap-1 flex-1">
-                                    <ToggleSwitch
-                                        checked={getSafe(config, "output.auto_copy_to_clipboard", true)}
-                                        onChange={() =>
-                                            setSafe(
-                                                "output.auto_copy_to_clipboard",
-                                                !getSafe(config, "output.auto_copy_to_clipboard", true),
-                                            )}
-                                    />
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                        >Automatically copies transcription to clipboard when complete. Works even when
-                                        the window is not focused.</span
-                                    >
-                                </div>
-                            </div>
-                            <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-                            >
-                                <label
-                                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                    for="setting-retitle-refine">Auto-Retitle on Refine</label
-                                >
-                                <div class="flex flex-col gap-1 flex-1">
-                                    <ToggleSwitch
-                                        checked={getSafe(config, "output.auto_retitle_on_refine", true)}
-                                        onChange={() =>
-                                            setSafe(
-                                                "output.auto_retitle_on_refine",
-                                                !getSafe(config, "output.auto_retitle_on_refine", true),
-                                            )}
-                                    />
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                        >Automatically regenerates the transcript title when a refinement completes.
-                                        Uses the refined text for a more accurate title.</span
-                                    >
-                                </div>
-                            </div>
-                            <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-                            >
-                                <label
-                                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                    for="setting-refinement">Grammar Refinement</label
-                                >
-                                <div class="flex flex-col gap-1 flex-1">
-                                    <ToggleSwitch
-                                        checked={getSafe(config, "refinement.enabled", false)}
-                                        onChange={() =>
-                                            setSafe(
-                                                "refinement.enabled",
-                                                !getSafe(config, "refinement.enabled", false),
-                                            )}
-                                    />
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                        >Uses a local language model to improve grammar and punctuation after
-                                        transcription.</span
-                                    >
-                                </div>
-                            </div>
-                            {#if getSafe(config, "refinement.enabled", false)}
-                                <div
-                                    class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-                                >
-                                    <label
-                                        class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                        for="setting-refmodel">Refinement Model</label
-                                    >
-                                    <div class="flex flex-col gap-1 flex-1">
-                                        <div class="flex items-center gap-[var(--space-2)]">
-                                            <div class="w-full max-w-[460px]">
-                                                <CustomSelect
-                                                    id="setting-refmodel"
-                                                    options={Object.entries(models.slm).map(([id, m]) => ({
-                                                        value: id,
-                                                        label: `${(m as any).name} (${(m as any).size_mb}MB)${(m as any).downloaded ? "" : " ⬇"}`,
-                                                    }))}
-                                                    value={getSafe(config, "refinement.model_id", "qwen4b")}
-                                                    onchange={(v: string) => setSafe("refinement.model_id", v)}
-                                                    placeholder="Select model…"
-                                                />
-                                            </div>
-                                            {#if models.slm[getSafe(config, "refinement.model_id", "qwen4b")]}
-                                                {@const selectedSlm = models.slm[
-                                                    getSafe(config, "refinement.model_id", "qwen4b")
-                                                ] as any}
-                                                {#if !selectedSlm.downloaded}
-                                                    {#if downloadingModel === getSafe(config, "refinement.model_id", "qwen4b")}
-                                                        <span
-                                                            class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--accent)] shrink overflow-hidden"
-                                                        >
-                                                            <Loader2 size={14} class="spin" />
-                                                            <span
-                                                                class="overflow-hidden text-ellipsis whitespace-nowrap"
-                                                                >{downloadMessage}</span
-                                                            >
-                                                        </span>
-                                                    {:else}
-                                                        <button
-                                                            class="inline-flex items-center gap-1 py-1.5 px-3 border border-[var(--accent)] rounded-[var(--radius-sm)] bg-transparent text-[var(--accent)] font-[var(--font-family)] text-[var(--text-xs)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] hover:bg-[var(--accent)] hover:text-[var(--gray-0)]"
-                                                            onclick={() =>
-                                                                handleDownload(
-                                                                    "slm",
-                                                                    getSafe(config, "refinement.model_id", "qwen4b"),
-                                                                )}
-                                                        >
-                                                            <Download size={14} /> Download
-                                                        </button>
-                                                    {/if}
-                                                {:else}
-                                                    <span
-                                                        class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--color-success)]"
-                                                        ><CheckCircle size={14} /></span
-                                                    >
-                                                {/if}
-                                            {/if}
-                                        </div>
-                                        <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                            >Larger models produce better refinements but use more RAM and are slower.</span
-                                        >
-                                    </div>
-                                </div>
-                                {#if downloadErrorSlm && !downloadingModel}
-                                    <div
-                                        class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-danger)] py-1"
-                                    >
-                                        <AlertCircle size={14} />
-                                        <span class="break-words leading-[var(--leading-normal)]"
-                                            >{downloadErrorSlm}</span
-                                        >
-                                    </div>
-                                {/if}
-                                <div
-                                    class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-                                >
-                                    <label
-                                        class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                        for="setting-gpu-layers">GPU Layers</label
-                                    >
-                                    <div class="flex flex-col gap-1 flex-1">
-                                        <input
-                                            id="setting-gpu-layers"
-                                            class="flex-1 h-10 max-w-[280px] bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-[var(--radius-sm)] text-[var(--text-primary)] font-[var(--font-family)] text-[var(--text-sm)] px-[var(--space-2)] outline-none transition-[border-color] duration-[var(--transition-fast)] focus:border-[var(--accent)] placeholder:text-[var(--text-tertiary)]"
-                                            type="number"
-                                            min="-1"
-                                            max="999"
-                                            value={getSafe(config, "refinement.n_gpu_layers", -1)}
-                                            oninput={(e) => {
-                                                const v = parseInt((e.target as HTMLInputElement).value);
-                                                if (!isNaN(v) && v >= -1) setSafe("refinement.n_gpu_layers", v);
-                                            }}
-                                        />
-                                        <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                            >Layers to offload to GPU. -1 = all (fastest), 0 = CPU only. Requires
-                                            CUDA-compiled llama-cpp-python.</span
-                                        >
-                                    </div>
-                                </div>
-                                <div
-                                    class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-                                >
-                                    <label
-                                        class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                        for="setting-nctx">Context Size</label
-                                    >
-                                    <div class="flex flex-col gap-1 flex-1">
-                                        <div class="w-full max-w-[460px]">
-                                            <CustomSelect
-                                                id="setting-nctx"
-                                                options={[
-                                                    { value: "2048", label: "2048" },
-                                                    { value: "4096", label: "4096" },
-                                                    { value: "8192", label: "8192 (default)" },
-                                                    { value: "16384", label: "16384" },
-                                                ]}
-                                                value={String(getSafe(config, "refinement.n_ctx", 8192))}
-                                                onchange={(v: string) => setSafe("refinement.n_ctx", parseInt(v))}
-                                            />
-                                        </div>
-                                        <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                            >Context window for the refinement model. Larger values handle longer texts
-                                            but use more VRAM.</span
-                                        >
-                                    </div>
-                                </div>
-                            {/if}
-                        </div>
-                    </div>
+                    <OutputCard
+                        {config}
+                        {models}
+                        {downloadingModel}
+                        {downloadMessage}
+                        {downloadErrorSlm}
+                        {getSafe}
+                        {setSafe}
+                        {handleDownload}
+                    />
 
                     <!-- Maintenance -->
-                    <div
-                        class="bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] p-[var(--space-4)] xl:col-span-2"
-                    >
-                        <div
-                            class="flex items-center gap-[var(--space-2)] text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-primary)] mb-[var(--space-4)] pb-[var(--space-2)] border-b border-[var(--shell-border)]"
-                        >
-                            <RotateCcw size={18} class="text-[var(--accent)]" /><span>Maintenance</span>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-[var(--space-3)]">
-                            <div
-                                class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
-                            >
-                                <span
-                                    class="text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]"
-                                    >Transcriptions</span
-                                >
-                                <div class="flex flex-col gap-[var(--space-2)] mb-[var(--space-1)]">
-                                    <div class="flex items-center justify-between gap-[var(--space-3)]">
-                                        <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase"
-                                            >Format</span
-                                        >
-                                        <div class="w-full max-w-[180px]">
-                                            <CustomSelect
-                                                id="history-export-format"
-                                                options={[
-                                                    { value: "json", label: "JSON" },
-                                                    { value: "csv", label: "CSV" },
-                                                    { value: "txt", label: "Plain Text" },
-                                                ]}
-                                                value={exportFormat}
-                                                onchange={(v: string) => {
-                                                    if (v === "json" || v === "csv" || v === "txt") {
-                                                        exportFormat = v;
-                                                    }
-                                                }}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div class="flex items-center justify-between gap-[var(--space-3)]">
-                                        <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase"
-                                            >Choose Location</span
-                                        >
-                                        <ToggleSwitch
-                                            checked={preferSaveDialog}
-                                            onChange={() => (preferSaveDialog = !preferSaveDialog)}
-                                        />
-                                    </div>
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                        >Uses native save dialog when supported; otherwise downloads to your default
-                                        location.</span
-                                    >
-                                </div>
-                                <div class="flex gap-[var(--space-2)] flex-wrap">
-                                    <StyledButton variant="secondary" onclick={handleExportTranscripts}
-                                        >Export Transcriptions</StyledButton
-                                    >
-                                    <StyledButton
-                                        variant="destructive"
-                                        onclick={handleClearTranscripts}
-                                        disabled={clearingTranscripts}
-                                    >
-                                        {clearingTranscripts ? "Clearing…" : "Clear All Transcriptions"}</StyledButton
-                                    >
-                                </div>
-                            </div>
-                            <div
-                                class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
-                            >
-                                <span
-                                    class="text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]"
-                                    >Titles</span
-                                >
-                                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                    >Generate SLM-powered titles for all untitled transcripts. This may take several
-                                    minutes if you have many transcripts. Recordings shorter than ~25 words are skipped.</span
-                                >
-                                {#if batchRetitling}
-                                    <div class="flex items-center gap-2 text-[var(--text-xs)] text-[var(--accent)]">
-                                        <Loader2 size={14} class="spin" />
-                                        <span>{batchRetitleMessage}</span>
-                                    </div>
-                                    {#if batchRetitleTotal > 0}
-                                        <div
-                                            class="w-full h-1.5 bg-[var(--surface-primary)] rounded-full overflow-hidden"
-                                        >
-                                            <div
-                                                class="h-full bg-[var(--accent)] transition-all duration-300 rounded-full"
-                                                style="width: {Math.round(
-                                                    (batchRetitleCurrent / batchRetitleTotal) * 100,
-                                                )}%"
-                                            ></div>
-                                        </div>
-                                        <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
-                                            {batchRetitleProcessed} titled, {batchRetitleSkipped} skipped
-                                        </span>
-                                    {/if}
-                                {/if}
-                                <div class="flex gap-[var(--space-2)] flex-wrap">
-                                    <StyledButton
-                                        variant="secondary"
-                                        onclick={handleBatchRetitle}
-                                        disabled={batchRetitling}
-                                    >
-                                        {batchRetitling ? "Retitling…" : "Retitle All Untitled"}
-                                    </StyledButton>
-                                </div>
-                            </div>
-                            <div
-                                class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
-                            >
-                                <span
-                                    class="text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]"
-                                    >Engine</span
-                                >
-                                <div class="flex flex-col gap-1">
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
-                                        ASR: {(models.asr[getSafe(config, "model.model", "")] as any)?.name ??
-                                            (getSafe(config, "model.model", "") || "—")}
-                                    </span>
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
-                                        SLM: {getSafe(config, "refinement.enabled", false)
-                                            ? ((models.slm[getSafe(config, "refinement.model_id", "")] as any)?.name ??
-                                              (getSafe(config, "refinement.model_id", "") || "—"))
-                                            : "Disabled"}
-                                    </span>
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
-                                        Compute: {health.gpu?.cuda_available ? "GPU (CUDA)" : "CPU"}
-                                    </span>
-                                </div>
-                                <div class="flex gap-[var(--space-2)] flex-wrap">
-                                    <StyledButton variant="secondary" onclick={handleRestartEngine}
-                                        >Restart Engine</StyledButton
-                                    >
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <MaintenanceCard
+                        {config}
+                        {models}
+                        {health}
+                        {getSafe}
+                        {showMessage}
+                    />
                 </div>
             </div>
         </div>
-
-        {#if showClearTranscriptsConfirm}
-            <div
-                class="fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-[var(--space-4)]"
-                role="presentation"
-                onclick={(e) => {
-                    if (e.target === e.currentTarget) showClearTranscriptsConfirm = false;
-                }}
-            >
-                <div
-                    class="w-full max-w-[520px] bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] p-[var(--space-4)] flex flex-col gap-[var(--space-3)]"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="clear-transcripts-title"
-                    aria-describedby="clear-transcripts-description"
-                >
-                    <h3
-                        id="clear-transcripts-title"
-                        class="m-0 text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
-                    >
-                        Clear all transcriptions?
-                    </h3>
-                    <p
-                        id="clear-transcripts-description"
-                        class="m-0 text-[var(--text-sm)] text-[var(--text-secondary)]"
-                    >
-                        This permanently deletes all transcripts and their variants. This action cannot be undone.
-                    </p>
-                    <div class="flex justify-end gap-[var(--space-2)] pt-[var(--space-1)]">
-                        <StyledButton
-                            variant="secondary"
-                            onclick={() => (showClearTranscriptsConfirm = false)}
-                            disabled={clearingTranscripts}>Cancel</StyledButton
-                        >
-                        <StyledButton
-                            variant="destructive"
-                            onclick={confirmClearTranscripts}
-                            disabled={clearingTranscripts}
-                            >{clearingTranscripts ? "Clearing…" : "Delete Everything"}</StyledButton
-                        >
-                    </div>
-                </div>
-            </div>
-        {/if}
 
         <!-- Save bar -->
         <div
@@ -1243,23 +422,4 @@
     {/if}
 </div>
 
-<style>
-    .gpu-status-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        border-radius: 6px;
-        font-size: var(--text-xs);
-        font-weight: 500;
-        width: fit-content;
-    }
-    .gpu-status-badge.gpu-available {
-        color: var(--color-success, #22c55e);
-        background: color-mix(in srgb, var(--color-success, #22c55e) 12%, transparent);
-    }
-    .gpu-status-badge.gpu-unavailable {
-        color: var(--text-tertiary);
-        background: color-mix(in srgb, var(--text-tertiary) 10%, transparent);
-    }
-</style>
+
