@@ -42,34 +42,24 @@
         <Sliders size={18} class="text-[var(--accent)]" /><span>Output & Processing</span>
     </div>
     <div class="flex flex-col gap-[var(--space-3)]">
-        <div
-            class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-        >
-            <label
-                class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                for="setting-trailing">Add Trailing Space</label
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+            <label class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2" for="setting-trailing"
+                >Add Trailing Space</label
             >
             <div class="flex flex-col gap-1 flex-1">
                 <ToggleSwitch
                     checked={getSafe(config, "output.add_trailing_space", false)}
                     onChange={() =>
-                        setSafe(
-                            "output.add_trailing_space",
-                            !getSafe(config, "output.add_trailing_space", false),
-                        )}
+                        setSafe("output.add_trailing_space", !getSafe(config, "output.add_trailing_space", false))}
                 />
                 <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                    >Appends a space after each transcription for seamless dictation into text
-                    fields.</span
+                    >Appends a space after each transcription for seamless dictation into text fields.</span
                 >
             </div>
         </div>
-        <div
-            class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-        >
-            <label
-                class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                for="setting-autocopy">Auto-Copy to Clipboard</label
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+            <label class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2" for="setting-autocopy"
+                >Auto-Copy to Clipboard</label
             >
             <div class="flex flex-col gap-1 flex-1">
                 <ToggleSwitch
@@ -81,17 +71,14 @@
                         )}
                 />
                 <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                    >Automatically copies transcription to clipboard when complete. Works even when
-                    the window is not focused.</span
+                    >Automatically copies transcription to clipboard when complete. Works even when the window is not
+                    focused.</span
                 >
             </div>
         </div>
-        <div
-            class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-        >
-            <label
-                class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                for="setting-retitle-refine">Auto-Retitle on Refine</label
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+            <label class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2" for="setting-retitle-refine"
+                >Auto-Retitle on Refine</label
             >
             <div class="flex flex-col gap-1 flex-1">
                 <ToggleSwitch
@@ -103,40 +90,29 @@
                         )}
                 />
                 <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                    >Automatically regenerates the transcript title when a refinement completes.
-                    Uses the refined text for a more accurate title.</span
+                    >Automatically regenerates the transcript title when a refinement completes. Uses the refined text
+                    for a more accurate title.</span
                 >
             </div>
         </div>
-        <div
-            class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-        >
-            <label
-                class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                for="setting-refinement">Grammar Refinement</label
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+            <label class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2" for="setting-refinement"
+                >Grammar Refinement</label
             >
             <div class="flex flex-col gap-1 flex-1">
                 <ToggleSwitch
                     checked={getSafe(config, "refinement.enabled", false)}
-                    onChange={() =>
-                        setSafe(
-                            "refinement.enabled",
-                            !getSafe(config, "refinement.enabled", false),
-                        )}
+                    onChange={() => setSafe("refinement.enabled", !getSafe(config, "refinement.enabled", false))}
                 />
                 <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                    >Uses a local language model to improve grammar and punctuation after
-                    transcription.</span
+                    >Uses a local language model to improve grammar and punctuation after transcription.</span
                 >
             </div>
         </div>
         {#if getSafe(config, "refinement.enabled", false)}
-            <div
-                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-            >
-                <label
-                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                    for="setting-refmodel">Refinement Model</label
+            <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+                <label class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2" for="setting-refmodel"
+                    >Refinement Model</label
                 >
                 <div class="flex flex-col gap-1 flex-1">
                     <div class="flex items-center gap-[var(--space-2)]">
@@ -153,17 +129,14 @@
                             />
                         </div>
                         {#if models.slm[getSafe(config, "refinement.model_id", "qwen4b")]}
-                            {@const selectedSlm = models.slm[
-                                getSafe(config, "refinement.model_id", "qwen4b")
-                            ] as any}
+                            {@const selectedSlm = models.slm[getSafe(config, "refinement.model_id", "qwen4b")] as any}
                             {#if !selectedSlm.downloaded}
                                 {#if downloadingModel === getSafe(config, "refinement.model_id", "qwen4b")}
                                     <span
                                         class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--accent)] shrink overflow-hidden"
                                     >
                                         <Loader2 size={14} class="spin" />
-                                        <span
-                                            class="overflow-hidden text-ellipsis whitespace-nowrap"
+                                        <span class="overflow-hidden text-ellipsis whitespace-nowrap"
                                             >{downloadMessage}</span
                                         >
                                     </span>
@@ -171,10 +144,7 @@
                                     <button
                                         class="inline-flex items-center gap-1 py-1.5 px-3 border border-[var(--accent)] rounded-[var(--radius-sm)] bg-transparent text-[var(--accent)] font-[var(--font-family)] text-[var(--text-xs)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] hover:bg-[var(--accent)] hover:text-[var(--gray-0)]"
                                         onclick={() =>
-                                            handleDownload(
-                                                "slm",
-                                                getSafe(config, "refinement.model_id", "qwen4b"),
-                                            )}
+                                            handleDownload("slm", getSafe(config, "refinement.model_id", "qwen4b"))}
                                     >
                                         <Download size={14} /> Download
                                     </button>
@@ -193,21 +163,14 @@
                 </div>
             </div>
             {#if downloadErrorSlm && !downloadingModel}
-                <div
-                    class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-danger)] py-1"
-                >
+                <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-danger)] py-1">
                     <AlertCircle size={14} />
-                    <span class="break-words leading-[var(--leading-normal)]"
-                        >{downloadErrorSlm}</span
-                    >
+                    <span class="break-words leading-[var(--leading-normal)]">{downloadErrorSlm}</span>
                 </div>
             {/if}
-            <div
-                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-            >
-                <label
-                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                    for="setting-gpu-layers">GPU Layers</label
+            <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+                <label class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2" for="setting-gpu-layers"
+                    >GPU Layers</label
                 >
                 <div class="flex flex-col gap-1 flex-1">
                     <input
@@ -223,17 +186,14 @@
                         }}
                     />
                     <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                        >Layers to offload to GPU. -1 = all (fastest), 0 = CPU only. Requires
-                        CUDA-compiled llama-cpp-python.</span
+                        >Layers to offload to GPU. -1 = all (fastest), 0 = CPU only. Requires CUDA-compiled
+                        llama-cpp-python.</span
                     >
                 </div>
             </div>
-            <div
-                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-            >
-                <label
-                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                    for="setting-nctx">Context Size</label
+            <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+                <label class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2" for="setting-nctx"
+                    >Context Size</label
                 >
                 <div class="flex flex-col gap-1 flex-1">
                     <div class="w-full max-w-[460px]">
@@ -250,8 +210,7 @@
                         />
                     </div>
                     <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                        >Context window for the refinement model. Larger values handle longer texts
-                        but use more VRAM.</span
+                        >Context window for the refinement model. Larger values handle longer texts but use more VRAM.</span
                     >
                 </div>
             </div>

@@ -6,13 +6,7 @@
      * clear-all confirmation modal, and engine restart action.
      */
 
-    import {
-        getTranscripts,
-        clearAllTranscripts,
-        exportFile,
-        batchRetitle,
-        restartEngine,
-    } from "../api";
+    import { getTranscripts, clearAllTranscripts, exportFile, batchRetitle, restartEngine } from "../api";
     import { ws } from "../ws";
     import { onMount, onDestroy } from "svelte";
     import { RotateCcw, Loader2 } from "lucide-svelte";
@@ -240,15 +234,12 @@
         <div
             class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
         >
-            <span
-                class="text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]"
+            <span class="text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]"
                 >Transcriptions</span
             >
             <div class="flex flex-col gap-[var(--space-2)] mb-[var(--space-1)]">
                 <div class="flex items-center justify-between gap-[var(--space-3)]">
-                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase"
-                        >Format</span
-                    >
+                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase">Format</span>
                     <div class="w-full max-w-[180px]">
                         <CustomSelect
                             id="history-export-format"
@@ -267,28 +258,16 @@
                     </div>
                 </div>
                 <div class="flex items-center justify-between gap-[var(--space-3)]">
-                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase"
-                        >Choose Location</span
-                    >
-                    <ToggleSwitch
-                        checked={preferSaveDialog}
-                        onChange={() => (preferSaveDialog = !preferSaveDialog)}
-                    />
+                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase">Choose Location</span>
+                    <ToggleSwitch checked={preferSaveDialog} onChange={() => (preferSaveDialog = !preferSaveDialog)} />
                 </div>
                 <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                    >Uses native save dialog when supported; otherwise downloads to your default
-                    location.</span
+                    >Uses native save dialog when supported; otherwise downloads to your default location.</span
                 >
             </div>
             <div class="flex gap-[var(--space-2)] flex-wrap">
-                <StyledButton variant="secondary" onclick={handleExportTranscripts}
-                    >Export Transcriptions</StyledButton
-                >
-                <StyledButton
-                    variant="destructive"
-                    onclick={handleClearTranscripts}
-                    disabled={clearingTranscripts}
-                >
+                <StyledButton variant="secondary" onclick={handleExportTranscripts}>Export Transcriptions</StyledButton>
+                <StyledButton variant="destructive" onclick={handleClearTranscripts} disabled={clearingTranscripts}>
                     {clearingTranscripts ? "Clearing…" : "Clear All Transcriptions"}</StyledButton
                 >
             </div>
@@ -298,13 +277,10 @@
         <div
             class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
         >
-            <span
-                class="text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]"
-                >Titles</span
-            >
+            <span class="text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]">Titles</span>
             <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                >Generate SLM-powered titles for all untitled transcripts. This may take several
-                minutes if you have many transcripts. Recordings shorter than ~25 words are skipped.</span
+                >Generate SLM-powered titles for all untitled transcripts. This may take several minutes if you have
+                many transcripts. Recordings shorter than ~25 words are skipped.</span
             >
             {#if batchRetitling}
                 <div class="flex items-center gap-2 text-[var(--text-xs)] text-[var(--accent)]">
@@ -312,14 +288,10 @@
                     <span>{batchRetitleMessage}</span>
                 </div>
                 {#if batchRetitleTotal > 0}
-                    <div
-                        class="w-full h-1.5 bg-[var(--surface-primary)] rounded-full overflow-hidden"
-                    >
+                    <div class="w-full h-1.5 bg-[var(--surface-primary)] rounded-full overflow-hidden">
                         <div
                             class="h-full bg-[var(--accent)] transition-all duration-300 rounded-full"
-                            style="width: {Math.round(
-                                (batchRetitleCurrent / batchRetitleTotal) * 100,
-                            )}%"
+                            style="width: {Math.round((batchRetitleCurrent / batchRetitleTotal) * 100)}%"
                         ></div>
                     </div>
                     <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
@@ -328,11 +300,7 @@
                 {/if}
             {/if}
             <div class="flex gap-[var(--space-2)] flex-wrap">
-                <StyledButton
-                    variant="secondary"
-                    onclick={handleBatchRetitle}
-                    disabled={batchRetitling}
-                >
+                <StyledButton variant="secondary" onclick={handleBatchRetitle} disabled={batchRetitling}>
                     {batchRetitling ? "Retitling…" : "Retitle All Untitled"}
                 </StyledButton>
             </div>
@@ -342,10 +310,7 @@
         <div
             class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
         >
-            <span
-                class="text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]"
-                >Engine</span
-            >
+            <span class="text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]">Engine</span>
             <div class="flex flex-col gap-1">
                 <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
                     ASR: {(models.asr[getSafe(config, "model.model", "")] as any)?.name ??
@@ -362,9 +327,7 @@
                 </span>
             </div>
             <div class="flex gap-[var(--space-2)] flex-wrap">
-                <StyledButton variant="secondary" onclick={handleRestartEngine}
-                    >Restart Engine</StyledButton
-                >
+                <StyledButton variant="secondary" onclick={handleRestartEngine}>Restart Engine</StyledButton>
             </div>
         </div>
     </div>
@@ -391,10 +354,7 @@
             >
                 Clear all transcriptions?
             </h3>
-            <p
-                id="clear-transcripts-description"
-                class="m-0 text-[var(--text-sm)] text-[var(--text-secondary)]"
-            >
+            <p id="clear-transcripts-description" class="m-0 text-[var(--text-sm)] text-[var(--text-secondary)]">
                 This permanently deletes all transcripts and their variants. This action cannot be undone.
             </p>
             <div class="flex justify-end gap-[var(--space-2)] pt-[var(--space-1)]">
@@ -403,10 +363,7 @@
                     onclick={() => (showClearTranscriptsConfirm = false)}
                     disabled={clearingTranscripts}>Cancel</StyledButton
                 >
-                <StyledButton
-                    variant="destructive"
-                    onclick={confirmClearTranscripts}
-                    disabled={clearingTranscripts}
+                <StyledButton variant="destructive" onclick={confirmClearTranscripts} disabled={clearingTranscripts}
                     >{clearingTranscripts ? "Clearing…" : "Delete Everything"}</StyledButton
                 >
             </div>

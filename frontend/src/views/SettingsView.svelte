@@ -10,24 +10,10 @@
      * - Save/cancel footer
      */
 
-    import {
-        getConfig,
-        updateConfig,
-        getModels,
-        getHealth,
-        downloadModel,
-    } from "../lib/api";
+    import { getConfig, updateConfig, getModels, getHealth, downloadModel } from "../lib/api";
     import { ws } from "../lib/ws";
     import { onMount, onDestroy } from "svelte";
-    import {
-        Save,
-        Undo2,
-        Loader2,
-        Mic,
-        Eye,
-        Activity,
-        Check,
-    } from "lucide-svelte";
+    import { Save, Undo2, Loader2, Mic, Eye, Activity, Check } from "lucide-svelte";
     import CustomSelect from "../lib/components/CustomSelect.svelte";
     import KeyBindCapture from "../lib/components/KeyBindCapture.svelte";
     import MaintenanceCard from "../lib/components/MaintenanceCard.svelte";
@@ -371,13 +357,7 @@
                     />
 
                     <!-- Maintenance -->
-                    <MaintenanceCard
-                        {config}
-                        {models}
-                        {health}
-                        {getSafe}
-                        {showMessage}
-                    />
+                    <MaintenanceCard {config} {models} {health} {getSafe} {showMessage} />
                 </div>
             </div>
         </div>
@@ -421,5 +401,3 @@
         </div>
     {/if}
 </div>
-
-

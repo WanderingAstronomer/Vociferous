@@ -57,12 +57,9 @@
     </div>
     <div class="flex flex-col gap-[var(--space-3)]">
         <!-- Whisper Architecture -->
-        <div
-            class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-        >
-            <label
-                class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                for="setting-model">Whisper Architecture</label
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+            <label class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2" for="setting-model"
+                >Whisper Architecture</label
             >
             <div class="flex flex-col gap-1 flex-1">
                 <div class="flex items-center gap-[var(--space-2)]">
@@ -93,8 +90,7 @@
                             {:else}
                                 <button
                                     class="inline-flex items-center gap-1 py-1.5 px-3 border border-[var(--accent)] rounded-[var(--radius-sm)] bg-transparent text-[var(--accent)] font-[var(--font-family)] text-[var(--text-xs)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] hover:bg-[var(--accent)] hover:text-[var(--gray-0)]"
-                                    onclick={() =>
-                                        handleDownload("asr", getSafe(config, "model.model"))}
+                                    onclick={() => handleDownload("asr", getSafe(config, "model.model"))}
                                 >
                                     <Download size={14} /> Download
                                 </button>
@@ -108,26 +104,21 @@
                     {/if}
                 </div>
                 <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                    >Larger models are slower but more accurate. Tiny/Base are fast; Small/Medium
-                    offer better quality.</span
+                    >Larger models are slower but more accurate. Tiny/Base are fast; Small/Medium offer better quality.</span
                 >
             </div>
         </div>
 
         <!-- ASR download error -->
         {#if downloadErrorAsr && !downloadingModel}
-            <div
-                class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-danger)] py-1"
-            >
+            <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-danger)] py-1">
                 <AlertCircle size={14} />
                 <span class="break-words leading-[var(--leading-normal)]">{downloadErrorAsr}</span>
             </div>
         {/if}
 
         <!-- GPU Status -->
-        <div
-            class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-        >
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
             <div class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2">GPU Status</div>
             <div class="flex flex-col gap-1 flex-1">
                 <div
@@ -170,12 +161,9 @@
         </div>
 
         <!-- ASR Device -->
-        <div
-            class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-        >
-            <label
-                class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                for="setting-device">ASR Device</label
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+            <label class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2" for="setting-device"
+                >ASR Device</label
             >
             <div class="flex flex-col gap-1 flex-1">
                 <div class="w-full max-w-[460px]">
@@ -191,19 +179,16 @@
                     />
                 </div>
                 <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                    >Preference for ASR backend selection. Requires engine restart after saving; if
-                    unsupported by your whisper build, automatic fallback is used.</span
+                    >Preference for ASR backend selection. Requires engine restart after saving; if unsupported by your
+                    whisper build, automatic fallback is used.</span
                 >
             </div>
         </div>
 
         <!-- ASR Threads -->
-        <div
-            class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-        >
-            <label
-                class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                for="setting-threads">ASR Threads</label
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+            <label class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2" for="setting-threads"
+                >ASR Threads</label
             >
             <div class="flex flex-col gap-1 flex-1">
                 <input
@@ -219,19 +204,16 @@
                     }}
                 />
                 <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                    >CPU threads for whisper.cpp inference. Used when running on CPU paths. Default
-                    4. Higher values use more cores but may improve speed.</span
+                    >CPU threads for whisper.cpp inference. Used when running on CPU paths. Default 4. Higher values use
+                    more cores but may improve speed.</span
                 >
             </div>
         </div>
 
         <!-- Language -->
-        <div
-            class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-        >
-            <label
-                class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                for="setting-language">Language</label
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+            <label class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2" for="setting-language"
+                >Language</label
             >
             <div class="flex flex-col gap-1 flex-1">
                 <div class="w-full max-w-[460px]">
@@ -301,8 +283,8 @@
                     />
                 </div>
                 <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                    >Transcription language. Auto-detect works but is slower and slightly less
-                    accurate than specifying explicitly.</span
+                    >Transcription language. Auto-detect works but is slower and slightly less accurate than specifying
+                    explicitly.</span
                 >
             </div>
         </div>
