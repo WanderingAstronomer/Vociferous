@@ -119,7 +119,7 @@ async def export_file(data: dict) -> Response:
 
     # create_file_dialog must run on the main (GTK/UI) thread — use run_in_executor
     # so we don't block the async API event loop.
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     save_path: str | None = await loop.run_in_executor(None, coordinator.show_save_dialog, filename)
 
     if save_path is None:

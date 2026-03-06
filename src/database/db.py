@@ -168,7 +168,7 @@ class TranscriptDB:
         """Insert a new transcript and its raw variant. Returns the created transcript."""
         ts = utc_now()
         norm = normalized_text if normalized_text is not None else raw_text
-        with self._write_lock:
+        with self._write_lock, self._conn:
             cur = self._conn.execute(
                 """INSERT INTO transcripts
                    (timestamp, raw_text, normalized_text, display_name,
@@ -196,7 +196,6 @@ class TranscriptDB:
             )
             vid = vcur.lastrowid
             self._conn.execute("UPDATE transcripts SET current_variant_id = ? WHERE id = ?", (vid, tid))
-            self._conn.commit()
 
         return Transcript(
             id=tid,

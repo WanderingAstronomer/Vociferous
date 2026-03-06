@@ -181,7 +181,6 @@ class SLMRuntime:
             params = self._sampling_params_for_level(level)
             result = self._engine.refine(
                 text,
-                profile=level,
                 user_instructions=instructions,
                 temperature=float(params["temperature"]),
                 top_p=float(params["top_p"]),
@@ -217,7 +216,6 @@ class SLMRuntime:
                 params = self._sampling_params_for_level(level)
                 result = self._engine.refine(
                     text,
-                    profile=level,
                     user_instructions=instructions,
                     temperature=float(params["temperature"]),
                     top_p=float(params["top_p"]),

@@ -222,6 +222,7 @@ class KeyListener:
         """Exit capture mode and resume normal hotkey handling."""
         self.capture_mode = False
         self.capture_callback = None
+        self.reset_chord_state()
 
     def add_callback(self, event: str, callback: Callable[[], None]) -> None:
         """Add a callback function for a specific event."""

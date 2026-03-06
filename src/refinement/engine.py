@@ -215,7 +215,6 @@ While the meeting was productive, we must address the budget, which is currently
     def _format_prompt(
         self,
         user_text: str,
-        profile: str | int = "BALANCED",
         user_instructions: str = "",
         use_thinking: bool = False,
     ) -> list[dict[str, str]]:
@@ -228,8 +227,6 @@ While the meeting was productive, we must address the budget, which is currently
           the ENTIRE task.  Invariants are NOT sent — the user is in control
           and the safety rails would only confuse the model or fight the
           user's intent.
-
-        The `profile` argument is retained for API compatibility but ignored.
         """
 
         custom = user_instructions.strip() if user_instructions else ""
@@ -265,7 +262,6 @@ Text:
     def refine(
         self,
         text: str,
-        profile: str | int = "BALANCED",
         user_instructions: str = "",
         temperature: float = 0.05,
         top_p: float = 0.8,
@@ -277,7 +273,6 @@ Text:
 
         Args:
             text: Raw input text.
-            profile: Refinement intensity level (0-4 or name string).
             user_instructions: Optional specific instructions from the user.
             temperature: Sampling temperature (low for high-fidelity minimal edits).
             top_p: Nucleus sampling threshold (conservative to reduce drift).
@@ -290,7 +285,7 @@ Text:
         if not text or not text.strip():
             return GenerationResult(content=text)
 
-        messages = self._format_prompt(text, profile, user_instructions, use_thinking=use_thinking)
+        messages = self._format_prompt(text, user_instructions, use_thinking=use_thinking)
 
         # Estimate input tokens for dynamic max calculation
         prompt_text = " ".join(m["content"] for m in messages)

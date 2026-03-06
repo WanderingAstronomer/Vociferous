@@ -114,7 +114,6 @@ def main() -> int:
         t0 = time.perf_counter()
         result = engine.refine(
             args.text,
-            profile=args.level,
             user_instructions=args.instructions,
             temperature=args.temperature,
             top_p=args.top_p,

@@ -400,8 +400,8 @@
         }
     }
 
-    async function loadEntryDetail(id: number) {
-        if (selectedId === id) return;
+    async function loadEntryDetail(id: number, force = false) {
+        if (selectedId === id && !force) return;
         selectedId = id;
         editingTitle = false;
         detailLoading = true;
@@ -668,14 +668,14 @@
             }),
             ws.on("refinement_complete", (data) => {
                 refining = null;
-                if (selectedId === data.transcript_id) selectEntry(data.transcript_id);
+                if (selectedId === data.transcript_id) loadEntryDetail(data.transcript_id, true);
                 loadTranscripts();
             }),
             ws.on("refinement_error", () => {
                 refining = null;
             }),
             ws.on("transcript_updated", (data) => {
-                if (selectedId === data.id) selectEntry(data.id);
+                if (selectedId === data.id) loadEntryDetail(data.id, true);
                 loadTranscripts();
             }),
             ws.on("project_created", () => {

@@ -146,19 +146,19 @@ class TestParseOutput:
 class TestFormatPrompt:
     def test_returns_two_messages(self) -> None:
         engine = _make_engine()
-        messages = engine._format_prompt("Hello world", profile=1)
+        messages = engine._format_prompt("Hello world")
         assert len(messages) == 2
         assert messages[0]["role"] == "system"
         assert messages[1]["role"] == "user"
 
     def test_system_prompt_included(self) -> None:
         engine = _make_engine(system_prompt="I am the editor.")
-        messages = engine._format_prompt("text", profile=0)
+        messages = engine._format_prompt("text")
         assert "I am the editor." in messages[0]["content"]
 
     def test_invariants_included(self) -> None:
         engine = _make_engine(invariants=["Rule one.", "Rule two."])
-        messages = engine._format_prompt("text", profile=0)
+        messages = engine._format_prompt("text")
         system = messages[0]["content"]
         assert "Rule one." in system
         assert "Rule two." in system
@@ -166,54 +166,48 @@ class TestFormatPrompt:
     def test_invariants_omitted_with_custom_instructions(self) -> None:
         """When custom instructions are provided, invariants must NOT be sent."""
         engine = _make_engine(invariants=["Rule one.", "Rule two."])
-        messages = engine._format_prompt("text", profile=0, user_instructions="Rewrite casually.")
+        messages = engine._format_prompt("text", user_instructions="Rewrite casually.")
         system = messages[0]["content"]
         assert "Rule one." not in system
         assert "Rule two." not in system
 
     def test_default_task_present(self) -> None:
         engine = _make_engine()
-        messages = engine._format_prompt("text", profile=0)
+        messages = engine._format_prompt("text")
         user = messages[1]["content"]
         assert "Fix all grammar, spelling, punctuation, and capitalization errors." in user
 
     def test_rules_in_system(self) -> None:
         engine = _make_engine()
-        messages = engine._format_prompt("text", profile=0)
+        messages = engine._format_prompt("text")
         system = messages[0]["content"]
         assert "Output ONLY the corrected text" in system
 
     def test_rules_absent_with_custom_instructions(self) -> None:
         """Custom instructions mode: system message is ONLY the identity prompt."""
         engine = _make_engine(system_prompt="I am the editor.")
-        messages = engine._format_prompt("text", profile=0, user_instructions="Make it fancy.")
+        messages = engine._format_prompt("text", user_instructions="Make it fancy.")
         system = messages[0]["content"]
         assert system == "I am the editor."
         assert "Rules:" not in system
         assert "Output ONLY" not in system
 
-    def test_profile_ignored_for_behavior(self) -> None:
-        engine = _make_engine()
-        low = engine._format_prompt("text", profile=0)[1]["content"]
-        high = engine._format_prompt("text", profile=4)[1]["content"]
-        assert low == high
-
     def test_task_directive_in_user_content(self) -> None:
         engine = _make_engine()
-        messages = engine._format_prompt("text", profile=1)
+        messages = engine._format_prompt("text")
         user = messages[1]["content"]
         assert "Fix all grammar" in user
 
     def test_input_text_in_user_content(self) -> None:
         engine = _make_engine()
-        messages = engine._format_prompt("My transcript text", profile=0)
+        messages = engine._format_prompt("My transcript text")
         user = messages[1]["content"]
         assert "My transcript text" in user
         assert "Text:" in user
 
     def test_user_instructions_replace_default(self) -> None:
         engine = _make_engine()
-        messages = engine._format_prompt("text", profile=0, user_instructions="Make it formal.")
+        messages = engine._format_prompt("text", user_instructions="Make it formal.")
         user = messages[1]["content"]
         assert "Make it formal." in user
         assert "Fix all grammar" not in user
@@ -221,60 +215,28 @@ class TestFormatPrompt:
     def test_no_think_directive_by_default(self) -> None:
         """Prompt should default to /no_think for efficient grammar edits."""
         engine = _make_engine()
-        messages = engine._format_prompt("text", profile=0)
+        messages = engine._format_prompt("text")
         user = messages[1]["content"]
         assert "/no_think" in user
 
     def test_no_think_absent_when_thinking_enabled(self) -> None:
         """Prompt should NOT include /no_think when use_thinking=True."""
         engine = _make_engine()
-        messages = engine._format_prompt("text", profile=2, use_thinking=True)
+        messages = engine._format_prompt("text", use_thinking=True)
         user = messages[1]["content"]
         assert "/no_think" not in user
 
     def test_user_instruction_overrides_default_task(self) -> None:
         """Custom instructions should replace the default task line."""
         engine = _make_engine()
-        messages = engine._format_prompt("text", profile=0)
+        messages = engine._format_prompt("text")
         base_user = messages[1]["content"]
         assert "Fix all grammar" in base_user
 
-        messages = engine._format_prompt("text", profile=0, user_instructions="Make formal.")
+        messages = engine._format_prompt("text", user_instructions="Make formal.")
         user = messages[1]["content"]
         assert "Make formal." in user
         assert "Fix all grammar" not in user
-
-    # --- Profile compatibility ---
-
-    def test_integer_profile_accepted(self) -> None:
-        engine = _make_engine()
-        messages = engine._format_prompt("text", profile=2)
-        user = messages[1]["content"]
-        assert "Fix all grammar" in user
-
-    def test_string_profile_accepted(self) -> None:
-        engine = _make_engine()
-        messages = engine._format_prompt("text", profile="MINIMAL")
-        user = messages[1]["content"]
-        assert "Fix all grammar" in user
-
-    def test_balanced_profile_accepted(self) -> None:
-        engine = _make_engine()
-        messages = engine._format_prompt("text", profile="BALANCED")
-        user = messages[1]["content"]
-        assert "Fix all grammar" in user
-
-    def test_unknown_string_profile_accepted(self) -> None:
-        engine = _make_engine()
-        messages = engine._format_prompt("text", profile="NONEXISTENT")
-        user = messages[1]["content"]
-        assert "Fix all grammar" in user
-
-    def test_missing_level_still_formats_prompt(self) -> None:
-        engine = _make_engine()
-        messages = engine._format_prompt("text", profile=99)
-        user = messages[1]["content"]
-        assert "Fix all grammar" in user
 
 
 # ── Dynamic Token Calculation ─────────────────────────────────────────────
