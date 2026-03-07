@@ -4,6 +4,7 @@
     import { ws } from "../lib/ws";
     import { nav } from "../lib/navigation.svelte";
     import WorkspacePanel from "../lib/components/WorkspacePanel.svelte";
+    import MarkdownBody from "../lib/components/MarkdownBody.svelte";
     import {
         Sparkles,
         Copy,
@@ -18,7 +19,7 @@
         ChevronDown,
     } from "lucide-svelte";
 
-    const DEFAULT_REFINEMENT_LEVEL = 0;
+    const DEFAULT_REFINEMENT_LEVEL = 2;
 
     /* ── State ── */
     let transcripts: Transcript[] = $state([]);
@@ -36,6 +37,7 @@
     let refineStatus = $state("");
     let refineElapsed = $state(0);
     let refineTimer: ReturnType<typeof setInterval> | null = $state(null);
+    let refineError = $state("");
     /** Variant ID of the most recent refinement result (for discard/rerun cleanup). */
     let currentVariantId: number | null = $state(null);
 
@@ -56,6 +58,7 @@
         hasRefined = false;
         currentVariantId = null;
         showPicker = false;
+        refineError = "";
         if (isRefining) {
             isRefining = false;
             stopRefineTimer();
@@ -90,12 +93,14 @@
     async function handleRefine() {
         if (selectedId === null || isRefining) return;
         isRefining = true;
+        refineError = "";
         startRefineTimer();
         try {
             await refineTranscript(selectedId, DEFAULT_REFINEMENT_LEVEL, customInstructions.trim());
             // Wait for WebSocket event to deliver result
         } catch (e) {
             console.error("Refinement failed:", e);
+            refineError = e instanceof Error ? e.message : "Refinement request failed. Check that the model is loaded.";
             isRefining = false;
             stopRefineTimer();
         }
@@ -172,6 +177,7 @@
                 currentVariantId = (data as any).variant_id ?? null;
                 isRefining = false;
                 hasRefined = true;
+                refineError = "";
                 stopRefineTimer();
             }
         });
@@ -180,6 +186,7 @@
             if (!data.transcript_id || data.transcript_id === selectedId) {
                 isRefining = false;
                 stopRefineTimer();
+                refineError = data.message || "Refinement failed unexpectedly.";
                 console.error("Refinement error:", data.message);
             }
         });
@@ -366,13 +373,22 @@
                             {refineElapsed}s elapsed
                         </p>
                     </div>
+                {:else if refineError}
+                    <div
+                        class="flex flex-col items-center justify-center h-full gap-[var(--space-2)] text-[var(--text-tertiary)]"
+                    >
+                        <div
+                            class="rounded-[var(--radius-md)] bg-red-500/10 border border-red-500/30 px-[var(--space-4)] py-[var(--space-3)] max-w-md text-center"
+                        >
+                            <p class="m-0 text-[var(--text-sm)] text-red-400 font-[var(--weight-emphasis)]">
+                                Refinement Failed
+                            </p>
+                            <p class="m-0 mt-[var(--space-1)] text-[var(--text-xs)] text-red-400/80">{refineError}</p>
+                        </div>
+                    </div>
                 {:else if refinedText}
                     <WorkspacePanel>
-                        <p
-                            class="text-[var(--text-sm)] leading-[1.7] text-[var(--text-primary)] m-0 whitespace-pre-wrap"
-                        >
-                            {refinedText}
-                        </p>
+                        <MarkdownBody text={refinedText} class="text-[var(--text-sm)] text-[var(--text-primary)]" />
                     </WorkspacePanel>
                 {:else}
                     <div

@@ -268,7 +268,9 @@ class ApplicationCoordinator:
             self.insight_manager = InsightManager(
                 slm_runtime_provider=lambda: self.slm_runtime,
                 event_emitter=self.event_bus.emit,
-                stats_provider=lambda: compute_usage_stats(self.db) if self.db else {},
+                stats_provider=lambda: (
+                    compute_usage_stats(self.db, typing_wpm=self.settings.user.typing_wpm) if self.db else {}
+                ),
             )
             logger.info("InsightManager initialized")
         except Exception:
@@ -283,7 +285,9 @@ class ApplicationCoordinator:
             self.motd_manager = InsightManager(
                 slm_runtime_provider=lambda: self.slm_runtime,
                 event_emitter=self.event_bus.emit,
-                stats_provider=lambda: compute_usage_stats(self.db) if self.db else {},
+                stats_provider=lambda: (
+                    compute_usage_stats(self.db, typing_wpm=self.settings.user.typing_wpm) if self.db else {}
+                ),
                 ttl_transcripts=3,
                 prompt_template=_MOTD_PROMPT,
                 cache_filename="motd_cache.json",
@@ -423,6 +427,7 @@ class ApplicationCoordinator:
         from src.core.handlers.transcript_handlers import TranscriptHandlers
         from src.core.intents.definitions import (
             AssignProjectIntent,
+            BatchDeleteTranscriptsIntent,
             BatchRetitleIntent,
             BeginRecordingIntent,
             CancelRecordingIntent,
@@ -475,6 +480,7 @@ class ApplicationCoordinator:
         bus.register(CancelRecordingIntent, self.recording_session.handle_cancel)
         bus.register(ToggleRecordingIntent, self.recording_session.handle_toggle)
         bus.register(DeleteTranscriptIntent, transcript.handle_delete)
+        bus.register(BatchDeleteTranscriptsIntent, transcript.handle_batch_delete)
         bus.register(DeleteTranscriptVariantIntent, transcript.handle_delete_variant)
         bus.register(ClearTranscriptsIntent, transcript.handle_clear)
         bus.register(CommitEditsIntent, transcript.handle_commit_edits)

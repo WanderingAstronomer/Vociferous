@@ -190,29 +190,6 @@
                     >
                 </div>
             </div>
-            <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
-                <label class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2" for="setting-nctx"
-                    >Context Size</label
-                >
-                <div class="flex flex-col gap-1 flex-1">
-                    <div class="w-full max-w-[460px]">
-                        <CustomSelect
-                            id="setting-nctx"
-                            options={[
-                                { value: "2048", label: "2048" },
-                                { value: "4096", label: "4096" },
-                                { value: "8192", label: "8192 (default)" },
-                                { value: "16384", label: "16384" },
-                            ]}
-                            value={String(getSafe(config, "refinement.n_ctx", 8192))}
-                            onchange={(v: string) => setSafe("refinement.n_ctx", parseInt(v))}
-                        />
-                    </div>
-                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                        >Context window for the refinement model. Larger values handle longer texts but use more VRAM.</span
-                    >
-                </div>
-            </div>
         {/if}
     </div>
 </div>

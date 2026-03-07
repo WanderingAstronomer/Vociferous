@@ -1,7 +1,7 @@
 <script lang="ts">
     import { ws } from "./lib/ws";
     import { onMount, onDestroy } from "svelte";
-    import { getModels, getConfig } from "./lib/api";
+    import { getModels, getConfig, getHealth } from "./lib/api";
     import { nav } from "./lib/navigation.svelte";
     import type { ViewId } from "./lib/navigation.svelte";
     import IconRail from "./lib/components/IconRail.svelte";
@@ -12,6 +12,8 @@
     import SettingsView from "./views/SettingsView.svelte";
     import RefineView from "./views/RefineView.svelte";
     import UserView from "./views/UserView.svelte";
+    import ToastContainer from "./lib/components/ToastContainer.svelte";
+    import { toast } from "./lib/toast.svelte";
     import type { ConfigUpdatedData } from "./lib/events";
 
     let appReady = $state(false);
@@ -49,6 +51,22 @@
             applyUiScale((config as any)?.display?.ui_scale ?? 100);
         } catch {
             console.warn("Could not check initial status");
+        }
+
+        // One-shot VRAM warning — fires once on startup, not on every health poll
+        const VRAM_WARNING_MB = 1500;
+        try {
+            const health = await getHealth();
+            const gpu = health.gpu;
+            if (gpu?.cuda_available && gpu.vram_free_mb > 0 && gpu.vram_free_mb < VRAM_WARNING_MB) {
+                toast.warning(
+                    `Low VRAM: ${gpu.vram_free_mb} MB free of ${gpu.vram_total_mb} MB. ` +
+                        `Inference may be slow or fail. Close other GPU apps or reduce GPU layers in Settings.`,
+                    8000,
+                );
+            }
+        } catch {
+            // Health check failed — not critical, skip VRAM warning
         }
 
         unsubRecordingStarted = ws.on("recording_started", () => {
@@ -129,4 +147,5 @@
             </main>
         {/if}
     </div>
+    <ToastContainer />
 </div>

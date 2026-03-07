@@ -248,7 +248,7 @@ class TranscriptDB:
                 ).fetchall()
         return [self._row_to_transcript(r) for r in rows]
 
-    def search(self, query: str, limit: int = 50) -> list[Transcript]:
+    def search(self, query: str, limit: int = 50, offset: int = 0) -> list[Transcript]:
         """Full-text search across transcript text using FTS5.
 
         An empty *query* returns the most-recent transcripts (same as
@@ -268,10 +268,25 @@ class TranscriptDB:
                    FROM transcripts t
                    LEFT JOIN projects p ON t.project_id = p.id
                    WHERE t.id IN (SELECT rowid FROM transcripts_fts WHERE transcripts_fts MATCH ?)
-                   ORDER BY t.created_at DESC LIMIT ?""",
-                (fts_terms, limit),
+                   ORDER BY t.created_at DESC LIMIT ? OFFSET ?""",
+                (fts_terms, limit, offset),
             ).fetchall()
         return [self._row_to_transcript(r) for r in rows]
+
+    def search_count(self, query: str) -> int:
+        """Return the total number of transcripts matching *query* (for pagination)."""
+        if not query.strip():
+            with self._write_lock:
+                row = self._conn.execute("SELECT COUNT(*) FROM transcripts").fetchone()
+            return row[0] if row else 0
+        tokens = query.split()
+        fts_terms = " ".join(f'"{t.replace(chr(34), "")}"*' for t in tokens)
+        with self._write_lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) FROM transcripts_fts WHERE transcripts_fts MATCH ?",
+                (fts_terms,),
+            ).fetchone()
+        return row[0] if row else 0
 
     def delete_transcript(self, transcript_id: int) -> bool:
         """Delete a transcript and its variants (CASCADE)."""
@@ -279,6 +294,19 @@ class TranscriptDB:
             cur = self._conn.execute("DELETE FROM transcripts WHERE id = ?", (transcript_id,))
             self._conn.commit()
             return cur.rowcount > 0
+
+    def batch_delete_transcripts(self, transcript_ids: list[int]) -> int:
+        """Delete multiple transcripts in a single transaction. Returns count deleted."""
+        if not transcript_ids:
+            return 0
+        placeholders = ",".join("?" * len(transcript_ids))
+        with self._write_lock:
+            cur = self._conn.execute(
+                f"DELETE FROM transcripts WHERE id IN ({placeholders})",
+                transcript_ids,
+            )
+            self._conn.commit()
+            return cur.rowcount
 
     def clear_all_transcripts(self) -> int:
         """Delete all transcripts and their variants. Returns count deleted."""

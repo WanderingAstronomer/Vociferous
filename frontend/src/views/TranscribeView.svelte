@@ -76,12 +76,15 @@
     /* ===== Recent session analytics (idle panel) ===== */
     let sessionStats = $derived.by(() => {
         if (!recentSessions.length) return null;
-        const todayStr = new Date().toISOString().slice(0, 10);
+        const todayStr = new Date().toLocaleDateString("sv");
         const wordsPerSession = recentSessions.map(
             (t) => (t.text || t.normalized_text || "").split(/\s+/).filter(Boolean).length,
         );
         const todayWords = recentSessions
-            .filter((t) => (t.created_at || "").slice(0, 10) === todayStr)
+            .filter((t) => {
+                const ca = t.created_at;
+                return ca ? new Date(ca).toLocaleDateString("sv") === todayStr : false;
+            })
             .reduce((sum, t) => sum + (t.text || t.normalized_text || "").split(/\s+/).filter(Boolean).length, 0);
         const totalDurationMs = recentSessions.reduce((s, t) => s + (t.duration_ms ?? 0), 0);
         const totalSpeechMs = recentSessions.reduce((s, t) => s + (t.speech_duration_ms ?? 0), 0);

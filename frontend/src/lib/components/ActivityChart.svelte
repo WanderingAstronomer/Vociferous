@@ -38,11 +38,12 @@
         for (let i = days - 1; i >= 0; i--) {
             const d = new Date(now);
             d.setDate(d.getDate() - i);
-            map.set(d.toISOString().slice(0, 10), { count: 0, words: 0 });
+            map.set(d.toLocaleDateString("sv"), { count: 0, words: 0 });
         }
 
         for (const e of entries) {
-            const key = e.timestamp?.slice(0, 10) ?? e.created_at?.slice(0, 10);
+            const raw = e.timestamp ?? e.created_at;
+            const key = raw ? new Date(raw).toLocaleDateString("sv") : undefined;
             if (key && map.has(key)) {
                 const b = map.get(key)!;
                 b.count++;

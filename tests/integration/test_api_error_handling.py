@@ -368,12 +368,14 @@ class TestDbUnavailable:
         assert resp.status_code == 503
 
     def test_search_db_none(self, api):
-        """Search returns empty when db is None."""
+        """Search returns empty envelope when db is None."""
         client, coord, _ = api
         coord.db = None
         resp = client.get("/api/transcripts/search", params={"q": "test"})
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
     def test_list_projects_db_none(self, api):
         """Projects list returns empty when db is None."""

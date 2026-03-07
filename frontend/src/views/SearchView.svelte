@@ -20,6 +20,7 @@
         batchDeleteTranscripts,
         type Transcript,
         type Project,
+        type SearchResult,
     } from "../lib/api";
     import { ws } from "../lib/ws";
     import { nav } from "../lib/navigation.svelte";
@@ -35,6 +36,11 @@
     let searching = $state(false);
     let initialLoad = $state(true);
     let error = $state("");
+
+    // Pagination
+    const PAGE_SIZE = 50;
+    let searchTotal = $state(0);
+    let hasMore = $derived(query.trim() !== "" && results.length < searchTotal);
     let selectedId = $state<number | null>(null);
     let copied = $state(false);
     let refining = $state<number | null>(null);
@@ -176,12 +182,29 @@
     async function handleSearch() {
         if (!query.trim()) {
             results = [];
+            searchTotal = 0;
             return;
         }
         searching = true;
         error = "";
         try {
-            results = await searchTranscripts(query.trim(), 100);
+            const res: SearchResult = await searchTranscripts(query.trim(), PAGE_SIZE, 0);
+            results = res.items;
+            searchTotal = res.total;
+        } catch (e: any) {
+            error = e.message;
+        } finally {
+            searching = false;
+        }
+    }
+
+    async function loadMore() {
+        if (!query.trim() || !hasMore) return;
+        searching = true;
+        try {
+            const res: SearchResult = await searchTranscripts(query.trim(), PAGE_SIZE, results.length);
+            results = [...results, ...res.items];
+            searchTotal = res.total;
         } catch (e: any) {
             error = e.message;
         } finally {
@@ -329,6 +352,11 @@
                 allEntries = allEntries.filter((e) => e.id !== data.id);
                 results = results.filter((e) => e.id !== data.id);
             }),
+            ws.on("transcripts_batch_deleted", (data) => {
+                const deleted = new Set(data.ids);
+                allEntries = allEntries.filter((e) => !deleted.has(e.id));
+                results = results.filter((e) => !deleted.has(e.id));
+            }),
             ws.on("refinement_complete", () => {
                 refining = null;
                 loadAll();
@@ -415,7 +443,11 @@
     <!-- Result count -->
     <div class="text-[var(--text-sm)] text-[var(--text-tertiary)] shrink-0">
         {#if query.trim() && !searching}
-            {resultCount} result{resultCount !== 1 ? "s" : ""} for "{query}"
+            {#if searchTotal > resultCount}
+                Showing {resultCount} of {searchTotal} results for "{query}"
+            {:else}
+                {resultCount} result{resultCount !== 1 ? "s" : ""} for "{query}"
+            {/if}
         {:else if !initialLoad}
             {resultCount} transcript{resultCount !== 1 ? "s" : ""}
         {/if}
@@ -568,6 +600,18 @@
                     {/each}
                 </tbody>
             </table>
+            {#if hasMore}
+                <div class="flex justify-center py-[var(--space-3)]">
+                    <button
+                        class="inline-flex items-center gap-1.5 h-9 px-[var(--space-4)] border border-[var(--shell-border)] rounded-[var(--radius-md)] font-[var(--font-family)] text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer bg-[var(--surface-secondary)] text-[var(--text-secondary)] hover:enabled:bg-[var(--hover-overlay)] hover:enabled:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        onclick={loadMore}
+                        disabled={searching}
+                    >
+                        {#if searching}<Loader2 size={14} class="animate-spin" /> Loading…{:else}Load More ({searchTotal -
+                                results.length} remaining){/if}
+                    </button>
+                </div>
+            {/if}
         {/if}
     </div>
 

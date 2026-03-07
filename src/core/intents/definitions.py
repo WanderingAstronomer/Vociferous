@@ -101,6 +101,14 @@ class DeleteTranscriptIntent(InteractionIntent):
 
 
 @dataclass(frozen=True, slots=True)
+class BatchDeleteTranscriptsIntent(InteractionIntent):
+    """Delete multiple transcripts in a single operation."""
+
+    transcript_ids: tuple[int, ...] = field(default_factory=tuple)
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
 class RefineTranscriptIntent(InteractionIntent):
     """Trigger SLM refinement on a transcript."""
 

@@ -61,6 +61,11 @@ export interface TranscriptDeletedData {
     id: number;
 }
 
+export interface TranscriptsBatchDeletedData {
+    ids: number[];
+    count: number;
+}
+
 export interface TranscriptUpdatedData {
     id: number;
     variant_id?: number;
@@ -127,6 +132,7 @@ export interface WSEventMap {
     refinement_error: RefinementErrorData;
     refinement_progress: RefinementProgressData;
     transcript_deleted: TranscriptDeletedData;
+    transcripts_batch_deleted: TranscriptsBatchDeletedData;
     transcript_updated: TranscriptUpdatedData;
     config_updated: ConfigUpdatedData;
     engine_status: EngineStatusData;
@@ -206,6 +212,8 @@ export const wsEventValidators: {
         (data.elapsed_seconds === undefined || isNumber(data.elapsed_seconds)),
     transcript_deleted: (data): data is TranscriptDeletedData =>
         isObject(data) && isNumber(data.id),
+    transcripts_batch_deleted: (data): data is TranscriptsBatchDeletedData =>
+        isObject(data) && isNumberArray(data.ids) && isNumber(data.count),
     transcript_updated: (data): data is TranscriptUpdatedData =>
         isObject(data) && isNumber(data.id) && (data.variant_id === undefined || isNumber(data.variant_id)),
     config_updated: (data): data is ConfigUpdatedData => isObject(data),

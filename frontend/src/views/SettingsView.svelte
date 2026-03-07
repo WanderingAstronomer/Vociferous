@@ -277,6 +277,32 @@
                                     >
                                 </div>
                             </div>
+                            <div
+                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
+                            >
+                                <label
+                                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
+                                    for="setting-typing-wpm">Typing Speed (WPM)</label
+                                >
+                                <div class="flex flex-col gap-1 flex-1">
+                                    <input
+                                        id="setting-typing-wpm"
+                                        type="number"
+                                        min="10"
+                                        max="200"
+                                        class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                                        value={getSafe(config, "user.typing_wpm", 40)}
+                                        onchange={(e: Event) => {
+                                            const v = parseInt((e.target as HTMLInputElement).value);
+                                            if (!isNaN(v) && v >= 10 && v <= 200) setSafe("user.typing_wpm", v);
+                                        }}
+                                    />
+                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
+                                        >Your manual typing speed in words per minute. Used to calculate "Time Saved" on
+                                        the dashboard. Default: 40 WPM (average typist).</span
+                                    >
+                                </div>
+                            </div>
                         </div>
                     </div>
 

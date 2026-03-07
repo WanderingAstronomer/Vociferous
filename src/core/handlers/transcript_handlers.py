@@ -34,6 +34,14 @@ class TranscriptHandlers:
             else:
                 logger.warning("Delete requested for nonexistent transcript %d", intent.transcript_id)
 
+    def handle_batch_delete(self, intent: Any) -> None:
+        db = self._db_provider()
+        if db:
+            ids = list(intent.transcript_ids)
+            count = db.batch_delete_transcripts(ids)
+            logger.info("Batch deleted %d transcripts (requested %d)", count, len(ids))
+            self._emit("transcripts_batch_deleted", {"ids": ids, "count": count})
+
     def handle_delete_variant(self, intent: Any) -> None:
         db = self._db_provider()
         if db:

@@ -191,9 +191,10 @@ class TestTranscriptRoutes:
 
         resp = client.get("/api/transcripts/search", params={"q": "fox"})
         assert resp.status_code == 200
-        results = resp.json()
-        assert len(results) == 1
-        assert "fox" in results[0]["raw_text"]
+        data = resp.json()
+        assert data["total"] == 1
+        assert len(data["items"]) == 1
+        assert "fox" in data["items"][0]["raw_text"]
 
     def test_search_no_results(self, api):
         client, coord, _ = api
@@ -201,7 +202,9 @@ class TestTranscriptRoutes:
 
         resp = client.get("/api/transcripts/search", params={"q": "nonexistent"})
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
 
 # ── Project CRUD (H-Pattern) ─────────────────────────────────────────────

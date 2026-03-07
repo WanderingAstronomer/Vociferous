@@ -535,6 +535,14 @@
                     selectedEntry = null;
                 }
             }),
+            ws.on("transcripts_batch_deleted", (data) => {
+                const deleted = new Set(data.ids);
+                entries = entries.filter((e) => !deleted.has(e.id));
+                if (selectedId !== null && deleted.has(selectedId)) {
+                    selectedId = null;
+                    selectedEntry = null;
+                }
+            }),
             ws.on("refinement_complete", (data) => {
                 refining = null;
                 if (selectedId === data.transcript_id) loadEntryDetail(data.transcript_id, true);

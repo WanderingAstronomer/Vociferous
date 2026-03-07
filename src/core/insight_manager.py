@@ -25,61 +25,16 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from src.core.resource_manager import ResourceManager
+from src.refinement.prompt_builder import PromptBuilder
 
 if TYPE_CHECKING:
     from src.services.slm_runtime import SLMRuntime
 
 logger = logging.getLogger(__name__)
 
-# Prompt sent to the SLM with pre-computed usage statistics
-_INSIGHT_PROMPT = """\
-You are a witty, encouraging assistant embedded in Vociferous, a local AI-powered \
-speech-to-text application. The user dictates speech into text on their own machine \
-with full privacy — no cloud, no data collection.
-
-Here are the user's current usage statistics:
-
-- Total transcriptions: {count}
-- Total words captured: {total_words}
-- Total recording time: {recorded_time}
-- Estimated time saved vs typing: {time_saved}
-- Average recording length: {avg_length}
-- Vocabulary diversity (unique/total words): {vocab_pct}
-- Total estimated silence in recordings: {silence}
-- Filler words detected: {fillers}
-
-Write exactly ONE short paragraph (2-3 sentences) giving the user personalized, \
-specific feedback based on these statistics. Be warm, direct, and subtly witty. \
-Reference concrete numbers. Do not use bullet points. Do not begin with "You" or \
-"Your". Do not mention the app name. Do not use exclamation marks more than once. \
-Write as a confident peer, not a cheerleader."""
-
-# Short punchy one-liner for the TranscribeView header
-_MOTD_PROMPT = """\
-You are embedded in Vociferous, a local AI-powered speech-to-text desktop application.
-The user has captured the following usage data:
-
-- Total transcriptions: {count}
-- Total words captured: {total_words}
-- Average pace: {avg_pace} wpm
-- Vocabulary diversity: {vocab_pct}
-
-Write ONE sentence reacting to these stats with dry, specific wit. \
-Think a laconic colleague glancing at your numbers \
-and saying exactly one thing — insightful, a little wry, never motivational.
-
-Rules:
-- Maximum 15 words.
-- Do NOT begin with "You" or "Your".
-- Do NOT list multiple stats. Pick one angle, say one thing.
-- No exclamation marks. No app name. No preamble.
-- Do NOT describe what the app does or what the user is doing.
-
-Bad example: "You've made 13 transcriptions with 2,071 words at 150 wpm and 29% vocabulary diversity."
-Good example: "Consistent pace, narrow vocabulary — dictating or just not a big reader?"
-Good example: "153 words per minute and you still find time to say 'um' 78 times."
-
-Output only the sentence. Nothing else."""
+# Backward-compat aliases — canonical templates now live in PromptBuilder.
+_INSIGHT_PROMPT = PromptBuilder.INSIGHT_TEMPLATE
+_MOTD_PROMPT = PromptBuilder.MOTD_TEMPLATE
 
 
 class InsightCache:
@@ -183,7 +138,7 @@ class InsightManager:
         """
         with self._lock:
             self._transcripts_since_generation += 1
-            
+
             if self._generating:
                 logger.debug("Insight: generation already in flight, skipping")
                 return
@@ -194,13 +149,13 @@ class InsightManager:
 
             slm = self._slm_provider()
             if slm is None:
-                logger.debug("Insight: SLM unavailable, skipping")
+                logger.info("Insight: SLM unavailable (refinement disabled or no model), skipping")
                 return
 
             from src.services.slm_types import SLMState
 
             if slm.state != SLMState.READY:
-                logger.debug("Insight: SLM busy or not ready (%s), skipping", slm.state)
+                logger.info("Insight: SLM not ready (state=%s, refinement may be disabled), skipping", slm.state)
                 return
 
             self._generating = True
@@ -208,6 +163,32 @@ class InsightManager:
         logger.info("Insight: scheduling background generation")
         t = threading.Thread(target=self._generate_task, daemon=True)
         t.start()
+
+    def request_generation(self) -> bool:
+        """Force-trigger generation, bypassing TTL and transcript-count checks.
+
+        Returns ``True`` if generation was started, ``False`` if the SLM is
+        unavailable or a generation is already in flight.
+        """
+        with self._lock:
+            if self._generating:
+                return False
+
+            slm = self._slm_provider()
+            if slm is None:
+                return False
+
+            from src.services.slm_types import SLMState
+
+            if slm.state != SLMState.READY:
+                return False
+
+            self._generating = True
+
+        logger.info("Insight: manual generation requested")
+        t = threading.Thread(target=self._generate_task, daemon=True)
+        t.start()
+        return True
 
     # ── Internal ─────────────────────────────────────────────────────────────
 
@@ -265,8 +246,24 @@ class InsightManager:
             )
 
             if result and result.strip():
-                self._cache.save(result.strip())
-                self._emit(self._event_name, {"text": result.strip()})
+                clean = result.strip()
+                # Guard: reject output that looks like leaked prompt fragments.
+                # If the model echoed back the system prompt, the output will
+                # contain these telltale strings from our templates.
+                _LEAK_MARKERS = (
+                    "speech-to-text application",
+                    "usage statistics",
+                    "Do NOT begin with",
+                    "Do not use bullet points",
+                    "Write exactly ONE",
+                    "<|im_start|>",
+                    "/no_think",
+                )
+                if any(marker in clean for marker in _LEAK_MARKERS):
+                    logger.warning("Insight: output appears to contain leaked prompt fragments, discarding")
+                    return
+                self._cache.save(clean)
+                self._emit(self._event_name, {"text": clean})
                 logger.info("Insight: generation complete, cache updated")
                 with self._lock:
                     self._transcripts_since_generation = 0

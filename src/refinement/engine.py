@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from src.refinement.prompt_builder import PromptBuilder
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,6 +71,10 @@ class RefinementEngine:
         self.system_prompt = system_prompt
         self.invariants = invariants or []
         self.levels = levels or {}
+        self.prompt_builder = PromptBuilder(
+            system_prompt=system_prompt,
+            invariants=self.invariants,
+        )
 
         # Map n_gpu_layers to CT2 device
         if n_gpu_layers == 0:
@@ -120,7 +126,7 @@ class RefinementEngine:
         return min(self.HARD_MAX_OUTPUT_TOKENS, output_budget + thinking_budget)
 
     def _parse_output(self, text: str) -> GenerationResult:
-        """Separate <think>...</think> blocks from model output."""
+        """Separate <think>...</think> blocks and strip prompt artifacts from model output."""
         if not text:
             return GenerationResult(content="")
 
@@ -151,82 +157,18 @@ class RefinementEngine:
             if marker in content:
                 content = content.split(marker)[0]
 
+        # Strip leaked ChatML role markers (e.g. "system\n..." or "assistant\n...")
+        # that survive after the <|im_start|> token itself was already removed.
+        content = re.sub(r"^(system|user|assistant)\s*\n", "", content, count=1)
+
+        # Strip /no_think directive if model echoed it back
+        content = re.sub(r"^/no_think\s*", "", content)
+
         return GenerationResult(content=content.strip(), reasoning=reasoning)
 
     def _get_few_shot_examples(self, level_idx: int, has_instructions: bool = False) -> str:
-        """Get few-shot examples to guide the model."""
-        base = "\n\n--- EXAMPLES OF DESIRED BEHAVIOR ---\n"
-
-        instruction_example = ""
-        if has_instructions:
-            instruction_example = """
-Input:
-<<<BEGIN TRANSCRIPT>>>
-The car is blue and the house is red.
-<<<END TRANSCRIPT>>>
-User Instructions: Replace colors with [COLOR].
-Output:
-The car is [COLOR] and the house is [COLOR].
-"""
-
-        examples = {
-            0: """
-Input:
-<<<BEGIN TRANSCRIPT>>>
-hello this is a test. i am writinge with some typos.
-<<<END TRANSCRIPT>>>
-Output:
-Hello this is a test. I am writing with some typos.
-
-Input:
-<<<BEGIN TRANSCRIPT>>>
-So, um, basically we should go.
-<<<END TRANSCRIPT>>>
-Output:
-So, um, basically we should go.
-""",
-            1: """
-Input:
-<<<BEGIN TRANSCRIPT>>>
-hello this is a test. i am writinge with some typos.
-<<<END TRANSCRIPT>>>
-Output:
-Hello this is a test. I am writing with some typos.
-
-Input:
-<<<BEGIN TRANSCRIPT>>>
-I I want to go to the the park.
-<<<END TRANSCRIPT>>>
-Output:
-I want to go to the park.
-""",
-            2: """
-Input:
-<<<BEGIN TRANSCRIPT>>>
-It was raining really hard and the car broke down and we were stuck there for hours.
-<<<END TRANSCRIPT>>>
-Output:
-It was raining really hard. The car broke down, and we were stuck there for hours.
-""",
-            3: """
-Input:
-<<<BEGIN TRANSCRIPT>>>
-I want to make the app better so people like it more.
-<<<END TRANSCRIPT>>>
-Output:
-I intend to enhance the application to maximize user engagement and satisfaction.
-""",
-            4: """
-Input:
-<<<BEGIN TRANSCRIPT>>>
-The meeting was okay but we need to talk about the budget cause it's too high.
-<<<END TRANSCRIPT>>>
-Output:
-While the meeting was productive, we must address the budget, which is currently excessive.
-""",
-        }
-
-        return base + examples.get(level_idx, "") + instruction_example
+        """Delegate to PromptBuilder."""
+        return PromptBuilder.get_few_shot_examples(level_idx, has_instructions)
 
     def _format_prompt(
         self,
@@ -234,60 +176,12 @@ While the meeting was productive, we must address the budget, which is currently
         user_instructions: str = "",
         use_thinking: bool = False,
     ) -> list[dict[str, str]]:
-        """Format input as ChatML messages.
-
-        Two modes:
-        - **Default (no custom instructions)**: Grammar-fix pipeline with
-          invariants enforcing meaning-preservation and output discipline.
-        - **Custom instructions provided**: The user's instructions become
-          the ENTIRE task.  Invariants are NOT sent — the user is in control
-          and the safety rails would only confuse the model or fight the
-          user's intent.
-        """
-
-        custom = user_instructions.strip() if user_instructions else ""
-
-        if custom:
-            # User provided explicit instructions — they take FULL precedence.
-            # No invariants, no default rules, just the system identity + their task.
-            system_content = self.system_prompt
-            task_directive = custom
-        else:
-            # Default grammar-fix mode: invariants enforce discipline.
-            invariants_text = "\n".join(f"- {i}" for i in self.invariants)
-            system_content = f"""{self.system_prompt}
-
-Rules:
-{invariants_text}
-- Output ONLY the corrected text. No explanations, no preamble.""".strip()
-            task_directive = "Fix all grammar, spelling, punctuation, and capitalization errors."
-
-        # Thinking directive: /no_think suppresses reasoning for speed and fidelity.
-        think_directive = "" if use_thinking else "/no_think\n\n"
-
-        user_content = f"""{think_directive}{task_directive}
-
-Text:
-{user_text}""".strip()
-
-        return [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": user_content},
-        ]
+        """Delegate to PromptBuilder."""
+        return self.prompt_builder.build_refinement_messages(user_text, user_instructions, use_thinking)
 
     def _messages_to_chatml(self, messages: list[dict[str, str]]) -> str:
-        """Convert a list of chat messages to a ChatML-formatted string.
-
-        CTranslate2 Generator works at the token level — no built-in chat
-        template support.  We apply the ChatML template ourselves, then
-        tokenize, then generate.
-        """
-        parts: list[str] = []
-        for msg in messages:
-            parts.append(f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>")
-        # Add the assistant turn start so the model knows to generate the response
-        parts.append("<|im_start|>assistant\n")
-        return "\n".join(parts)
+        """Delegate to PromptBuilder."""
+        return PromptBuilder.messages_to_chatml(messages)
 
     def refine(
         self,
@@ -380,10 +274,7 @@ Text:
         Returns:
             GenerationResult with 'content' and 'reasoning'.
         """
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"/no_think\n\n{user_prompt}"},
-        ]
+        messages = self.prompt_builder.build_custom_messages(system_prompt, user_prompt)
 
         chatml_string = self._messages_to_chatml(messages)
         encoded = self.tokenizer.encode(chatml_string)

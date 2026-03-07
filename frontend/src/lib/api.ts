@@ -71,8 +71,15 @@ export function deleteVariant(transcriptId: number, variantId: number): Promise<
     return request(`/transcripts/${transcriptId}/variants/${variantId}`, { method: "DELETE" });
 }
 
-export function searchTranscripts(q: string, limit = 50): Promise<Transcript[]> {
-    return request(`/transcripts/search?q=${encodeURIComponent(q)}&limit=${limit}`);
+export interface SearchResult {
+    items: Transcript[];
+    total: number;
+    offset: number;
+    limit: number;
+}
+
+export function searchTranscripts(q: string, limit = 50, offset = 0): Promise<SearchResult> {
+    return request(`/transcripts/search?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`);
 }
 
 export function refineTranscript(id: number, level: number, instructions = ""): Promise<{ status: string }> {
@@ -164,22 +171,16 @@ export async function batchAssignProject(
 }
 
 /**
- * Batch-delete multiple transcripts.
+ * Batch-delete multiple transcripts in a single server round-trip.
  */
 export async function batchDeleteTranscripts(
     transcriptIds: number[],
-): Promise<{ succeeded: number; failed: number }> {
-    let succeeded = 0;
-    let failed = 0;
-    for (const id of transcriptIds) {
-        try {
-            await deleteTranscript(id);
-            succeeded++;
-        } catch {
-            failed++;
-        }
-    }
-    return { succeeded, failed };
+): Promise<{ deleted: number }> {
+    if (transcriptIds.length === 0) return { deleted: 0 };
+    return request("/transcripts/batch-delete", {
+        method: "POST",
+        body: JSON.stringify({ ids: transcriptIds }),
+    });
 }
 
 // --- Config ---
@@ -214,12 +215,34 @@ export function getModels(): Promise<{ asr: Record<string, ModelInfo>; slm: Reco
 
 // --- Health ---
 
-export function getHealth(): Promise<{ status: string; version: string; transcripts: number; recording_active?: boolean }> {
+export interface GpuInfo {
+    cuda_available: boolean;
+    detail: string;
+    whisper_backends: string;
+    slm_gpu_layers: number;
+    vram_total_mb: number;
+    vram_used_mb: number;
+    vram_free_mb: number;
+}
+
+export interface HealthInfo {
+    status: string;
+    version: string;
+    transcripts: number;
+    recording_active?: boolean;
+    gpu?: GpuInfo;
+}
+
+export function getHealth(): Promise<HealthInfo> {
     return request("/health");
 }
 
 export function getInsight(): Promise<{ text: string }> {
     return request("/insight");
+}
+
+export function refreshInsight(): Promise<{ status: string }> {
+    return request("/insight/refresh", { method: "POST" });
 }
 
 export function getMotd(): Promise<{ text: string }> {

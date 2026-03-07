@@ -74,6 +74,7 @@ class UserSettings(BaseModel):
 
     name: str = ""
     active_project_id: int | None = None
+    typing_wpm: int = 40
 
 
 class LoggingSettings(BaseModel):

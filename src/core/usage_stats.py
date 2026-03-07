@@ -36,9 +36,16 @@ _FILLER_SINGLE: frozenset[str] = frozenset(
 _FILLER_MULTI: tuple[str, ...] = ("you know", "i mean", "kind of", "sort of")
 
 
-def compute_usage_stats(db: TranscriptDB) -> dict:
+def compute_usage_stats(db: TranscriptDB, typing_wpm: int = _TYPING_WPM) -> dict:
     """
     Compute speech usage statistics across all stored transcripts.
+
+    Parameters
+    ----------
+    db : TranscriptDB
+        Transcript database.
+    typing_wpm : int
+        Assumed manual typing speed in words-per-minute (default 40).
 
     Returns an empty dict if there are no transcripts or the DB is unavailable.
     Used as the stats_provider for both InsightManager and MOTDManager.
@@ -86,7 +93,7 @@ def compute_usage_stats(db: TranscriptDB) -> dict:
     if recorded_seconds == 0 and total_words > 0:
         recorded_seconds = (total_words / _SPEAKING_WPM) * 60
 
-    typing_seconds = (total_words / _TYPING_WPM) * 60
+    typing_seconds = (total_words / typing_wpm) * 60
     time_saved = max(0.0, typing_seconds - recorded_seconds)
     avg_seconds = recorded_seconds / count if count > 0 else 0
     vocab_ratio = len(set(all_words)) / len(all_words) if all_words else 0

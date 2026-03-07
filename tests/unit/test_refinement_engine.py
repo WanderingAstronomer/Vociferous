@@ -14,6 +14,7 @@ from __future__ import annotations
 import pytest
 
 from src.refinement.engine import GenerationResult, RefinementEngine
+from src.refinement.prompt_builder import PromptBuilder
 
 # ── Test Fixture: Engine Without Model ────────────────────────────────────
 
@@ -61,6 +62,11 @@ def _make_engine(
     engine._end_tokens = []
     engine._im_end_id = None
     engine._eos_id = None
+    # PromptBuilder (used by delegated prompt/chatml methods)
+    engine.prompt_builder = PromptBuilder(
+        system_prompt=engine.system_prompt,
+        invariants=engine.invariants,
+    )
     return engine
 
 
@@ -143,6 +149,23 @@ class TestParseOutput:
         )
         assert result.content == "Clean output"
         assert result.reasoning == "Reasoning here"
+
+    def test_role_marker_stripped(self) -> None:
+        """ChatML role markers that survive after im_start removal are stripped."""
+        engine = _make_engine()
+        result = engine._parse_output("system\nThe actual output here.")
+        assert result.content == "The actual output here."
+
+    def test_no_think_directive_stripped(self) -> None:
+        """Echoed /no_think directive is stripped from output."""
+        engine = _make_engine()
+        result = engine._parse_output("/no_think\n\nClean result.")
+        assert result.content == "Clean result."
+
+    def test_assistant_role_marker_stripped(self) -> None:
+        engine = _make_engine()
+        result = engine._parse_output("assistant\nHere is your text.")
+        assert result.content == "Here is your text."
 
 
 # ── Prompt Formatting ─────────────────────────────────────────────────────

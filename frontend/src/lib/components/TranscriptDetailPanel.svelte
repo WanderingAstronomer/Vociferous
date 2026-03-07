@@ -12,6 +12,7 @@
     import { formatDayHeader, formatTime, formatDuration, formatWpm, wordCount } from "../formatters";
     import { Copy, Check, Trash2, Sparkles, RefreshCw, Calendar, Loader2, X, Pencil } from "lucide-svelte";
     import WorkspacePanel from "./WorkspacePanel.svelte";
+    import MarkdownBody from "./MarkdownBody.svelte";
 
     interface Props {
         entry: Transcript;
@@ -188,9 +189,7 @@
     <div class="overflow-hidden flex flex-col relative group flex-1 min-h-[80px]">
         <WorkspacePanel>
             <div class="overflow-y-auto h-full">
-                <p class="text-base leading-relaxed text-[var(--text-primary)] whitespace-pre-wrap break-words m-0">
-                    {displayText}
-                </p>
+                <MarkdownBody text={displayText} class="text-base text-[var(--text-primary)]" />
             </div>
         </WorkspacePanel>
     </div>
@@ -218,7 +217,7 @@
                             <X size={12} />
                         </button>
                     </div>
-                    <p class="text-sm leading-normal text-[var(--text-secondary)] m-0">{variant.text}</p>
+                    <MarkdownBody text={variant.text} class="text-sm text-[var(--text-secondary)]" />
                 </div>
             {/each}
         </div>

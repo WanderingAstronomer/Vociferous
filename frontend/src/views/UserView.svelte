@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { getTranscripts, getHealth, getConfig, getInsight, type Transcript } from "../lib/api";
+    import { getTranscripts, getHealth, getConfig, getInsight, refreshInsight, type Transcript } from "../lib/api";
     import { ws } from "../lib/ws";
     import StatCard from "../lib/components/StatCard.svelte";
     import ActivityChart from "../lib/components/ActivityChart.svelte";
@@ -23,7 +23,7 @@
 
     /* ── Constants ── */
     const SPEAKING_SPEED_WPM = 150;
-    const TYPING_SPEED_WPM = 40;
+    const DEFAULT_TYPING_WPM = 40;
     const TRANSCRIPT_EXPORT_LIMIT = 10000;
 
     const FILLER_SINGLE = new Set([
@@ -48,9 +48,11 @@
     let entries: Transcript[] = $state([]);
     let loading = $state(true);
     let userName = $state("");
+    let typingWpm = $state(DEFAULT_TYPING_WPM);
     let showExplanations = $state(false);
     let healthInfo: { version: string; transcripts: number } | null = $state(null);
     let slmInsight = $state("");
+    let refreshingInsight = $state(false);
 
     /* ── Derived Metrics ── */
     function safeText(e: { text: string }): string {
@@ -68,7 +70,7 @@
         return 0;
     });
 
-    let typingSeconds = $derived((totalWords / TYPING_SPEED_WPM) * 60);
+    let typingSeconds = $derived((totalWords / typingWpm) * 60);
     let timeSavedSeconds = $derived(Math.max(0, typingSeconds - recordedSeconds));
     let avgSeconds = $derived(count > 0 ? recordedSeconds / count : 0);
 
@@ -176,10 +178,12 @@
             entries = transcripts;
             healthInfo = health;
             slmInsight = insightRes.text || "";
-            // Extract user name from config
+            // Extract user name and typing WPM from config
             const u = config as Record<string, unknown>;
             const userSection = u?.user as Record<string, unknown> | undefined;
             userName = (userSection?.name as string) ?? "";
+            const wpm = Number(userSection?.typing_wpm);
+            if (wpm > 0) typingWpm = wpm;
         } catch (e) {
             console.error("Failed to load user data:", e);
         } finally {
@@ -193,15 +197,17 @@
         const unsubs = [
             ws.on("transcription_complete", () => loadData()),
             ws.on("transcript_deleted", () => loadData()),
+            ws.on("transcripts_batch_deleted", () => loadData()),
             ws.on("insight_ready", (data) => {
                 slmInsight = data.text || "";
+                refreshingInsight = false;
             }),
         ];
         return () => unsubs.forEach((fn) => fn());
     });
 
     /* ── Explanations content ── */
-    const explanations = [
+    let explanations = $derived([
         { title: "Transcriptions", text: "Total count of all transcription entries stored in your database." },
         {
             title: "Words Captured",
@@ -213,7 +219,7 @@
         },
         {
             title: "Time Saved",
-            text: `Productivity gain vs. manual typing. Calculated as: (words ÷ ${TYPING_SPEED_WPM} WPM × 60) − recording_time = time_saved. Based on average typing speed of ${TYPING_SPEED_WPM} WPM.`,
+            text: `Productivity gain vs. manual typing. Calculated as: (words ÷ ${typingWpm} WPM × 60) − recording_time = time_saved. Based on average typing speed of ${typingWpm} WPM.`,
         },
         { title: "Average Length", text: "Mean duration per transcription: total_time ÷ transcription_count" },
         {
@@ -232,7 +238,7 @@
             title: "Filler Words",
             text: "Total count of common filler words and phrases detected across all transcriptions. Includes patterns like 'um', 'uh', 'like', 'you know', 'basically', 'literally', 'actually', etc.",
         },
-    ];
+    ]);
 </script>
 
 <div class="flex flex-col h-full bg-[var(--surface-primary)]">
@@ -261,15 +267,28 @@
             {:else}
                 <!-- ═══ Header ═══ -->
                 <div class="flex flex-col items-center gap-[var(--space-2)]">
-                    <h2
-                        class="text-[var(--text-xl)] font-[var(--weight-emphasis)] text-[var(--text-primary)] text-center m-0"
-                    >
+                    <h2 class="text-2xl font-[var(--weight-emphasis)] text-[var(--accent)] text-center m-0">
                         {titleText}
                     </h2>
                     <div class="w-12 h-[2px] rounded-full bg-[var(--accent)]"></div>
                     <p class="text-center text-[var(--text-sm)] text-[var(--accent)] italic m-0 max-w-[480px]">
                         {insight}
                     </p>
+                    <button
+                        class="text-[var(--text-xs)] text-[var(--text-tertiary)] hover:text-[var(--accent)] transition-colors cursor-pointer bg-transparent border-none p-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled={refreshingInsight}
+                        onclick={async () => {
+                            refreshingInsight = true;
+                            try {
+                                const res = await refreshInsight();
+                                if (res.status !== "generating") refreshingInsight = false;
+                            } catch {
+                                refreshingInsight = false;
+                            }
+                        }}
+                    >
+                        {refreshingInsight ? "Generating…" : "↻ Refresh insight"}
+                    </button>
                 </div>
 
                 <!-- ═══ 1. Activity Chart (period-selectable) ═══ -->
@@ -407,7 +426,7 @@
             <footer
                 class="rounded-[var(--radius-lg)] border border-[var(--shell-border)] bg-[var(--surface-secondary)] p-[var(--space-5)] flex flex-col items-center gap-[var(--space-3)]"
             >
-                <h2 class="text-[var(--text-lg)] font-[var(--weight-emphasis)] text-[var(--accent)] m-0">Vociferous</h2>
+                <h2 class="text-2xl font-[var(--weight-emphasis)] text-[var(--accent)] m-0">Vociferous</h2>
                 <p class="text-[var(--text-sm)] text-[var(--text-secondary)] m-0">Local AI Speech to Text</p>
 
                 <p

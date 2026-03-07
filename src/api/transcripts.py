@@ -50,6 +50,23 @@ async def delete_transcript(transcript_id: int) -> Response:
     return Response(content={"deleted": True})
 
 
+@post("/api/transcripts/batch-delete", status_code=200)
+async def batch_delete_transcripts(data: dict) -> Response:
+    """Delete multiple transcripts in one shot via CommandBus intent."""
+    ids = data.get("ids", [])
+    if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+        return Response(content={"error": "'ids' must be a list of integers"}, status_code=400)
+    if not ids:
+        return Response(content={"deleted": 0})
+
+    from src.core.intents.definitions import BatchDeleteTranscriptsIntent
+
+    coordinator = get_coordinator()
+    intent = BatchDeleteTranscriptsIntent(transcript_ids=tuple(ids))
+    coordinator.command_bus.dispatch(intent)
+    return Response(content={"deleted": len(ids)})
+
+
 @delete("/api/transcripts", status_code=200)
 async def clear_all_transcripts() -> Response:
     """Delete all transcripts via CommandBus intent."""
@@ -68,12 +85,18 @@ async def clear_all_transcripts() -> Response:
 
 
 @get("/api/transcripts/search", sync_to_thread=True)
-def search_transcripts(q: str, limit: int = 50) -> list[dict]:
+def search_transcripts(q: str, limit: int = 50, offset: int = 0) -> dict:
     coordinator = get_coordinator()
     if coordinator.db is None:
-        return []
-    results = coordinator.db.search(q, limit=limit)
-    return [transcript_to_dict(t) for t in results]
+        return {"items": [], "total": 0, "offset": offset, "limit": limit}
+    results = coordinator.db.search(q, limit=limit, offset=offset)
+    total = coordinator.db.search_count(q)
+    return {
+        "items": [transcript_to_dict(t) for t in results],
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    }
 
 
 @post("/api/transcripts/{transcript_id:int}/refine")

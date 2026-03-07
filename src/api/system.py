@@ -92,6 +92,16 @@ def get_insight() -> dict:
     return {"text": text}
 
 
+@post("/api/insight/refresh", sync_to_thread=True)
+def refresh_insight() -> dict:
+    """Force-trigger insight regeneration, bypassing TTL/count guards."""
+    coordinator = get_coordinator()
+    if coordinator.insight_manager is None:
+        return {"status": "unavailable"}
+    started = coordinator.insight_manager.request_generation()
+    return {"status": "generating" if started else "unavailable"}
+
+
 @get("/api/motd", sync_to_thread=True)
 def get_motd() -> dict:
     """Return the cached TranscribeView header MOTD, or empty text if none exists yet."""
@@ -241,19 +251,34 @@ def _detect_gpu_status() -> dict:
     _detect_gpu_status.cache_clear() to reset (e.g. in tests or after
     engine restart).
     """
-    gpu: dict = {"cuda_available": False, "detail": "", "whisper_backends": "", "slm_gpu_layers": -1}
+    gpu: dict = {
+        "cuda_available": False,
+        "detail": "",
+        "whisper_backends": "",
+        "slm_gpu_layers": -1,
+        "vram_total_mb": 0,
+        "vram_used_mb": 0,
+        "vram_free_mb": 0,
+    }
     try:
         import subprocess
 
         result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            ["nvidia-smi", "--query-gpu=name,memory.total,memory.used,memory.free", "--format=csv,noheader,nounits"],
             capture_output=True,
             text=True,
             timeout=5,
         )
         if result.returncode == 0 and result.stdout.strip():
             gpu["cuda_available"] = True
-            gpu["detail"] = result.stdout.strip().split("\n")[0]
+            parts = [p.strip() for p in result.stdout.strip().split("\n")[0].split(",")]
+            gpu["detail"] = parts[0] if len(parts) > 0 else "unknown"
+            try:
+                gpu["vram_total_mb"] = int(parts[1]) if len(parts) > 1 else 0
+                gpu["vram_used_mb"] = int(parts[2]) if len(parts) > 2 else 0
+                gpu["vram_free_mb"] = int(parts[3]) if len(parts) > 3 else 0
+            except (ValueError, IndexError):
+                pass  # VRAM parsing failed — leave at 0
         else:
             gpu["detail"] = "nvidia-smi failed or no GPU found"
     except FileNotFoundError:

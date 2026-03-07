@@ -29,7 +29,7 @@
 
     /* ===== Export state ===== */
 
-    let exportFormat = $state<"json" | "csv" | "txt">("json");
+    let exportFormat = $state<"json" | "csv" | "txt" | "md">("json");
     let preferSaveDialog = $state(true);
 
     /* ===== Clear state ===== */
@@ -129,7 +129,20 @@
             .join("\n\n---\n\n");
     }
 
-    function buildExportPayload(transcripts: Record<string, unknown>[], format: "json" | "csv" | "txt") {
+    function transcriptsToMarkdown(transcripts: Record<string, unknown>[]): string {
+        const header = `# Vociferous Export\n\n_${new Date().toLocaleDateString()} — ${transcripts.length} transcripts_\n`;
+        const body = transcripts
+            .map((t, i) => {
+                const ts = String(t.timestamp ?? "unknown");
+                const project = String(t.project_name ?? "unassigned");
+                const text = String(t.text ?? t.normalized_text ?? t.raw_text ?? "");
+                return `## ${i + 1}. Transcript\n\n**Date:** ${ts}  \n**Project:** ${project}\n\n${text}`;
+            })
+            .join("\n\n---\n\n");
+        return `${header}\n${body}\n`;
+    }
+
+    function buildExportPayload(transcripts: Record<string, unknown>[], format: "json" | "csv" | "txt" | "md") {
         const datePart = new Date().toISOString().slice(0, 10);
         if (format === "csv") {
             const content = transcriptsToCsv(transcripts);
@@ -138,6 +151,10 @@
         if (format === "txt") {
             const content = transcriptsToTxt(transcripts);
             return { filename: `vociferous-export-${datePart}.txt`, content };
+        }
+        if (format === "md") {
+            const content = transcriptsToMarkdown(transcripts);
+            return { filename: `vociferous-export-${datePart}.md`, content };
         }
         const content = JSON.stringify(transcripts, null, 2);
         return { filename: `vociferous-export-${datePart}.json`, content };
@@ -229,7 +246,7 @@
     >
         <RotateCcw size={18} class="text-[var(--accent)]" /><span>Maintenance</span>
     </div>
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-[var(--space-3)]">
+    <div class="grid grid-cols-1 gap-[var(--space-3)]">
         <!-- Transcriptions: export + clear -->
         <div
             class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
@@ -247,10 +264,11 @@
                                 { value: "json", label: "JSON" },
                                 { value: "csv", label: "CSV" },
                                 { value: "txt", label: "Plain Text" },
+                                { value: "md", label: "Markdown" },
                             ]}
                             value={exportFormat}
                             onchange={(v: string) => {
-                                if (v === "json" || v === "csv" || v === "txt") {
+                                if (v === "json" || v === "csv" || v === "txt" || v === "md") {
                                     exportFormat = v;
                                 }
                             }}
