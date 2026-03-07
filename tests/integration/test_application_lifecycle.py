@@ -28,8 +28,6 @@ ALL_LIFECYCLE_EVENTS = [
     "recording_started",
     "recording_stopped",
     "transcript_deleted",
-    "project_created",
-    "project_deleted",
     "refinement_started",
     "refinement_complete",
     "refinement_error",
@@ -37,6 +35,9 @@ ALL_LIFECYCLE_EVENTS = [
     "transcription_error",
     "config_updated",
     "engine_status",
+    "tag_created",
+    "tag_updated",
+    "tag_deleted",
 ]
 
 
@@ -119,15 +120,15 @@ class TestHandlerRegistration:
     def test_all_intents_registered(self, coordinator):
         """Every intent defined in the coordinator must have a handler."""
         from src.core.intents.definitions import (
-            AssignProjectIntent,
+            AssignTagsIntent,
             BatchDeleteTranscriptsIntent,
             BatchRetitleIntent,
             BeginRecordingIntent,
             CancelRecordingIntent,
             ClearTranscriptsIntent,
             CommitEditsIntent,
-            CreateProjectIntent,
-            DeleteProjectIntent,
+            CreateTagIntent,
+            DeleteTagIntent,
             DeleteTranscriptIntent,
             DeleteTranscriptVariantIntent,
             RefineTranscriptIntent,
@@ -137,7 +138,7 @@ class TestHandlerRegistration:
             StopRecordingIntent,
             ToggleRecordingIntent,
             UpdateConfigIntent,
-            UpdateProjectIntent,
+            UpdateTagIntent,
         )
 
         expected_intents = [
@@ -151,14 +152,15 @@ class TestHandlerRegistration:
             CommitEditsIntent,
             RenameTranscriptIntent,
             RefineTranscriptIntent,
-            CreateProjectIntent,
-            UpdateProjectIntent,
-            DeleteProjectIntent,
-            AssignProjectIntent,
+            CreateTagIntent,
+            UpdateTagIntent,
+            DeleteTagIntent,
+            AssignTagsIntent,
             UpdateConfigIntent,
             RestartEngineIntent,
             BatchRetitleIntent,
             RetitleTranscriptIntent,
+            BatchDeleteTranscriptsIntent,
         ]
 
         for intent_cls in expected_intents:
@@ -168,7 +170,7 @@ class TestHandlerRegistration:
 
     def test_handler_count_matches_intent_count(self, coordinator):
         """No extra/ghost handlers registered beyond the expected set."""
-        # 19 intents are registered in _register_handlers
+        # 19 intents are registered in _register_handlers (15 original + 4 tag)
         assert len(coordinator.command_bus._handlers) == 19
 
     def test_handlers_are_callable(self, coordinator):
@@ -291,16 +293,6 @@ class TestSettingsPropagation:
         assert coord.settings.recording.activation_key == "F13"
         assert coord.settings.recording.activation_key != old_key
 
-    def test_active_project_id_persists(self, wired):
-        """active_project_id on settings is readable by handlers."""
-        coord, _ = wired
-        from src.core.settings import update_settings
-
-        update_settings(user={"active_project_id": 42})
-        coord.settings = update_settings()
-        # After reload, active_project_id should reflect what was set
-        assert coord.settings.user.active_project_id == 42
-
 
 # ── EventBus Wiring ──────────────────────────────────────────────────────
 
@@ -386,21 +378,6 @@ class TestCommandBusIntegration:
         assert len(deleted) == 1
         assert deleted[0]["id"] == t.id
 
-    def test_full_pipeline_create_project(self, wired):
-        """CreateProject flows through the full pipeline."""
-        coord, events = wired
-        from src.core.intents.definitions import CreateProjectIntent
-
-        coord.command_bus.dispatch(CreateProjectIntent(name="Pipeline Project", color="#abcdef"))
-
-        created = events.of_type("project_created")
-        assert len(created) == 1
-        assert created[0]["name"] == "Pipeline Project"
-        assert created[0]["color"] == "#abcdef"
-
-        projects = coord.db.get_projects()
-        assert any(p.name == "Pipeline Project" for p in projects)
-
 
 # ── Graceful Degradation ─────────────────────────────────────────────────
 
@@ -415,7 +392,7 @@ class TestGracefulDegradation:
 
         from src.core.intents.definitions import (
             CommitEditsIntent,
-            CreateProjectIntent,
+            CreateTagIntent,
             DeleteTranscriptIntent,
         )
 
@@ -423,10 +400,10 @@ class TestGracefulDegradation:
 
         # All should succeed
         coord.command_bus.dispatch(CommitEditsIntent(transcript_id=t.id, content="edited"))
-        coord.command_bus.dispatch(CreateProjectIntent(name="AudioFree"))
+        coord.command_bus.dispatch(CreateTagIntent(name="AudioFree"))
         coord.command_bus.dispatch(DeleteTranscriptIntent(transcript_id=t.id))
 
-        assert len(events.of_type("project_created")) == 1
+        assert len(events.of_type("tag_created")) == 1
         assert len(events.of_type("transcript_deleted")) == 1
 
     def test_handlers_work_without_slm(self, wired):
@@ -452,8 +429,8 @@ class TestGracefulDegradation:
             BeginRecordingIntent,
             CancelRecordingIntent,
             CommitEditsIntent,
-            CreateProjectIntent,
-            DeleteProjectIntent,
+            CreateTagIntent,
+            DeleteTagIntent,
             DeleteTranscriptIntent,
             RefineTranscriptIntent,
             StopRecordingIntent,
@@ -467,11 +444,11 @@ class TestGracefulDegradation:
         coordinator.command_bus.dispatch(ToggleRecordingIntent())
         coordinator.command_bus.dispatch(DeleteTranscriptIntent(transcript_id=1))
         coordinator.command_bus.dispatch(CommitEditsIntent(transcript_id=1, content="x"))
-        coordinator.command_bus.dispatch(CreateProjectIntent(name="ghost"))
-        coordinator.command_bus.dispatch(DeleteProjectIntent(project_id=1))
+        coordinator.command_bus.dispatch(CreateTagIntent(name="ghost"))
+        coordinator.command_bus.dispatch(DeleteTagIntent(tag_id=1))
         coordinator.command_bus.dispatch(RefineTranscriptIntent(transcript_id=1, level=1))
 
         # No events emitted for DB-dependent operations when db=None
         assert len(event_collector.of_type("transcript_deleted")) == 0
-        assert len(event_collector.of_type("project_created")) == 0
-        assert len(event_collector.of_type("project_deleted")) == 0
+        assert len(event_collector.of_type("tag_created")) == 0
+        assert len(event_collector.of_type("tag_deleted")) == 0

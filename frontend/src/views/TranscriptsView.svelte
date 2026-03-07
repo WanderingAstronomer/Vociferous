@@ -1,98 +1,106 @@
 <script lang="ts">
     /**
-     * TranscriptionsView — Hierarchical project-tree transcript browser.
+     * TranscriptsView — Full-width card-based transcript browser.
      *
-     * Layout: [Project tree list (50%)] | [Detail panel (50%)]
-     *
-     * Transcripts are grouped under their parent project/subproject headers
-     * in a collapsible tree. Unassigned transcripts live at the bottom.
-     * Project management (create/rename/delete) uses a focused modal.
+     * Replaces the old split-panel project-tree layout with a flat,
+     * tag-filtered, searchable card list. Clicking a card navigates
+     * to the detail/edit view. Multi-select + bottom action bar.
      */
 
     import {
         getTranscripts,
-        getTranscript,
+        getConfig,
+        updateConfig,
+        updateTag,
+        searchTranscripts,
         deleteTranscript,
-        getProjects,
-        createProject,
-        updateProject,
-        deleteProject,
-        batchAssignProject,
         batchDeleteTranscripts,
+        getTags,
+        createTag,
+        deleteTag,
+        assignTags,
+        batchAssignTags,
         type Transcript,
-        type Project,
+        type Tag,
+        type SearchResult,
     } from "../lib/api";
     import { ws } from "../lib/ws";
     import { nav } from "../lib/navigation.svelte";
     import { SelectionManager } from "../lib/selection.svelte";
     import { onMount } from "svelte";
-    import { Trash2, RefreshCw, ChevronDown, ChevronRight, FileText, Loader2, Pencil, Plus } from "lucide-svelte";
-    import ProjectModal from "../lib/components/ProjectModal.svelte";
-    import type { ProjectModalResult } from "../lib/components/ProjectModal.svelte";
-    import TranscriptDetailPanel from "../lib/components/TranscriptDetailPanel.svelte";
-    import BulkActionsPanel from "../lib/components/BulkActionsPanel.svelte";
-    import ProjectContextMenu from "../lib/components/ProjectContextMenu.svelte";
-    import { formatDayHeader, formatTime, formatDuration, formatWpm, wordCount } from "../lib/formatters";
-
-    /* ===== Tree Node Types ===== */
-
-    type TreeNode = ProjectHeaderNode | TranscriptNode | UnassignedHeaderNode | DateHeaderNode;
-
-    interface ProjectHeaderNode {
-        type: "project-header";
-        key: string;
-        project: Project;
-        depth: number;
-        collapsed: boolean;
-        count: number;
-    }
-
-    interface TranscriptNode {
-        type: "transcript";
-        entry: Transcript;
-        depth: number;
-        parentColor: string | null;
-        isLastChild: boolean;
-    }
-
-    interface UnassignedHeaderNode {
-        type: "unassigned-header";
-        key: string;
-        collapsed: boolean;
-        count: number;
-    }
-
-    interface DateHeaderNode {
-        type: "date-header";
-        key: string;
-        label: string;
-        collapsed: boolean;
-        count: number;
-    }
+    import {
+        Search,
+        X,
+        Loader2,
+        FileText,
+        Trash2,
+        Pencil,
+        Sparkles,
+        Tag as TagIcon,
+        Plus,
+        Check,
+        Copy,
+        ChevronLeft,
+        ChevronRight,
+        ArrowUpDown,
+        Palette,
+    } from "lucide-svelte";
+    import StyledButton from "../lib/components/StyledButton.svelte";
+    import { formatDuration, wordCount, formatRelativeDate } from "../lib/formatters";
 
     /* ===== State ===== */
 
     let entries: Transcript[] = $state([]);
+    let totalCount = $state(0);
     let loading = $state(true);
     let error = $state("");
-    let selectedId = $state<number | null>(null);
-    let selectedEntry = $state<Transcript | null>(null);
-    let detailLoading = $state(false);
-    let refining = $state<number | null>(null);
-    let filterText = $state("");
-    let sectionCollapsed = $state(new Map<string, boolean>());
-    let projects: Project[] = $state([]);
-    let projectMenuOpen = $state(false);
-    let projectMenuX = $state(0);
-    let projectMenuY = $state(0);
 
-    let batchAssigning = $state(false);
+    // Pagination & Sort
+    let pageSize = $state(50);
+    let currentPage = $state(1);
+    let sortBy = $state("created_at");
+    let sortDir: "asc" | "desc" = $state("desc");
 
-    /* ===== Project Modal State ===== */
+    const PAGE_SIZES = [25, 50, 100] as const;
+    const SORT_OPTIONS = [
+        { value: "created_at", label: "Date" },
+        { value: "duration_ms", label: "Duration" },
+        { value: "words", label: "Words" },
+        { value: "silence", label: "Silence" },
+        { value: "display_name", label: "Title" },
+    ] as const;
 
-    let showProjectModal = $state(false);
-    let projectModalMode = $state<"create" | "edit" | "delete">("create");
-    let projectModalTarget = $state<Project | null>(null);
+    // Search (FTS)
+    let searchQuery = $state("");
+    let searchResults: Transcript[] = $state([]);
+    let searchTotal = $state(0);
+    let searching = $state(false);
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const SEARCH_PAGE_SIZE = 100;
+
+    // Tags
+    let allTags: Tag[] = $state([]);
+    let activeTagIds: Set<number> = $state(new Set());
+    let tagFilterMode: "any" | "all" = $state("any");
+
+    // Tag creation inline
+    let showTagCreate = $state(false);
+    let newTagName = $state("");
+    let newTagColor = $state("#5a9fd4");
+
+    // Tag context menu (right-click: edit color + delete)
+    let tagMenuId: number | null = $state(null);
+    let tagMenuX = $state(0);
+    let tagMenuY = $state(0);
+    let tagMenuColor = $state("");
+
+    // Tag assignment popover
+    let tagAssignOpen = $state(false);
+    let tagAssignX = $state(0);
+    let tagAssignY = $state(0);
+
+    // Copy feedback
+    let copied = $state(false);
 
     /* ===== Multi-Selection ===== */
 
@@ -100,201 +108,40 @@
 
     /* ===== Derived ===== */
 
-    /** Filter entries by search text. */
+    /** Are we in search mode? */
+    let isSearching = $derived(searchQuery.trim().length > 0);
+
+    /** Source entries: search results (client-filtered by tags) or server-paginated list. */
     let filteredEntries = $derived.by((): Transcript[] => {
-        if (!filterText.trim()) return entries;
-        const q = filterText.toLowerCase();
-        return entries.filter((e) => {
-            const text = (e.normalized_text || e.raw_text || "").toLowerCase();
-            const name = (e.display_name || "").toLowerCase();
-            return text.includes(q) || name.includes(q);
-        });
+        if (isSearching) {
+            // Search doesn't support server-side tag filtering — filter client-side
+            if (activeTagIds.size === 0) return searchResults;
+            return searchResults.filter((e) => {
+                const entryTagIds = new Set(e.tags.map((t) => t.id));
+                if (tagFilterMode === "all") {
+                    return [...activeTagIds].every((id) => entryTagIds.has(id));
+                }
+                return [...activeTagIds].some((id) => entryTagIds.has(id));
+            });
+        }
+        // Browse mode: entries already filtered/sorted/paginated server-side
+        return entries;
     });
 
-    /** Build the hierarchical tree: project headers → transcripts → unassigned (date-grouped). */
-    let treeNodes = $derived.by((): TreeNode[] => {
-        const nodes: TreeNode[] = [];
-        const byProject = new Map<number, Transcript[]>();
-        const unassigned: Transcript[] = [];
+    /** Pagination derived */
+    let totalPages = $derived(Math.max(1, Math.ceil(totalCount / pageSize)));
+    let displayTotal = $derived(isSearching ? searchTotal : totalCount);
 
-        for (const e of filteredEntries) {
-            if (e.project_id != null) {
-                if (!byProject.has(e.project_id)) byProject.set(e.project_id, []);
-                byProject.get(e.project_id)!.push(e);
-            } else {
-                unassigned.push(e);
-            }
-        }
+    /** Has more search results to load? */
+    let hasMore = $derived(isSearching && searchResults.length < searchTotal);
 
-        const sortDesc = (a: Transcript, b: Transcript) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    /** Ordered IDs for range selection. */
+    let orderedIds = $derived(filteredEntries.map((e) => e.id));
 
-        // Top-level projects sorted alphabetically
-        const topLevel = projects.filter((p) => !p.parent_id).sort((a, b) => a.name.localeCompare(b.name));
-
-        function addProject(project: Project, depth: number) {
-            const children = projects
-                .filter((p) => p.parent_id === project.id)
-                .sort((a, b) => a.name.localeCompare(b.name));
-
-            // Count transcripts belonging to this project + its sub-projects
-            const directTranscripts = byProject.get(project.id) ?? [];
-            let totalCount = directTranscripts.length;
-            for (const child of children) {
-                totalCount += (byProject.get(child.id) ?? []).length;
-            }
-
-            // Skip empty project sections when filtering
-            if (filterText.trim() && totalCount === 0) return;
-
-            const key = `project-${project.id}`;
-            const collapsed = isSectionCollapsed(key);
-
-            nodes.push({
-                type: "project-header",
-                key,
-                project,
-                depth,
-                collapsed,
-                count: totalCount,
-            });
-
-            if (!collapsed) {
-                const sorted = directTranscripts.sort(sortDesc);
-                const lastDirectIdx = sorted.length - 1;
-                const hasSubProjects = children.length > 0;
-                // Direct transcripts under this project
-                for (let i = 0; i < sorted.length; i++) {
-                    nodes.push({
-                        type: "transcript",
-                        entry: sorted[i],
-                        depth: depth + 1,
-                        parentColor: project.color ?? null,
-                        isLastChild: i === lastDirectIdx && !hasSubProjects,
-                    });
-                }
-                // Sub-projects
-                for (const child of children) {
-                    addProject(child, depth + 1);
-                }
-            }
-        }
-
-        for (const p of topLevel) {
-            addProject(p, 0);
-        }
-
-        // --- Unassigned section: date-grouped ---
-        if (!filterText.trim() || unassigned.length > 0) {
-            const key = "unassigned";
-            const collapsed = isSectionCollapsed(key);
-            nodes.push({
-                type: "unassigned-header",
-                key,
-                collapsed,
-                count: unassigned.length,
-            });
-            if (!collapsed) {
-                const sorted = unassigned.sort(sortDesc);
-                // Group by date bucket
-                const now = new Date();
-                const todayStr = now.toDateString();
-                const yesterday = new Date(now);
-                yesterday.setDate(yesterday.getDate() - 1);
-                const yesterdayStr = yesterday.toDateString();
-
-                const buckets = new Map<string, { label: string; entries: Transcript[] }>();
-                const bucketOrder: string[] = [];
-
-                for (const e of sorted) {
-                    const dt = new Date(e.created_at);
-                    const ds = dt.toDateString();
-                    let bucketKey: string;
-                    let label: string;
-                    if (ds === todayStr) {
-                        bucketKey = "date-today";
-                        label = "Today";
-                    } else if (ds === yesterdayStr) {
-                        bucketKey = "date-yesterday";
-                        label = "Yesterday";
-                    } else {
-                        bucketKey = `date-${ds}`;
-                        label = formatDayHeader(dt);
-                    }
-                    if (!buckets.has(bucketKey)) {
-                        buckets.set(bucketKey, { label, entries: [] });
-                        bucketOrder.push(bucketKey);
-                    }
-                    buckets.get(bucketKey)!.entries.push(e);
-                }
-
-                for (const bk of bucketOrder) {
-                    const bucket = buckets.get(bk)!;
-                    const dateKey = bk;
-                    const dateCollapsed = isSectionCollapsed(dateKey);
-                    nodes.push({
-                        type: "date-header",
-                        key: dateKey,
-                        label: bucket.label,
-                        collapsed: dateCollapsed,
-                        count: bucket.entries.length,
-                    });
-                    if (!dateCollapsed) {
-                        for (const e of bucket.entries) {
-                            nodes.push({
-                                type: "transcript",
-                                entry: e,
-                                depth: 2,
-                                parentColor: null,
-                                isLastChild: false,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        return nodes;
-    });
-
-    /** Flat list of visible transcript IDs in display order, for range selection. */
-    let orderedIds = $derived(
-        treeNodes.filter((n): n is TranscriptNode => n.type === "transcript").map((n) => n.entry.id),
+    /** The single selected entry (for single-select actions). */
+    let selectedEntry = $derived(
+        selection.count === 1 ? (filteredEntries.find((e) => e.id === selection.ids[0]) ?? null) : null,
     );
-
-    /** Build flat project options for context menu (with parent name prefix). */
-    let projectOptions = $derived.by(() => {
-        const opts: { value: string; label: string }[] = [{ value: "", label: "No Project" }];
-        const byId = new Map(projects.map((p) => [p.id, p]));
-        for (const p of projects) {
-            if (p.parent_id) {
-                const parent = byId.get(p.parent_id);
-                opts.push({ value: String(p.id), label: parent ? `${parent.name} / ${p.name}` : p.name });
-            } else {
-                opts.push({ value: String(p.id), label: p.name });
-            }
-        }
-        return opts;
-    });
-
-    /* ===== Section collapse ===== */
-
-    /** Returns the default collapsed state for a section key. Prior-day dates default collapsed; everything else defaults expanded. */
-    function defaultCollapsed(key: string): boolean {
-        return key.startsWith("date-") && key !== "date-today";
-    }
-
-    /** Returns whether a section is currently collapsed, respecting user overrides and defaults. */
-    function isSectionCollapsed(key: string): boolean {
-        const explicit = sectionCollapsed.get(key);
-        return explicit !== undefined ? explicit : defaultCollapsed(key);
-    }
-
-    function toggleSection(key: string) {
-        const next = new Map(sectionCollapsed);
-        next.set(key, !isSectionCollapsed(key));
-        sectionCollapsed = next;
-    }
 
     /* ===== Formatting ===== */
 
@@ -307,53 +154,138 @@
         return `Transcript #${entry.id}`;
     }
 
-    /* ===== Data loading ===== */
+    function truncate(text: string, max = 240): string {
+        if (text.length <= max) return text;
+        const cut = text.lastIndexOf(" ", max);
+        return (cut > 0 ? text.slice(0, cut) : text.slice(0, max)) + "…";
+    }
+
+    function highlight(text: string, q: string): string {
+        if (!q) return escapeHtml(text);
+        const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return escapeHtml(text).replace(new RegExp(`(${escaped})`, "gi"), '<mark class="search-hl">$1</mark>');
+    }
+
+    function escapeHtml(text: string): string {
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    /** Default tag color when none is set. */
+    function tagColor(tag: Tag): string {
+        return tag.color ?? "var(--accent)";
+    }
+
+    /* ===== Data Loading ===== */
+
+    let loadGeneration = 0; // debounce guard for rapid param changes
 
     async function loadTranscripts() {
+        const gen = ++loadGeneration;
         loading = entries.length === 0;
         error = "";
         try {
-            entries = await getTranscripts(200);
+            const tagIds = activeTagIds.size > 0 ? [...activeTagIds] : undefined;
+            const result = await getTranscripts({
+                limit: pageSize,
+                offset: (currentPage - 1) * pageSize,
+                sort_by: sortBy,
+                sort_dir: sortDir,
+                tag_ids: tagIds,
+                tag_mode: tagFilterMode,
+            });
+            if (gen !== loadGeneration) return; // stale response
+            entries = result.items;
+            totalCount = result.total;
         } catch (e: any) {
-            error = e.message;
+            if (gen === loadGeneration) error = e.message;
         } finally {
-            loading = false;
+            if (gen === loadGeneration) loading = false;
         }
     }
 
-    /** Handle click on a transcript row. Uses SelectionManager for multi-select. */
-    function handleEntryClick(id: number, event: MouseEvent) {
-        selection.handleClick(id, event, orderedIds);
-
-        if (selection.count === 1) {
-            const singleId = selection.ids[0];
-            loadEntryDetail(singleId);
-        } else {
-            selectedId = null;
-            selectedEntry = null;
-        }
-    }
-
-    async function loadEntryDetail(id: number, force = false) {
-        if (selectedId === id && !force) return;
-        selectedId = id;
-        detailLoading = true;
+    async function loadTags() {
         try {
-            selectedEntry = await getTranscript(id);
-        } catch (e: any) {
-            error = e.message;
-            selectedEntry = null;
-        } finally {
-            detailLoading = false;
+            allTags = await getTags();
+        } catch {
+            /* ignore */
         }
     }
 
-    async function selectEntry(id: number) {
-        selection.selectOnly(id);
-        await loadEntryDetail(id);
+    async function doSearch() {
+        if (!searchQuery.trim()) {
+            searchResults = [];
+            searchTotal = 0;
+            return;
+        }
+        searching = true;
+        error = "";
+        try {
+            const res: SearchResult = await searchTranscripts(searchQuery.trim(), SEARCH_PAGE_SIZE, 0);
+            searchResults = res.items;
+            searchTotal = res.total;
+        } catch (e: any) {
+            error = e.message;
+        } finally {
+            searching = false;
+        }
+    }
+
+    async function loadMore() {
+        if (!isSearching || !hasMore) return;
+        searching = true;
+        try {
+            const res: SearchResult = await searchTranscripts(
+                searchQuery.trim(),
+                SEARCH_PAGE_SIZE,
+                searchResults.length,
+            );
+            searchResults = [...searchResults, ...res.items];
+            searchTotal = res.total;
+        } catch (e: any) {
+            error = e.message;
+        } finally {
+            searching = false;
+        }
+    }
+
+    function handleSearchInput() {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        if (!searchQuery.trim()) {
+            searchResults = [];
+            searchTotal = 0;
+            return;
+        }
+        debounceTimer = setTimeout(() => doSearch(), 250);
+    }
+
+    /* ===== Card Click ===== */
+
+    function handleCardClick(id: number, event: MouseEvent) {
+        selection.handleClick(id, event, orderedIds);
+    }
+
+    function handleCardDblClick(id: number) {
+        nav.navigateToEdit(id, { view: "transcripts", transcriptId: id });
     }
 
     /* ===== Actions ===== */
+
+    function editSelected() {
+        if (!selectedEntry) return;
+        nav.navigateToEdit(selectedEntry.id, { view: "transcripts", transcriptId: selectedEntry.id });
+    }
+
+    function refineSelected() {
+        if (!selectedEntry) return;
+        nav.navigate("refine", selectedEntry.id);
+    }
+
+    function copySelectedText() {
+        if (!selectedEntry) return;
+        navigator.clipboard.writeText(getDisplayText(selectedEntry));
+        copied = true;
+        setTimeout(() => (copied = false), 1500);
+    }
 
     async function handleDelete() {
         if (selection.isMulti) {
@@ -361,167 +293,208 @@
             try {
                 await batchDeleteTranscripts(ids);
                 entries = entries.filter((e) => !selection.isSelected(e.id));
+                searchResults = searchResults.filter((e) => !selection.isSelected(e.id));
                 selection.clear();
-                selectedId = null;
-                selectedEntry = null;
             } catch (e: any) {
                 error = e.message;
             }
             return;
         }
-        if (selectedId == null) return;
+        if (!selectedEntry) return;
         try {
-            await deleteTranscript(selectedId);
-            entries = entries.filter((e) => e.id !== selectedId);
+            await deleteTranscript(selectedEntry.id);
+            entries = entries.filter((e) => e.id !== selectedEntry!.id);
+            searchResults = searchResults.filter((e) => e.id !== selectedEntry!.id);
             selection.clear();
-            selectedId = null;
-            selectedEntry = null;
         } catch (e: any) {
             error = e.message;
         }
     }
 
-    async function handleRefine() {
-        if (selectedId == null) return;
-        nav.navigate("refine", selectedId);
+    /* ===== Tag Filter ===== */
+
+    function toggleTagFilter(tagId: number) {
+        const next = new Set(activeTagIds);
+        if (next.has(tagId)) next.delete(tagId);
+        else next.add(tagId);
+        activeTagIds = next;
+        currentPage = 1;
+        loadTranscripts();
     }
 
-    function editSelected() {
-        if (!selectedEntry) return;
-        nav.navigateToEdit(selectedEntry.id, { view: "transcripts", transcriptId: selectedEntry.id });
+    function clearTagFilters() {
+        activeTagIds = new Set();
+        currentPage = 1;
+        loadTranscripts();
     }
 
-    /** Called by TranscriptDetailPanel when a title is renamed inline. */
-    function handleTitleRenamed(id: number, newTitle: string) {
-        if (selectedEntry && selectedEntry.id === id) {
-            selectedEntry.display_name = newTitle;
+    function cycleFilterMode() {
+        tagFilterMode = tagFilterMode === "any" ? "all" : "any";
+        currentPage = 1;
+        loadTranscripts();
+    }
+
+    /* ===== Pagination & Sort Controls ===== */
+
+    function setPageSize(size: number) {
+        pageSize = size;
+        currentPage = 1;
+        loadTranscripts();
+        // Persist to settings (fire-and-forget)
+        updateConfig({ user: { page_size: size } }).catch(() => {});
+    }
+
+    function setSort(by: string) {
+        if (sortBy === by) {
+            sortDir = sortDir === "desc" ? "asc" : "desc";
+        } else {
+            sortBy = by;
+            sortDir = "desc";
         }
-        const idx = entries.findIndex((e) => e.id === id);
-        if (idx >= 0) entries[idx].display_name = newTitle;
-        entries = [...entries];
+        currentPage = 1;
+        loadTranscripts();
     }
 
-    /** Called by TranscriptDetailPanel after a variant is deleted. */
-    function handleVariantDeleted() {
-        if (selectedEntry) loadEntryDetail(selectedEntry.id, true);
+    function goToPage(page: number) {
+        if (page < 1 || page > totalPages) return;
+        currentPage = page;
+        loadTranscripts();
     }
 
-    /* ===== Context Menu (project assignment) ===== */
+    /* ===== Tag Create ===== */
 
-    function openProjectMenu(event: MouseEvent, transcriptId: number) {
+    async function handleCreateTag() {
+        const name = newTagName.trim();
+        if (!name) return;
+        try {
+            await createTag(name, newTagColor);
+            newTagName = "";
+            showTagCreate = false;
+            await loadTags();
+        } catch (e: any) {
+            error = e.message;
+        }
+    }
+
+    async function handleDeleteTag(tagId: number) {
+        tagMenuId = null;
+        try {
+            await deleteTag(tagId);
+            const next = new Set(activeTagIds);
+            next.delete(tagId);
+            activeTagIds = next;
+            await loadTags();
+            await loadTranscripts();
+        } catch (e: any) {
+            error = e.message;
+        }
+    }
+
+    /* ===== Tag Context Menu ===== */
+
+    function openTagMenu(tagId: number, event: MouseEvent) {
         event.preventDefault();
         event.stopPropagation();
+        const tag = allTags.find((t) => t.id === tagId);
+        if (!tag) return;
+        tagMenuColor = tag.color ?? "#5a9fd4";
+        tagMenuX = Math.min(event.clientX, window.innerWidth - 200);
+        tagMenuY = event.clientY;
+        tagMenuId = tagId;
+    }
 
-        if (!selection.isSelected(transcriptId)) {
-            selection.selectOnly(transcriptId);
-            loadEntryDetail(transcriptId);
+    function closeTagMenu() {
+        tagMenuId = null;
+    }
+
+    async function handleTagColorChange(tagId: number, color: string) {
+        try {
+            await updateTag(tagId, { color });
+            await loadTags();
+            await loadTranscripts();
+        } catch (e: any) {
+            error = e.message;
         }
-
-        const menuWidth = 280;
-        const menuHeight = Math.min((projectOptions.length + 1) * 34, 360);
-        const x = Math.min(event.clientX, window.innerWidth - menuWidth - 8);
-        const y = Math.min(event.clientY, window.innerHeight - menuHeight - 8);
-
-        projectMenuX = Math.max(8, x);
-        projectMenuY = Math.max(8, y);
-        projectMenuOpen = true;
     }
 
-    function closeProjectMenu() {
-        projectMenuOpen = false;
+    /* ===== Tag Assignment Popover ===== */
+
+    function openTagAssign(event?: MouseEvent) {
+        event?.stopPropagation();
+        if (event?.currentTarget) {
+            const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+            tagAssignX = Math.min(rect.left, window.innerWidth - 280);
+            tagAssignY = rect.top - 8;
+        }
+        tagAssignOpen = true;
     }
 
-    async function assignProjectFromContext(value: string) {
-        const projectId = value === "" ? null : parseInt(value, 10);
-        closeProjectMenu();
+    function closeTagAssign() {
+        tagAssignOpen = false;
+    }
 
+    async function toggleTagOnSelected(tagId: number) {
         const ids = selection.ids;
         if (ids.length === 0) return;
 
-        batchAssigning = true;
-        try {
-            await batchAssignProject(ids, projectId);
-            if (selectedEntry && ids.includes(selectedEntry.id)) {
-                selectedEntry = await getTranscript(selectedEntry.id);
-            }
-            loadTranscripts();
-        } catch (err: any) {
-            console.error("Failed to assign project:", err);
-        } finally {
-            batchAssigning = false;
+        if (ids.length === 1) {
+            const entry = filteredEntries.find((e) => e.id === ids[0]);
+            if (!entry) return;
+            const currentTagIds = entry.tags.map((t) => t.id);
+            const newTagIds = currentTagIds.includes(tagId)
+                ? currentTagIds.filter((id) => id !== tagId)
+                : [...currentTagIds, tagId];
+            await assignTags(ids[0], newTagIds);
+        } else {
+            await batchAssignTags(ids, [tagId]);
         }
+        await loadTranscripts();
     }
 
-    /* ===== Project Modal ===== */
-
-    function openProjectModal(mode: "create" | "edit" | "delete", target: Project | null = null) {
-        projectModalMode = mode;
-        projectModalTarget = target;
-        showProjectModal = true;
-    }
-
-    async function handleProjectModalConfirm(result: ProjectModalResult) {
-        showProjectModal = false;
-        try {
-            if (result.mode === "create") {
-                await createProject(result.name, result.color, result.parentId);
-            } else if (result.mode === "edit") {
-                await updateProject(result.id, { name: result.name, color: result.color, parent_id: result.parentId });
-            } else if (result.mode === "delete") {
-                await deleteProject(result.id, {
-                    deleteTranscripts: result.deleteTranscripts,
-                    promoteSubprojects: result.promoteSubprojects,
-                    deleteSubprojectTranscripts: result.deleteSubprojectTranscripts,
-                });
-            }
-            projects = await getProjects();
-            await loadTranscripts();
-        } catch (e: any) {
-            console.error(`Project ${result.mode} failed:`, e);
-        }
-    }
-
-    function handleProjectModalCancel() {
-        showProjectModal = false;
-    }
-
-    /* ===== Globals ===== */
+    /* ===== Keyboard ===== */
 
     function handleGlobalPointerDown() {
-        if (projectMenuOpen) closeProjectMenu();
+        if (tagAssignOpen) closeTagAssign();
+        if (tagMenuId !== null) closeTagMenu();
     }
 
     function handleGlobalKeydown(event: KeyboardEvent) {
         if (event.key === "Escape") {
-            if (projectMenuOpen) closeProjectMenu();
-            else if (selection.isMulti) {
+            if (tagMenuId !== null) {
+                closeTagMenu();
+            } else if (tagAssignOpen) {
+                closeTagAssign();
+            } else if (selection.hasSelection) {
                 selection.clear();
-                selectedId = null;
-                selectedEntry = null;
             }
         }
         if ((event.ctrlKey || event.metaKey) && event.key === "a") {
-            const tag = (event.target as HTMLElement)?.tagName;
-            if (tag === "INPUT" || tag === "TEXTAREA") return;
+            const el = event.target as HTMLElement;
+            if (el?.tagName === "INPUT" || el?.tagName === "TEXTAREA") return;
             event.preventDefault();
             selection.selectAll(orderedIds);
-            selectedId = null;
-            selectedEntry = null;
         }
     }
 
-    /* ===== WebSocket ===== */
+    /* ===== Lifecycle ===== */
 
     onMount(() => {
-        loadTranscripts().then(() => {
-            const pending = nav.consumePendingTranscriptRequest();
-            if (pending && pending.id !== selectedId) {
-                selectEntry(pending.id);
-            }
-        });
-        getProjects()
-            .then((p) => (projects = p))
-            .catch(() => {});
+        // Load page_size from user settings, then load data
+        getConfig()
+            .then((cfg) => {
+                const userCfg = cfg?.user as Record<string, unknown> | undefined;
+                const savedSize = Number(userCfg?.page_size);
+                if ([25, 50, 100].includes(savedSize)) pageSize = savedSize;
+            })
+            .catch(() => {})
+            .finally(() => {
+                Promise.all([loadTranscripts(), loadTags()]).then(() => {
+                    const pending = nav.consumePendingTranscriptRequest();
+                    if (pending) {
+                        selection.selectOnly(pending.id);
+                    }
+                });
+            });
 
         document.addEventListener("pointerdown", handleGlobalPointerDown);
         document.addEventListener("keydown", handleGlobalKeydown);
@@ -530,340 +503,475 @@
             ws.on("transcription_complete", () => loadTranscripts()),
             ws.on("transcript_deleted", (data) => {
                 entries = entries.filter((e) => e.id !== data.id);
-                if (selectedId === data.id) {
-                    selectedId = null;
-                    selectedEntry = null;
-                }
+                searchResults = searchResults.filter((e) => e.id !== data.id);
+                if (selection.isSelected(data.id)) selection.clear();
             }),
             ws.on("transcripts_batch_deleted", (data) => {
                 const deleted = new Set(data.ids);
                 entries = entries.filter((e) => !deleted.has(e.id));
-                if (selectedId !== null && deleted.has(selectedId)) {
-                    selectedId = null;
-                    selectedEntry = null;
-                }
+                searchResults = searchResults.filter((e) => !deleted.has(e.id));
             }),
-            ws.on("refinement_complete", (data) => {
-                refining = null;
-                if (selectedId === data.transcript_id) loadEntryDetail(data.transcript_id, true);
-                loadTranscripts();
-            }),
-            ws.on("refinement_error", () => {
-                refining = null;
-            }),
-            ws.on("transcript_updated", (data) => {
-                if (selectedId === data.id) loadEntryDetail(data.id, true);
-                loadTranscripts();
-            }),
-            ws.on("project_created", () => {
-                getProjects()
-                    .then((p) => (projects = p))
-                    .catch(() => {});
-            }),
-            ws.on("project_updated", () => {
-                getProjects()
-                    .then((p) => (projects = p))
-                    .catch(() => {});
-            }),
-            ws.on("project_deleted", () => {
-                getProjects()
-                    .then((p) => (projects = p))
-                    .catch(() => {});
+            ws.on("refinement_complete", () => loadTranscripts()),
+            ws.on("refinement_error", () => {}),
+            ws.on("transcript_updated", () => loadTranscripts()),
+            ws.on("tag_created", () => loadTags()),
+            ws.on("tag_updated", () => loadTags()),
+            ws.on("tag_deleted", () => {
+                loadTags();
                 loadTranscripts();
             }),
         ];
+
         return () => {
             unsubs.forEach((fn) => fn());
             document.removeEventListener("pointerdown", handleGlobalPointerDown);
             document.removeEventListener("keydown", handleGlobalKeydown);
+            if (debounceTimer) clearTimeout(debounceTimer);
         };
     });
 </script>
 
-<div class="flex h-full overflow-hidden">
-    <!-- Master: List Panel (50%) -->
-    <div class="w-1/2 min-w-[280px] flex flex-col border-r border-[var(--shell-border)] bg-[var(--surface-primary)]">
-        <!-- Toolbar: selection info / refresh / new project / filter -->
-        <div class="flex items-center gap-2 p-2 px-3 shrink-0">
-            <button
-                class="inline-flex items-center gap-1 h-7 px-2.5 border-none rounded text-xs font-semibold text-[var(--text-tertiary)] bg-transparent cursor-pointer transition-colors duration-150 hover:text-[var(--accent)] hover:bg-[var(--hover-overlay)]"
-                onclick={() => openProjectModal("create")}
-            >
-                <Plus size={12} /> Create Project
-            </button>
-            {#if selection.isMulti}
-                <span class="text-xs text-[var(--accent)] font-semibold">{selection.count} selected</span>
-                <button
-                    class="text-xs text-[var(--text-tertiary)] bg-transparent border-none cursor-pointer hover:text-[var(--text-primary)] transition-colors"
-                    onclick={() => {
-                        selection.clear();
-                        selectedId = null;
-                        selectedEntry = null;
-                    }}>Clear</button
-                >
-            {/if}
-            <div class="flex-1"></div>
-            <button
-                class="w-7 h-7 border-none rounded bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center transition-colors duration-150 hover:text-[var(--text-primary)] hover:bg-[var(--hover-overlay)]"
-                onclick={loadTranscripts}
-                title="Refresh"
-            >
-                <RefreshCw size={14} />
-            </button>
-        </div>
+<!-- ========= TEMPLATE ========= -->
 
-        <div class="py-1 px-3 shrink-0">
+<div class="flex flex-col h-full overflow-hidden bg-[var(--surface-primary)]">
+    <!-- === Header: Search + Actions === -->
+    <div class="shrink-0 px-4 pt-3 pb-2 flex flex-col gap-2 border-b border-[var(--shell-border)]">
+        <!-- Row 1: Search bar -->
+        <div class="relative">
             <input
                 type="text"
-                class="w-full h-9 bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded text-[var(--text-primary)] text-sm px-2 outline-none transition-colors duration-150 focus:border-[var(--accent)] placeholder:text-[var(--text-tertiary)]"
-                placeholder="Filter transcripts…"
-                bind:value={filterText}
+                class="w-full h-9 bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-lg text-[var(--text-primary)] text-sm pl-3 pr-8 outline-none transition-colors duration-150 focus:border-[var(--accent)] placeholder:text-[var(--text-tertiary)]"
+                placeholder="Search transcripts…"
+                bind:value={searchQuery}
+                oninput={handleSearchInput}
             />
+            {#if searchQuery}
+                <button
+                    class="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] bg-transparent border-none cursor-pointer p-0 flex items-center justify-center rounded transition-colors"
+                    onclick={() => {
+                        searchQuery = "";
+                        searchResults = [];
+                        searchTotal = 0;
+                    }}
+                    title="Clear search"
+                >
+                    <X size={13} />
+                </button>
+            {:else}
+                <Search
+                    size={14}
+                    class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none"
+                />
+            {/if}
         </div>
 
-        <!-- Tree list -->
-        <div class="flex-1 overflow-y-auto pb-2">
-            {#if loading}
-                <div
-                    class="flex flex-col items-center justify-center gap-1 h-[200px] text-[var(--text-tertiary)] text-sm"
+        <!-- Row 2: Tag filter chips -->
+        <div class="flex items-center justify-center gap-1.5 flex-wrap min-h-[28px]">
+            {#each allTags as tag (tag.id)}
+                <button
+                    class="inline-flex items-center gap-1 h-6 px-2 rounded-full text-xs font-medium border cursor-pointer transition-all duration-150 select-none"
+                    style={activeTagIds.has(tag.id)
+                        ? `background: color-mix(in srgb, ${tagColor(tag)} 30%, transparent); border-color: ${tagColor(tag)}; color: var(--text-primary);`
+                        : `background: transparent; border-color: var(--shell-border); color: var(--text-tertiary);`}
+                    onclick={() => toggleTagFilter(tag.id)}
+                    oncontextmenu={(e) => openTagMenu(tag.id, e)}
+                    title="Click to filter · Right-click to edit/delete"
                 >
-                    <Loader2 size={20} class="animate-spin" /><span>Loading transcriptions…</span>
-                </div>
-            {:else if error}
-                <div
-                    class="flex flex-col items-center justify-center gap-1 h-[200px] text-[var(--color-danger)] text-sm"
-                >
-                    {error}
-                </div>
-            {:else if treeNodes.length === 0}
-                <div
-                    class="flex flex-col items-center justify-center gap-1 h-[200px] text-[var(--text-tertiary)] text-sm"
-                >
-                    {filterText ? "No matches found" : "No transcripts yet"}
-                </div>
-            {:else}
-                {#each treeNodes as node, nodeIdx (node.type === "transcript" ? `t-${node.entry.id}` : node.type === "project-header" ? node.key : node.type === "date-header" ? node.key : "unassigned")}
-                    {#if node.type === "project-header"}
-                        <!-- Divider before each top-level project except the first node -->
-                        {#if node.depth === 0 && nodeIdx > 0}
-                            <div class="h-px mx-3 my-3 bg-[var(--accent)] opacity-60"></div>
-                        {/if}
-                        <!-- Project header row -->
-                        <div
-                            class="group/hdr flex items-center gap-1.5 pl-3 pr-1.5 rounded-md cursor-pointer text-left transition-colors duration-150 hover:brightness-110 {node.depth ===
-                            0
-                                ? 'py-2'
-                                : 'py-1.5'}"
-                            style="margin-left: calc({node.depth * 16}px + 4px); width: calc(100% - {node.depth *
-                                16}px - 12px); background: {node.project.color
-                                ? `color-mix(in srgb, ${node.project.color} 35%, transparent)`
-                                : 'var(--surface-secondary)'}; {node.depth === 0
-                                ? `border-left: 3px solid ${node.project.color ?? 'var(--accent-muted)'};`
-                                : ''}"
-                            role="button"
-                            tabindex="0"
-                            onclick={() => toggleSection(node.key)}
-                            onkeydown={(e) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    toggleSection(node.key);
-                                }
-                            }}
-                        >
-                            <span class="flex items-center text-[var(--text-tertiary)] shrink-0">
-                                {#if node.collapsed}<ChevronRight size={14} />{:else}<ChevronDown size={14} />{/if}
-                            </span>
-                            {#if node.depth > 0 && node.project.color}
-                                <span
-                                    class="shrink-0 rounded-full"
-                                    style="width: 7px; height: 7px; background: {node.project.color}; opacity: 0.85;"
-                                ></span>
-                            {/if}
-                            <span
-                                class="flex-1 text-xs font-semibold {node.depth === 0
-                                    ? 'text-[var(--text-primary)]'
-                                    : 'text-[var(--text-secondary)]'} uppercase tracking-wide truncate {node.depth > 0
-                                    ? 'text-left'
-                                    : 'text-center'}"
-                            >
-                                {node.project.name}
-                            </span>
-                            <!-- Hover actions: edit / delete (left of count) -->
-                            <button
-                                class="w-5 h-5 border-none rounded bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center opacity-0 group-hover/hdr:opacity-100 hover:text-[var(--accent)] transition-all shrink-0"
-                                onclick={(e) => {
-                                    e.stopPropagation();
-                                    openProjectModal("edit", node.project);
-                                }}
-                                title="Edit project"
-                            >
-                                <Pencil size={11} />
-                            </button>
-                            <button
-                                class="w-5 h-5 border-none rounded bg-transparent text-[var(--text-tertiary)] cursor-pointer flex items-center justify-center opacity-0 group-hover/hdr:opacity-100 hover:text-[var(--color-danger)] transition-all shrink-0"
-                                onclick={(e) => {
-                                    e.stopPropagation();
-                                    openProjectModal("delete", node.project);
-                                }}
-                                title="Delete project"
-                            >
-                                <Trash2 size={11} />
-                            </button>
-                            <!-- Count badge (always rightmost) -->
-                            <span
-                                class="text-xs font-semibold px-1.5 py-px rounded-lg shrink-0"
-                                style={node.project.color
-                                    ? `background: color-mix(in srgb, ${node.project.color} 25%, var(--surface-tertiary)); color: var(--text-primary);`
-                                    : "background: var(--surface-tertiary); color: var(--text-primary);"}
-                            >
-                                {node.count}
-                            </span>
-                        </div>
-                    {:else if node.type === "unassigned-header"}
-                        <!-- Unassigned section header -->
-                        {#if nodeIdx > 0}
-                            <div class="h-px mx-3 my-3 bg-[var(--accent)] opacity-60"></div>
-                        {/if}
-                        <button
-                            class="flex items-center gap-1.5 p-1.5 px-3 border-none rounded-md bg-[var(--surface-secondary)] cursor-pointer text-left transition-colors duration-150 hover:brightness-110"
-                            style="margin-left: 4px; width: calc(100% - 12px);"
-                            onclick={() => toggleSection(node.key)}
-                        >
-                            <span class="flex items-center text-[var(--text-tertiary)] shrink-0">
-                                {#if node.collapsed}<ChevronRight size={14} />{:else}<ChevronDown size={14} />{/if}
-                            </span>
-                            <span
-                                class="flex-1 text-xs font-semibold text-[var(--text-tertiary)] uppercase tracking-wide text-center"
-                            >
-                                Unassigned
-                            </span>
-                        </button>
-                    {:else if node.type === "date-header"}
-                        <!-- Date group header (under Unassigned) -->
-                        <button
-                            class="flex items-center gap-1.5 w-full p-1 px-3 border-none bg-transparent cursor-pointer text-left transition-colors duration-150 hover:bg-[var(--hover-overlay)]"
-                            style="padding-left: 28px"
-                            onclick={() => toggleSection(node.key)}
-                        >
-                            <span class="flex items-center text-[var(--text-tertiary)] shrink-0">
-                                {#if node.collapsed}<ChevronRight size={12} />{:else}<ChevronDown size={12} />{/if}
-                            </span>
-                            <span class="flex-1 text-xs font-semibold text-[var(--accent)] tracking-wide text-center">
-                                {node.label}
-                            </span>
-                            <span
-                                class="text-xs font-semibold text-[var(--text-primary)] bg-[var(--surface-tertiary)] px-1.5 py-px rounded-lg shrink-0"
-                            >
-                                {node.count}
-                            </span>
-                        </button>
-                    {:else}
-                        <!-- Transcript row -->
-                        <button
-                            class="flex items-stretch w-full p-1 border-none bg-transparent cursor-pointer text-left transition-colors duration-150 hover:bg-[var(--hover-overlay)]"
-                            class:bg-[var(--hover-overlay-blue)]={selection.isSelected(node.entry.id)}
-                            style="padding-left: {12 + node.depth * 16}px"
-                            onclick={(e) => handleEntryClick(node.entry.id, e)}
-                            oncontextmenu={(e) => openProjectMenu(e, node.entry.id)}
-                        >
-                            <!-- Selection accent bar (always shown) -->
-                            <div
-                                class="w-0.5 rounded-sm shrink-0 mr-1 transition-colors duration-150"
-                                class:bg-[var(--accent)]={selection.isSelected(node.entry.id)}
-                            ></div>
-                            <!-- Tree connecting line (project-assigned only) -->
-                            {#if node.parentColor}
-                                <div class="relative w-4 shrink-0 mr-1">
-                                    <!-- Vertical line -->
-                                    <div
-                                        class="absolute left-1 top-0 w-px"
-                                        style="background: {node.parentColor}; opacity: 0.6; height: {node.isLastChild
-                                            ? '50%'
-                                            : '100%'}"
-                                    ></div>
-                                    <!-- Horizontal connector -->
-                                    <div
-                                        class="absolute left-1 top-1/2 h-px w-2.5"
-                                        style="background: {node.parentColor}; opacity: 0.6"
-                                    ></div>
-                                </div>
-                            {/if}
-                            <div class="flex-1 min-w-0 flex flex-col gap-0.5 py-0.5">
-                                <span
-                                    class="text-sm font-semibold text-[var(--text-primary)] leading-normal overflow-hidden text-ellipsis whitespace-nowrap"
-                                >
-                                    {getTitle(node.entry)}
-                                </span>
-                                <span
-                                    class="text-xs text-[var(--text-secondary)] leading-snug overflow-hidden text-ellipsis whitespace-nowrap"
-                                >
-                                    {getDisplayText(node.entry)}
-                                </span>
-                                <span
-                                    class="flex items-center justify-between text-xs text-[var(--text-tertiary)] font-mono"
-                                >
-                                    <span>{formatTime(node.entry.created_at)}</span>
-                                    <span>{wordCount(getDisplayText(node.entry)).toLocaleString()} words</span>
-                                </span>
-                            </div>
-                        </button>
+                    <span class="w-2 h-2 rounded-full shrink-0" style="background: {tagColor(tag)}"></span>
+                    {tag.name}
+                    {#if activeTagIds.has(tag.id)}
+                        <X size={10} class="ml-0.5 opacity-60" />
                     {/if}
-                {/each}
+                </button>
+            {/each}
+
+            {#if activeTagIds.size > 0}
+                <button
+                    class="h-6 px-2 rounded-full text-xs font-semibold border border-[var(--accent-muted)] bg-transparent text-[var(--accent)] cursor-pointer transition-colors hover:bg-[var(--hover-overlay)]"
+                    onclick={cycleFilterMode}
+                    title="Toggle between matching ANY or ALL selected tags"
+                >
+                    {tagFilterMode === "any" ? "ANY" : "ALL"}
+                </button>
+                <button
+                    class="h-6 px-1.5 rounded-full text-xs text-[var(--text-tertiary)] bg-transparent border-none cursor-pointer hover:text-[var(--text-primary)] transition-colors"
+                    onclick={clearTagFilters}
+                >
+                    Clear
+                </button>
+            {/if}
+
+            {#if allTags.length > 0}
+                <div class="w-px h-4 bg-[var(--shell-border)] mx-0.5"></div>
+            {/if}
+
+            <!-- Inline tag creation -->
+            {#if showTagCreate}
+                <form
+                    class="inline-flex items-center gap-1"
+                    onsubmit={(e) => {
+                        e.preventDefault();
+                        handleCreateTag();
+                    }}
+                >
+                    <input
+                        type="color"
+                        class="w-5 h-5 border-none rounded cursor-pointer p-0 bg-transparent"
+                        bind:value={newTagColor}
+                    />
+                    <input
+                        type="text"
+                        class="h-6 w-24 px-1.5 rounded text-xs bg-[var(--surface-secondary)] border border-[var(--shell-border)] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                        placeholder="Tag name"
+                        bind:value={newTagName}
+                    />
+                    <button
+                        type="submit"
+                        class="w-5 h-5 rounded bg-[var(--accent)] text-[var(--gray-0)] border-none cursor-pointer flex items-center justify-center"
+                        disabled={!newTagName.trim()}
+                    >
+                        <Check size={11} />
+                    </button>
+                    <button
+                        type="button"
+                        class="w-5 h-5 rounded bg-transparent text-[var(--text-tertiary)] border-none cursor-pointer flex items-center justify-center hover:text-[var(--text-primary)]"
+                        onclick={() => {
+                            showTagCreate = false;
+                            newTagName = "";
+                        }}
+                    >
+                        <X size={11} />
+                    </button>
+                </form>
+            {:else}
+                <button
+                    class="inline-flex items-center gap-1 h-6 px-2 rounded-full text-xs text-[var(--text-tertiary)] bg-transparent border border-dashed border-[var(--shell-border)] cursor-pointer transition-colors hover:text-[var(--accent)] hover:border-[var(--accent)]"
+                    onclick={() => (showTagCreate = true)}
+                    title={allTags.length > 0 ? "Create new tag" : "Create your first tag"}
+                >
+                    <Plus size={10} />
+                    {allTags.length > 0 ? "Tag" : "Create a tag"}
+                </button>
             {/if}
         </div>
     </div>
 
-    <!-- Detail: Content Panel (50%) -->
-    <div class="flex-1 flex flex-col overflow-hidden bg-[var(--surface-secondary)]">
-        {#if detailLoading}
-            <div class="flex-1 flex flex-col items-center justify-center gap-2 text-[var(--text-tertiary)] text-sm">
-                <Loader2 size={24} class="animate-spin" />
+    <!-- === Controls row: result count + sort + per-page === -->
+    <div class="shrink-0 px-4 py-1.5 flex items-center gap-3 text-[13px] text-[var(--text-tertiary)]">
+        <!-- Result count (left) -->
+        <span class="shrink-0">
+            {#if isSearching && !searching}
+                {#if searchTotal > filteredEntries.length}
+                    Showing {filteredEntries.length} of {searchTotal} results for "{searchQuery}"
+                {:else}
+                    {filteredEntries.length} result{filteredEntries.length !== 1 ? "s" : ""} for "{searchQuery}"
+                {/if}
+            {:else if !loading}
+                {displayTotal} transcript{displayTotal !== 1 ? "s" : ""}
+                {#if activeTagIds.size > 0}
+                    <span class="text-[var(--accent)]">(filtered)</span>
+                {/if}
+            {/if}
+        </span>
+
+        <div class="flex-1"></div>
+
+        <!-- Sort control (right, browse mode only) -->
+        {#if !isSearching}
+            <div class="flex items-center gap-1 shrink-0">
+                <ArrowUpDown size={12} class="text-[var(--text-tertiary)]" />
+                {#each SORT_OPTIONS as opt (opt.value)}
+                    <button
+                        class="h-6 px-1.5 rounded text-[11px] border-none cursor-pointer transition-colors"
+                        class:bg-[var(--hover-overlay)]={sortBy === opt.value}
+                        class:text-[var(--text-primary)]={sortBy === opt.value}
+                        class:font-semibold={sortBy === opt.value}
+                        class:bg-transparent={sortBy !== opt.value}
+                        class:text-[var(--text-tertiary)]={sortBy !== opt.value}
+                        class:hover:text-[var(--text-secondary)]={sortBy !== opt.value}
+                        onclick={() => setSort(opt.value)}
+                        title="Sort by {opt.label}{sortBy === opt.value
+                            ? sortDir === 'asc'
+                                ? ' (ascending)'
+                                : ' (descending)'
+                            : ''}"
+                    >
+                        {opt.label}{sortBy === opt.value ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                    </button>
+                {/each}
             </div>
-        {:else if selection.isMulti}
-            <BulkActionsPanel
-                count={selection.count}
-                onAssignProject={(e) => openProjectMenu(e, selection.ids[0])}
-                onDelete={handleDelete}
-            />
-        {:else if selectedEntry}
-            <TranscriptDetailPanel
-                entry={selectedEntry}
-                {refining}
-                onEdit={editSelected}
-                onRefine={handleRefine}
-                onDelete={handleDelete}
-                onTitleRenamed={handleTitleRenamed}
-                onVariantDeleted={handleVariantDeleted}
-            />
-        {:else}
-            <div class="flex-1 flex flex-col items-center justify-center gap-2 text-[var(--text-tertiary)] text-sm">
-                <FileText size={32} strokeWidth={1} />
-                <p>Select a transcript</p>
+
+            <!-- Per-page selector -->
+            <div class="flex items-center gap-0.5 shrink-0 border-l border-[var(--shell-border)] pl-3">
+                {#each PAGE_SIZES as size (size)}
+                    <button
+                        class="h-6 px-1.5 rounded text-[11px] border-none cursor-pointer transition-colors"
+                        class:bg-[var(--hover-overlay)]={pageSize === size}
+                        class:text-[var(--text-primary)]={pageSize === size}
+                        class:font-semibold={pageSize === size}
+                        class:bg-transparent={pageSize !== size}
+                        class:text-[var(--text-tertiary)]={pageSize !== size}
+                        class:hover:text-[var(--text-secondary)]={pageSize !== size}
+                        onclick={() => setPageSize(size)}
+                    >
+                        {size}
+                    </button>
+                {/each}
+                <span class="text-[10px] text-[var(--text-tertiary)] ml-0.5">/ page</span>
             </div>
         {/if}
     </div>
+
+    <!-- === Card List === -->
+    <div class="flex-1 overflow-y-auto px-4 pb-2">
+        {#if loading}
+            <div class="flex flex-col items-center justify-center gap-2 h-[200px] text-[var(--text-tertiary)] text-sm">
+                <Loader2 size={20} class="animate-spin" /><span>Loading…</span>
+            </div>
+        {:else if error}
+            <div class="flex flex-col items-center justify-center gap-2 h-[200px] text-[var(--color-danger)] text-sm">
+                {error}
+            </div>
+        {:else if filteredEntries.length === 0}
+            <div class="flex flex-col items-center justify-center gap-3 h-[200px] text-[var(--text-tertiary)] text-sm">
+                <FileText size={32} strokeWidth={1} />
+                <span>
+                    {#if isSearching}
+                        No results for "{searchQuery}"
+                    {:else if activeTagIds.size > 0}
+                        No transcripts match selected tags
+                    {:else}
+                        No transcripts yet
+                    {/if}
+                </span>
+            </div>
+        {:else}
+            <div class="flex flex-col gap-1.5 pt-1">
+                {#each filteredEntries as entry (entry.id)}
+                    <button
+                        class="w-full text-left p-3 rounded-lg border cursor-pointer transition-all duration-150 group/card"
+                        class:bg-[var(--hover-overlay-blue)]={selection.isSelected(entry.id)}
+                        class:border-[var(--accent)]={selection.isSelected(entry.id)}
+                        class:bg-[var(--surface-secondary)]={!selection.isSelected(entry.id)}
+                        class:border-[var(--shell-border)]={!selection.isSelected(entry.id)}
+                        class:hover:border-[var(--accent-muted)]={!selection.isSelected(entry.id)}
+                        class:hover:bg-[var(--hover-overlay)]={!selection.isSelected(entry.id)}
+                        onclick={(e) => handleCardClick(entry.id, e)}
+                        ondblclick={() => handleCardDblClick(entry.id)}
+                    >
+                        <!-- Title row -->
+                        <div class="flex items-start justify-between gap-2 mb-1">
+                            <h3
+                                class="text-[18px] font-semibold text-[var(--text-primary)] leading-snug m-0 truncate flex-1"
+                            >
+                                {getTitle(entry)}
+                            </h3>
+                            <span class="text-[12px] text-[var(--text-tertiary)] font-mono shrink-0 pt-0.5">
+                                {formatRelativeDate(entry.created_at)}
+                            </span>
+                        </div>
+
+                        <!-- Text preview -->
+                        <p class="text-[15px] text-[var(--text-secondary)] leading-relaxed m-0 mb-2 line-clamp-2">
+                            {#if isSearching}
+                                {@html highlight(truncate(getDisplayText(entry)), searchQuery)}
+                            {:else}
+                                {truncate(getDisplayText(entry))}
+                            {/if}
+                        </p>
+
+                        <!-- Bottom row: tags + metadata -->
+                        <div class="flex items-center gap-2 flex-wrap pt-1.5 mt-0.5">
+                            {#each entry.tags as tag (tag.id)}
+                                <span
+                                    class="inline-flex items-center gap-1 h-5 px-1.5 rounded-full text-[10px] font-medium"
+                                    style="background: color-mix(in srgb, {tagColor(
+                                        tag,
+                                    )} 25%, transparent); color: var(--text-primary);"
+                                >
+                                    <span class="w-1.5 h-1.5 rounded-full" style="background: {tagColor(tag)}"></span>
+                                    {tag.name}
+                                </span>
+                            {/each}
+
+                            <div class="flex-1"></div>
+
+                            <span class="text-[11px] text-[var(--text-tertiary)] font-mono">
+                                {formatDuration(entry.duration_ms)}
+                            </span>
+                            <span class="text-[11px] text-[var(--text-tertiary)] font-mono">
+                                {wordCount(getDisplayText(entry)).toLocaleString()} words
+                            </span>
+                        </div>
+                    </button>
+                {/each}
+            </div>
+
+            {#if isSearching && hasMore}
+                <div class="flex justify-center py-3">
+                    <StyledButton size="sm" variant="secondary" onclick={loadMore} disabled={searching}>
+                        {#if searching}<Loader2 size={14} class="animate-spin" /> Loading…{:else}Load More ({searchTotal -
+                                searchResults.length} remaining){/if}
+                    </StyledButton>
+                </div>
+            {:else if !isSearching && totalPages > 1}
+                <div class="flex items-center justify-center gap-3 py-3 text-[13px]">
+                    <button
+                        class="flex items-center gap-1 h-7 px-2 rounded text-[var(--text-secondary)] bg-transparent border border-[var(--shell-border)] cursor-pointer transition-colors hover:bg-[var(--hover-overlay)] disabled:opacity-30 disabled:cursor-default"
+                        onclick={() => goToPage(currentPage - 1)}
+                        disabled={currentPage <= 1}
+                    >
+                        <ChevronLeft size={14} /> Prev
+                    </button>
+                    <span class="text-[var(--text-tertiary)] tabular-nums">
+                        Page {currentPage} of {totalPages}
+                    </span>
+                    <button
+                        class="flex items-center gap-1 h-7 px-2 rounded text-[var(--text-secondary)] bg-transparent border border-[var(--shell-border)] cursor-pointer transition-colors hover:bg-[var(--hover-overlay)] disabled:opacity-30 disabled:cursor-default"
+                        onclick={() => goToPage(currentPage + 1)}
+                        disabled={currentPage >= totalPages}
+                    >
+                        Next <ChevronRight size={14} />
+                    </button>
+                </div>
+            {/if}
+        {/if}
+    </div>
+
+    <!-- === Bottom Action Bar === -->
+    {#if selection.hasSelection}
+        <div
+            class="shrink-0 flex items-center gap-2 px-4 py-2.5 border-t border-[var(--shell-border)] bg-[var(--surface-secondary)]"
+        >
+            <span class="text-xs font-semibold text-[var(--accent)]">
+                {selection.count} selected
+            </span>
+
+            {#if selection.count === 1}
+                <StyledButton size="sm" variant="secondary" onclick={editSelected}>
+                    <Pencil size={13} /> Edit
+                </StyledButton>
+                <StyledButton size="sm" variant="secondary" onclick={refineSelected}>
+                    <Sparkles size={13} /> Refine
+                </StyledButton>
+                <StyledButton size="sm" variant="secondary" onclick={copySelectedText}>
+                    {#if copied}<Check size={13} /> Copied{:else}<Copy size={13} /> Copy{/if}
+                </StyledButton>
+            {/if}
+
+            <StyledButton size="sm" variant="secondary" onclick={openTagAssign}>
+                <TagIcon size={13} /> Tag{selection.isMulti ? ` ${selection.count}` : ""}
+            </StyledButton>
+
+            <div class="flex-1"></div>
+
+            <button
+                class="text-xs text-[var(--text-tertiary)] bg-transparent border-none cursor-pointer hover:text-[var(--text-primary)] transition-colors"
+                onclick={() => selection.clear()}
+            >
+                Clear
+            </button>
+
+            <StyledButton size="sm" variant="destructive" onclick={handleDelete}>
+                <Trash2 size={13} />
+                {selection.isMulti ? `Delete ${selection.count}` : "Delete"}
+            </StyledButton>
+        </div>
+    {/if}
 </div>
 
-<!-- Context menu: project assignment -->
-{#if projectMenuOpen}
-    <ProjectContextMenu
-        x={projectMenuX}
-        y={projectMenuY}
-        options={projectOptions}
-        isMulti={selection.isMulti}
-        selectionCount={selection.count}
-        currentProjectId={selectedEntry?.project_id?.toString() ?? ""}
-        onSelect={assignProjectFromContext}
-    />
+<!-- === Tag Assignment Popover === -->
+{#if tagAssignOpen}
+    <div class="fixed inset-0 z-[199]" onclick={closeTagAssign} role="presentation"></div>
+    <div
+        class="fixed min-w-[220px] max-w-[300px] max-h-[320px] overflow-y-auto bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-lg shadow-[0_12px_28px_rgba(0,0,0,0.45)] py-1 z-[200]"
+        style="left: {tagAssignX}px; bottom: {window.innerHeight - tagAssignY}px"
+        role="menu"
+        tabindex="-1"
+        onpointerdown={(e) => e.stopPropagation()}
+    >
+        <div class="px-3 py-1.5 text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">
+            {selection.isMulti ? `Tag ${selection.count} transcripts` : "Toggle tags"}
+        </div>
+        {#if allTags.length === 0}
+            <div class="px-3 py-2 text-xs text-[var(--text-tertiary)]">No tags yet. Create one above.</div>
+        {:else}
+            {#each allTags as tag (tag.id)}
+                {@const isOn = selectedEntry ? selectedEntry.tags.some((t) => t.id === tag.id) : false}
+                <button
+                    class="w-full flex items-center gap-2 px-3 py-1.5 border-none bg-transparent text-left text-sm cursor-pointer transition-colors duration-150 hover:bg-[var(--hover-overlay)] text-[var(--text-primary)]"
+                    onclick={() => toggleTagOnSelected(tag.id)}
+                    role="menuitem"
+                >
+                    <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background: {tagColor(tag)}"></span>
+                    <span class="flex-1 truncate">{tag.name}</span>
+                    {#if isOn}
+                        <Check size={13} class="text-[var(--accent)] shrink-0" />
+                    {/if}
+                </button>
+            {/each}
+        {/if}
+    </div>
 {/if}
 
-<!-- Project modal: create / rename / delete -->
-{#if showProjectModal}
-    <ProjectModal
-        mode={projectModalMode}
-        target={projectModalTarget}
-        {projects}
-        onconfirm={handleProjectModalConfirm}
-        oncancel={handleProjectModalCancel}
-    />
+<!-- === Tag Context Menu (right-click on tag chip) === -->
+{#if tagMenuId !== null}
+    <div
+        class="fixed inset-0 z-[249]"
+        onclick={closeTagMenu}
+        oncontextmenu={(e) => {
+            e.preventDefault();
+            closeTagMenu();
+        }}
+        role="presentation"
+    ></div>
+    <div
+        class="fixed w-[180px] bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-lg shadow-[0_12px_28px_rgba(0,0,0,0.45)] py-1 z-[250]"
+        style="left: {tagMenuX}px; top: {tagMenuY}px;"
+        role="menu"
+        tabindex="-1"
+        onpointerdown={(e) => e.stopPropagation()}
+    >
+        <div class="px-3 py-1.5 text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">Edit tag</div>
+        <!-- Color picker row -->
+        <div class="flex items-center gap-2 px-3 py-1.5">
+            <Palette size={13} class="text-[var(--text-tertiary)] shrink-0" />
+            <span class="text-xs text-[var(--text-secondary)]">Color</span>
+            <div class="flex-1"></div>
+            <input
+                type="color"
+                class="w-6 h-6 border border-[var(--shell-border)] rounded cursor-pointer p-0 bg-transparent"
+                value={tagMenuColor}
+                onchange={(e) => {
+                    const target = e.currentTarget as HTMLInputElement;
+                    if (tagMenuId !== null) {
+                        tagMenuColor = target.value;
+                        handleTagColorChange(tagMenuId, target.value);
+                    }
+                }}
+            />
+        </div>
+        <!-- Divider -->
+        <div class="h-px bg-[var(--shell-border)] mx-2 my-1"></div>
+        <!-- Delete -->
+        <button
+            class="w-full flex items-center gap-2 px-3 py-1.5 border-none bg-transparent text-left text-xs cursor-pointer transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--color-danger)_15%,transparent)] text-[var(--color-danger)]"
+            onclick={() => {
+                if (tagMenuId !== null) handleDeleteTag(tagMenuId);
+            }}
+            role="menuitem"
+        >
+            <Trash2 size={13} />
+            Delete tag
+        </button>
+    </div>
 {/if}
+
+<style>
+    :global(.search-hl) {
+        background: rgba(90, 159, 212, 0.3);
+        color: inherit;
+        border-radius: 2px;
+        padding: 0 1px;
+    }
+</style>

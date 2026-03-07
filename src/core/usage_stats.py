@@ -50,7 +50,7 @@ def compute_usage_stats(db: TranscriptDB, typing_wpm: int = _TYPING_WPM) -> dict
     Returns an empty dict if there are no transcripts or the DB is unavailable.
     Used as the stats_provider for both InsightManager and MOTDManager.
     """
-    transcripts = db.recent(limit=10000)
+    transcripts, _ = db.recent(limit=10000)
     if not transcripts:
         return {}
 

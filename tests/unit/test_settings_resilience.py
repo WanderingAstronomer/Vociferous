@@ -181,11 +181,11 @@ class TestDeepMerge:
     def test_sequential_updates_accumulate(self, tmp_path: Path) -> None:
         init_settings(config_path=tmp_path / "settings.json")
         update_settings(user={"name": "First"})
-        update_settings(user={"active_project_id": 42})
+        update_settings(user={"typing_wpm": 80})
 
         s = get_settings()
         assert s.user.name == "First"
-        assert s.user.active_project_id == 42
+        assert s.user.typing_wpm == 80
 
 
 # ── Frozen Sub-Model Enforcement ─────────────────────────────────────────

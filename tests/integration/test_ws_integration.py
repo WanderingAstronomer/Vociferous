@@ -48,10 +48,16 @@ def ws_app(coordinator, event_collector) -> Iterator[tuple]:
 
     # Subscribe collector to key events
     ALL_EVENTS = [
-        "recording_started", "recording_stopped",
-        "transcript_deleted", "transcription_complete",
-        "refinement_started", "refinement_complete", "refinement_error",
-        "project_created", "project_deleted",
+        "recording_started",
+        "recording_stopped",
+        "transcript_deleted",
+        "transcription_complete",
+        "refinement_started",
+        "refinement_complete",
+        "refinement_error",
+        "tag_created",
+        "tag_updated",
+        "tag_deleted",
         "config_updated",
     ]
     event_collector.subscribe_all(coordinator.event_bus, ALL_EVENTS)
@@ -170,10 +176,13 @@ class TestEventBroadcast:
             ws.send_text(json.dumps({"type": "ping"}))
             time.sleep(0.1)
 
-            coord.event_bus.emit("refinement_error", {
-                "transcript_id": 7,
-                "message": "SLM not available",
-            })
+            coord.event_bus.emit(
+                "refinement_error",
+                {
+                    "transcript_id": 7,
+                    "message": "SLM not available",
+                },
+            )
             time.sleep(0.1)
 
             msg = ws.receive_json(timeout=2)

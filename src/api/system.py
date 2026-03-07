@@ -485,9 +485,10 @@ async def dispatch_intent(data: dict) -> Response:
         "rename_transcript": defs.RenameTranscriptIntent,
         "batch_retitle": defs.BatchRetitleIntent,
         "retitle_transcript": defs.RetitleTranscriptIntent,
-        "create_project": defs.CreateProjectIntent,
-        "delete_project": defs.DeleteProjectIntent,
-        "assign_project": defs.AssignProjectIntent,
+        "create_tag": defs.CreateTagIntent,
+        "update_tag": defs.UpdateTagIntent,
+        "delete_tag": defs.DeleteTagIntent,
+        "assign_tags": defs.AssignTagsIntent,
     }
 
     intent_cls = intent_map.get(intent_type_name)

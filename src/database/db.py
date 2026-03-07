@@ -1,14 +1,14 @@
 """
 Vociferous Database — Raw sqlite3 + dataclasses.
 
-5 tables (projects, transcripts, transcript_variants, schema_version,
-transcripts_fts), WAL mode. Replaces SQLAlchemy ORM. Schema evolution is
-managed by src/database/migrations.py.
+7 tables (tags, transcript_tags, transcripts, transcript_variants,
+schema_version, transcripts_fts, plus legacy projects), WAL mode.
+Replaces SQLAlchemy ORM. Schema evolution is managed by
+src/database/migrations.py.
 """
 
 from __future__ import annotations
 
-import enum
 import logging
 import sqlite3
 import threading
@@ -21,15 +21,6 @@ from src.core.resource_manager import ResourceManager
 logger = logging.getLogger(__name__)
 
 
-class _Unset(enum.Enum):
-    """Sentinel for distinguishing 'not provided' from None."""
-
-    TOKEN = 0
-
-
-_UNSET = _Unset.TOKEN
-
-
 # --- Dataclass Models ---
 
 
@@ -40,10 +31,20 @@ def utc_now() -> str:
 
 @dataclass(slots=True)
 class Project:
+    """Legacy — kept for migration compatibility. Use Tag instead."""
+
     id: int | None = None
     name: str = ""
     color: str | None = None
     parent_id: int | None = None
+    created_at: str = ""
+
+
+@dataclass(slots=True)
+class Tag:
+    id: int | None = None
+    name: str = ""
+    color: str | None = None
     created_at: str = ""
 
 
@@ -66,12 +67,13 @@ class Transcript:
     display_name: str | None = None
     duration_ms: int = 0
     speech_duration_ms: int = 0
-    project_id: int | None = None
+    project_id: int | None = None  # Legacy — kept for DB compat, not used in new code
     current_variant_id: int | None = None
     created_at: str = ""
     # Populated by joins, not stored in transcripts table
     variants: list[TranscriptVariant] = field(default_factory=list)
-    project_name: str | None = None
+    project_name: str | None = None  # Legacy — kept for compat
+    tags: list[Tag] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -120,6 +122,22 @@ CREATE INDEX IF NOT EXISTS idx_transcripts_timestamp ON transcripts(timestamp);
 CREATE INDEX IF NOT EXISTS idx_transcripts_project ON transcripts(project_id);
 CREATE INDEX IF NOT EXISTS idx_variants_transcript ON transcript_variants(transcript_id);
 
+CREATE TABLE IF NOT EXISTS tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    color TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS transcript_tags (
+    transcript_id INTEGER NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
+    tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    UNIQUE(transcript_id, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_transcript_tags_transcript ON transcript_tags(transcript_id);
+CREATE INDEX IF NOT EXISTS idx_transcript_tags_tag ON transcript_tags(tag_id);
+
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER NOT NULL
 );
@@ -162,8 +180,8 @@ class TranscriptDB:
         normalized_text: str | None = None,
         duration_ms: int = 0,
         speech_duration_ms: int = 0,
-        project_id: int | None = None,
         display_name: str | None = None,
+        tag_ids: list[int] | None = None,
     ) -> Transcript:
         """Insert a new transcript and its raw variant. Returns the created transcript."""
         ts = utc_now()
@@ -181,7 +199,7 @@ class TranscriptDB:
                     display_name,
                     duration_ms,
                     speech_duration_ms,
-                    project_id,
+                    None,  # project_id — vestigial column, always NULL for new records
                     ts,
                 ),
             )
@@ -197,6 +215,16 @@ class TranscriptDB:
             vid = vcur.lastrowid
             self._conn.execute("UPDATE transcripts SET current_variant_id = ? WHERE id = ?", (vid, tid))
 
+            # Assign tags if provided
+            tags: list[Tag] = []
+            if tag_ids:
+                for tag_id in tag_ids:
+                    self._conn.execute(
+                        "INSERT OR IGNORE INTO transcript_tags (transcript_id, tag_id) VALUES (?, ?)",
+                        (tid, tag_id),
+                    )
+                tags = self._get_tags_for_transcript(tid)
+
         return Transcript(
             id=tid,
             timestamp=ts,
@@ -205,13 +233,14 @@ class TranscriptDB:
             display_name=display_name,
             duration_ms=duration_ms,
             speech_duration_ms=speech_duration_ms,
-            project_id=project_id,
+            project_id=None,
             current_variant_id=vid,
             created_at=ts,
+            tags=tags,
         )
 
     def get_transcript(self, transcript_id: int) -> Transcript | None:
-        """Get a single transcript with its variants."""
+        """Get a single transcript with its variants and tags."""
         with self._write_lock:
             row = self._conn.execute(
                 """SELECT t.*, p.name as project_name
@@ -224,29 +253,110 @@ class TranscriptDB:
                 return None
             t = self._row_to_transcript(row)
             t.variants = self._get_variants(transcript_id)
+            t.tags = self._get_tags_for_transcript(transcript_id)
         return t
 
-    def recent(self, limit: int = 50, project_id: int | None = None) -> list[Transcript]:
-        """Get recent transcripts, newest first."""
+    # Allowed sort columns (whitelist to prevent SQL injection)
+    _SORT_COLUMNS = frozenset({"created_at", "duration_ms", "speech_duration_ms", "display_name", "words", "silence"})
+
+    # Map virtual sort keys to SQL expressions
+    _SORT_EXPRESSIONS: dict[str, str] = {
+        "created_at": "t.created_at",
+        "duration_ms": "t.duration_ms",
+        "speech_duration_ms": "t.speech_duration_ms",
+        "display_name": "t.display_name",
+        "words": "(LENGTH(COALESCE(t.normalized_text, t.raw_text)) - LENGTH(REPLACE(COALESCE(t.normalized_text, t.raw_text), ' ', '')) + 1)",
+        "silence": "(t.duration_ms - t.speech_duration_ms)",
+    }
+
+    def recent(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
+        tag_ids: list[int] | None = None,
+        tag_mode: str = "any",
+    ) -> tuple[list[Transcript], int]:
+        """Get transcripts with pagination and sorting.
+
+        Args:
+            limit: Max results per page.
+            offset: Number of results to skip.
+            sort_by: Column to sort by (created_at, duration_ms, speech_duration_ms, display_name).
+            sort_dir: "asc" or "desc".
+            tag_ids: Filter to transcripts having these tags.
+            tag_mode: "any" = match any tag, "all" = must have all tags.
+
+        Returns:
+            Tuple of (transcripts, total_count).
+        """
+        col = sort_by if sort_by in self._SORT_COLUMNS else "created_at"
+        expr = self._SORT_EXPRESSIONS[col]
+        direction = "ASC" if sort_dir.lower() == "asc" else "DESC"
+        order_clause = f"ORDER BY {expr} {direction}"
+
         with self._write_lock:
-            if project_id is not None:
-                rows = self._conn.execute(
-                    """SELECT t.*, p.name as project_name
-                       FROM transcripts t
-                       LEFT JOIN projects p ON t.project_id = p.id
-                       WHERE t.project_id = ?
-                       ORDER BY t.created_at DESC LIMIT ?""",
-                    (project_id, limit),
-                ).fetchall()
+            if tag_ids:
+                if tag_mode == "all":
+                    placeholders = ",".join("?" * len(tag_ids))
+                    where = f"""WHERE t.id IN (
+                               SELECT transcript_id FROM transcript_tags
+                               WHERE tag_id IN ({placeholders})
+                               GROUP BY transcript_id
+                               HAVING COUNT(DISTINCT tag_id) = ?
+                           )"""
+                    count_params: tuple = (*tag_ids, len(tag_ids))
+                    query_params: tuple = (*tag_ids, len(tag_ids), limit, offset)
+
+                    total = self._conn.execute(
+                        f"""SELECT COUNT(*) FROM transcripts t {where}""",
+                        count_params,
+                    ).fetchone()[0]
+
+                    rows = self._conn.execute(
+                        f"""SELECT t.*, p.name as project_name
+                           FROM transcripts t
+                           LEFT JOIN projects p ON t.project_id = p.id
+                           {where}
+                           {order_clause} LIMIT ? OFFSET ?""",
+                        query_params,
+                    ).fetchall()
+                else:
+                    placeholders = ",".join("?" * len(tag_ids))
+                    where = f"""INNER JOIN transcript_tags tt ON t.id = tt.transcript_id
+                           WHERE tt.tag_id IN ({placeholders})"""
+                    count_params = tuple(tag_ids)
+                    query_params = (*tag_ids, limit, offset)
+
+                    total = self._conn.execute(
+                        f"""SELECT COUNT(DISTINCT t.id) FROM transcripts t {where}""",
+                        count_params,
+                    ).fetchone()[0]
+
+                    rows = self._conn.execute(
+                        f"""SELECT DISTINCT t.*, p.name as project_name
+                           FROM transcripts t
+                           LEFT JOIN projects p ON t.project_id = p.id
+                           {where}
+                           {order_clause} LIMIT ? OFFSET ?""",
+                        query_params,
+                    ).fetchall()
             else:
+                total = self._conn.execute("SELECT COUNT(*) FROM transcripts").fetchone()[0]
                 rows = self._conn.execute(
-                    """SELECT t.*, p.name as project_name
+                    f"""SELECT t.*, p.name as project_name
                        FROM transcripts t
                        LEFT JOIN projects p ON t.project_id = p.id
-                       ORDER BY t.created_at DESC LIMIT ?""",
-                    (limit,),
+                       {order_clause} LIMIT ? OFFSET ?""",
+                    (limit, offset),
                 ).fetchall()
-        return [self._row_to_transcript(r) for r in rows]
+            transcripts = [self._row_to_transcript(r) for r in rows]
+            # Populate tags for each transcript
+            for t in transcripts:
+                assert t.id is not None
+                t.tags = self._get_tags_for_transcript(t.id)
+        return transcripts, total
 
     def search(self, query: str, limit: int = 50, offset: int = 0) -> list[Transcript]:
         """Full-text search across transcript text using FTS5.
@@ -257,7 +367,8 @@ class TranscriptDB:
         "Python programming".
         """
         if not query.strip():
-            return self.recent(limit=limit)
+            items, _ = self.recent(limit=limit, offset=offset)
+            return items
         tokens = query.split()
         # Wrap each token in double-quotes (FTS5 phrase) with prefix wildcard.
         # Inner double-quotes are escaped by doubling them per FTS5 syntax.
@@ -271,7 +382,11 @@ class TranscriptDB:
                    ORDER BY t.created_at DESC LIMIT ? OFFSET ?""",
                 (fts_terms, limit, offset),
             ).fetchall()
-        return [self._row_to_transcript(r) for r in rows]
+            transcripts = [self._row_to_transcript(r) for r in rows]
+            for t in transcripts:
+                assert t.id is not None
+                t.tags = self._get_tags_for_transcript(t.id)
+        return transcripts
 
     def search_count(self, query: str) -> int:
         """Return the total number of transcripts matching *query* (for pagination)."""
@@ -347,7 +462,11 @@ class TranscriptDB:
                    WHERE t.display_name IS NULL OR TRIM(t.display_name) = ''
                    ORDER BY t.created_at DESC""",
             ).fetchall()
-        return [self._row_to_transcript(r) for r in rows]
+            transcripts = [self._row_to_transcript(r) for r in rows]
+            for t in transcripts:
+                assert t.id is not None
+                t.tags = self._get_tags_for_transcript(t.id)
+        return transcripts
 
     # --- Variants ---
 
@@ -477,111 +596,41 @@ class TranscriptDB:
             self._conn.commit()
             return len(to_delete)
 
-    # --- Projects ---
+    # --- Tags ---
 
-    def add_project(self, name: str, *, color: str | None = None, parent_id: int | None = None) -> Project:
+    def add_tag(self, name: str, *, color: str | None = None) -> Tag:
+        """Create a new tag."""
         ts = utc_now()
         with self._write_lock:
             cur = self._conn.execute(
-                "INSERT INTO projects (name, color, parent_id, created_at) VALUES (?, ?, ?, ?)",
-                (name, color, parent_id, ts),
+                "INSERT INTO tags (name, color, created_at) VALUES (?, ?, ?)",
+                (name, color, ts),
             )
             self._conn.commit()
-            return Project(id=cur.lastrowid, name=name, color=color, parent_id=parent_id, created_at=ts)
+            return Tag(id=cur.lastrowid, name=name, color=color, created_at=ts)
 
-    def get_projects(self) -> list[Project]:
+    def get_tags(self) -> list[Tag]:
+        """List all tags ordered by name."""
         with self._write_lock:
-            rows = self._conn.execute("SELECT * FROM projects ORDER BY name").fetchall()
-        return [
-            Project(
-                id=r["id"],
-                name=r["name"],
-                color=r["color"],
-                parent_id=r["parent_id"],
-                created_at=r["created_at"],
-            )
-            for r in rows
-        ]
+            rows = self._conn.execute("SELECT * FROM tags ORDER BY name").fetchall()
+        return [Tag(id=r["id"], name=r["name"], color=r["color"], created_at=r["created_at"]) for r in rows]
 
-    def delete_project(
-        self,
-        project_id: int,
-        *,
-        delete_transcripts: bool = False,
-        promote_subprojects: bool = True,
-        delete_subproject_transcripts: bool = False,
-    ) -> bool:
+    def get_tag(self, tag_id: int) -> Tag | None:
+        """Fetch a single tag by ID."""
         with self._write_lock:
-            # Collect child project IDs
-            child_ids = [
-                r["id"]
-                for r in self._conn.execute("SELECT id FROM projects WHERE parent_id = ?", (project_id,)).fetchall()
-            ]
-
-            if child_ids:
-                if promote_subprojects:
-                    # Promote children to top-level
-                    self._conn.execute(
-                        "UPDATE projects SET parent_id = NULL WHERE parent_id = ?",
-                        (project_id,),
-                    )
-                else:
-                    # Delete subprojects and handle their transcripts
-                    placeholders = ",".join("?" * len(child_ids))
-                    if delete_subproject_transcripts:
-                        self._conn.execute(
-                            f"DELETE FROM transcripts WHERE project_id IN ({placeholders})",
-                            child_ids,
-                        )
-                    else:
-                        self._conn.execute(
-                            f"UPDATE transcripts SET project_id = NULL WHERE project_id IN ({placeholders})",
-                            child_ids,
-                        )
-                    self._conn.execute(
-                        f"DELETE FROM projects WHERE id IN ({placeholders})",
-                        child_ids,
-                    )
-
-            # Handle this project's own transcripts
-            if delete_transcripts:
-                self._conn.execute(
-                    "DELETE FROM transcripts WHERE project_id = ?",
-                    (project_id,),
-                )
-            else:
-                self._conn.execute(
-                    "UPDATE transcripts SET project_id = NULL WHERE project_id = ?",
-                    (project_id,),
-                )
-
-            cur = self._conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
-            self._conn.commit()
-            return cur.rowcount > 0
-
-    def get_project(self, project_id: int) -> Project | None:
-        """Fetch a single project by ID."""
-        with self._write_lock:
-            row = self._conn.execute("SELECT * FROM projects WHERE id = ?", (project_id,)).fetchone()
+            row = self._conn.execute("SELECT * FROM tags WHERE id = ?", (tag_id,)).fetchone()
         if row is None:
             return None
-        return Project(
-            id=row["id"],
-            name=row["name"],
-            color=row["color"],
-            parent_id=row["parent_id"],
-            created_at=row["created_at"],
-        )
+        return Tag(id=row["id"], name=row["name"], color=row["color"], created_at=row["created_at"])
 
-    def update_project(
+    def update_tag(
         self,
-        project_id: int,
+        tag_id: int,
         *,
         name: str | None = None,
         color: str | None = None,
-        parent_id: int | None | _Unset = _UNSET,
-    ) -> Project | None:
-        """Update project fields. Pass parent_id=None to move to root. Omit to leave unchanged."""
+    ) -> Tag | None:
+        """Update a tag's name and/or color."""
         updates: list[str] = []
         params: list[str | int | None] = []
         if name is not None:
@@ -590,28 +639,67 @@ class TranscriptDB:
         if color is not None:
             updates.append("color = ?")
             params.append(color)
-        if not isinstance(parent_id, _Unset):
-            updates.append("parent_id = ?")
-            params.append(parent_id)
         if not updates:
-            return self.get_project(project_id)
-        params.append(project_id)
+            return self.get_tag(tag_id)
+        params.append(tag_id)
         with self._write_lock:
             self._conn.execute(
-                f"UPDATE projects SET {', '.join(updates)} WHERE id = ?",
+                f"UPDATE tags SET {', '.join(updates)} WHERE id = ?",
                 params,
             )
             self._conn.commit()
-        return self.get_project(project_id)
+        return self.get_tag(tag_id)
 
-    def assign_project(self, transcript_id: int, project_id: int | None) -> None:
-        """Assign (or unassign) a transcript to a project."""
+    def delete_tag(self, tag_id: int) -> bool:
+        """Delete a tag. Junction rows are cascade-deleted."""
+        with self._write_lock:
+            cur = self._conn.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def assign_tags(self, transcript_id: int, tag_ids: list[int]) -> list[Tag]:
+        """Set the exact tag set for a transcript (replaces existing)."""
         with self._write_lock:
             self._conn.execute(
-                "UPDATE transcripts SET project_id = ? WHERE id = ?",
-                (project_id, transcript_id),
+                "DELETE FROM transcript_tags WHERE transcript_id = ?",
+                (transcript_id,),
+            )
+            for tag_id in tag_ids:
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO transcript_tags (transcript_id, tag_id) VALUES (?, ?)",
+                    (transcript_id, tag_id),
+                )
+            self._conn.commit()
+            return self._get_tags_for_transcript(transcript_id)
+
+    def add_tag_to_transcript(self, transcript_id: int, tag_id: int) -> None:
+        """Add a single tag to a transcript (additive)."""
+        with self._write_lock:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO transcript_tags (transcript_id, tag_id) VALUES (?, ?)",
+                (transcript_id, tag_id),
             )
             self._conn.commit()
+
+    def remove_tag_from_transcript(self, transcript_id: int, tag_id: int) -> None:
+        """Remove a single tag from a transcript."""
+        with self._write_lock:
+            self._conn.execute(
+                "DELETE FROM transcript_tags WHERE transcript_id = ? AND tag_id = ?",
+                (transcript_id, tag_id),
+            )
+            self._conn.commit()
+
+    def _get_tags_for_transcript(self, transcript_id: int) -> list[Tag]:
+        """Fetch all tags for a transcript. Caller must hold _write_lock."""
+        rows = self._conn.execute(
+            """SELECT t.* FROM tags t
+               INNER JOIN transcript_tags tt ON t.id = tt.tag_id
+               WHERE tt.transcript_id = ?
+               ORDER BY t.name""",
+            (transcript_id,),
+        ).fetchall()
+        return [Tag(id=r["id"], name=r["name"], color=r["color"], created_at=r["created_at"]) for r in rows]
 
     # --- Helpers ---
 

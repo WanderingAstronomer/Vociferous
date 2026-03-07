@@ -90,11 +90,77 @@ def _v2_add_fts5(conn: sqlite3.Connection) -> None:
 # Migration registry
 # ---------------------------------------------------------------------------
 
+
+def _v3_projects_to_tags(conn: sqlite3.Connection) -> None:
+    """v3 — Create tags + transcript_tags tables; migrate existing projects to tags.
+
+    Flattens the hierarchical project tree into a flat tag set. Each project
+    (including sub-projects) becomes a tag. Transcripts that were assigned to
+    a project get the corresponding tag added via the junction table.
+
+    The projects table and transcripts.project_id column are left in place
+    (not dropped) for backward compatibility with older code paths, but new
+    code exclusively uses tags.
+    """
+    # Create tags table (if not already created by _CREATE_SQL on fresh DB)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            color TEXT,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+        )
+        """
+    )
+    # Create junction table
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS transcript_tags (
+            transcript_id INTEGER NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
+            tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+            UNIQUE(transcript_id, tag_id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_transcript_tags_transcript ON transcript_tags(transcript_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_transcript_tags_tag ON transcript_tags(tag_id)")
+
+    # Migrate existing projects → tags
+    projects = conn.execute("SELECT id, name, color FROM projects ORDER BY id").fetchall()
+    project_to_tag: dict[int, int] = {}
+
+    for p in projects:
+        cur = conn.execute(
+            "INSERT INTO tags (name, color) VALUES (?, ?)",
+            (p["name"], p["color"]),
+        )
+        project_to_tag[p["id"]] = cur.lastrowid  # type: ignore[assignment]
+
+    # Migrate transcript → project assignments to transcript_tags junction rows
+    assigned = conn.execute("SELECT id, project_id FROM transcripts WHERE project_id IS NOT NULL").fetchall()
+
+    for row in assigned:
+        tag_id = project_to_tag.get(row["project_id"])
+        if tag_id is not None:
+            conn.execute(
+                "INSERT OR IGNORE INTO transcript_tags (transcript_id, tag_id) VALUES (?, ?)",
+                (row["id"], tag_id),
+            )
+
+    logger.info(
+        "v3 migration: converted %d projects → tags, migrated %d assignments",
+        len(projects),
+        len(assigned),
+    )
+
+
 #: Ordered list of (human-readable description, migration function) pairs.
 #: Append here to add future migrations; do not edit existing entries.
 MIGRATIONS: list[tuple[str, object]] = [
     ("v1 baseline — projects / transcripts / transcript_variants", _v1_baseline),
     ("v2 FTS5 full-text search index and sync triggers", _v2_add_fts5),
+    ("v3 tags — flat tag system replacing hierarchical projects", _v3_projects_to_tags),
 ]
 
 

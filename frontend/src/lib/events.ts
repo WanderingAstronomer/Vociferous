@@ -69,6 +69,7 @@ export interface TranscriptsBatchDeletedData {
 export interface TranscriptUpdatedData {
     id: number;
     variant_id?: number;
+    tags?: { id: number; name: string; color: string | null }[];
 }
 
 export interface ConfigUpdatedData {
@@ -90,13 +91,19 @@ export interface DownloadProgressData {
     message: string;
 }
 
-export interface ProjectCreatedData {
+export interface TagCreatedData {
     id: number;
     name: string;
     color: string | null;
 }
 
-export interface ProjectDeletedData {
+export interface TagUpdatedData {
+    id: number;
+    name: string;
+    color: string | null;
+}
+
+export interface TagDeletedData {
     id: number;
 }
 
@@ -106,6 +113,10 @@ export interface KeyCapturedData {
 }
 
 export interface InsightReadyData {
+    text: string;
+}
+
+export interface MotdReadyData {
     text: string;
 }
 
@@ -138,10 +149,12 @@ export interface WSEventMap {
     engine_status: EngineStatusData;
     onboarding_required: OnboardingRequiredData;
     download_progress: DownloadProgressData;
-    project_created: ProjectCreatedData;
-    project_deleted: ProjectDeletedData;
+    tag_created: TagCreatedData;
+    tag_updated: TagUpdatedData;
+    tag_deleted: TagDeletedData;
     key_captured: KeyCapturedData;
     insight_ready: InsightReadyData;
+    motd_ready: MotdReadyData;
     batch_retitle_progress: BatchRetitleProgressData;
 }
 
@@ -228,16 +241,23 @@ export const wsEventValidators: {
         isString(data.model_id) &&
         isDownloadStatus(data.status) &&
         isString(data.message),
-    project_created: (data): data is ProjectCreatedData =>
+    tag_created: (data): data is TagCreatedData =>
         isObject(data) &&
         isNumber(data.id) &&
         isString(data.name) &&
         (isString(data.color) || data.color === null),
-    project_deleted: (data): data is ProjectDeletedData =>
+    tag_updated: (data): data is TagUpdatedData =>
+        isObject(data) &&
+        isNumber(data.id) &&
+        isString(data.name) &&
+        (isString(data.color) || data.color === null),
+    tag_deleted: (data): data is TagDeletedData =>
         isObject(data) && isNumber(data.id),
     key_captured: (data): data is KeyCapturedData =>
         isObject(data) && isString(data.combo) && isString(data.display),
     insight_ready: (data): data is InsightReadyData =>
+        isObject(data) && isString(data.text),
+    motd_ready: (data): data is MotdReadyData =>
         isObject(data) && isString(data.text),
     batch_retitle_progress: (data): data is BatchRetitleProgressData =>
         isObject(data) && isString(data.status),

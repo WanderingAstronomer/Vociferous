@@ -20,9 +20,6 @@ ALL_EVENTS = [
     "transcript_deleted",
     "transcript_updated",
     "transcripts_cleared",
-    "project_created",
-    "project_updated",
-    "project_deleted",
     "refinement_started",
     "refinement_complete",
     "refinement_error",
@@ -30,6 +27,9 @@ ALL_EVENTS = [
     "transcription_error",
     "config_updated",
     "batch_retitle_progress",
+    "tag_created",
+    "tag_updated",
+    "tag_deleted",
 ]
 
 
@@ -116,77 +116,6 @@ class TestCommitEdits:
         refreshed = coord.db.get_transcript(t.id)
         assert refreshed.raw_text == "original"
         assert refreshed.text == "new version"
-
-
-# ── CreateProjectIntent ───────────────────────────────────────────────────
-
-
-class TestCreateProject:
-    """Create project via CommandBus → DB row + event emitted."""
-
-    def test_create_project(self, wired):
-        coord, events = wired
-
-        from src.core.intents.definitions import CreateProjectIntent
-
-        result = coord.command_bus.dispatch(CreateProjectIntent(name="Test Project", color="#ff0000"))
-        assert result is True
-
-        created = events.of_type("project_created")
-        assert len(created) == 1
-        assert created[0]["name"] == "Test Project"
-        assert created[0]["color"] == "#ff0000"
-        assert created[0]["id"] is not None
-
-        # Verify in DB
-        projects = coord.db.get_projects()
-        assert any(p.name == "Test Project" for p in projects)
-
-    def test_create_project_without_db(self, coordinator, event_collector):
-        """If db is None, handler silently returns with no event."""
-        event_collector.subscribe_all(coordinator.event_bus, ALL_EVENTS)
-        coordinator.db = None
-
-        from src.core.intents.definitions import CreateProjectIntent
-
-        result = coordinator.command_bus.dispatch(CreateProjectIntent(name="Ghost"))
-        assert result is True
-        assert len(event_collector.of_type("project_created")) == 0
-
-
-# ── DeleteProjectIntent ───────────────────────────────────────────────────
-
-
-class TestDeleteProject:
-    """Delete project via CommandBus → DB row removed + event emitted."""
-
-    def test_delete_existing_project(self, wired):
-        coord, events = wired
-        p = coord.db.add_project(name="Doomed Project")
-
-        from src.core.intents.definitions import DeleteProjectIntent
-
-        result = coord.command_bus.dispatch(DeleteProjectIntent(project_id=p.id))
-        assert result is True
-
-        deleted = events.of_type("project_deleted")
-        assert len(deleted) == 1
-        assert deleted[0]["id"] == p.id
-
-        # Verify removed from DB
-        projects = coord.db.get_projects()
-        assert not any(proj.id == p.id for proj in projects)
-
-    def test_delete_nonexistent_project_no_event(self, wired):
-        """Deleting a non-existent project should NOT emit an event."""
-        coord, events = wired
-
-        from src.core.intents.definitions import DeleteProjectIntent
-
-        result = coord.command_bus.dispatch(DeleteProjectIntent(project_id=99999))
-        assert result is True
-        # Handler checks return value and only emits on success
-        assert len(events.of_type("project_deleted")) == 0
 
 
 # ── RefineTranscriptIntent (error paths) ──────────────────────────────────
@@ -293,79 +222,6 @@ class TestRecordingStateMachine:
 
         # StopRecording sets the stop event
         assert coord.recording_session._recording_stop.is_set()
-
-
-# ── UpdateProjectIntent ───────────────────────────────────────────────────
-
-
-class TestUpdateProject:
-    """Update project via CommandBus → DB row mutated + event emitted."""
-
-    def test_update_name(self, wired):
-        coord, events = wired
-        p = coord.db.add_project(name="Old Name", color="#111111")
-
-        from src.core.intents.definitions import UpdateProjectIntent
-
-        coord.command_bus.dispatch(
-            UpdateProjectIntent(project_id=p.id, name="New Name"),
-        )
-
-        updated = events.of_type("project_updated")
-        assert len(updated) == 1
-        assert updated[0]["id"] == p.id
-        assert updated[0]["name"] == "New Name"
-        assert updated[0]["color"] == "#111111"  # unchanged
-
-    def test_update_color(self, wired):
-        coord, events = wired
-        p = coord.db.add_project(name="Stable", color="#000000")
-
-        from src.core.intents.definitions import UpdateProjectIntent
-
-        coord.command_bus.dispatch(
-            UpdateProjectIntent(project_id=p.id, color="#ff00ff"),
-        )
-
-        updated = events.of_type("project_updated")
-        assert len(updated) == 1
-        assert updated[0]["color"] == "#ff00ff"
-        assert updated[0]["name"] == "Stable"
-
-    def test_update_nonexistent_no_event(self, wired):
-        """Updating a nonexistent project emits nothing."""
-        coord, events = wired
-
-        from src.core.intents.definitions import UpdateProjectIntent
-
-        coord.command_bus.dispatch(
-            UpdateProjectIntent(project_id=99999, name="Ghost"),
-        )
-
-        assert len(events.of_type("project_updated")) == 0
-
-
-# ── AssignProjectIntent ───────────────────────────────────────────────────
-
-
-class TestAssignProject:
-    """Assign transcript to project via CommandBus → DB + event."""
-
-    def test_assign_transcript_to_project(self, wired):
-        coord, events = wired
-        t = coord.db.add_transcript(raw_text="test", duration_ms=100)
-        p = coord.db.add_project(name="Inbox")
-
-        from src.core.intents.definitions import AssignProjectIntent
-
-        coord.command_bus.dispatch(
-            AssignProjectIntent(transcript_id=t.id, project_id=p.id),
-        )
-
-        updated = events.of_type("transcript_updated")
-        assert len(updated) == 1
-        assert updated[0]["id"] == t.id
-        assert updated[0]["project_id"] == p.id
 
 
 # ── ClearTranscriptsIntent ────────────────────────────────────────────────

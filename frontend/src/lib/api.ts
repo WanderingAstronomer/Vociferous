@@ -35,24 +35,42 @@ export interface Transcript {
     display_name: string | null;
     duration_ms: number;
     speech_duration_ms: number;
-    project_id: number | null;
-    project_name: string | null;
     current_variant_id: number | null;
     created_at: string;
     variants?: TranscriptVariant[];
+    tags: Tag[];
 }
 
-export interface Project {
+export interface Tag {
     id: number;
     name: string;
     color: string | null;
-    parent_id: number | null;
 }
 
-export function getTranscripts(limit = 50, projectId?: number): Promise<Transcript[]> {
-    let url = `/transcripts?limit=${limit}`;
-    if (projectId != null) url += `&project_id=${projectId}`;
-    return request(url);
+export interface PaginatedResult<T> {
+    items: T[];
+    total: number;
+}
+
+export interface TranscriptListParams {
+    limit?: number;
+    offset?: number;
+    sort_by?: string;
+    sort_dir?: "asc" | "desc";
+    tag_ids?: number[];
+    tag_mode?: "any" | "all";
+}
+
+export function getTranscripts(params: TranscriptListParams = {}): Promise<PaginatedResult<Transcript>> {
+    const q = new URLSearchParams();
+    if (params.limit) q.set("limit", String(params.limit));
+    if (params.offset) q.set("offset", String(params.offset));
+    if (params.sort_by) q.set("sort_by", params.sort_by);
+    if (params.sort_dir) q.set("sort_dir", params.sort_dir);
+    if (params.tag_ids?.length) q.set("tag_ids", params.tag_ids.join(","));
+    if (params.tag_mode) q.set("tag_mode", params.tag_mode);
+    const qs = q.toString();
+    return request(`/transcripts${qs ? `?${qs}` : ""}`);
 }
 
 export function getTranscript(id: number): Promise<Transcript> {
@@ -104,64 +122,49 @@ export function retitleTranscript(id: number): Promise<{ status: string }> {
     return request(`/transcripts/${id}/retitle`, { method: "POST" });
 }
 
-// --- Projects ---
+// --- Tags ---
 
-export function getProjects(): Promise<Project[]> {
-    return request("/projects");
+export function getTags(): Promise<Tag[]> {
+    return request("/tags");
 }
 
-export function createProject(name: string, color?: string, parentId?: number | null): Promise<Project> {
-    return request("/projects", {
+export function createTag(name: string, color?: string): Promise<{ status: string }> {
+    return request("/tags", {
         method: "POST",
-        body: JSON.stringify({ name, color, parent_id: parentId ?? null }),
+        body: JSON.stringify({ name, color: color ?? null }),
     });
 }
 
-export function updateProject(
-    id: number,
-    updates: { name?: string; color?: string; parent_id?: number | null },
-): Promise<{ status: string }> {
-    return request(`/projects/${id}`, {
+export function updateTag(id: number, updates: { name?: string; color?: string }): Promise<{ status: string }> {
+    return request(`/tags/${id}`, {
         method: "PUT",
         body: JSON.stringify(updates),
     });
 }
 
-export function deleteProject(
-    id: number,
-    options?: {
-        deleteTranscripts?: boolean;
-        promoteSubprojects?: boolean;
-        deleteSubprojectTranscripts?: boolean;
-    },
-): Promise<{ deleted: boolean }> {
-    return request(`/projects/${id}`, {
-        method: "DELETE",
-        body: JSON.stringify({
-            delete_transcripts: options?.deleteTranscripts ?? false,
-            promote_subprojects: options?.promoteSubprojects ?? true,
-            delete_subproject_transcripts: options?.deleteSubprojectTranscripts ?? false,
-        }),
+export function deleteTag(id: number): Promise<{ deleted: boolean }> {
+    return request(`/tags/${id}`, { method: "DELETE" });
+}
+
+export function assignTags(transcriptId: number, tagIds: number[]): Promise<{ status: string }> {
+    return request(`/transcripts/${transcriptId}/tags`, {
+        method: "POST",
+        body: JSON.stringify({ tag_ids: tagIds }),
     });
 }
 
-export function assignProject(transcriptId: number, projectId: number | null): Promise<{ dispatched: boolean }> {
-    return dispatchIntent("assign_project", { transcript_id: transcriptId, project_id: projectId });
-}
-
 /**
- * Batch-assign multiple transcripts to a project.
- * Fires individual intents for each — no backend batch endpoint needed.
+ * Batch-assign tags to multiple transcripts.
  */
-export async function batchAssignProject(
+export async function batchAssignTags(
     transcriptIds: number[],
-    projectId: number | null,
+    tagIds: number[],
 ): Promise<{ succeeded: number; failed: number }> {
     let succeeded = 0;
     let failed = 0;
     for (const id of transcriptIds) {
         try {
-            await assignProject(id, projectId);
+            await assignTags(id, tagIds);
             succeeded++;
         } catch {
             failed++;

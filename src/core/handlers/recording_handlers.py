@@ -263,7 +263,6 @@ class RecordingSession:
                     raw_text=text,
                     duration_ms=duration_ms,
                     speech_duration_ms=speech_duration_ms,
-                    project_id=settings.user.active_project_id,
                 )
 
             self._emit(

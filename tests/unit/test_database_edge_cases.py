@@ -62,78 +62,6 @@ class TestCascadeDelete:
         assert len(fetched.variants) == 2  # raw + user_edit
 
 
-# ── Project-Scoped Queries ────────────────────────────────────────────────
-
-
-class TestProjectScoping:
-    """Project-based filtering and unlink behavior."""
-
-    def test_recent_filters_by_project(self, db: TranscriptDB) -> None:
-        p1 = db.add_project(name="Alpha")
-        p2 = db.add_project(name="Beta")
-        db.add_transcript(raw_text="in alpha", duration_ms=100, project_id=p1.id)
-        db.add_transcript(raw_text="in beta", duration_ms=100, project_id=p2.id)
-        db.add_transcript(raw_text="orphan", duration_ms=100)
-
-        alpha_only = db.recent(project_id=p1.id)
-        assert len(alpha_only) == 1
-        assert alpha_only[0].raw_text == "in alpha"
-
-    def test_delete_project_unlinks_transcripts(self, db: TranscriptDB) -> None:
-        p = db.add_project(name="Doomed")
-        t = db.add_transcript(raw_text="linked", duration_ms=100, project_id=p.id)
-
-        db.delete_project(p.id)
-
-        # Transcript survives but is unlinked
-        fetched = db.get_transcript(t.id)
-        assert fetched is not None
-        assert fetched.project_id is None
-
-    def test_assign_project(self, db: TranscriptDB) -> None:
-        p = db.add_project(name="Target")
-        t = db.add_transcript(raw_text="floating", duration_ms=100)
-        assert t.project_id is None
-
-        db.assign_project(t.id, p.id)
-
-        fetched = db.get_transcript(t.id)
-        assert fetched.project_id == p.id
-
-    def test_unassign_project(self, db: TranscriptDB) -> None:
-        p = db.add_project(name="Temp")
-        t = db.add_transcript(raw_text="assigned", duration_ms=100, project_id=p.id)
-
-        db.assign_project(t.id, None)
-
-        fetched = db.get_transcript(t.id)
-        assert fetched.project_id is None
-
-    def test_project_name_populated_in_get(self, db: TranscriptDB) -> None:
-        p = db.add_project(name="Named")
-        t = db.add_transcript(raw_text="text", duration_ms=100, project_id=p.id)
-
-        fetched = db.get_transcript(t.id)
-        assert fetched.project_name == "Named"
-
-    def test_project_name_populated_in_recent(self, db: TranscriptDB) -> None:
-        p = db.add_project(name="Recent")
-        db.add_transcript(raw_text="in recent", duration_ms=100, project_id=p.id)
-
-        results = db.recent()
-        assert results[0].project_name == "Recent"
-
-    def test_project_with_color(self, db: TranscriptDB) -> None:
-        _p = db.add_project(name="Colored", color="#ff00ff")
-        projects = db.get_projects()
-        assert projects[0].color == "#ff00ff"
-
-    def test_project_with_parent(self, db: TranscriptDB) -> None:
-        parent = db.add_project(name="Parent")
-        child = db.add_project(name="Child", parent_id=parent.id)
-        assert child.parent_id == parent.id
-
-
 # ── Variant Immutability ─────────────────────────────────────────────────
 
 
@@ -328,6 +256,6 @@ class TestExportBackup:
         # Open backup and verify data
         backup_db = TranscriptDB(db_path=backup_path)
         assert backup_db.transcript_count() == 1
-        t = backup_db.recent()[0]
+        t = backup_db.recent()[0][0]
         assert t.raw_text == "verify backup"
         backup_db.close()

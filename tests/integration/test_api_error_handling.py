@@ -23,11 +23,12 @@ from tests.conftest import EventCollector
 
 ALL_ERROR_EVENTS = [
     "transcript_deleted",
-    "project_created",
-    "project_deleted",
     "refinement_started",
     "refinement_error",
     "config_updated",
+    "tag_created",
+    "tag_updated",
+    "tag_deleted",
 ]
 
 
@@ -39,7 +40,6 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
 
     from src.api.app import ConnectionManager, _wire_event_bridge
     from src.api.deps import set_coordinator
-    from src.api.projects import create_project, delete_project, list_projects
     from src.api.system import (
         dispatch_intent,
         download_model,
@@ -68,9 +68,6 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
             delete_transcript,
             refine_transcript,
             search_transcripts,
-            list_projects,
-            create_project,
-            delete_project,
             get_config,
             update_config,
             list_models,
@@ -143,16 +140,6 @@ class TestIntentDispatchErrors:
         resp = client.post("/api/intents", json={})
         assert resp.status_code == 400
 
-    def test_create_project_intent_dispatches_successfully(self, api):
-        """create_project with defaults dispatches (name defaults to empty)."""
-        client, coord, _ = api
-        resp = client.post(
-            "/api/intents",
-            json={"type": "create_project", "name": "Valid Project"},
-        )
-        assert resp.status_code == 201
-        assert resp.json()["dispatched"] is True
-
 
 # ── Transcript Error Paths ────────────────────────────────────────────────
 
@@ -206,15 +193,6 @@ class TestTranscriptErrors:
             resp = client.get("/api/transcripts/search", params={"q": query})
             assert resp.status_code == 200  # No crash, even if no results
 
-    def test_list_transcripts_with_project_filter(self, api):
-        """Filtering by nonexistent project_id returns empty list."""
-        client, coord, _ = api
-        coord.db.add_transcript(raw_text="no project", duration_ms=100)
-
-        resp = client.get("/api/transcripts", params={"project_id": 99999})
-        assert resp.status_code == 200
-        assert resp.json() == []
-
     def test_list_transcripts_with_zero_limit(self, api):
         """Limit=0 should return empty or handle gracefully."""
         client, coord, _ = api
@@ -222,43 +200,15 @@ class TestTranscriptErrors:
 
         resp = client.get("/api/transcripts", params={"limit": 0})
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert data["items"] == []
+        assert data["total"] == 1
 
     def test_list_transcripts_large_limit(self, api):
         """Very large limit should not crash."""
         client, _, _ = api
         resp = client.get("/api/transcripts", params={"limit": 999999})
         assert resp.status_code == 200
-
-
-# ── Project Error Paths ───────────────────────────────────────────────────
-
-
-class TestProjectErrors:
-    """Error responses for project endpoints."""
-
-    def test_create_project_missing_name(self, api):
-        """POST /api/projects without 'name' → 400."""
-        client, _, _ = api
-        resp = client.post("/api/projects", json={"color": "#ff0000"})
-        assert resp.status_code == 400
-
-    def test_create_project_empty_name(self, api):
-        """Creating a project with empty/whitespace name → 400."""
-        client, coord, _ = api
-        resp = client.post("/api/projects", json={"name": ""})
-        assert resp.status_code == 400
-
-        resp2 = client.post("/api/projects", json={"name": "   "})
-        assert resp2.status_code == 400
-
-    def test_delete_nonexistent_project(self, api):
-        """DELETE a non-existent project — still returns 200."""
-        client, coord, events = api
-        resp = client.delete("/api/projects/99999")
-        assert resp.status_code == 200
-        # No event emitted for nonexistent project
-        assert len(events.of_type("project_deleted")) == 0
 
 
 # ── Config Error Paths ────────────────────────────────────────────────────
@@ -358,7 +308,9 @@ class TestDbUnavailable:
         coord.db = None
         resp = client.get("/api/transcripts")
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
     def test_get_transcript_db_none(self, api):
         """Get returns 503 when db is None."""
@@ -376,11 +328,3 @@ class TestDbUnavailable:
         data = resp.json()
         assert data["items"] == []
         assert data["total"] == 0
-
-    def test_list_projects_db_none(self, api):
-        """Projects list returns empty when db is None."""
-        client, coord, _ = api
-        coord.db = None
-        resp = client.get("/api/projects")
-        assert resp.status_code == 200
-        assert resp.json() == []

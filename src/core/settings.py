@@ -73,8 +73,8 @@ class UserSettings(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: str = ""
-    active_project_id: int | None = None
     typing_wpm: int = 40
+    page_size: int = 50
 
 
 class LoggingSettings(BaseModel):

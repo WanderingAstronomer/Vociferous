@@ -8,10 +8,10 @@
 export type ViewId =
     | "transcribe"
     | "transcripts"
-    | "search"
     | "settings"
     | "refine"
-    | "user";
+    | "user"
+    | "edit";
 
 export type PendingTranscriptMode = "view" | "edit";
 
@@ -71,7 +71,7 @@ class NavigationStore {
                 transcriptId,
             };
         this.beginEditSession(resolvedReturnTarget);
-        this.navigate("transcribe", transcriptId, "edit", { force: true });
+        this.navigate("edit", transcriptId, "edit", { force: true });
     }
 
     /** Consume and clear the pending transcript ID (one-shot). */

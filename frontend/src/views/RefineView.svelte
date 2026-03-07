@@ -44,7 +44,7 @@
     /* ── Data ── */
     async function loadTranscripts() {
         try {
-            transcripts = await getTranscripts(100);
+            transcripts = (await getTranscripts({ limit: 100 })).items;
         } catch (e) {
             console.error("Failed to load transcripts:", e);
         } finally {

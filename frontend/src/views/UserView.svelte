@@ -169,13 +169,13 @@
     async function loadData() {
         loading = true;
         try {
-            const [transcripts, health, config, insightRes] = await Promise.all([
-                getTranscripts(TRANSCRIPT_EXPORT_LIMIT),
+            const [transcriptResult, health, config, insightRes] = await Promise.all([
+                getTranscripts({ limit: TRANSCRIPT_EXPORT_LIMIT }),
                 getHealth().catch(() => null),
                 getConfig().catch(() => ({})),
                 getInsight().catch(() => ({ text: "" })),
             ]);
-            entries = transcripts;
+            entries = transcriptResult.items;
             healthInfo = health;
             slmInsight = insightRes.text || "";
             // Extract user name and typing WPM from config

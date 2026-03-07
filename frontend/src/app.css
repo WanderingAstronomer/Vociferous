@@ -103,14 +103,6 @@
     --hover-overlay-blue: rgba(59, 130, 246, 0.08);
     --overlay-backdrop: rgba(0, 0, 0, 0.5);
 
-    /* Project palette */
-    --project-ocean: var(--blue-7);
-    --project-forest: var(--green-7);
-    --project-goldenrod: var(--orange-7);
-    --project-amethyst: var(--purple-7);
-    --project-brick: var(--red-8);
-    --project-teal: var(--blue-4);
-
     /* ======================================================================
        TYPOGRAPHY — 7-step scale from typography.py
        ====================================================================== */

@@ -61,10 +61,6 @@ class TestDefaults:
         assert 0 in s.refinement.levels
         assert 4 in s.refinement.levels
 
-    def test_default_active_project_none(self):
-        s = VociferousSettings()
-        assert s.user.active_project_id is None
-
 
 class TestModuleAPI:
     """Module-level settings API (init/get/save)."""

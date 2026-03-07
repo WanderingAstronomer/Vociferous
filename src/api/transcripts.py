@@ -16,12 +16,27 @@ logger = logging.getLogger(__name__)
 
 
 @get("/api/transcripts", sync_to_thread=True)
-def list_transcripts(limit: int = 50, project_id: int | None = None) -> list[dict]:
+def list_transcripts(
+    limit: int = 50,
+    offset: int = 0,
+    sort_by: str = "created_at",
+    sort_dir: str = "desc",
+    tag_ids: str | None = None,
+    tag_mode: str = "any",
+) -> dict:
     coordinator = get_coordinator()
     if coordinator.db is None:
-        return []
-    transcripts = coordinator.db.recent(limit=limit, project_id=project_id)
-    return [transcript_to_dict(t) for t in transcripts]
+        return {"items": [], "total": 0}
+    parsed_tag_ids = [int(t) for t in tag_ids.split(",") if t.strip()] if tag_ids else None
+    transcripts, total = coordinator.db.recent(
+        limit=limit,
+        offset=offset,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        tag_ids=parsed_tag_ids,
+        tag_mode=tag_mode,
+    )
+    return {"items": [transcript_to_dict(t) for t in transcripts], "total": total}
 
 
 @get("/api/transcripts/{transcript_id:int}")
@@ -170,10 +185,11 @@ def transcript_to_dict(t, include_variants: bool = False) -> dict:
         "display_name": t.display_name,
         "duration_ms": t.duration_ms,
         "speech_duration_ms": t.speech_duration_ms,
-        "project_id": t.project_id,
-        "project_name": t.project_name,
+        "project_id": t.project_id,  # vestigial — kept for data compat
+        "project_name": t.project_name,  # vestigial — kept for data compat
         "current_variant_id": t.current_variant_id,
         "created_at": t.created_at,
+        "tags": [{"id": tag.id, "name": tag.name, "color": tag.color} for tag in t.tags],
     }
     if include_variants:
         d["variants"] = [

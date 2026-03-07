@@ -20,6 +20,7 @@
     import BarSpectrumVisualizer from "../lib/components/BarSpectrumVisualizer.svelte";
     import ActivityHeatmap from "../lib/components/ActivityHeatmap.svelte";
     import { formatDuration, formatWpm } from "../lib/formatters";
+    import { Tag as TagIcon } from "lucide-svelte";
     import {
         deleteTranscript as apiDeleteTranscript,
         dispatchIntent,
@@ -28,8 +29,10 @@
         getTranscript,
         getTranscripts,
         getMotd,
+        getTags,
+        assignTags,
     } from "../lib/api";
-    import type { Transcript } from "../lib/api";
+    import type { Transcript, Tag } from "../lib/api";
 
     type WorkspaceState = "idle" | "recording" | "transcribing" | "ready" | "viewing" | "editing";
 
@@ -43,6 +46,33 @@
     let speechDurationMs = $state(0);
     let copied = $state(false);
     let refinementEnabled = $state(true);
+
+    /* ===== Quick-tag state ===== */
+    let allTags = $state<Tag[]>([]);
+    let assignedTagIds = $state<Set<number>>(new Set());
+
+    function loadTags() {
+        getTags()
+            .then((tags) => (allTags = tags))
+            .catch(() => {});
+    }
+
+    async function toggleTag(tagId: number) {
+        if (transcriptId == null) return;
+        const next = new Set(assignedTagIds);
+        if (next.has(tagId)) next.delete(tagId);
+        else next.add(tagId);
+        assignedTagIds = next;
+        try {
+            await assignTags(transcriptId, [...next]);
+        } catch {
+            // revert on failure
+            const reverted = new Set(assignedTagIds);
+            if (reverted.has(tagId)) reverted.delete(tagId);
+            else reverted.add(tagId);
+            assignedTagIds = reverted;
+        }
+    }
 
     let visualizerRef: BarSpectrumVisualizer | undefined = $state();
 
@@ -78,8 +108,8 @@
     }
 
     function loadRecentSessions() {
-        getTranscripts(500)
-            .then((t) => (recentSessions = t))
+        getTranscripts({ limit: 500 })
+            .then((r) => (recentSessions = r.items))
             .catch(() => {});
     }
 
@@ -140,6 +170,7 @@
             transcriptTimestamp = formatTranscriptTimestamp(t.created_at || t.timestamp || "");
             durationMs = t.duration_ms ?? 0;
             speechDurationMs = t.speech_duration_ms ?? 0;
+            assignedTagIds = new Set((t.tags ?? []).map((tag: Tag) => tag.id));
             if (mode === "edit") {
                 if (!nav.isNavigationLocked) {
                     nav.beginEditSession({ view: "transcribe", transcriptId: t.id });
@@ -163,6 +194,7 @@
             .catch(() => {});
 
         loadRecentSessions();
+        loadTags();
         getMotd()
             .then((res) => {
                 slmInsight = res.text || "";
@@ -204,6 +236,7 @@
                 durationMs = data.duration_ms ?? 0;
                 speechDurationMs = data.speech_duration_ms ?? 0;
                 viewState = "ready";
+                assignedTagIds = new Set();
                 loadRecentSessions();
                 /* Title generated async by SLM — will arrive via transcript_updated */
                 transcriptTitle = "";
@@ -231,10 +264,17 @@
                     try {
                         const t = await getTranscript(data.id);
                         transcriptTitle = t.display_name || "";
+                        assignedTagIds = new Set((t.tags ?? []).map((tag: Tag) => tag.id));
                     } catch {
                         /* title fetch failed — not critical */
                     }
                 }
+            }),
+            ws.on("tag_created", () => loadTags()),
+            ws.on("tag_updated", () => loadTags()),
+            ws.on("tag_deleted", (data) => {
+                loadTags();
+                assignedTagIds = new Set([...assignedTagIds].filter((id) => id !== data.id));
             }),
         ];
         return () => unsubs.forEach((fn) => fn());
@@ -454,6 +494,26 @@
                     >{speechPct}%</span
                 >
             </div>
+        </div>
+    {/if}
+
+    <!-- Quick-tag strip (visible when a transcript is loaded) -->
+    {#if transcriptId != null && allTags.length > 0 && (viewState === "ready" || viewState === "viewing")}
+        <div class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)] shrink-0 flex-wrap">
+            <TagIcon size={14} class="text-[var(--text-tertiary)] shrink-0 mr-1" />
+            {#each allTags as tag (tag.id)}
+                {@const active = assignedTagIds.has(tag.id)}
+                <button
+                    class="inline-flex items-center gap-1 h-6 px-2 rounded-full text-[var(--text-xs)] font-[var(--weight-emphasis)] border cursor-pointer transition-all duration-150 {active
+                        ? 'border-transparent text-white'
+                        : 'border-[var(--shell-border)] text-[var(--text-secondary)] bg-transparent hover:bg-[var(--hover-overlay)]'}"
+                    style={active && tag.color ? `background: ${tag.color}` : active ? "background: var(--accent)" : ""}
+                    onclick={() => toggleTag(tag.id)}
+                    title={active ? `Remove "${tag.name}" tag` : `Add "${tag.name}" tag`}
+                >
+                    {tag.name}
+                </button>
+            {/each}
         </div>
     {/if}
 

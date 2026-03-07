@@ -118,44 +118,42 @@ class RefineTranscriptIntent(InteractionIntent):
     source: IntentSource = IntentSource.CONTROLS
 
 
+# --- Tag Intents ---
+
+
 @dataclass(frozen=True, slots=True)
-class CreateProjectIntent(InteractionIntent):
-    """Create a new project."""
+class CreateTagIntent(InteractionIntent):
+    """Create a new tag."""
 
     name: str = ""
     color: str | None = None
-    parent_id: int | None = None
     source: IntentSource = IntentSource.API
 
 
 @dataclass(frozen=True, slots=True)
-class DeleteProjectIntent(InteractionIntent):
-    """Delete a project with conditional transcript/subproject handling."""
+class UpdateTagIntent(InteractionIntent):
+    """Update a tag's name and/or color."""
 
-    project_id: int = 0
-    delete_transcripts: bool = False
-    promote_subprojects: bool = True
-    delete_subproject_transcripts: bool = False
-    source: IntentSource = IntentSource.API
-
-
-@dataclass(frozen=True, slots=True)
-class UpdateProjectIntent(InteractionIntent):
-    """Update a project's name, color, or parent."""
-
-    project_id: int = 0
+    tag_id: int = 0
     name: str | None = None
     color: str | None = None
-    parent_id: int | None = None
     source: IntentSource = IntentSource.API
 
 
 @dataclass(frozen=True, slots=True)
-class AssignProjectIntent(InteractionIntent):
-    """Assign (or unassign) a transcript to a project."""
+class DeleteTagIntent(InteractionIntent):
+    """Delete a tag."""
+
+    tag_id: int = 0
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class AssignTagsIntent(InteractionIntent):
+    """Set the exact tag set for a transcript (replaces existing)."""
 
     transcript_id: int = 0
-    project_id: int | None = None
+    tag_ids: tuple[int, ...] = ()
     source: IntentSource = IntentSource.API
 
 

@@ -11,7 +11,7 @@ Verifies:
 
 import pytest
 
-from src.database.db import Project, Transcript, TranscriptDB, TranscriptVariant
+from src.database.db import Transcript, TranscriptDB, TranscriptVariant
 
 
 @pytest.fixture
@@ -49,8 +49,9 @@ class TestTranscriptCRUD:
     def test_recent(self, db: TranscriptDB):
         for i in range(5):
             db.add_transcript(raw_text=f"Transcript {i}", duration_ms=100)
-        recent = db.recent(limit=3)
+        recent, total = db.recent(limit=3)
         assert len(recent) == 3
+        assert total == 5
 
     def test_transcript_count(self, db: TranscriptDB):
         assert db.transcript_count() == 0
@@ -122,26 +123,3 @@ class TestVariants:
     def test_delete_nonexistent_variant_returns_false(self, db: TranscriptDB):
         t = db.add_transcript(raw_text="Original", duration_ms=100)
         assert db.delete_variant(t.id, 99999) is False
-
-
-class TestProjects:
-    def test_add_project(self, db: TranscriptDB):
-        p = db.add_project(name="Test Project")
-        assert p.id is not None
-        assert p.name == "Test Project"
-
-    def test_get_projects(self, db: TranscriptDB):
-        db.add_project(name="Project A")
-        db.add_project(name="Project B")
-        projects = db.get_projects()
-        assert len(projects) == 2
-
-    def test_delete_project(self, db: TranscriptDB):
-        p = db.add_project(name="Delete Me")
-        assert db.delete_project(p.id) is True
-        assert len(db.get_projects()) == 0
-
-    def test_transcript_with_project(self, db: TranscriptDB):
-        p = db.add_project(name="MyProject")
-        t = db.add_transcript(raw_text="In project", duration_ms=100, project_id=p.id)
-        assert t.project_id == p.id

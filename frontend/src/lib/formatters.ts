@@ -23,13 +23,71 @@ export function formatTime(iso: string): string {
     return `${h}:${m.toString().padStart(2, "0")} ${period}`;
 }
 
-/** Format a duration in milliseconds to "Xm Ys" or "Xs". Returns "—" for non-positive values. */
+/**
+ * Smart relative date for transcript cards.
+ *
+ * - < 1 min : "just now"
+ * - < 60 min: "14m ago"
+ * - < 24 h  : "6h ago"
+ * - Yesterday: "Yesterday 3:07 PM"
+ * - This week: "Mon 3:07 PM"
+ * - This year: "Mar 7"
+ * - Older    : "Mar 7, 2025"
+ */
+export function formatRelativeDate(iso: string): string {
+    const dt = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - dt.getTime();
+    const diffMin = Math.floor(diffMs / 60_000);
+    const diffH = Math.floor(diffMs / 3_600_000);
+
+    if (diffMin < 1) return "just now";
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffH < 24) return `${diffH}h ago`;
+
+    const time = dt.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
+    // Check "yesterday"
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (
+        dt.getDate() === yesterday.getDate() &&
+        dt.getMonth() === yesterday.getMonth() &&
+        dt.getFullYear() === yesterday.getFullYear()
+    ) {
+        return `Yesterday ${time}`;
+    }
+
+    // Same week (within 7 days, but not yesterday)
+    if (diffH < 168) {
+        const day = dt.toLocaleDateString("en-US", { weekday: "short" });
+        return `${day} ${time}`;
+    }
+
+    // Same year: "Mar 7"
+    if (dt.getFullYear() === now.getFullYear()) {
+        return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    }
+
+    // Older: "Mar 7, 2025"
+    return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+/**
+ * Format a duration in milliseconds.
+ * - Under 60s: "42s"
+ * - Under 10 min: "4m 12s"
+ * - 10 min or more: "22m" (seconds dropped — noise at this scale)
+ * Returns "—" for non-positive values.
+ */
 export function formatDuration(ms: number): string {
     if (ms <= 0) return "—";
     const secs = Math.round(ms / 1000);
     const m = Math.floor(secs / 60);
     const s = secs % 60;
-    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+    if (m === 0) return `${s}s`;
+    if (m < 10) return `${m}m ${s}s`;
+    return `${m}m`;
 }
 
 /** Format words-per-minute from word count and duration in ms. Returns "—" for invalid inputs. */

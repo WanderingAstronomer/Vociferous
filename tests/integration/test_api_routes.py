@@ -34,7 +34,6 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
 
     from src.api.app import ConnectionManager, _handle_ws_message, _wire_event_bridge
     from src.api.deps import set_coordinator
-    from src.api.projects import create_project, delete_project, list_projects
     from src.api.system import (
         dispatch_intent,
         download_model,
@@ -55,14 +54,15 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
         "recording_started",
         "recording_stopped",
         "transcript_deleted",
-        "project_created",
-        "project_deleted",
         "refinement_started",
         "refinement_complete",
         "refinement_error",
         "transcription_complete",
         "transcription_error",
         "config_updated",
+        "tag_created",
+        "tag_updated",
+        "tag_deleted",
     ]
     event_collector.subscribe_all(coordinator.event_bus, ALL_EVENTS)
 
@@ -77,9 +77,6 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
             delete_transcript,
             refine_transcript,
             search_transcripts,
-            list_projects,
-            create_project,
-            delete_project,
             get_config,
             update_config,
             list_models,
@@ -131,7 +128,9 @@ class TestTranscriptRoutes:
         client, _, _ = api
         resp = client.get("/api/transcripts")
         assert resp.status_code == 200
-        assert resp.json() == []
+        data = resp.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
     def test_list_returns_transcripts(self, api):
         client, coord, _ = api
@@ -140,8 +139,9 @@ class TestTranscriptRoutes:
 
         resp = client.get("/api/transcripts")
         data = resp.json()
-        assert len(data) == 2
-        assert all("id" in t and "raw_text" in t for t in data)
+        assert len(data["items"]) == 2
+        assert data["total"] == 2
+        assert all("id" in t and "raw_text" in t for t in data["items"])
 
     def test_list_with_limit(self, api):
         client, coord, _ = api
@@ -149,7 +149,9 @@ class TestTranscriptRoutes:
             coord.db.add_transcript(raw_text=f"transcript {i}", duration_ms=100)
 
         resp = client.get("/api/transcripts", params={"limit": 3})
-        assert len(resp.json()) == 3
+        data = resp.json()
+        assert len(data["items"]) == 3
+        assert data["total"] == 5
 
     def test_get_transcript_by_id(self, api):
         client, coord, _ = api
@@ -207,61 +209,6 @@ class TestTranscriptRoutes:
         assert data["total"] == 0
 
 
-# ── Project CRUD (H-Pattern) ─────────────────────────────────────────────
-
-
-class TestProjectRoutes:
-    def test_list_projects_empty(self, api):
-        client, _, _ = api
-        resp = client.get("/api/projects")
-        assert resp.status_code == 200
-        assert resp.json() == []
-
-    def test_create_project_via_h_pattern(self, api):
-        """POST /api/projects dispatches CreateProjectIntent → DB + event."""
-        client, coord, events = api
-
-        resp = client.post("/api/projects", json={"name": "My Project", "color": "#00ff00"})
-        assert resp.status_code == 201
-
-        # Verify event emitted
-        created = events.of_type("project_created")
-        assert len(created) == 1
-        assert created[0]["name"] == "My Project"
-
-        # Verify in DB
-        projects = coord.db.get_projects()
-        assert len(projects) == 1
-        assert projects[0].name == "My Project"
-
-    def test_delete_project_via_h_pattern(self, api):
-        """DELETE /api/projects/:id dispatches DeleteProjectIntent → DB + event."""
-        client, coord, events = api
-        p = coord.db.add_project(name="Temporary")
-
-        resp = client.delete(f"/api/projects/{p.id}")
-        assert resp.status_code == 200
-
-        # Verify event
-        deleted = events.of_type("project_deleted")
-        assert len(deleted) == 1
-        assert deleted[0]["id"] == p.id
-
-        # Verify DB
-        assert not any(proj.id == p.id for proj in coord.db.get_projects())
-
-    def test_list_projects_after_create(self, api):
-        client, coord, _ = api
-        coord.db.add_project(name="Alpha")
-        coord.db.add_project(name="Beta")
-
-        resp = client.get("/api/projects")
-        data = resp.json()
-        assert len(data) == 2
-        names = {p["name"] for p in data}
-        assert names == {"Alpha", "Beta"}
-
-
 # ── Generic Intent Dispatch ──────────────────────────────────────────────
 
 
@@ -278,20 +225,6 @@ class TestIntentDispatch:
         assert resp.status_code == 201
         assert resp.json()["dispatched"] is True
         assert coord.db.get_transcript(t.id) is None
-
-    def test_dispatch_create_project(self, api):
-        """POST /api/intents with create_project type."""
-        client, coord, events = api
-
-        resp = client.post(
-            "/api/intents",
-            json={"type": "create_project", "name": "Intent Project"},
-        )
-        assert resp.status_code == 201
-        assert resp.json()["dispatched"] is True
-
-        projects = coord.db.get_projects()
-        assert any(p.name == "Intent Project" for p in projects)
 
     def test_dispatch_unknown_intent(self, api):
         client, _, _ = api

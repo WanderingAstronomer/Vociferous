@@ -8,10 +8,10 @@
     import TitleBar from "./lib/components/TitleBar.svelte";
     import TranscribeView from "./views/TranscribeView.svelte";
     import TranscriptsView from "./views/TranscriptsView.svelte";
-    import SearchView from "./views/SearchView.svelte";
     import SettingsView from "./views/SettingsView.svelte";
     import RefineView from "./views/RefineView.svelte";
     import UserView from "./views/UserView.svelte";
+    import EditView from "./views/EditView.svelte";
     import ToastContainer from "./lib/components/ToastContainer.svelte";
     import { toast } from "./lib/toast.svelte";
     import type { ConfigUpdatedData } from "./lib/events";
@@ -137,12 +137,12 @@
 
                 {#if nav.current === "transcripts"}
                     <TranscriptsView />
-                {:else if nav.current === "search"}
-                    <SearchView />
                 {:else if nav.current === "settings"}
                     <SettingsView />
                 {:else if nav.current === "user"}
                     <UserView />
+                {:else if nav.current === "edit"}
+                    <EditView />
                 {/if}
             </main>
         {/if}

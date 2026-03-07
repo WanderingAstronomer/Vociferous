@@ -420,21 +420,21 @@ class ApplicationCoordinator:
 
     def _register_handlers(self) -> None:
         """Instantiate domain handler objects and wire them into the CommandBus."""
-        from src.core.handlers.project_handlers import ProjectHandlers
         from src.core.handlers.refinement_handlers import RefinementHandlers
         from src.core.handlers.system_handlers import SystemHandlers
+        from src.core.handlers.tag_handlers import TagHandlers
         from src.core.handlers.title_handlers import TitleHandlers
         from src.core.handlers.transcript_handlers import TranscriptHandlers
         from src.core.intents.definitions import (
-            AssignProjectIntent,
+            AssignTagsIntent,
             BatchDeleteTranscriptsIntent,
             BatchRetitleIntent,
             BeginRecordingIntent,
             CancelRecordingIntent,
             ClearTranscriptsIntent,
             CommitEditsIntent,
-            CreateProjectIntent,
-            DeleteProjectIntent,
+            CreateTagIntent,
+            DeleteTagIntent,
             DeleteTranscriptIntent,
             DeleteTranscriptVariantIntent,
             RefineTranscriptIntent,
@@ -444,14 +444,14 @@ class ApplicationCoordinator:
             StopRecordingIntent,
             ToggleRecordingIntent,
             UpdateConfigIntent,
-            UpdateProjectIntent,
+            UpdateTagIntent,
         )
 
         transcript = TranscriptHandlers(
             db_provider=lambda: self.db,
             event_bus_emit=self.event_bus.emit,
         )
-        project = ProjectHandlers(
+        tag = TagHandlers(
             db_provider=lambda: self.db,
             event_bus_emit=self.event_bus.emit,
         )
@@ -486,10 +486,10 @@ class ApplicationCoordinator:
         bus.register(CommitEditsIntent, transcript.handle_commit_edits)
         bus.register(RenameTranscriptIntent, transcript.handle_rename)
         bus.register(RefineTranscriptIntent, refinement.handle_refine)
-        bus.register(CreateProjectIntent, project.handle_create)
-        bus.register(UpdateProjectIntent, project.handle_update)
-        bus.register(DeleteProjectIntent, project.handle_delete)
-        bus.register(AssignProjectIntent, project.handle_assign)
+        bus.register(CreateTagIntent, tag.handle_create)
+        bus.register(UpdateTagIntent, tag.handle_update)
+        bus.register(DeleteTagIntent, tag.handle_delete)
+        bus.register(AssignTagsIntent, tag.handle_assign_tags)
         bus.register(UpdateConfigIntent, system.handle_update_config)
         bus.register(RestartEngineIntent, system.handle_restart_engine)
         bus.register(BatchRetitleIntent, title.handle_batch_retitle)

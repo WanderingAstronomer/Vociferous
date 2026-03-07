@@ -2,7 +2,7 @@
 Litestar API Application — Vociferous v4.0.
 
 REST + WebSocket endpoints bridging the Svelte frontend to the Python backend.
-Route handlers are defined in dedicated modules (transcripts, projects, system).
+Route handlers are defined in dedicated modules (transcripts, tags, system).
 This file provides the WebSocket infrastructure and app factory.
 """
 
@@ -23,7 +23,6 @@ from litestar.response import File, Response
 from litestar.static_files import StaticFilesConfig
 
 from src.api.deps import set_coordinator
-from src.api.projects import create_project, delete_project, list_projects, update_project
 from src.api.system import (
     APP_VERSION,
     close_window,
@@ -44,6 +43,7 @@ from src.api.system import (
     stop_key_capture,
     update_config,
 )
+from src.api.tags import assign_tags, create_tag, delete_tag, list_tags, update_tag
 from src.api.transcripts import (
     batch_delete_transcripts,
     clear_all_transcripts,
@@ -261,11 +261,12 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             rename_transcript,
             retitle_transcript,
             search_transcripts,
-            # Projects
-            list_projects,
-            create_project,
-            update_project,
-            delete_project,
+            # Tags
+            list_tags,
+            create_tag,
+            update_tag,
+            delete_tag,
+            assign_tags,
             # System
             get_config,
             update_config,
@@ -323,12 +324,13 @@ def _wire_event_bridge(coordinator: ApplicationCoordinator, ws_manager: Connecti
         "refinement_complete",
         "refinement_error",
         "transcript_deleted",
+        "transcripts_batch_deleted",
         "config_updated",
         "engine_status",
         "download_progress",
-        "project_created",
-        "project_deleted",
-        "project_updated",
+        "tag_created",
+        "tag_deleted",
+        "tag_updated",
         "key_captured",
         "transcript_updated",
         "refinement_progress",

@@ -4,6 +4,42 @@
 
 ---
 
+## v5.2.0 — Transcriptions View Overhaul (ISS-015)
+
+**Date:** 2026-03-07
+**Status:** Feature Release
+
+### Overview
+
+Complete redesign of the Transcriptions view. Ships server-side pagination and multi-column sorting, a rebuilt search bar, a dedicated EditView, tag management improvements, and a full card UI refresh with relative timestamps and improved typography.
+
+### Added
+
+- **Server-side pagination** — `db.recent()` now accepts `limit`, `offset`, and `sort_by` parameters. API returns `{items, total}` envelope. Frontend renders prev/next navigation with configurable page sizes (10 / 25 / 50).
+- **Multi-column sort** — Sort by: Newest, Oldest, Longest, Shortest, Most Words, Fewest Words, Most Silence, Least Silence. `_SORT_EXPRESSIONS` dict in `db.py` maps virtual keys to SQL expressions; silence computed as `duration_ms - speech_duration_ms`.
+- **Dedicated `EditView.svelte`** — Focused, single-purpose transcript editing surface. No recording machinery. Full-height layout: header (title + metadata + tags), textarea, footer (word count + dirty indicator + Save/Discard). `Ctrl+S` saves; `Escape` discards. Navigated to via `nav.navigateToEdit()`; returns to origin on save/discard.
+- **Tag right-click context menu** — Right-clicking any tag chip opens a positioned popover with an inline color picker and a Delete action. Replaces the broken `confirm()` dialog approach. `onpointerdown|stopPropagation` prevents the global handler race that caused the earlier delete failure.
+- **Tag color editing** — Color picker in the tag context menu calls `updateTag(id, {color})` via the existing REST endpoint. Live color update with no page reload.
+- **`formatRelativeDate()`** in `formatters.ts` — Produces human-readable relative dates: "just now", "14m ago", "6h ago", "Yesterday 3:07 PM", "Mon 3:07 PM" (this week), "Mar 7" (this year), "Mar 7, 2025" (older).
+
+### Changed
+
+- **`ViewId`** in `navigation.svelte.ts` — Added `"edit"` variant. `navigateToEdit()` now routes to the new EditView instead of TranscribeView's internal edit mode.
+- **`formatDuration()`** — Recordings ≥ 10 min now drop seconds ("22m" not "22m 19s"). Sub-10-min recordings retain seconds ("4m 12s"). Sub-60s retain seconds only ("42s").
+- **Card typography** — Title size `text-[15px]` → `text-[18px]`. Body preview `text-[13px]` → `text-[15px]`.
+- **Card timestamps** — Local `formatDate()` ("Feb 19 8:40 PM") replaced with `formatRelativeDate()` from shared formatters.
+- **Tag chips** — Container is now `justify-center` in the sidebar panel.
+- **Refresh button** — Removed from the header to reduce visual noise; list refreshes on navigation and after mutations.
+- **Search bar** — Search icon moved to right side; swaps to × (clear) when query is active.
+
+### Fixed
+
+- **Tag delete race condition** — `pointerdown` fired before `onclick`, causing the global overlay handler to null `tagMenuId` before the delete handler ran. Fixed by replacing the entire inline-confirm approach with a context menu that stops pointer propagation.
+- **`openTagAssign` type incompatibility** — Made `event` parameter optional (`event?: MouseEvent`) so the function is assignable to `StyledButton.onclick: () => void`.
+- **`$state(null)` type inference in EditView** — Changed to `$state<Transcript | null>(null)` to prevent TypeScript inferring `never` for the transcript variable.
+
+---
+
 ## v5.1.0 — TranscribeView Phase 3 UI Redesign
 
 **Date:** 2026-03-07

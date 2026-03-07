@@ -93,7 +93,7 @@
         const headers = [
             "id",
             "timestamp",
-            "project_name",
+            "tags",
             "text",
             "raw_text",
             "normalized_text",
@@ -102,10 +102,13 @@
         ];
         const lines = [headers.join(",")];
         for (const transcript of transcripts) {
+            const tags = Array.isArray(transcript.tags)
+                ? (transcript.tags as { name: string }[]).map((t) => t.name).join("; ")
+                : "";
             const row = [
                 transcript.id,
                 transcript.timestamp,
-                transcript.project_name,
+                tags,
                 transcript.text,
                 transcript.raw_text,
                 transcript.normalized_text,
@@ -122,9 +125,11 @@
             .map((transcript, index) => {
                 const title = `Transcript ${index + 1}`;
                 const timestamp = `Timestamp: ${String(transcript.timestamp ?? "unknown")}`;
-                const project = `Project: ${String(transcript.project_name ?? "unassigned")}`;
+                const tags = Array.isArray(transcript.tags)
+                    ? `Tags: ${(transcript.tags as { name: string }[]).map((t) => t.name).join(", ") || "none"}`
+                    : "Tags: none";
                 const text = String(transcript.text ?? transcript.normalized_text ?? transcript.raw_text ?? "");
-                return `${title}\n${timestamp}\n${project}\n\n${text}`;
+                return `${title}\n${timestamp}\n${tags}\n\n${text}`;
             })
             .join("\n\n---\n\n");
     }
@@ -134,9 +139,11 @@
         const body = transcripts
             .map((t, i) => {
                 const ts = String(t.timestamp ?? "unknown");
-                const project = String(t.project_name ?? "unassigned");
+                const tags = Array.isArray(t.tags)
+                    ? (t.tags as { name: string }[]).map((tg) => tg.name).join(", ") || "none"
+                    : "none";
                 const text = String(t.text ?? t.normalized_text ?? t.raw_text ?? "");
-                return `## ${i + 1}. Transcript\n\n**Date:** ${ts}  \n**Project:** ${project}\n\n${text}`;
+                return `## ${i + 1}. Transcript\n\n**Date:** ${ts}  \n**Tags:** ${tags}\n\n${text}`;
             })
             .join("\n\n---\n\n");
         return `${header}\n${body}\n`;
@@ -164,7 +171,7 @@
 
     async function handleExportTranscripts() {
         try {
-            const transcripts = await getTranscripts(99999);
+            const { items: transcripts } = await getTranscripts({ limit: 99999 });
             const { filename, content } = buildExportPayload(
                 transcripts as unknown as Record<string, unknown>[],
                 exportFormat,
