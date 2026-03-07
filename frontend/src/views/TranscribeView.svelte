@@ -49,6 +49,31 @@
     /* ===== Recent sessions (idle panel) ===== */
     let recentSessions = $state<Transcript[]>([]);
 
+    // Recording timer
+    let recordingElapsedMs = $state(0);
+    let recordingTimerInterval: ReturnType<typeof setInterval> | null = null;
+
+    function startRecordingTimer() {
+        recordingElapsedMs = 0;
+        recordingTimerInterval = setInterval(() => {
+            recordingElapsedMs += 1000;
+        }, 1000);
+    }
+
+    function stopRecordingTimer() {
+        if (recordingTimerInterval !== null) {
+            clearInterval(recordingTimerInterval);
+            recordingTimerInterval = null;
+        }
+    }
+
+    function formatElapsed(ms: number): string {
+        const totalSec = Math.floor(ms / 1000);
+        const m = Math.floor(totalSec / 60);
+        const s = totalSec % 60;
+        return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+
     function loadRecentSessions() {
         getTranscripts(500)
             .then((t) => (recentSessions = t))
@@ -164,8 +189,10 @@
                 transcriptTimestamp = "";
                 durationMs = 0;
                 speechDurationMs = 0;
+                startRecordingTimer();
             }),
             ws.on("recording_stopped", (data) => {
+                stopRecordingTimer();
                 visualizerRef?.reset();
                 if (data.cancelled) {
                     viewState = "idle";
@@ -309,6 +336,10 @@
                     >
                         {slmInsight}
                     </p>
+                {:else if !refinementEnabled}
+                    <p class="text-[var(--text-sm)] text-[var(--text-tertiary)] mt-[var(--space-0)] mb-0">
+                        Enable Grammar Refinement in Settings to unlock AI insights.
+                    </p>
                 {:else}
                     <p class="text-[var(--text-sm)] text-[var(--text-tertiary)] mt-[var(--space-0)] mb-0">
                         Click the mic button or use your hotkey to start recording
@@ -316,12 +347,7 @@
                 {/if}
             </div>
         {:else if viewState === "recording"}
-            <div class="flex items-center gap-[var(--space-1)] text-[var(--text-base)] text-[var(--color-danger)]">
-                <span
-                    class="w-2 h-2 rounded-full bg-[var(--color-danger)] animate-[pulse-dot_1.2s_ease-in-out_infinite]"
-                ></span>
-                <span>Recording in progress…</span>
-            </div>
+            <!-- empty during recording — status lives in the action bar -->
         {:else if viewState === "transcribing"}
             <div class="flex items-center gap-[var(--space-1)] text-[var(--text-base)] text-[var(--text-secondary)]">
                 <Loader2 size={18} class="spin" />
@@ -490,33 +516,13 @@
                 </div>
             </div>
 
-            <!-- RECORDING: visualizer + stop -->
+            <!-- RECORDING: spectrum fills the full panel, flush to bottom -->
         {:else if viewState === "recording"}
-            <div class="flex-1 flex flex-col gap-[var(--space-3)]">
+            <div class="flex-1 flex flex-col">
+                <!-- Spectrum fills all available space, flush to bottom edge of panel -->
                 <div class="flex-1 min-h-[120px]">
                     <BarSpectrumVisualizer bind:this={visualizerRef} active={isRecording} numBars={64} />
                 </div>
-                <div class="self-center flex items-center gap-[var(--space-1)] shrink-0">
-                    <button
-                        class="inline-flex items-center gap-1.5 h-10 px-[var(--space-2)] border border-[var(--color-danger)] rounded-[var(--radius-sm)] bg-transparent text-[var(--color-danger)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] hover:bg-[var(--color-danger-surface)]"
-                        onclick={cancelRecording}
-                        aria-label="Cancel recording and discard audio"
-                        title="Cancel recording and discard captured audio"
-                    >
-                        <Trash2 size={16} /> Cancel (Discard)
-                    </button>
-                    <button
-                        class="inline-flex items-center gap-1.5 h-10 px-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-sm)] bg-[var(--surface-primary)] text-[var(--text-primary)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] hover:bg-[var(--surface-tertiary)]"
-                        onclick={stopRecording}
-                        aria-label="Stop recording and transcribe"
-                        title="Stop recording and transcribe audio"
-                    >
-                        <Square size={16} fill="currentColor" /> Stop & Transcribe
-                    </button>
-                </div>
-                <p class="self-center text-[var(--text-xs)] text-[var(--text-tertiary)] italic">
-                    Cancel discards audio. Stop runs transcription.
-                </p>
             </div>
 
             <!-- TRANSCRIBING: spinner -->
@@ -552,7 +558,33 @@
     {#if viewState !== "idle" && viewState !== "transcribing"}
         <div class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] shrink-0">
             {#if viewState === "recording"}
-                <!-- Recording: just the stop is in the panel -->
+                <!-- Cancel left, status+timer centered, Stop right -->
+                <button
+                    class="inline-flex items-center gap-1.5 h-9 px-[var(--space-3)] border border-[var(--color-danger)] rounded-[var(--radius-sm)] bg-transparent text-[var(--color-danger)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] hover:bg-[var(--color-danger-surface)]"
+                    onclick={cancelRecording}
+                    aria-label="Cancel recording and discard audio"
+                    title="Cancel recording and discard captured audio"
+                >
+                    <Trash2 size={15} /> Cancel
+                </button>
+                <div class="flex-1 flex items-center justify-center gap-[var(--space-2)]">
+                    <span
+                        class="w-2 h-2 rounded-full bg-[var(--color-danger)] shrink-0 animate-[pulse-dot_1.2s_ease-in-out_infinite]"
+                    ></span>
+                    <span class="text-[var(--text-sm)] text-[var(--color-danger)]">Recording in progress…</span>
+                    <span class="w-px h-4 bg-[var(--shell-border)]"></span>
+                    <span class="text-[var(--text-sm)] font-[var(--font-mono)] text-[var(--text-tertiary)] tabular-nums"
+                        >{formatElapsed(recordingElapsedMs)}</span
+                    >
+                </div>
+                <button
+                    class="inline-flex items-center gap-1.5 h-9 px-[var(--space-3)] border-none rounded-[var(--radius-sm)] bg-[var(--accent)] text-[var(--gray-0)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] hover:bg-[var(--accent-hover)]"
+                    onclick={stopRecording}
+                    aria-label="Stop recording and transcribe"
+                    title="Stop recording and transcribe audio"
+                >
+                    <Square size={15} fill="currentColor" /> Stop & Transcribe
+                </button>
             {:else if viewState === "editing"}
                 <button
                     class="inline-flex items-center gap-1.5 h-8 px-[var(--space-2)] border-none rounded-[var(--radius-sm)] font-[var(--font-family)] text-[var(--text-xs)] font-[var(--weight-emphasis)] cursor-pointer whitespace-nowrap transition-[background,color] duration-[var(--transition-fast)] bg-[var(--accent)] text-[var(--gray-0)] hover:bg-[var(--accent-hover)]"

@@ -16,7 +16,13 @@
     let { editing = false, recording = false, children }: Props = $props();
 
     const baseClasses =
-        "flex-1 flex flex-col overflow-hidden bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-xl p-4 transition-all duration-250";
+        "flex-1 flex flex-col overflow-hidden bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-xl transition-all duration-250";
+
+    let paddingClasses = $derived.by(() => {
+        // Recording: flush bottom so the spectrum grows into the panel edge
+        if (recording) return "pt-4 px-4 pb-0";
+        return "p-4";
+    });
 
     let stateClasses = $derived.by(() => {
         if (editing) {
@@ -29,6 +35,6 @@
     });
 </script>
 
-<div class="{baseClasses} {stateClasses}">
+<div class="{baseClasses} {paddingClasses} {stateClasses}">
     {#if children}{@render children()}{/if}
 </div>

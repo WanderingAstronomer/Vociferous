@@ -280,7 +280,9 @@
 
     function draw(): void {
         if (!ctx) return;
-        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        // Cap DPR at 1 for performance — a spectrum visualizer does not need sub-pixel
+        // rendering, and DPR=2 at fullscreen quadruples the canvas buffer area.
+        const dpr = 1;
         const width = canvas.clientWidth;
         const height = canvas.clientHeight;
 
@@ -290,10 +292,9 @@
             canvas.width = nextBufferWidth;
             canvas.height = nextBufferHeight;
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            cachedGradient = null; // invalidate gradient cache on resize
+            cachedGradient = null;
         }
 
-        // Cache the bar gradient (reuse across all bars per frame)
         if (!cachedGradient || cachedGradientHeight !== height) {
             cachedGradient = ctx.createLinearGradient(0, height, 0, 0);
             cachedGradient.addColorStop(0, palette.base);
@@ -306,36 +307,40 @@
 
         const gap = numBars < 48 ? barGap : 1;
         const barWidth = (width - (numBars - 1) * gap) / numBars;
+        const radius = Math.min(barWidth / 2, 6);
 
+        // Build a single path for all bars — one fill() call instead of 64.
         ctx.fillStyle = cachedGradient;
+        ctx.beginPath();
         for (let i = 0; i < numBars; i++) {
             const x = i * (barWidth + gap);
             const weighted = spectrum[i] * emphasisWeights[i];
             const barH = weighted * height;
-
             if (barH < 1) continue;
-
-            const radius = Math.min(barWidth / 2, 6);
-            ctx.beginPath();
             ctx.moveTo(x, height);
             ctx.lineTo(x, height - barH + radius);
             ctx.arcTo(x, height - barH, x + radius, height - barH, radius);
             ctx.arcTo(x + barWidth, height - barH, x + barWidth, height - barH + radius, radius);
             ctx.lineTo(x + barWidth, height);
             ctx.closePath();
-            ctx.fill();
+        }
+        ctx.fill();
 
+        // Build a single path for all peak indicators — one stroke() call instead of 64.
+        ctx.beginPath();
+        ctx.strokeStyle = palette.peak;
+        ctx.lineWidth = 1;
+        for (let i = 0; i < numBars; i++) {
+            const x = i * (barWidth + gap);
+            const weighted = spectrum[i] * emphasisWeights[i];
             const peakWeighted = peaks[i] * emphasisWeights[i];
             if (peakWeighted > weighted + 0.02) {
                 const peakY = height - peakWeighted * height;
-                ctx.beginPath();
                 ctx.moveTo(x, peakY);
                 ctx.lineTo(x + barWidth, peakY);
-                ctx.strokeStyle = palette.peak;
-                ctx.lineWidth = 1;
-                ctx.stroke();
             }
         }
+        ctx.stroke();
     }
 
     function start(): void {
