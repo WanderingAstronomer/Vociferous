@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import { getTranscripts, getTranscript, refineTranscript, type Transcript } from "../lib/api";
+    import { getTranscripts, getTranscript, refineTranscript, commitRefinement, type Transcript } from "../lib/api";
     import { ws } from "../lib/ws";
     import { nav } from "../lib/navigation.svelte";
     import WorkspacePanel from "../lib/components/WorkspacePanel.svelte";
@@ -104,9 +104,11 @@
         }
     }
 
-    function handleAccept() {
-        if (!refinedText) return;
+    async function handleAccept() {
+        if (!refinedText || selectedId === null) return;
+        await commitRefinement(selectedId, refinedText);
         navigator.clipboard.writeText(refinedText);
+        originalText = refinedText;
         accepted = true;
         setTimeout(() => (accepted = false), 2000);
     }
@@ -411,30 +413,27 @@
 
     <!-- Action Bar -->
     <div
-        class="flex gap-[var(--space-2)] py-[var(--space-3)] px-[var(--space-4)] border-t border-[var(--shell-border)] justify-center"
+        class="flex items-center gap-[var(--space-2)] py-[var(--space-3)] px-[var(--space-4)] border-t border-[var(--shell-border)]"
     >
         {#if hasRefined}
+            <StyledButton variant="danger-reveal" size="sm" title="Clear this refinement result from the view" onclick={handleDiscard}>
+                <Trash2 size={15} /> Discard Result
+            </StyledButton>
+            <div class="flex-1"></div>
             {#if !accepted}
-                <StyledButton variant="danger-reveal" size="sm" title="Permanently removes this refinement from storage" onclick={handleDiscard}>
-                    <Trash2 size={15} /> Delete Result
-                </StyledButton>
                 <StyledButton variant="neutral" size="sm" onclick={handleRerun}>
                     <RotateCcw size={15} /> Re-run
                 </StyledButton>
             {/if}
-            <button
-                class="flex items-center gap-[var(--space-1)] py-[var(--space-2)] px-[var(--space-4)] border rounded-[var(--radius-md)] text-white text-[var(--text-sm)] font-[var(--weight-emphasis)] cursor-pointer transition-[color,border-color,background,transform] duration-[var(--transition-fast)] active:scale-[0.93] {accepted
-                    ? 'border-[var(--color-success)] bg-[var(--color-success)]'
-                    : 'border-[var(--accent)] bg-[var(--accent)] hover:bg-[var(--blue-5)] hover:border-[var(--blue-5)]'}"
-                onclick={handleAccept}
-            >
+            <StyledButton variant="primary" size="sm" onclick={handleAccept}>
                 {#if accepted}
-                    <Check size={15} /> Copied!
+                    <Check size={15} /> Accepted!
                 {:else}
                     <ThumbsUp size={15} /> Accept & Copy
                 {/if}
-            </button>
+            </StyledButton>
         {:else}
+            <div class="flex-1"></div>
             <StyledButton variant="primary" size="sm" onclick={handleRefine} disabled={selectedId === null || isRefining}>
                 {#if isRefining}
                     <Loader2 size={15} class="spin" /> Refining… {refineElapsed}s

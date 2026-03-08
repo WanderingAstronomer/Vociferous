@@ -2,6 +2,29 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.3.2 — Refinement Accept/Discard + Button Bar Polish
+
+**Date:** 2026-03-08
+**Status:** Hotfix / UX
+
+### Overview
+
+Fixed a content-preservation bug where the refinement backend silently overwrote `normalized_text` the moment inference completed — before the user ever saw or approved the result. Refinement is now a two-phase operation: the backend emits the result over WebSocket, and the database is only written when the user explicitly clicks **Accept & Copy**. Discarding a result is now a genuine no-op.
+
+Also cleaned up the RefineView action bar to match the project's design system.
+
+### Fixed
+- **ISS-032** — Refinement no longer writes `normalized_text` to the database until the user accepts the result. "Discard Result" is now a true discard — the original text is fully preserved.
+- **ISS-031** — RefineView action bar: "Accept & Copy" converted from raw `<button>` to `StyledButton`; destructive action (Discard) left-aligned, positive action (Accept) right-aligned; "Delete Result" renamed to "Discard Result" with accurate tooltip.
+
+### Changed
+- `refinement_handlers.py` — `do_refine()` no longer calls `db.update_normalized_text()`. Auto-retitle on refine is now triggered from the commit path, not the inference path.
+- New `CommitRefinementIntent(transcript_id, text)` intent and `handle_commit_refinement()` handler persist the accepted text and trigger auto-retitle if enabled.
+- New endpoint `POST /api/transcripts/{id}/refine/commit` dispatches the commit intent.
+- `handleAccept()` in `RefineView.svelte` awaits the commit API call and updates the Original panel to reflect the newly accepted text.
+
+---
+
 ## v5.3.1 — Recording View Polish: Audio-Reactive Mic Button
 
 **Date:** 2026-03-08

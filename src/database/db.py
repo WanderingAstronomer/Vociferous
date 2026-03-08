@@ -359,7 +359,7 @@ class TranscriptDB:
         with self._write_lock:
             cur = self._conn.execute("SELECT COUNT(*) FROM transcripts")
             count = cur.fetchone()[0]
-            # ON DELETE CASCADE handles variants automatically
+            # transcript_tags ON DELETE CASCADE handles junction table cleanup
             self._conn.execute("DELETE FROM transcripts")
             self._conn.commit()
             return count

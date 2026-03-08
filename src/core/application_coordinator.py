@@ -428,6 +428,7 @@ class ApplicationCoordinator:
             CancelRecordingIntent,
             ClearTranscriptsIntent,
             CommitEditsIntent,
+            CommitRefinementIntent,
             CreateTagIntent,
             DeleteTagIntent,
             DeleteTranscriptIntent,
@@ -481,6 +482,7 @@ class ApplicationCoordinator:
         bus.register(CommitEditsIntent, transcript.handle_commit_edits)
         bus.register(RenameTranscriptIntent, transcript.handle_rename)
         bus.register(RefineTranscriptIntent, refinement.handle_refine)
+        bus.register(CommitRefinementIntent, refinement.handle_commit_refinement)
         bus.register(CreateTagIntent, tag.handle_create)
         bus.register(UpdateTagIntent, tag.handle_update)
         bus.register(DeleteTagIntent, tag.handle_delete)

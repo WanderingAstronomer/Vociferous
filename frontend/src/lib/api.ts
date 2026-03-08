@@ -93,6 +93,13 @@ export function refineTranscript(id: number, level: number, instructions = ""): 
     });
 }
 
+export function commitRefinement(id: number, text: string): Promise<{ status: string }> {
+    return request(`/transcripts/${id}/refine/commit`, {
+        method: "POST",
+        body: JSON.stringify({ text }),
+    });
+}
+
 export function batchRetitle(): Promise<{ dispatched: boolean }> {
     return dispatchIntent("batch_retitle");
 }

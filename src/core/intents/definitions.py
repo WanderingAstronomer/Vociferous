@@ -85,6 +85,15 @@ class RefineTranscriptIntent(InteractionIntent):
     source: IntentSource = IntentSource.CONTROLS
 
 
+@dataclass(frozen=True, slots=True)
+class CommitRefinementIntent(InteractionIntent):
+    """Persist accepted refinement text to normalized_text."""
+
+    transcript_id: int = 0
+    text: str = ""
+    source: IntentSource = IntentSource.API
+
+
 # --- Tag Intents ---
 
 

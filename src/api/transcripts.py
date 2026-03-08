@@ -129,6 +129,21 @@ async def refine_transcript(transcript_id: int, data: dict) -> Response:
     return Response(content={"status": "queued"})
 
 
+@post("/api/transcripts/{transcript_id:int}/refine/commit")
+async def commit_refinement(transcript_id: int, data: dict) -> Response:
+    """Persist accepted refinement text to normalized_text via CommandBus intent."""
+    text = data.get("text", "")
+    if not isinstance(text, str) or not text.strip():
+        return Response(content={"error": "text is required"}, status_code=400)
+
+    coordinator = get_coordinator()
+    from src.core.intents.definitions import CommitRefinementIntent
+
+    intent = CommitRefinementIntent(transcript_id=transcript_id, text=text)
+    coordinator.command_bus.dispatch(intent)
+    return Response(content={"status": "committed"})
+
+
 @post("/api/transcripts/{transcript_id:int}/retitle")
 async def retitle_transcript(transcript_id: int) -> Response:
     """Re-generate the SLM title for a single transcript."""

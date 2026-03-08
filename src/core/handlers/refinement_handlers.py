@@ -92,9 +92,7 @@ class RefinementHandlers:
 
         def do_refine() -> None:
             start_time = time.monotonic()
-            _db = self._db_provider()
             _slm = self._slm_runtime_provider()
-            settings = self._settings_provider()
             try:
                 # ALWAYS refine from the immutable original, never a previous variant.
                 text = transcript.normalized_text or transcript.raw_text
@@ -116,8 +114,6 @@ class RefinementHandlers:
 
                 elapsed = round(time.monotonic() - start_time, 1)
 
-                _db.update_normalized_text(intent.transcript_id, refined)
-
                 self._emit(
                     "refinement_complete",
                     {
@@ -127,12 +123,6 @@ class RefinementHandlers:
                         "elapsed_seconds": elapsed,
                     },
                 )
-
-                # Re-title after refinement if the setting is enabled
-                if settings.output.auto_retitle_on_refine:
-                    title_gen = self._title_generator_provider()
-                    if title_gen is not None:
-                        title_gen.schedule(intent.transcript_id, refined)
             except Exception as e:
                 logger.exception("Refinement failed for transcript %d", intent.transcript_id)
                 self._emit(
@@ -145,3 +135,22 @@ class RefinementHandlers:
 
         t = threading.Thread(target=do_refine, daemon=True, name="refine")
         t.start()
+
+    def handle_commit_refinement(self, intent: Any) -> None:
+        db = self._db_provider()
+        if not db:
+            self._emit("refinement_error", {"message": "Database not available"})
+            return
+
+        transcript = db.get_transcript(intent.transcript_id)
+        if not transcript:
+            self._emit("refinement_error", {"message": "Transcript not found"})
+            return
+
+        db.update_normalized_text(intent.transcript_id, intent.text)
+
+        settings = self._settings_provider()
+        if settings.output.auto_retitle_on_refine:
+            title_gen = self._title_generator_provider()
+            if title_gen is not None:
+                title_gen.schedule(intent.transcript_id, intent.text)
