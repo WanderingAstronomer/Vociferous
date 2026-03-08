@@ -162,7 +162,7 @@ class TestTranscriptRoutes:
         body = resp.json()
         assert body["raw_text"] == "find me"
         assert body["id"] == t.id
-        assert "variants" in body  # Detail view includes variants
+        assert "tags" in body  # Detail view includes tags
 
     def test_get_transcript_not_found(self, api):
         client, _, _ = api

@@ -117,9 +117,8 @@ class TestTitleHandlersRetitle:
     def test_retitle_prefers_normalized_text(self, db, events):
         """If normalized_text exists, use it over raw_text."""
         t = db.add_transcript(raw_text="raw version", duration_ms=1000)
-        # Simulate normalized text by adding a variant
-        db.add_variant(t.id, "normalized", "better version", set_current=True)
-        # The normalized_text field comes from the current variant
+        # Simulate normalized text via direct update
+        db.update_normalized_text(t.id, "better version")
         mock_gen = MagicMock()
         handler = self._make_handler(db=db, title_gen=mock_gen, events_list=events)
 
@@ -257,7 +256,7 @@ class TestRefinementHandlersStateGuards:
 class TestRefinementHandlersHappyPath:
     """Refinement background thread: successful execution path."""
 
-    def test_successful_refinement_creates_variant_and_emits(self, db, events):
+    def test_successful_refinement_updates_text_and_emits(self, db, events):
         from src.core.handlers.refinement_handlers import RefinementHandlers
         from src.core.settings import VociferousSettings
 
@@ -289,7 +288,7 @@ class TestRefinementHandlersHappyPath:
         assert complete[0]["text"] == "refined version of the text"
         assert complete[0]["level"] == 2
 
-        # Verify variant written to DB
+        # Verify normalized_text updated in DB
         refreshed = db.get_transcript(t.id)
         assert refreshed.text == "refined version of the text"
 

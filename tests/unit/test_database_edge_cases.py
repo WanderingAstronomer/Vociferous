@@ -2,9 +2,7 @@
 Database edge-case and invariant tests.
 
 Covers:
-- CASCADE delete (transcript → variants)
-- Project-scoped queries and unlink-on-delete
-- Variant immutability (raw text never overwritten)
+- Raw text immutability (never overwritten by edits)
 - Search edge cases (empty, special chars, multi-match)
 - transcript_count accuracy after mutations
 - WAL mode verification
@@ -29,51 +27,11 @@ def db(tmp_path: Path) -> Generator[TranscriptDB, None, None]:
     d.close()
 
 
-# ── Cascade Delete ────────────────────────────────────────────────────────
+# ── Raw Text Immutability ─────────────────────────────────────────────────
 
 
-class TestCascadeDelete:
-    """Deleting a transcript must delete all its variants."""
-
-    def test_variants_removed_on_delete(self, db: TranscriptDB) -> None:
-        t = db.add_transcript(raw_text="base", duration_ms=100)
-        db.add_variant(t.id, "user_edit", "edit 1")
-        db.add_variant(t.id, "refined", "refined 1")
-
-        db.delete_transcript(t.id)
-
-        # Directly query variants table — should be empty
-        rows = db._conn.execute(
-            "SELECT COUNT(*) FROM transcript_variants WHERE transcript_id = ?",
-            (t.id,),
-        ).fetchone()
-        assert rows[0] == 0
-
-    def test_other_transcript_variants_untouched(self, db: TranscriptDB) -> None:
-        t1 = db.add_transcript(raw_text="first", duration_ms=100)
-        t2 = db.add_transcript(raw_text="second", duration_ms=100)
-        db.add_variant(t1.id, "user_edit", "edit-t1")
-        db.add_variant(t2.id, "user_edit", "edit-t2")
-
-        db.delete_transcript(t1.id)
-
-        # t2 variants survive
-        fetched = db.get_transcript(t2.id)
-        assert len(fetched.variants) == 2  # raw + user_edit
-
-
-# ── Variant Immutability ─────────────────────────────────────────────────
-
-
-class TestVariantImmutability:
+class TestRawTextImmutability:
     """The raw transcript text must never be overwritten."""
-
-    def test_raw_text_preserved_after_variant(self, db: TranscriptDB) -> None:
-        t = db.add_transcript(raw_text="original raw", duration_ms=100)
-        db.add_variant(t.id, "user_edit", "completely different")
-
-        fetched = db.get_transcript(t.id)
-        assert fetched.raw_text == "original raw"
 
     def test_raw_text_preserved_after_normalized_update(self, db: TranscriptDB) -> None:
         t = db.add_transcript(raw_text="raw", duration_ms=100)
@@ -83,24 +41,17 @@ class TestVariantImmutability:
         assert fetched.raw_text == "raw"
         assert fetched.normalized_text == "normalized version"
 
-    def test_raw_variant_always_first(self, db: TranscriptDB) -> None:
-        t = db.add_transcript(raw_text="original", duration_ms=100)
-        db.add_variant(t.id, "refined", "refined")
-        db.add_variant(t.id, "user_edit", "edited")
+    def test_text_property_uses_normalized(self, db: TranscriptDB) -> None:
+        t = db.add_transcript(raw_text="raw", duration_ms=100)
+        db.update_normalized_text(t.id, "better version")
 
         fetched = db.get_transcript(t.id)
-        assert fetched.variants[0].kind == "raw"
-        assert fetched.variants[0].text == "original"
+        assert fetched.text == "better version"
 
-    def test_variant_set_current_false(self, db: TranscriptDB) -> None:
-        """Adding variant with set_current=False doesn't change current_variant_id."""
-        t = db.add_transcript(raw_text="base", duration_ms=100)
-        original_vid = t.current_variant_id
-
-        db.add_variant(t.id, "refined", "alt text", set_current=False)
-
+    def test_text_property_falls_back_to_raw(self, db: TranscriptDB) -> None:
+        t = db.add_transcript(raw_text="raw text", normalized_text="", duration_ms=100)
         fetched = db.get_transcript(t.id)
-        assert fetched.current_variant_id == original_vid
+        assert fetched.text == "raw text"
 
 
 # ── Search Edge Cases ─────────────────────────────────────────────────────

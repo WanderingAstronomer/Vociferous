@@ -161,7 +161,7 @@ class ResourceManager:
 
     @staticmethod
     def get_icon_path(icon_name: str) -> str:
-        """Helper to get string path for Qt icons (convenience)."""
+        """Resolve an icon file path by name (tries SVG, then PNG)."""
         # Tries svg first, then png
         # This assumes a structure like assets/icons/...
         # Logic:

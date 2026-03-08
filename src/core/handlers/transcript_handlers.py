@@ -42,15 +42,6 @@ class TranscriptHandlers:
             logger.info("Batch deleted %d transcripts (requested %d)", count, len(ids))
             self._emit("transcripts_batch_deleted", {"ids": ids, "count": count})
 
-    def handle_delete_variant(self, intent: Any) -> None:
-        db = self._db_provider()
-        if db:
-            deleted = db.delete_variant(intent.transcript_id, intent.variant_id)
-            if deleted:
-                t = db.get_transcript(intent.transcript_id)
-                if t:
-                    self._emit("transcript_updated", {"id": intent.transcript_id})
-
     def handle_clear(self, intent: Any) -> None:
         db = self._db_provider()
         if db:
@@ -61,10 +52,10 @@ class TranscriptHandlers:
     def handle_commit_edits(self, intent: Any) -> None:
         db = self._db_provider()
         if db:
-            variant = db.add_variant(intent.transcript_id, "user_edit", intent.content, set_current=True)
+            db.update_normalized_text(intent.transcript_id, intent.content)
             self._emit(
                 "transcript_updated",
-                {"id": intent.transcript_id, "variant_id": variant.id},
+                {"id": intent.transcript_id},
             )
 
     def handle_rename(self, intent: Any) -> None:

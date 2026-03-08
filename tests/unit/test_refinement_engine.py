@@ -3,9 +3,8 @@ Refinement Engine unit tests.
 
 Tests the pure logic without loading an actual CT2 model:
 - Output parsing (_parse_output): think blocks, leak tokens, edge cases
-- Prompt formatting (_format_prompt): level selection, invariants, user instructions
+- Prompt formatting (_format_prompt): invariants, user instructions
 - Dynamic token calculation (_calculate_dynamic_max_tokens)
-- Few-shot example generation (_get_few_shot_examples)
 - GenerationResult dataclass
 """
 
@@ -22,7 +21,6 @@ from src.refinement.prompt_builder import PromptBuilder
 def _make_engine(
     system_prompt: str = "You are a test editor.",
     invariants: list[str] | None = None,
-    levels: dict | None = None,
 ) -> RefinementEngine:
     """
     Create a RefinementEngine instance without loading a model.
@@ -33,29 +31,6 @@ def _make_engine(
     engine = object.__new__(RefinementEngine)
     engine.system_prompt = system_prompt
     engine.invariants = invariants or ["Preserve meaning.", "No fluff."]
-    engine.levels = levels or {
-        0: {
-            "name": "Literal",
-            "role": "Mechanical text editor.",
-            "permitted": ["Fix spelling."],
-            "prohibited": ["Changing structure."],
-            "directive": "Minimal changes only.",
-        },
-        1: {
-            "name": "Structural",
-            "role": "Transcription cleaner.",
-            "permitted": ["Remove fillers.", "Fix syntax."],
-            "prohibited": ["Paraphrasing."],
-            "directive": "Clean speech noise.",
-        },
-        2: {
-            "name": "Neutral",
-            "role": "Professional editor.",
-            "permitted": ["Smooth phrasing."],
-            "prohibited": ["Adding flair."],
-            "directive": "Clear and neutral.",
-        },
-    }
     # CT2 engine attributes (not used by pure-logic tests)
     engine.generator = None
     engine.tokenizer = None
@@ -312,40 +287,6 @@ class TestDynamicTokenCalculation:
         for count in [0, 100, 1000, 10000, 100000]:
             result = engine._calculate_dynamic_max_tokens(count)
             assert result <= engine.HARD_MAX_OUTPUT_TOKENS
-
-
-# ── Few-Shot Examples ─────────────────────────────────────────────────────
-
-
-class TestFewShotExamples:
-    def test_level_0_has_examples(self) -> None:
-        engine = _make_engine()
-        examples = engine._get_few_shot_examples(0)
-        assert "EXAMPLES OF DESIRED BEHAVIOR" in examples
-        assert "hello this is a test" in examples
-
-    def test_level_1_differs_from_level_0(self) -> None:
-        engine = _make_engine()
-        _ex0 = engine._get_few_shot_examples(0)
-        ex1 = engine._get_few_shot_examples(1)
-        # Level 1 should have filler removal examples
-        assert "I I want to" in ex1 or "I want to go" in ex1
-
-    def test_each_level_produces_examples(self) -> None:
-        engine = _make_engine()
-        for level in range(5):
-            examples = engine._get_few_shot_examples(level)
-            assert "EXAMPLES OF DESIRED BEHAVIOR" in examples
-
-    def test_instruction_example_included_when_flagged(self) -> None:
-        engine = _make_engine()
-        examples = engine._get_few_shot_examples(0, has_instructions=True)
-        assert "User Instructions" in examples
-
-    def test_instruction_example_absent_by_default(self) -> None:
-        engine = _make_engine()
-        examples = engine._get_few_shot_examples(0, has_instructions=False)
-        assert "User Instructions" not in examples
 
 
 # ── Refine Guard: Empty Input ─────────────────────────────────────────────

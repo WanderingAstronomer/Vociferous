@@ -17,19 +17,9 @@ class IntentSource(Enum):
     """Origin of an intent (for observability, not routing)."""
 
     CONTROLS = auto()
-    NAVIGATION = auto()
     HOTKEY = auto()
-    CONTEXT_MENU = auto()
     INTERNAL = auto()
-    API = auto()  # New: from Litestar/WebSocket
-
-
-@dataclass(frozen=True, slots=True)
-class NavigateIntent(InteractionIntent):
-    """Switch the active view."""
-
-    target_view_id: str = ""
-    source: IntentSource = IntentSource.NAVIGATION
+    API = auto()
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,34 +51,11 @@ class ToggleRecordingIntent(InteractionIntent):
 
 
 @dataclass(frozen=True, slots=True)
-class ViewTranscriptIntent(InteractionIntent):
-    """View a specific transcript."""
-
-    transcript_id: int = 0
-    source: IntentSource = IntentSource.NAVIGATION
-
-
-@dataclass(frozen=True, slots=True)
-class EditTranscriptIntent(InteractionIntent):
-    """Enter edit mode for a transcript."""
-
-    transcript_id: int = 0
-    source: IntentSource = IntentSource.CONTROLS
-
-
-@dataclass(frozen=True, slots=True)
 class CommitEditsIntent(InteractionIntent):
     """Save edited transcript content as a new variant."""
 
     transcript_id: int = 0
     content: str = ""
-    source: IntentSource = IntentSource.CONTROLS
-
-
-@dataclass(frozen=True, slots=True)
-class DiscardEditsIntent(InteractionIntent):
-    """Discard edits and return to viewing."""
-
     source: IntentSource = IntentSource.CONTROLS
 
 
@@ -165,15 +132,6 @@ class ClearTranscriptsIntent(InteractionIntent):
 
 
 @dataclass(frozen=True, slots=True)
-class DeleteTranscriptVariantIntent(InteractionIntent):
-    """Delete a specific variant of a transcript."""
-
-    transcript_id: int = 0
-    variant_id: int = 0
-    source: IntentSource = IntentSource.API
-
-
-@dataclass(frozen=True, slots=True)
 class UpdateConfigIntent(InteractionIntent):
     """Update application configuration settings."""
 
@@ -210,3 +168,10 @@ class RestartEngineIntent(InteractionIntent):
     """Restart ASR + SLM engine models."""
 
     source: IntentSource = IntentSource.INTERNAL
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshInsightIntent(InteractionIntent):
+    """Force-trigger insight regeneration, bypassing TTL/count guards."""
+
+    source: IntentSource = IntentSource.API

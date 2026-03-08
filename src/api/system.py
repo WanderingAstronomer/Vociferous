@@ -95,10 +95,10 @@ def get_insight() -> dict:
 @post("/api/insight/refresh", sync_to_thread=True)
 def refresh_insight() -> dict:
     """Force-trigger insight regeneration, bypassing TTL/count guards."""
+    from src.core.intents.definitions import RefreshInsightIntent
+
     coordinator = get_coordinator()
-    if coordinator.insight_manager is None:
-        return {"status": "unavailable"}
-    started = coordinator.insight_manager.request_generation()
+    started = coordinator.command_bus.dispatch(RefreshInsightIntent())
     return {"status": "generating" if started else "unavailable"}
 
 
@@ -165,7 +165,12 @@ def list_models() -> dict:
 
 @post("/api/models/download")
 async def download_model(data: dict) -> Response:
-    """Start downloading a model. Sends progress via WebSocket."""
+    """Start downloading a model. Sends progress via WebSocket.
+
+    H-pattern exception: this spawns a progress-emitting thread with inline
+    callbacks — wrapping it in an intent would just relocate the thread logic
+    without adding any decoupling benefit.
+    """
     from src.core.model_registry import ASRModel, SLMModel, get_asr_model, get_slm_model
     from src.core.resource_manager import ResourceManager
 
@@ -365,7 +370,11 @@ def close_window() -> dict:
 
 @post("/api/keycapture/start")
 async def start_key_capture() -> Response:
-    """Start key capture mode for hotkey rebinding. Keys are emitted via WebSocket."""
+    """Start key capture mode for hotkey rebinding. Keys are emitted via WebSocket.
+
+    H-pattern exception: sets up closures over local state (captured_keys set,
+    modifier maps) that belong in the API layer, not in a handler class.
+    """
     import os
     import sys
 
@@ -480,6 +489,8 @@ async def dispatch_intent(data: dict) -> Response:
         "cancel_recording": defs.CancelRecordingIntent,
         "toggle_recording": defs.ToggleRecordingIntent,
         "delete_transcript": defs.DeleteTranscriptIntent,
+        "batch_delete_transcripts": defs.BatchDeleteTranscriptsIntent,
+        "clear_transcripts": defs.ClearTranscriptsIntent,
         "commit_edits": defs.CommitEditsIntent,
         "refine_transcript": defs.RefineTranscriptIntent,
         "rename_transcript": defs.RenameTranscriptIntent,
@@ -489,6 +500,9 @@ async def dispatch_intent(data: dict) -> Response:
         "update_tag": defs.UpdateTagIntent,
         "delete_tag": defs.DeleteTagIntent,
         "assign_tags": defs.AssignTagsIntent,
+        "update_config": defs.UpdateConfigIntent,
+        "restart_engine": defs.RestartEngineIntent,
+        "refresh_insight": defs.RefreshInsightIntent,
     }
 
     intent_cls = intent_map.get(intent_type_name)

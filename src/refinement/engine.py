@@ -2,7 +2,7 @@
 Refinement Engine using CTranslate2 Generator.
 
 Wraps a CTranslate2-format model to provide a simple refine() interface for
-text cleanup. Uses instruction-following (ChatML) prompting with layered
+text cleanup. Uses instruction-following (ChatML) prompting with invariant
 enforcement. Tokenization is handled by the HuggingFace `tokenizers` library.
 """
 
@@ -11,7 +11,6 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from src.refinement.prompt_builder import PromptBuilder
 
@@ -46,9 +45,7 @@ class RefinementEngine:
         model_path: Path | str,
         system_prompt: str = "",
         invariants: list[str] | None = None,
-        levels: dict[int | str, dict[str, Any]] | None = None,
         n_gpu_layers: int = -1,
-        n_ctx: int = 8192,
     ):
         """
         Initialize the Refinement engine.
@@ -57,9 +54,7 @@ class RefinementEngine:
             model_path: Path to the CT2 model directory.
             system_prompt: Fallback system identity.
             invariants: Global rules prepended to every prompt.
-            levels: Layered definitions for refinement levels (0-4).
             n_gpu_layers: GPU layers to offload (-1 = all/cuda, 0 = CPU only).
-            n_ctx: Context window size (preserved for API compat; CT2 uses model config).
         """
         import ctranslate2
         from tokenizers import Tokenizer
@@ -70,7 +65,6 @@ class RefinementEngine:
 
         self.system_prompt = system_prompt
         self.invariants = invariants or []
-        self.levels = levels or {}
         self.prompt_builder = PromptBuilder(
             system_prompt=system_prompt,
             invariants=self.invariants,
@@ -165,10 +159,6 @@ class RefinementEngine:
         content = re.sub(r"^/no_think\s*", "", content)
 
         return GenerationResult(content=content.strip(), reasoning=reasoning)
-
-    def _get_few_shot_examples(self, level_idx: int, has_instructions: bool = False) -> str:
-        """Delegate to PromptBuilder."""
-        return PromptBuilder.get_few_shot_examples(level_idx, has_instructions)
 
     def _format_prompt(
         self,

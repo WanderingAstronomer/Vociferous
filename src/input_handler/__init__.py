@@ -23,7 +23,6 @@ def create_listener(
     callback: Callable[[], None],
     deactivate_callback: Callable[[], None] | None = None,
     activation_key: str | None = None,
-    backend: str | None = None,
 ) -> KeyListener:
     """
     Factory: create a KeyListener, wire the activation callback, and start it.
@@ -33,7 +32,6 @@ def create_listener(
         deactivate_callback: Function to call when the activation hotkey is released
             (needed for hold-to-record mode).
         activation_key: Override for the activation key (uses settings default if None).
-        backend: Override for the input backend (uses settings default if None).
 
     Returns:
         A running KeyListener instance.

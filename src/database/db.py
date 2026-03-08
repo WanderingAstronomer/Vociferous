@@ -314,9 +314,9 @@ class TranscriptDB:
                 (fts_terms, limit, offset),
             ).fetchall()
             transcripts = [self._row_to_transcript(r) for r in rows]
-            for transcript in transcripts:
-                assert transcript.id is not None
-                transcript.tags = self._get_tags_for_transcript(transcript.id)
+            for t in transcripts:
+                assert t.id is not None
+                t.tags = self._get_tags_for_transcript(t.id)
         return transcripts
 
     def search_count(self, query: str) -> int:
@@ -326,7 +326,7 @@ class TranscriptDB:
                 row = self._conn.execute("SELECT COUNT(*) FROM transcripts").fetchone()
             return row[0] if row else 0
         tokens = query.split()
-        fts_terms = " ".join(f'"{token.replace(chr(34), "")}"*' for token in tokens)
+        fts_terms = " ".join(f'"{t.replace(chr(34), "")}"*' for t in tokens)
         with self._write_lock:
             row = self._conn.execute(
                 "SELECT COUNT(*) FROM transcripts_fts WHERE transcripts_fts MATCH ?",
@@ -393,9 +393,9 @@ class TranscriptDB:
                    ORDER BY created_at DESC""",
             ).fetchall()
             transcripts = [self._row_to_transcript(r) for r in rows]
-            for transcript in transcripts:
-                assert transcript.id is not None
-                transcript.tags = self._get_tags_for_transcript(transcript.id)
+            for t in transcripts:
+                assert t.id is not None
+                t.tags = self._get_tags_for_transcript(t.id)
         return transcripts
 
     # --- Tags ---

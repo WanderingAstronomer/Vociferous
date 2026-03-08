@@ -29,10 +29,6 @@
         document.documentElement.style.zoom = `${clamped}%`;
     }
 
-    function handleNavigate(view: ViewId) {
-        nav.navigate(view);
-    }
-
     let unsubConfigUpdated: (() => void) | null = null;
     let unsubRecordingStarted: (() => void) | null = null;
     let unsubRecordingStopped: (() => void) | null = null;
@@ -119,7 +115,7 @@
                 currentView={nav.current}
                 navigationLocked={nav.isNavigationLocked}
                 {hiddenViews}
-                onNavigate={handleNavigate}
+                onNavigate={(view) => nav.navigate(view)}
             />
 
             <main class="flex-1 overflow-hidden bg-[var(--surface-secondary)]">

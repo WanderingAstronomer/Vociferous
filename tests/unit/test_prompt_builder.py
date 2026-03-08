@@ -142,33 +142,6 @@ class TestMessagesToChatml:
         assert result.endswith("<|im_start|>assistant\n")
 
 
-# ── Few-Shot Examples ─────────────────────────────────────────────────────
-
-
-class TestGetFewShotExamples:
-    def test_level_0_has_examples(self) -> None:
-        examples = PromptBuilder.get_few_shot_examples(0)
-        assert "EXAMPLES OF DESIRED BEHAVIOR" in examples
-        assert "hello this is a test" in examples
-
-    def test_level_1_has_filler_removal(self) -> None:
-        examples = PromptBuilder.get_few_shot_examples(1)
-        assert "I I want to" in examples or "I want to go" in examples
-
-    def test_all_levels_produce_examples(self) -> None:
-        for level in range(5):
-            examples = PromptBuilder.get_few_shot_examples(level)
-            assert "EXAMPLES OF DESIRED BEHAVIOR" in examples
-
-    def test_instruction_example_when_flagged(self) -> None:
-        examples = PromptBuilder.get_few_shot_examples(0, has_instructions=True)
-        assert "User Instructions" in examples
-
-    def test_no_instruction_example_by_default(self) -> None:
-        examples = PromptBuilder.get_few_shot_examples(0, has_instructions=False)
-        assert "User Instructions" not in examples
-
-
 # ── Templates ─────────────────────────────────────────────────────────────
 
 

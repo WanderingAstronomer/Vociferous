@@ -243,8 +243,7 @@ class ApplicationCoordinator:
                 self.event_bus.emit("refinement_error", {"message": msg})
 
             def on_slm_text(text):
-                # Text result from async refinement — handled per-request in _handle_refine_transcript
-                pass
+                pass  # Async path unused; refinement uses refine_text_sync via RefinementHandlers
 
             self.slm_runtime = SLMRuntime(
                 settings_provider=lambda: self.settings,
@@ -436,8 +435,8 @@ class ApplicationCoordinator:
             CreateTagIntent,
             DeleteTagIntent,
             DeleteTranscriptIntent,
-            DeleteTranscriptVariantIntent,
             RefineTranscriptIntent,
+            RefreshInsightIntent,
             RenameTranscriptIntent,
             RestartEngineIntent,
             RetitleTranscriptIntent,
@@ -467,6 +466,7 @@ class ApplicationCoordinator:
             input_listener_provider=lambda: self.input_listener,
             on_settings_updated=lambda s: setattr(self, "settings", s),
             restart_engine=self.restart_engine,
+            insight_manager_provider=lambda: self.insight_manager,
         )
         title = TitleHandlers(
             db_provider=lambda: self.db,
@@ -481,7 +481,6 @@ class ApplicationCoordinator:
         bus.register(ToggleRecordingIntent, self.recording_session.handle_toggle)
         bus.register(DeleteTranscriptIntent, transcript.handle_delete)
         bus.register(BatchDeleteTranscriptsIntent, transcript.handle_batch_delete)
-        bus.register(DeleteTranscriptVariantIntent, transcript.handle_delete_variant)
         bus.register(ClearTranscriptsIntent, transcript.handle_clear)
         bus.register(CommitEditsIntent, transcript.handle_commit_edits)
         bus.register(RenameTranscriptIntent, transcript.handle_rename)
@@ -492,6 +491,7 @@ class ApplicationCoordinator:
         bus.register(AssignTagsIntent, tag.handle_assign_tags)
         bus.register(UpdateConfigIntent, system.handle_update_config)
         bus.register(RestartEngineIntent, system.handle_restart_engine)
+        bus.register(RefreshInsightIntent, system.handle_refresh_insight)
         bus.register(BatchRetitleIntent, title.handle_batch_retitle)
         bus.register(RetitleTranscriptIntent, title.handle_retitle)
 

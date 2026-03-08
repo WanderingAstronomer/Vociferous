@@ -32,8 +32,6 @@
     const DIVIDER_W = 1;
     const LABEL_W = 36;
     const MONTH_LABEL_H = 22;
-    const FONT = "12px";
-    const TITLE_FONT = "13px";
     const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
     /* ── Colors ── */
@@ -255,12 +253,11 @@
 >
     {#if layout}
         {@const cs = layout.cellSize}
-        {@const stride = cs + CELL_GAP}
         <div class="mx-auto" style="width: {layout.gridWidth}px;">
             <!-- Title -->
             {#if title}
                 <div
-                    class="text-[{TITLE_FONT}] font-medium text-[var(--text-tertiary)] uppercase tracking-widest mb-[var(--space-2)] text-center"
+                    class="text-[13px] font-medium text-[var(--text-tertiary)] uppercase tracking-widest mb-[var(--space-2)] text-center"
                 >
                     {title}
                 </div>
@@ -273,7 +270,7 @@
                         <div style="width: {MONTH_GAP + DIVIDER_W}px; height: 1px;"></div>
                     {/if}
                     <div
-                        class="text-[{FONT}] text-[var(--text-secondary)] leading-none text-center shrink-0"
+                        class="text-[12px] text-[var(--text-secondary)] leading-none text-center shrink-0"
                         style="width: {sectionWidth(block.numCols, cs)}px;"
                     >
                         {block.label}
@@ -287,7 +284,7 @@
                 <div class="flex flex-col shrink-0" style="width: {LABEL_W}px; gap: {CELL_GAP}px;">
                     {#each DAY_NAMES as name}
                         <div class="flex items-center justify-end pr-[6px]" style="height: {cs}px;">
-                            <span class="text-[{FONT}] text-[var(--text-secondary)] leading-none">{name}</span>
+                            <span class="text-[12px] text-[var(--text-secondary)] leading-none">{name}</span>
                         </div>
                     {/each}
                 </div>
@@ -322,16 +319,16 @@
 
             <!-- Legend -->
             <div class="flex items-center justify-between mt-[var(--space-2)] w-full">
-                <span class="text-[{FONT}] text-[var(--text-muted)] whitespace-nowrap pl-[{LABEL_W}px]">
+                <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap pl-[36px]">
                     {activeDays} active day{activeDays !== 1 ? "s" : ""}
                     · {totalWords.toLocaleString()} words
                 </span>
                 <div class="flex items-center gap-1 shrink-0">
-                    <span class="text-[{FONT}] text-[var(--text-muted)]">Less</span>
+                    <span class="text-[12px] text-[var(--text-tertiary)]">Less</span>
                     {#each LEVEL_COLORS as color}
-                        <div class="rounded-[2px]" style="width: 10px; height: 10px; background: {color};"></div>
+                        <div class="rounded-[2px] w-[10px] h-[10px]" style="background: {color};"></div>
                     {/each}
-                    <span class="text-[{FONT}] text-[var(--text-muted)]">More</span>
+                    <span class="text-[12px] text-[var(--text-tertiary)]">More</span>
                 </div>
             </div>
         </div>

@@ -67,8 +67,8 @@ class SLMRuntime:
             return
 
         self.state = SLMState.LOADING
-        thread = threading.Thread(target=self._load_model_task, daemon=True)
-        thread.start()
+        t = threading.Thread(target=self._load_model_task, daemon=True)
+        t.start()
 
     def disable(self) -> None:
         """Unload the model and disable runtime."""
@@ -78,8 +78,8 @@ class SLMRuntime:
     def _load_model_task(self) -> None:
         """Background task to load the CT2 Generator model."""
         try:
-            settings = self._settings_provider()
-            model_id = settings.refinement.model_id
+            s = self._settings_provider()
+            model_id = s.refinement.model_id
 
             if not model_id:
                 logger.info("No SLM model configured. SLM service disabled.")
@@ -107,9 +107,9 @@ class SLMRuntime:
 
             self._engine = RefinementEngine(
                 model_path=model_dir,
-                system_prompt=settings.refinement.system_prompt,
-                invariants=settings.refinement.invariants,
-                n_gpu_layers=settings.refinement.n_gpu_layers,
+                system_prompt=s.refinement.system_prompt,
+                invariants=s.refinement.invariants,
+                n_gpu_layers=s.refinement.n_gpu_layers,
             )
 
             self.state = SLMState.READY
@@ -155,12 +155,12 @@ class SLMRuntime:
             return
 
         self.state = SLMState.INFERRING
-        thread = threading.Thread(
+        t = threading.Thread(
             target=self._inference_task,
             args=(text, level, instructions),
             daemon=True,
         )
-        thread.start()
+        t.start()
 
     def refine_text_sync(self, text: str, level: int = 1, instructions: str = "") -> str:
         """Synchronous refinement — blocks until complete. Returns refined text."""
@@ -231,6 +231,6 @@ class SLMRuntime:
 
         self.disable()
 
-        settings = self._settings_provider()
-        if settings.refinement.enabled:
+        s = self._settings_provider()
+        if s.refinement.enabled:
             self.enable()

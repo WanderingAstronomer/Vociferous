@@ -143,5 +143,5 @@ class RefinementHandlers:
                     },
                 )
 
-        thread = threading.Thread(target=do_refine, daemon=True, name="refine")
-        thread.start()
+        t = threading.Thread(target=do_refine, daemon=True, name="refine")
+        t.start()

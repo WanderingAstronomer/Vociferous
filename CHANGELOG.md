@@ -2,6 +2,26 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## [5.2.0] - Database Schema Simplification & Legacy System Removal
+
+**Date:** 2026-03-07
+**Status:** Feature / Refactor
+
+Massive architectural cleanup removing the deprecated "Project" and "Variant" systems.
+
+### Architectural Changes
+- **Variant System Removed**: Dropped the concept of transcript variants. The `Transcript` model now stores the final text directly in `normalized_text`. 
+- **Project System Removed**: All remnants of the legacy "Project" feature were thoroughly expunged from the database, API, and UI.
+
+### Database & API
+- **v4 Database Migration**: Implemented a comprehensive SQLite migration to safely collapse variant rows directly into the `normalized_text` field of `transcripts` before dropping deprecated columns and tables.
+- **Simplified Intents**: Removed `DeleteTranscriptVariantIntent` and optimized handling of SLM refinement events to update `normalized_text` in-place, dramatically simplifying the persistence layer.
+
+### Tests
+- Audited and updated over 540 unit and integration tests to align with the strictly normalized database schema.
+
+---
+
 ---
 
 ## Maintenance — Frontend Audit: Dead Code, Component Consolidation, Design Conformity

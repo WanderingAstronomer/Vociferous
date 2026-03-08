@@ -92,7 +92,7 @@ class PynputBackend:
             if translated_event:
                 self.on_input_event(translated_event)
 
-    def _on_mouse_click(self, _x, _y, button, pressed) -> None:
+    def _on_mouse_click(self, x, y, button, pressed) -> None:
         """Handle mouse click events."""
         if self.on_input_event:
             translated_event = self._translate_mouse_event((button, pressed))

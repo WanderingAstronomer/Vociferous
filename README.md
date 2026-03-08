@@ -354,7 +354,7 @@ Models are cached in `~/.cache/vociferous/models/` (XDG-compliant).
 - **Batch operations** — assign/delete multiple transcripts at once
 - **Global hotkey** — configurable push-to-talk key binding
 - **Search** — full-text search with sortable columns across all transcripts
-- **Transcript variants** — immutable raw captures with editable refinement variants
+
 - **Audio spectrum visualization** — real-time frequency display during recording
 - **Offline-only** — no network access required after model provisioning
 

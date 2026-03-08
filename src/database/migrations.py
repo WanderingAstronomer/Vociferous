@@ -126,7 +126,13 @@ def _v3_projects_to_tags(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_transcript_tags_transcript ON transcript_tags(transcript_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_transcript_tags_tag ON transcript_tags(tag_id)")
 
-    # Migrate existing projects → tags
+    # Migrate existing projects → tags (only if projects table exists — fresh installs
+    # after v4 schema cleanup won't have it)
+    has_projects = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='projects'").fetchone()
+    if not has_projects:
+        logger.info("v3 migration: no projects table (fresh install) — tags tables created, nothing to migrate")
+        return
+
     projects = conn.execute("SELECT id, name, color FROM projects ORDER BY id").fetchall()
     project_to_tag: dict[int, int] = {}
 
@@ -155,12 +161,61 @@ def _v3_projects_to_tags(conn: sqlite3.Connection) -> None:
     )
 
 
+def _v4_drop_projects_and_variants(conn: sqlite3.Connection) -> None:
+    """v4 — Remove legacy projects table and transcript_variants system.
+
+    For existing databases:
+      1. Copies current variant text into normalized_text (data preservation).
+      2. Drops transcript_variants table and projects table.
+      3. Removes project_id and current_variant_id columns from transcripts.
+
+    Fresh installs (post-v4 _CREATE_SQL) won't have these objects, so every
+    step guards with IF EXISTS / column-existence checks.
+    """
+    # Phase 1: Preserve variant data — copy current variant text to normalized_text
+    has_variants = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='transcript_variants'"
+    ).fetchone()
+    if has_variants:
+        conn.execute(
+            """UPDATE transcripts SET normalized_text = (
+                   SELECT tv.text FROM transcript_variants tv
+                   WHERE tv.id = transcripts.current_variant_id
+               )
+               WHERE current_variant_id IS NOT NULL
+               AND EXISTS (
+                   SELECT 1 FROM transcript_variants tv
+                   WHERE tv.id = transcripts.current_variant_id
+               )"""
+        )
+        logger.info("v4 migration: variant text preserved into normalized_text")
+
+    # Phase 2: Drop indexes first (must precede column drops)
+    conn.execute("DROP INDEX IF EXISTS idx_transcripts_project")
+    conn.execute("DROP INDEX IF EXISTS idx_variants_transcript")
+
+    # Phase 3: Drop dependent tables
+    conn.execute("DROP TABLE IF EXISTS transcript_variants")
+    conn.execute("DROP TABLE IF EXISTS projects")
+
+    # Phase 4: Remove vestigial columns (SQLite 3.35+, guaranteed by Python 3.12+)
+    # Column drops require no active FK constraints on the column, so disable temporarily.
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(transcripts)").fetchall()}
+    if "project_id" in cols:
+        conn.execute("ALTER TABLE transcripts DROP COLUMN project_id")
+    if "current_variant_id" in cols:
+        conn.execute("ALTER TABLE transcripts DROP COLUMN current_variant_id")
+
+    logger.info("v4 migration: dropped projects table, transcript_variants table, and vestigial columns")
+
+
 #: Ordered list of (human-readable description, migration function) pairs.
 #: Append here to add future migrations; do not edit existing entries.
 MIGRATIONS: list[tuple[str, object]] = [
     ("v1 baseline — projects / transcripts / transcript_variants", _v1_baseline),
     ("v2 FTS5 full-text search index and sync triggers", _v2_add_fts5),
     ("v3 tags — flat tag system replacing hierarchical projects", _v3_projects_to_tags),
+    ("v4 drop projects + variants — simplified transcript model", _v4_drop_projects_and_variants),
 ]
 
 

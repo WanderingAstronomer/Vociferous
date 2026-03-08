@@ -1,9 +1,4 @@
-/**
- * Navigation store — Svelte 5 runes-based view navigation.
- *
- * Allows any view to trigger navigation (e.g., Refine button in Transcriptions
- * navigates to the RefineView with a pre-selected transcript).
- */
+/** Navigation store — Svelte 5 runes-based view navigation. */
 
 export type ViewId =
     | "transcribe"
@@ -97,11 +92,6 @@ class NavigationStore {
         return request;
     }
 
-    consumeEditReturnTarget(): EditReturnTarget | null {
-        const target = this.editReturnTarget;
-        this.editReturnTarget = null;
-        return target;
-    }
 }
 
 export const nav = new NavigationStore();

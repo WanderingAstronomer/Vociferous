@@ -18,14 +18,6 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 // --- Transcripts ---
 
-export interface TranscriptVariant {
-    id: number;
-    kind: string;
-    text: string;
-    model_id: string | null;
-    created_at: string;
-}
-
 export interface Transcript {
     id: number;
     timestamp: string;
@@ -35,9 +27,7 @@ export interface Transcript {
     display_name: string | null;
     duration_ms: number;
     speech_duration_ms: number;
-    current_variant_id: number | null;
     created_at: string;
-    variants?: TranscriptVariant[];
     tags: Tag[];
 }
 
@@ -85,10 +75,6 @@ export function clearAllTranscripts(): Promise<{ deleted: number }> {
     return request("/transcripts", { method: "DELETE" });
 }
 
-export function deleteVariant(transcriptId: number, variantId: number): Promise<{ deleted: boolean }> {
-    return request(`/transcripts/${transcriptId}/variants/${variantId}`, { method: "DELETE" });
-}
-
 export interface SearchResult {
     items: Transcript[];
     total: number;
@@ -107,19 +93,8 @@ export function refineTranscript(id: number, level: number, instructions = ""): 
     });
 }
 
-export function renameTranscript(id: number, title: string): Promise<{ status: string; title: string }> {
-    return request(`/transcripts/${id}/rename`, {
-        method: "POST",
-        body: JSON.stringify({ title }),
-    });
-}
-
 export function batchRetitle(): Promise<{ dispatched: boolean }> {
     return dispatchIntent("batch_retitle");
-}
-
-export function retitleTranscript(id: number): Promise<{ status: string }> {
-    return request(`/transcripts/${id}/retitle`, { method: "POST" });
 }
 
 // --- Tags ---

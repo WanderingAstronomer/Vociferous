@@ -48,7 +48,6 @@ from src.api.transcripts import (
     batch_delete_transcripts,
     clear_all_transcripts,
     delete_transcript,
-    delete_variant,
     get_transcript,
     list_transcripts,
     refine_transcript,
@@ -256,7 +255,6 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             delete_transcript,
             batch_delete_transcripts,
             clear_all_transcripts,
-            delete_variant,
             refine_transcript,
             rename_transcript,
             retitle_transcript,
@@ -337,6 +335,7 @@ def _wire_event_bridge(coordinator: ApplicationCoordinator, ws_manager: Connecti
         "insight_ready",
         "motd_ready",
         "batch_retitle_progress",
+        "transcripts_cleared",
     ]
 
     for event_type in event_types:

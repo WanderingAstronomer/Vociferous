@@ -162,28 +162,20 @@ Agents are explicitly authorized to use `.vscode/agent_resources/agent_reports` 
 * **Ad Hoc Scripts**: Store scripts for data analysis/verification here.
 * **Persistent Context**: Use this meant to store "ring information".
 
-### 8.7 AI Workboard (File-Based Kanban in `docs/agent_reports`)
+### 8.7 AI Workboard (`docs/agent_resources/board/workboard.md`)
 
-The repository uses a file/folder workboard for AI continuity. Agents **must** follow separation of duties and avoid mixing concerns in one file.
+The repository uses a **single consolidated workboard file** for AI continuity. All tracking lives in one place — no splitting issues across multiple files.
 
-Canonical structure:
+Canonical file:
 
-* `docs/agent_reports/board/open_issues.md` — open issues only.
-* `docs/agent_reports/board/kanban_snapshot.md` — backlog/in-progress/blocked/done snapshot.
-* `docs/agent_reports/completed_issues/` — one file per completed issue.
-* `docs/agent_reports/planning/phase_order.md` — sequencing and phase order only.
-* `docs/agent_reports/planning/files_of_interest.md` — actively relevant files/paths.
-* `docs/agent_reports/logs/investigation_log.md` — chronological investigation notes only.
-* `docs/agent_reports/references/index.md` — stable links and references only.
-* `docs/agent_reports/handoff/next_chat_prompt.md` — prompt for next session continuity.
+* `docs/agent_resources/board/workboard.md` — everything: kanban status table, full issue prose with acceptance criteria, code-level TODOs, deferred items, resolved history.
 
 Mandatory behavior:
 
-1. Do not place phase plans, references, or investigation logs into open issues files.
-2. Do not keep completed issue narratives in open issue trackers.
-3. When an issue closes, move details to `completed_issues/` and update board status.
-4. Keep updates short, current, and scoped to the correct file.
-5. Preserve legacy files only as compatibility pointers; do not continue adding mixed content to them.
+1. All open issues, backlog items, code TODOs, and resolved history go in `workboard.md`. Do not create separate files for these.
+2. When an issue closes, move it from the open section to the Resolved section and update the kanban table row to Done.
+3. Keep updates short and current. Update the `Last updated` header line on every edit.
+4. Do not recreate the old split-file structure (`open_issues.md`, `kanban_snapshot.md`, `refactoring_status.md`). Those files are gone intentionally.
 
 ---
 

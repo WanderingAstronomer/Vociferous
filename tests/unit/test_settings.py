@@ -55,12 +55,6 @@ class TestDefaults:
         s = VociferousSettings()
         assert s.refinement.enabled is True
 
-    def test_default_refinement_levels(self):
-        s = VociferousSettings()
-        assert len(s.refinement.levels) == 5
-        assert 0 in s.refinement.levels
-        assert 4 in s.refinement.levels
-
 
 class TestModuleAPI:
     """Module-level settings API (init/get/save)."""
@@ -145,4 +139,4 @@ class TestSerialization:
 
         loaded = VociferousSettings(**json.loads(config_file.read_text()))
         assert loaded.model.model == original.model.model
-        assert loaded.refinement.levels[2].name == "Neutral"
+        assert loaded.refinement.system_prompt == original.refinement.system_prompt

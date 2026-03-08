@@ -23,7 +23,6 @@ class TitleGeneration:
     MAX_TEXT_CHARS = 30_000  # Cap at ~7500 words to avoid stuffing a novel into the SLM
     MAX_TITLE_TOKENS = 30  # Short titles: 5-10 words max
     TEMPERATURE = 0.4  # Slightly creative but grounded
-    FALLBACK_PREFIX = "Transcript"  # Default: "Transcript #57"
 
 
 class FlowTiming:

@@ -87,9 +87,9 @@ class TestDeleteTranscript:
 
 
 class TestCommitEdits:
-    """Commit edits via CommandBus → variant created in DB."""
+    """Commit edits via CommandBus → normalized_text updated in DB."""
 
-    def test_commit_creates_variant(self, wired):
+    def test_commit_updates_normalized_text(self, wired):
         coord, events = wired
         t = coord.db.add_transcript(raw_text="original text", duration_ms=500)
 
@@ -98,11 +98,11 @@ class TestCommitEdits:
         result = coord.command_bus.dispatch(CommitEditsIntent(transcript_id=t.id, content="edited text"))
         assert result is True
 
-        # Reload transcript and check variant
+        # Reload transcript and check normalized_text was updated
         refreshed = coord.db.get_transcript(t.id)
         assert refreshed is not None
         assert refreshed.text == "edited text"
-        assert refreshed.current_variant_id is not None
+        assert refreshed.normalized_text == "edited text"
 
     def test_commit_preserves_raw(self, wired):
         """Raw text must remain immutable after edits."""
@@ -258,41 +258,6 @@ class TestClearTranscripts:
         cleared = events.of_type("transcripts_cleared")
         assert len(cleared) == 1
         assert cleared[0]["count"] == 0
-
-
-# ── DeleteTranscriptVariantIntent ─────────────────────────────────────────
-
-
-class TestDeleteTranscriptVariant:
-    """Delete a specific variant via CommandBus → DB + conditional event."""
-
-    def test_delete_variant_emits_update(self, wired):
-        coord, events = wired
-        t = coord.db.add_transcript(raw_text="base text", duration_ms=500)
-        v = coord.db.add_variant(t.id, "user_edit", "edited", set_current=True)
-
-        from src.core.intents.definitions import DeleteTranscriptVariantIntent
-
-        coord.command_bus.dispatch(
-            DeleteTranscriptVariantIntent(transcript_id=t.id, variant_id=v.id),
-        )
-
-        updated = events.of_type("transcript_updated")
-        assert len(updated) == 1
-        assert updated[0]["id"] == t.id
-
-    def test_delete_nonexistent_variant_no_event(self, wired):
-        """Deleting a variant that doesn't exist emits nothing."""
-        coord, events = wired
-        t = coord.db.add_transcript(raw_text="base", duration_ms=100)
-
-        from src.core.intents.definitions import DeleteTranscriptVariantIntent
-
-        coord.command_bus.dispatch(
-            DeleteTranscriptVariantIntent(transcript_id=t.id, variant_id=99999),
-        )
-
-        assert len(events.of_type("transcript_updated")) == 0
 
 
 # ── RenameTranscriptIntent ────────────────────────────────────────────────

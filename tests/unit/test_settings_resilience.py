@@ -170,13 +170,13 @@ class TestDeepMerge:
         assert s.user.name == "MultiUpdate"
         assert s.recording.sample_rate == 44100
 
-    def test_update_preserves_refinement_levels(self, tmp_path: Path) -> None:
+    def test_update_preserves_refinement_invariants(self, tmp_path: Path) -> None:
         init_settings(config_path=tmp_path / "settings.json")
         update_settings(refinement={"enabled": False})
 
         s = get_settings()
         assert s.refinement.enabled is False
-        assert len(s.refinement.levels) == 5  # all levels preserved
+        assert len(s.refinement.invariants) == 5  # all invariants preserved
 
     def test_sequential_updates_accumulate(self, tmp_path: Path) -> None:
         init_settings(config_path=tmp_path / "settings.json")
@@ -230,16 +230,15 @@ class TestEnvironmentOverrides:
 
 
 class TestRoundtripFidelity:
-    def test_refinement_levels_survive_roundtrip(self, tmp_path: Path) -> None:
+    def test_refinement_invariants_survive_roundtrip(self, tmp_path: Path) -> None:
         config_file = tmp_path / "settings.json"
         original = VociferousSettings()
         config_file.write_text(original.model_dump_json(indent=2), encoding="utf-8")
 
         loaded = VociferousSettings(**json.loads(config_file.read_text()))
-        assert len(loaded.refinement.levels) == 5
-        for level_id in range(5):
-            assert loaded.refinement.levels[level_id].name == original.refinement.levels[level_id].name
-            assert loaded.refinement.levels[level_id].role == original.refinement.levels[level_id].role
+        assert len(loaded.refinement.invariants) == len(original.refinement.invariants)
+        for i, inv in enumerate(original.refinement.invariants):
+            assert loaded.refinement.invariants[i] == inv
 
     def test_all_sections_present_after_roundtrip(self, tmp_path: Path) -> None:
         config_file = tmp_path / "settings.json"

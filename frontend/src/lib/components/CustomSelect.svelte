@@ -18,7 +18,6 @@
         value = "",
         onchange = (_value: string) => {},
         id = undefined as string | undefined,
-        small = false,
         placeholder = "Select…",
     } = $props();
 
@@ -70,7 +69,7 @@
     const optionClasses = "flex items-center justify-between px-3 py-2 text-sm text-[var(--text-primary)] cursor-pointer transition-colors duration-150 hover:bg-[var(--hover-overlay-blue)]";
 </script>
 
-<div class="relative flex-1" class:max-w-[200px]={small} bind:this={containerEl}>
+<div class="relative flex-1" bind:this={containerEl}>
     <button
         type="button"
         class={triggerClasses}

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class SystemHandlers:
-    """Handles config update and engine restart intents."""
+    """Handles config update, engine restart, and insight refresh intents."""
 
     def __init__(
         self,
@@ -24,11 +24,13 @@ class SystemHandlers:
         input_listener_provider: Callable[[], KeyListener | None],
         on_settings_updated: Callable[[VociferousSettings], None],
         restart_engine: Callable[[], None],
+        insight_manager_provider: Callable[[], Any] = lambda: None,
     ) -> None:
         self._emit = event_bus_emit
         self._input_listener_provider = input_listener_provider
         self._on_settings_updated = on_settings_updated
         self._restart_engine = restart_engine
+        self._insight_manager_provider = insight_manager_provider
 
     def handle_update_config(self, intent: Any) -> None:
         from src.core.settings import update_settings
@@ -49,3 +51,10 @@ class SystemHandlers:
 
     def handle_restart_engine(self, intent: Any) -> None:
         self._restart_engine()
+
+    def handle_refresh_insight(self, intent: Any) -> bool:
+        """Trigger insight regeneration. Returns True if generation started."""
+        manager = self._insight_manager_provider()
+        if manager is None:
+            return False
+        return manager.request_generation()

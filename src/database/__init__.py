@@ -1,9 +1,9 @@
-"""Vociferous Database — v4.0 raw sqlite3."""
+"""Vociferous Database — raw sqlite3."""
 
-from .db import Transcript, TranscriptDB, TranscriptVariant
+from .db import Tag, Transcript, TranscriptDB
 
 __all__ = [
     "TranscriptDB",
     "Transcript",
-    "TranscriptVariant",
+    "Tag",
 ]
