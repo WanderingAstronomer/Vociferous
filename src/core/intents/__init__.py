@@ -4,8 +4,8 @@ Intent System Root.
 Defines the core data structures for User Intent.
 """
 
-from dataclasses import dataclass
 from abc import ABC
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,5 +15,3 @@ class InteractionIntent(ABC):
     Must be immutable.
     Idempotence is defined in the handler registry, NOT here.
     """
-
-    pass

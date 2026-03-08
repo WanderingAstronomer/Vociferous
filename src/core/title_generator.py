@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import TYPE_CHECKING, Callable
 
 from src.core.constants import TitleGeneration
@@ -24,6 +25,15 @@ if TYPE_CHECKING:
     from src.services.slm_runtime import SLMRuntime
 
 logger = logging.getLogger(__name__)
+
+
+def _clean_title(raw: str) -> str:
+    """Strip quotes and hallucinated paragraphs from SLM-generated titles."""
+    title = raw.strip().strip('"').strip("'").strip()
+    if "\n" in title:
+        title = title.split("\n")[0].strip()
+    return title
+
 
 _TITLE_SYSTEM_PROMPT = """\
 You generate short, descriptive titles for speech-to-text transcriptions.
@@ -101,13 +111,13 @@ class TitleGenerator:
             self._pending.add(transcript_id)
 
         logger.info("Title gen: scheduling for transcript %d (%d chars)", transcript_id, text_len)
-        t = threading.Thread(
+        thread = threading.Thread(
             target=self._generate_task,
             args=(transcript_id, text),
             daemon=True,
             name=f"title-gen-{transcript_id}",
         )
-        t.start()
+        thread.start()
 
     def batch_retitle(self) -> None:
         """
@@ -143,13 +153,13 @@ class TitleGenerator:
             self._emit("batch_retitle_progress", {"status": "complete", "processed": 0, "skipped": 0, "total": 0})
             return
 
-        t = threading.Thread(
+        thread = threading.Thread(
             target=self._batch_retitle_task,
             args=(untitled,),
             daemon=True,
             name="batch-retitle",
         )
-        t.start()
+        thread.start()
 
     def _batch_retitle_task(self, transcripts: list) -> None:
         """Background thread: iterate untitled transcripts, generate titles sequentially."""
@@ -203,8 +213,6 @@ class TitleGenerator:
                 if slm.state != SLMState.READY:
                     logger.warning("Batch retitle: SLM no longer ready at transcript %d", transcript.id)
                     # Wait a moment and retry once — SLM might be between calls
-                    import time
-
                     time.sleep(2)
                     if slm.state != SLMState.READY:
                         logger.warning("Batch retitle: SLM still not ready, aborting batch")
@@ -222,9 +230,7 @@ class TitleGenerator:
                     skipped += 1
                     logger.warning("Batch retitle: empty title for transcript %d", transcript.id)
                 else:
-                    title = title.strip().strip('"').strip("'").strip()
-                    if "\n" in title:
-                        title = title.split("\n")[0].strip()
+                    title = _clean_title(title)
 
                     if db is not None:
                         db.update_display_name(transcript.id, title)
@@ -288,11 +294,7 @@ class TitleGenerator:
                 return
 
             # Clean up: strip quotes the model might wrap around the title
-            title = title.strip().strip('"').strip("'").strip()
-
-            # Sanity: if the model hallucinated a paragraph, take just the first line
-            if "\n" in title:
-                title = title.split("\n")[0].strip()
+            title = _clean_title(title)
 
             # Write to DB
             db = self._db_provider()

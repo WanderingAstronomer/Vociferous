@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Backward-compat aliases — canonical templates now live in PromptBuilder.
+# Module-level aliases for convenience (coordinator imports these directly).
 _INSIGHT_PROMPT = PromptBuilder.INSIGHT_TEMPLATE
 _MOTD_PROMPT = PromptBuilder.MOTD_TEMPLATE
 
@@ -161,8 +161,8 @@ class InsightManager:
             self._generating = True
 
         logger.info("Insight: scheduling background generation")
-        t = threading.Thread(target=self._generate_task, daemon=True)
-        t.start()
+        thread = threading.Thread(target=self._generate_task, daemon=True)
+        thread.start()
 
     def request_generation(self) -> bool:
         """Force-trigger generation, bypassing TTL and transcript-count checks.
@@ -186,8 +186,8 @@ class InsightManager:
             self._generating = True
 
         logger.info("Insight: manual generation requested")
-        t = threading.Thread(target=self._generate_task, daemon=True)
-        t.start()
+        thread = threading.Thread(target=self._generate_task, daemon=True)
+        thread.start()
         return True
 
     # ── Internal ─────────────────────────────────────────────────────────────
@@ -197,12 +197,12 @@ class InsightManager:
         """Human-readable duration for prompt context."""
         if seconds < 60:
             return f"{round(seconds)}s"
-        m = int(seconds // 60)
-        if m < 60:
-            return f"{m}m"
-        h = m // 60
-        rm = m % 60
-        return f"{h}h {rm}m" if rm else f"{h}h"
+        minutes = int(seconds // 60)
+        if minutes < 60:
+            return f"{minutes}m"
+        hours = minutes // 60
+        remaining_minutes = minutes % 60
+        return f"{hours}h {remaining_minutes}m" if remaining_minutes else f"{hours}h"
 
     def _generate_task(self) -> None:
         try:

@@ -4,6 +4,22 @@
 
 ---
 
+## Maintenance — Python Backend Style Pass
+
+**Date:** 2026-03-07
+**Status:** Chore (no behavior change)
+
+PEP 8 compliance and naming clarity pass across all backend Python files. No logic changed.
+
+- **Naming** — Replaced ambiguous single-letter variables throughout: `t` → `transcript` (Transcript objects), `t` → `token` (FTS search tokens), `t` → `thread` (Thread objects), `m`/`h`/`rm` → `minutes`/`hours`/`remaining_minutes` in `InsightManager._fmt_duration`, `s` → `settings` in `SLMRuntime` and `LogManager`.
+- **Import hygiene** — `from abc import ABC` moved before `from dataclasses import dataclass` in `intents/__init__.py` (stdlib alphabetical order); `import time` moved from inside `_batch_retitle_task` method body to module-level in `title_generator.py`; removed empty `if TYPE_CHECKING: pass` block in `log_manager.py`.
+- **Redundant code** — Removed `pass` from `InteractionIntent` body (docstring makes it unnecessary).
+- **Type annotation** — Added `-> None` return type to `PluginLoader.discover_plugins`.
+- **Logging style** — Converted f-string logging calls to `%s`-style (deferred formatting) in `plugins/loader.py`, `log_manager.py`, and `input_handler/listener.py` for consistency with the rest of the codebase.
+- **Unused parameters** — `x, y` → `_x, _y` in `PynputBackend._on_mouse_click` (coordinates required by pynput's callback signature but never read).
+
+---
+
 ## v5.2.0 — Transcriptions View Overhaul (ISS-015)
 
 **Date:** 2026-03-07

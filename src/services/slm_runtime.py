@@ -10,7 +10,7 @@ Manages the lifecycle of a CTranslate2 Generator-based refinement model:
 import gc
 import logging
 import threading
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 from src.core.model_registry import get_slm_model
 from src.core.resource_manager import ResourceManager
@@ -67,8 +67,8 @@ class SLMRuntime:
             return
 
         self.state = SLMState.LOADING
-        t = threading.Thread(target=self._load_model_task, daemon=True)
-        t.start()
+        thread = threading.Thread(target=self._load_model_task, daemon=True)
+        thread.start()
 
     def disable(self) -> None:
         """Unload the model and disable runtime."""
@@ -78,8 +78,8 @@ class SLMRuntime:
     def _load_model_task(self) -> None:
         """Background task to load the CT2 Generator model."""
         try:
-            s = self._settings_provider()
-            model_id = s.refinement.model_id
+            settings = self._settings_provider()
+            model_id = settings.refinement.model_id
 
             if not model_id:
                 logger.info("No SLM model configured. SLM service disabled.")
@@ -105,24 +105,11 @@ class SLMRuntime:
 
             logger.info("Loading SLM from %s...", model_dir)
 
-            # Build level data from settings
-            levels: dict[int | str, dict[str, Any]] = {}
-            for idx, level in s.refinement.levels.items():
-                levels[idx] = {
-                    "name": level.name,
-                    "role": level.role,
-                    "permitted": level.permitted,
-                    "prohibited": level.prohibited,
-                    "directive": level.directive,
-                }
-
             self._engine = RefinementEngine(
                 model_path=model_dir,
-                system_prompt=s.refinement.system_prompt,
-                invariants=s.refinement.invariants,
-                levels=levels,
-                n_gpu_layers=s.refinement.n_gpu_layers,
-                n_ctx=s.refinement.n_ctx,
+                system_prompt=settings.refinement.system_prompt,
+                invariants=settings.refinement.invariants,
+                n_gpu_layers=settings.refinement.n_gpu_layers,
             )
 
             self.state = SLMState.READY
@@ -168,12 +155,12 @@ class SLMRuntime:
             return
 
         self.state = SLMState.INFERRING
-        t = threading.Thread(
+        thread = threading.Thread(
             target=self._inference_task,
             args=(text, level, instructions),
             daemon=True,
         )
-        t.start()
+        thread.start()
 
     def refine_text_sync(self, text: str, level: int = 1, instructions: str = "") -> str:
         """Synchronous refinement — blocks until complete. Returns refined text."""
@@ -244,6 +231,6 @@ class SLMRuntime:
 
         self.disable()
 
-        s = self._settings_provider()
-        if s.refinement.enabled:
+        settings = self._settings_provider()
+        if settings.refinement.enabled:
             self.enable()

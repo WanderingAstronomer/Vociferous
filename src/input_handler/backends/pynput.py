@@ -1,4 +1,8 @@
+import logging
+
 from ..types import InputEvent, KeyCode
+
+logger = logging.getLogger(__name__)
 
 
 class PynputBackend:
@@ -44,6 +48,7 @@ class PynputBackend:
         self.mouse_listener = self.mouse.Listener(on_click=self._on_mouse_click)
         self.keyboard_listener.start()
         self.mouse_listener.start()
+        logger.info("PynputBackend started (keyboard + mouse listeners).")
 
     def stop(self) -> None:
         """Stop listening for keyboard and mouse events."""
@@ -53,6 +58,7 @@ class PynputBackend:
         if self.mouse_listener:
             self.mouse_listener.stop()
             self.mouse_listener = None
+        logger.info("PynputBackend stopped.")
 
     def _translate_key_event(self, native_event: tuple) -> tuple[KeyCode, InputEvent] | None:
         """Translate a pynput event to our internal event representation."""
@@ -86,7 +92,7 @@ class PynputBackend:
             if translated_event:
                 self.on_input_event(translated_event)
 
-    def _on_mouse_click(self, x, y, button, pressed) -> None:
+    def _on_mouse_click(self, _x, _y, button, pressed) -> None:
         """Handle mouse click events."""
         if self.on_input_event:
             translated_event = self._translate_mouse_event((button, pressed))

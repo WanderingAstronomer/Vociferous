@@ -7,9 +7,9 @@ Supports:
 2. Entry Point Plugins (via `vociferous.plugins.input` group)
 """
 
-import logging
 import importlib.metadata
-from typing import Type, List, Dict, Optional, TYPE_CHECKING
+import logging
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.input_handler.backends.base import InputBackend
@@ -22,27 +22,23 @@ class PluginLoader:
     Central registry and loader for application plugins.
     """
 
-    _input_backends: Dict[str, Type["InputBackend"]] = {}
+    _input_backends: dict[str, type["InputBackend"]] = {}
 
     @classmethod
-    def register_backend(cls, name: str, backend_cls: Type["InputBackend"]):
-        """Manually register a backend class."""
-        # Defer import to avoid circular dependency
-
-        # Runtime Protocol check for issubclass is flaky with non-method members
-        # We perform a rough duck-typing check instead
-        if not hasattr(backend_cls, "is_available") or not hasattr(
-            backend_cls, "start"
-        ):
-            # Runtime checkable protocol check is loose, manually verify basic contract?
-            # For now, we trust type hint or runtime failure
-            pass
+    def register_backend(cls, name: str, backend_cls: type["InputBackend"]) -> None:
+        """Register a backend class after duck-type validation."""
+        if not hasattr(backend_cls, "is_available") or not hasattr(backend_cls, "start"):
+            logger.warning(
+                "Backend '%s' (%s) missing required methods (is_available, start). Skipping.",
+                name, backend_cls.__name__,
+            )
+            return
 
         cls._input_backends[name] = backend_cls
-        logger.debug(f"Registered input backend: {name}")
+        logger.debug("Registered input backend: %s", name)
 
     @classmethod
-    def discover_plugins(cls):
+    def discover_plugins(cls) -> None:
         """
         Discover plugins via entry points (Setuptools/Poetry).
         Group: `vociferous.plugins.input`
@@ -70,18 +66,18 @@ class PluginLoader:
                         cls.register_backend(ep.name, plugin_cls)
                     else:
                         logger.warning(
-                            f"Plugin {ep.name} does not satisfy InputBackend protocol."
+                            "Plugin %s does not satisfy InputBackend protocol.", ep.name
                         )
                 except Exception as e:
-                    logger.error(f"Failed to load plugin {ep.name}: {e}")
+                    logger.error("Failed to load plugin %s: %s", ep.name, e)
         except Exception as e:
-            logger.error(f"Plugin discovery failed: {e}")
+            logger.error("Plugin discovery failed: %s", e)
 
     @classmethod
-    def get_available_backends(cls) -> List[Type["InputBackend"]]:
-        """Return list of instantiated available backends."""
-        return [cls for cls in cls._input_backends.values() if cls.is_available()]
+    def get_available_backends(cls) -> list[type["InputBackend"]]:
+        """Return backend classes whose is_available() returns True."""
+        return [backend for backend in cls._input_backends.values() if backend.is_available()]
 
     @classmethod
-    def get_backend_by_name(cls, name: str) -> Optional[Type["InputBackend"]]:
+    def get_backend_by_name(cls, name: str) -> type["InputBackend"] | None:
         return cls._input_backends.get(name)

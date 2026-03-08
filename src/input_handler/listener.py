@@ -53,20 +53,11 @@ class KeyListener:
                 if isinstance(instance, backend_cls):
                     self.active_backend = instance
                     self.active_backend.on_input_event = self.on_input_event
-                    logger.info(f"Selected configured backend: {preferred_backend}")
+                    logger.info("Selected configured backend: %s", preferred_backend)
                     return
 
-        logger.warning(f"Configured backend '{preferred_backend}' not available. Falling back to auto.")
+        logger.warning("Configured backend '%s' not available. Falling back to auto.", preferred_backend)
         self.select_active_backend()
-
-    def _try_set_backend(self, backend_class: type) -> None:
-        """Try to set a specific backend, fall back to auto if unavailable."""
-        try:
-            self.set_active_backend(backend_class)
-        except ValueError:
-            name = backend_class.__name__
-            logger.warning(f"Backend '{name}' unavailable. Using auto.")
-            self.select_active_backend()
 
     def select_active_backend(self) -> None:
         """Select the first available backend as active."""
@@ -74,22 +65,6 @@ class KeyListener:
             raise RuntimeError("No supported input backend found")
         self.active_backend = self.backends[0]
         self.active_backend.on_input_event = self.on_input_event
-
-    def set_active_backend(self, backend_class: type) -> None:
-        """Set a specific backend as active."""
-        new_backend = next((b for b in self.backends if isinstance(b, backend_class)), None)
-        if new_backend:
-            if self.active_backend:
-                self.stop()
-            self.active_backend = new_backend
-            self.active_backend.on_input_event = self.on_input_event
-            self.start()
-        else:
-            raise ValueError(f"Backend {backend_class.__name__} is not available")
-
-    def update_backend(self) -> None:
-        """Update the active backend based on current configuration."""
-        self.select_backend_from_config()
 
     def start(self) -> None:
         """Start the active backend, enabling fallback if startup fails."""
@@ -111,11 +86,11 @@ class KeyListener:
                 backend.on_input_event = self.on_input_event
                 backend.start()
                 self.active_backend = backend
-                logger.info(f"Started input backend: {type(backend).__name__}")
+                logger.info("Started input backend: %s", type(backend).__name__)
                 self._log_backend_limitations(backend)
                 return
             except Exception as e:
-                logger.warning(f"Backend {type(backend).__name__} failed to start: {e}")
+                logger.warning("Backend %s failed to start: %s", type(backend).__name__, e)
                 try:
                     backend.stop()
                 except Exception:
@@ -173,7 +148,7 @@ class KeyListener:
                 try:
                     keys.add(KeyCode[key])
                 except KeyError:
-                    logger.warning(f"Unknown key: {key}")
+                    logger.warning("Unknown key: %s", key)
         return keys
 
     def set_activation_keys(self, keys: set[KeyCode | frozenset[KeyCode]]) -> None:
@@ -235,7 +210,7 @@ class KeyListener:
             try:
                 callback()
             except Exception:
-                logger.exception(f"Error in {event} callback")
+                logger.exception("Error in %s callback", event)
 
     def update_activation_keys(self) -> None:
         """Update activation keys from the current configuration."""

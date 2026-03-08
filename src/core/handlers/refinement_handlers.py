@@ -116,22 +116,12 @@ class RefinementHandlers:
 
                 elapsed = round(time.monotonic() - start_time, 1)
 
-                variant = _db.add_variant(
-                    intent.transcript_id,
-                    f"refinement_L{intent.level}",
-                    refined,
-                    model_id=settings.refinement.model_id,
-                    set_current=True,
-                )
-
-                # Prune old refinement variants: keep only the 3 most recent.
-                _db.prune_refinement_variants(intent.transcript_id, keep=3)
+                _db.update_normalized_text(intent.transcript_id, refined)
 
                 self._emit(
                     "refinement_complete",
                     {
                         "transcript_id": intent.transcript_id,
-                        "variant_id": variant.id,
                         "text": refined,
                         "level": intent.level,
                         "elapsed_seconds": elapsed,
@@ -153,5 +143,5 @@ class RefinementHandlers:
                     },
                 )
 
-        t = threading.Thread(target=do_refine, daemon=True, name="refine")
-        t.start()
+        thread = threading.Thread(target=do_refine, daemon=True, name="refine")
+        thread.start()
