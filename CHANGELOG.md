@@ -2,6 +2,18 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.3.6 — Retire "Retitle All Untitled" (ISS-036)
+
+**Date:** 2026-03-08
+**Status:** Hotfix / Cleanup
+
+### Changed
+- **ISS-036** — "Retitle All Untitled" feature retired. DB query confirmed only 2 untitled transcripts remain out of 259; all new transcripts are auto-titled on creation.
+  - Removed: `BatchRetitleIntent`, `TitleGenerator.batch_retitle()` / `_batch_retitle_task()`, `TitleHandlers.handle_batch_retitle()`, `TranscriptDB.get_untitled_transcripts()`, `batchRetitle()` API function, `BatchRetitleProgressData` event type, "Titles" card in MaintenanceCard.
+  - Handler count in coordinator updated from 19 (stale) to 20 (accurate — includes `CommitRefinementIntent` and `BatchToggleTagIntent` from ISS-030/032).
+
+---
+
 ## v5.3.5 — Bulk Tag Toggle (ISS-030)
 
 **Date:** 2026-03-08

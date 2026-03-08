@@ -100,10 +100,6 @@ export function commitRefinement(id: number, text: string): Promise<{ status: st
     });
 }
 
-export function batchRetitle(): Promise<{ dispatched: boolean }> {
-    return dispatchIntent("batch_retitle");
-}
-
 // --- Tags ---
 
 export function getTags(): Promise<Tag[]> {

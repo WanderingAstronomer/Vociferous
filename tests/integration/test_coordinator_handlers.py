@@ -26,7 +26,6 @@ ALL_EVENTS = [
     "transcription_complete",
     "transcription_error",
     "config_updated",
-    "batch_retitle_progress",
     "tag_created",
     "tag_updated",
     "tag_deleted",
@@ -296,26 +295,6 @@ class TestRenameTranscript:
         )
 
         assert len(events.of_type("transcript_updated")) == 0
-
-
-# ── BatchRetitleIntent ────────────────────────────────────────────────────
-
-
-class TestBatchRetitle:
-    """BatchRetitle with no TitleGenerator emits an error event."""
-
-    def test_batch_retitle_without_generator(self, wired):
-        """No title_generator → error event emitted."""
-        coord, events = wired
-        assert coord.title_generator is None
-
-        from src.core.intents.definitions import BatchRetitleIntent
-
-        coord.command_bus.dispatch(BatchRetitleIntent())
-
-        errors = events.of_type("batch_retitle_progress")
-        assert len(errors) == 1
-        assert errors[0]["status"] == "error"
 
 
 # ── RetitleTranscriptIntent ───────────────────────────────────────────────

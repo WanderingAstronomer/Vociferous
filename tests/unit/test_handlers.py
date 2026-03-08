@@ -129,38 +129,6 @@ class TestTitleHandlersRetitle:
         mock_gen.schedule.assert_called_once()
 
 
-class TestTitleHandlersBatchRetitle:
-    """TitleHandlers.handle_batch_retitle()"""
-
-    def test_batch_delegates_to_generator(self, db, events):
-        from src.core.handlers.title_handlers import TitleHandlers
-
-        mock_gen = MagicMock()
-        handler = TitleHandlers(
-            db_provider=lambda: db,
-            title_generator_provider=lambda: mock_gen,
-            event_bus_emit=_emit_to(events),
-        )
-
-        handler.handle_batch_retitle(SimpleNamespace())
-        mock_gen.batch_retitle.assert_called_once()
-
-    def test_batch_no_generator_emits_error(self, db, events):
-        from src.core.handlers.title_handlers import TitleHandlers
-
-        handler = TitleHandlers(
-            db_provider=lambda: db,
-            title_generator_provider=lambda: None,
-            event_bus_emit=_emit_to(events),
-        )
-
-        handler.handle_batch_retitle(SimpleNamespace())
-
-        errors = _events_of(events, "batch_retitle_progress")
-        assert len(errors) == 1
-        assert errors[0]["status"] == "error"
-
-
 # ===========================================================================
 # RefinementHandlers
 # ===========================================================================

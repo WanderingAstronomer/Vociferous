@@ -122,15 +122,17 @@ class TestHandlerRegistration:
         from src.core.intents.definitions import (
             AssignTagsIntent,
             BatchDeleteTranscriptsIntent,
-            BatchRetitleIntent,
+            BatchToggleTagIntent,
             BeginRecordingIntent,
             CancelRecordingIntent,
             ClearTranscriptsIntent,
             CommitEditsIntent,
+            CommitRefinementIntent,
             CreateTagIntent,
             DeleteTagIntent,
             DeleteTranscriptIntent,
             RefineTranscriptIntent,
+            RefreshInsightIntent,
             RenameTranscriptIntent,
             RestartEngineIntent,
             RetitleTranscriptIntent,
@@ -146,19 +148,21 @@ class TestHandlerRegistration:
             CancelRecordingIntent,
             ToggleRecordingIntent,
             DeleteTranscriptIntent,
+            BatchDeleteTranscriptsIntent,
             ClearTranscriptsIntent,
             CommitEditsIntent,
             RenameTranscriptIntent,
             RefineTranscriptIntent,
+            CommitRefinementIntent,
             CreateTagIntent,
             UpdateTagIntent,
             DeleteTagIntent,
             AssignTagsIntent,
+            BatchToggleTagIntent,
             UpdateConfigIntent,
             RestartEngineIntent,
-            BatchRetitleIntent,
+            RefreshInsightIntent,
             RetitleTranscriptIntent,
-            BatchDeleteTranscriptsIntent,
         ]
 
         for intent_cls in expected_intents:
@@ -168,8 +172,8 @@ class TestHandlerRegistration:
 
     def test_handler_count_matches_intent_count(self, coordinator):
         """No extra/ghost handlers registered beyond the expected set."""
-        # 19 intents are registered in _register_handlers (15 original + 4 tag)
-        assert len(coordinator.command_bus._handlers) == 19
+        # 20 intents are registered in _register_handlers
+        assert len(coordinator.command_bus._handlers) == 20
 
     def test_handlers_are_callable(self, coordinator):
         """Every registered handler must be callable."""
@@ -179,7 +183,7 @@ class TestHandlerRegistration:
     def test_double_register_does_not_duplicate(self, coordinator):
         """Calling _register_handlers again overwrites, doesn't stack."""
         coordinator._register_handlers()
-        assert len(coordinator.command_bus._handlers) == 19
+        assert len(coordinator.command_bus._handlers) == 20
 
 
 # ── Shutdown & Cleanup ────────────────────────────────────────────────────

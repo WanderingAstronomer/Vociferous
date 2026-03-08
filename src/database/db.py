@@ -383,21 +383,6 @@ class TranscriptDB:
             self._conn.commit()
             return cur.rowcount > 0
 
-    def get_untitled_transcripts(self) -> list[Transcript]:
-        """Get all transcripts that have no display_name set (NULL or empty string)."""
-        with self._write_lock:
-            rows = self._conn.execute(
-                """SELECT *
-                   FROM transcripts
-                   WHERE display_name IS NULL OR TRIM(display_name) = ''
-                   ORDER BY created_at DESC""",
-            ).fetchall()
-            transcripts = [self._row_to_transcript(r) for r in rows]
-            for t in transcripts:
-                assert t.id is not None
-                t.tags = self._get_tags_for_transcript(t.id)
-        return transcripts
-
     # --- Tags ---
 
     def add_tag(self, name: str, *, color: str | None = None) -> Tag:

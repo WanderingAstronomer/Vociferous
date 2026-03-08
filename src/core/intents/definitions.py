@@ -168,13 +168,6 @@ class RenameTranscriptIntent(InteractionIntent):
 
 
 @dataclass(frozen=True, slots=True)
-class BatchRetitleIntent(InteractionIntent):
-    """Trigger batch retitling of all untitled transcripts via SLM."""
-
-    source: IntentSource = IntentSource.API
-
-
-@dataclass(frozen=True, slots=True)
 class RetitleTranscriptIntent(InteractionIntent):
     """Re-generate the SLM title for a single transcript."""
 

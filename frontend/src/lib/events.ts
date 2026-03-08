@@ -116,15 +116,6 @@ export interface MotdReadyData {
     text: string;
 }
 
-export interface BatchRetitleProgressData {
-    status: "started" | "progress" | "complete" | "error";
-    total?: number;
-    processed?: number;
-    skipped?: number;
-    current?: number;
-    message?: string;
-}
-
 // --- Event type → data mapping ---
 
 export interface WSEventMap {
@@ -150,7 +141,6 @@ export interface WSEventMap {
     key_captured: KeyCapturedData;
     insight_ready: InsightReadyData;
     motd_ready: MotdReadyData;
-    batch_retitle_progress: BatchRetitleProgressData;
 }
 
 /** All known event type strings. */
@@ -252,6 +242,4 @@ export const wsEventValidators: {
         isObject(data) && isString(data.text),
     motd_ready: (data): data is MotdReadyData =>
         isObject(data) && isString(data.text),
-    batch_retitle_progress: (data): data is BatchRetitleProgressData =>
-        isObject(data) && isString(data.status),
 };

@@ -1,5 +1,5 @@
 """
-TitleHandlers — retitle (single) and batch-retitle intents.
+TitleHandlers — single-transcript retitle intent.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class TitleHandlers:
-    """Handles transcript titling intents: single retitle and batch retitle."""
+    """Handles transcript titling intents."""
 
     def __init__(
         self,
@@ -42,16 +42,4 @@ class TitleHandlers:
             return
         title_gen.schedule(intent.transcript_id, text)
 
-    def handle_batch_retitle(self, intent: Any) -> None:
-        """Dispatch batch retitling to TitleGenerator."""
-        title_gen = self._title_generator_provider()
-        if title_gen is None:
-            self._emit(
-                "batch_retitle_progress",
-                {
-                    "status": "error",
-                    "message": "Title generator not initialized.",
-                },
-            )
-            return
-        title_gen.batch_retitle()
+

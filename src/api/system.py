@@ -491,7 +491,6 @@ async def dispatch_intent(data: dict) -> Response:
         "commit_edits": defs.CommitEditsIntent,
         "refine_transcript": defs.RefineTranscriptIntent,
         "rename_transcript": defs.RenameTranscriptIntent,
-        "batch_retitle": defs.BatchRetitleIntent,
         "retitle_transcript": defs.RetitleTranscriptIntent,
         "create_tag": defs.CreateTagIntent,
         "update_tag": defs.UpdateTagIntent,

@@ -1,20 +1,16 @@
 <script lang="ts">
     /**
-     * MaintenanceCard — Data management, batch retitle, engine restart.
+     * MaintenanceCard — Data management and engine restart.
      *
-     * Self-contained: owns batch retitle WS subscription, export formatting,
-     * clear-all confirmation modal, and engine restart action.
+     * Self-contained: owns export formatting, clear-all confirmation modal,
+     * and engine restart action.
      */
 
-    import { getTranscripts, clearAllTranscripts, exportFile, batchRetitle, restartEngine } from "../api";
-    import { ws } from "../ws";
-    import { onMount, onDestroy } from "svelte";
-    import { RotateCcw, Loader2 } from "lucide-svelte";
+    import { getTranscripts, clearAllTranscripts, exportFile, restartEngine } from "../api";
+    import { RotateCcw } from "lucide-svelte";
     import ToggleSwitch from "./ToggleSwitch.svelte";
     import CustomSelect from "./CustomSelect.svelte";
     import StyledButton from "./StyledButton.svelte";
-    import type { BatchRetitleProgressData } from "../events";
-
     interface Props {
         config: Record<string, any>;
         models: { asr: Record<string, any>; slm: Record<string, any> };
@@ -36,51 +32,6 @@
 
     let clearingTranscripts = $state(false);
     let showClearTranscriptsConfirm = $state(false);
-
-    /* ===== Batch retitle state ===== */
-
-    let batchRetitling = $state(false);
-    let batchRetitleTotal = $state(0);
-    let batchRetitleProcessed = $state(0);
-    let batchRetitleSkipped = $state(0);
-    let batchRetitleCurrent = $state(0);
-    let batchRetitleMessage = $state("");
-
-    /* ===== WS subscription ===== */
-
-    let unsubBatchRetitle: (() => void) | null = null;
-
-    onMount(() => {
-        unsubBatchRetitle = ws.on("batch_retitle_progress", (data: BatchRetitleProgressData) => {
-            if (data.status === "started") {
-                batchRetitling = true;
-                batchRetitleTotal = data.total ?? 0;
-                batchRetitleProcessed = 0;
-                batchRetitleSkipped = 0;
-                batchRetitleCurrent = 0;
-                batchRetitleMessage = `Retitling 0 / ${data.total ?? 0}…`;
-            } else if (data.status === "progress") {
-                batchRetitleProcessed = data.processed ?? 0;
-                batchRetitleSkipped = data.skipped ?? 0;
-                batchRetitleCurrent = data.current ?? 0;
-                batchRetitleTotal = data.total ?? batchRetitleTotal;
-                batchRetitleMessage = `Retitling ${data.current ?? 0} / ${data.total ?? batchRetitleTotal}…`;
-            } else if (data.status === "complete") {
-                batchRetitling = false;
-                const msg = `Retitled ${data.processed ?? 0} transcript${(data.processed ?? 0) !== 1 ? "s" : ""}${(data.skipped ?? 0) > 0 ? `, ${data.skipped} skipped` : ""}`;
-                showMessage(msg, "success");
-                batchRetitleMessage = "";
-            } else if (data.status === "error") {
-                batchRetitling = false;
-                showMessage(data.message ?? "Batch retitle failed", "error");
-                batchRetitleMessage = "";
-            }
-        });
-    });
-
-    onDestroy(() => {
-        unsubBatchRetitle?.();
-    });
 
     /* ===== Export helpers ===== */
 
@@ -232,17 +183,7 @@
         }
     }
 
-    async function handleBatchRetitle() {
-        batchRetitling = true;
-        batchRetitleMessage = "Starting batch retitle…";
-        try {
-            await batchRetitle();
-        } catch (e: any) {
-            batchRetitling = false;
-            showMessage(e.message || "Batch retitle failed", "error");
-            batchRetitleMessage = "";
-        }
-    }
+
 </script>
 
 <div
@@ -295,39 +236,6 @@
                 <StyledButton variant="destructive" onclick={handleClearTranscripts} disabled={clearingTranscripts}>
                     {clearingTranscripts ? "Clearing…" : "Clear All Transcriptions"}</StyledButton
                 >
-            </div>
-        </div>
-
-        <!-- Titles: batch retitle -->
-        <div
-            class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
-        >
-            <span class="text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]">Titles</span>
-            <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                >Generate SLM-powered titles for all untitled transcripts. This may take several minutes if you have
-                many transcripts. Recordings shorter than ~25 words are skipped.</span
-            >
-            {#if batchRetitling}
-                <div class="flex items-center gap-2 text-[var(--text-xs)] text-[var(--accent)]">
-                    <Loader2 size={14} class="spin" />
-                    <span>{batchRetitleMessage}</span>
-                </div>
-                {#if batchRetitleTotal > 0}
-                    <div class="w-full h-1.5 bg-[var(--surface-primary)] rounded-full overflow-hidden">
-                        <div
-                            class="h-full bg-[var(--accent)] transition-all duration-300 rounded-full"
-                            style="width: {Math.round((batchRetitleCurrent / batchRetitleTotal) * 100)}%"
-                        ></div>
-                    </div>
-                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
-                        {batchRetitleProcessed} titled, {batchRetitleSkipped} skipped
-                    </span>
-                {/if}
-            {/if}
-            <div class="flex gap-[var(--space-2)] flex-wrap">
-                <StyledButton variant="secondary" onclick={handleBatchRetitle} disabled={batchRetitling}>
-                    {batchRetitling ? "Retitling…" : "Retitle All Untitled"}
-                </StyledButton>
             </div>
         </div>
 

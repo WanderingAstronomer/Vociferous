@@ -424,7 +424,6 @@ class ApplicationCoordinator:
         from src.core.intents.definitions import (
             AssignTagsIntent,
             BatchDeleteTranscriptsIntent,
-            BatchRetitleIntent,
             BatchToggleTagIntent,
             BeginRecordingIntent,
             CancelRecordingIntent,
@@ -493,7 +492,6 @@ class ApplicationCoordinator:
         bus.register(UpdateConfigIntent, system.handle_update_config)
         bus.register(RestartEngineIntent, system.handle_restart_engine)
         bus.register(RefreshInsightIntent, system.handle_refresh_insight)
-        bus.register(BatchRetitleIntent, title.handle_batch_retitle)
         bus.register(RetitleTranscriptIntent, title.handle_retitle)
 
     # --- Hotkey ---
