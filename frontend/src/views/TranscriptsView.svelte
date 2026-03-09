@@ -30,18 +30,17 @@
         Pencil,
         Sparkles,
         Tag as TagIcon,
-        Plus,
         Check,
         Copy,
         ChevronLeft,
         ChevronRight,
         ArrowUpDown,
-        Palette,
         Minus,
         Hammer,
     } from "lucide-svelte";
     import StyledButton from "../lib/components/StyledButton.svelte";
     import EmptyState from "../lib/components/EmptyState.svelte";
+    import TagBar from "../lib/components/TagBar.svelte";
     import { formatDuration, wordCount, formatRelativeDate } from "../lib/formatters";
 
     /* ===== State ===== */
@@ -78,17 +77,6 @@
     let allTags: Tag[] = $state([]);
     let activeTagIds: Set<number> = $state(new Set());
     let tagFilterMode: "any" | "all" = $state("any");
-
-    // Tag creation inline
-    let showTagCreate = $state(false);
-    let newTagName = $state("");
-    let newTagColor = $state("#5a9fd4");
-
-    // Tag context menu (right-click: edit color + delete)
-    let tagMenuId: number | null = $state(null);
-    let tagMenuX = $state(0);
-    let tagMenuY = $state(0);
-    let tagMenuColor = $state("");
 
     // Tag assignment popover
     let tagAssignOpen = $state(false);
@@ -363,13 +351,9 @@
 
     /* ===== Tag Create ===== */
 
-    async function handleCreateTag() {
-        const name = newTagName.trim();
-        if (!name) return;
+    async function handleCreateTag(name: string, color: string) {
         try {
-            await createTag(name, newTagColor);
-            newTagName = "";
-            showTagCreate = false;
+            await createTag(name, color);
             await loadTags();
             toast.success(`Tag "${name}" created`);
         } catch (e: any) {
@@ -379,7 +363,6 @@
     }
 
     async function handleDeleteTag(tagId: number) {
-        tagMenuId = null;
         try {
             await deleteTag(tagId);
             const next = new Set(activeTagIds);
@@ -395,21 +378,6 @@
     }
 
     /* ===== Tag Context Menu ===== */
-
-    function openTagMenu(tagId: number, event: MouseEvent) {
-        event.preventDefault();
-        event.stopPropagation();
-        const tag = allTags.find((t) => t.id === tagId);
-        if (!tag || tag.is_system) return;
-        tagMenuColor = tag.color ?? "#5a9fd4";
-        tagMenuX = Math.min(event.clientX, window.innerWidth - 200);
-        tagMenuY = event.clientY;
-        tagMenuId = tagId;
-    }
-
-    function closeTagMenu() {
-        tagMenuId = null;
-    }
 
     async function handleTagColorChange(tagId: number, color: string) {
         try {
@@ -471,14 +439,11 @@
 
     function handleGlobalPointerDown() {
         if (tagAssignOpen) closeTagAssign();
-        if (tagMenuId !== null) closeTagMenu();
     }
 
     function handleGlobalKeydown(event: KeyboardEvent) {
         if (event.key === "Escape") {
-            if (tagMenuId !== null) {
-                closeTagMenu();
-            } else if (tagAssignOpen) {
+            if (tagAssignOpen) {
                 closeTagAssign();
             } else if (selection.hasSelection) {
                 selection.clear();
@@ -582,29 +547,14 @@
             </div>
 
             <!-- Row 2: Tag filter chips -->
-            <div class="flex items-center justify-center gap-1.5 flex-wrap min-h-[28px]">
-                {#each allTags as tag (tag.id)}
-                    <button
-                        class="inline-flex items-center gap-1 h-6 px-2 rounded-full text-xs font-medium border cursor-pointer transition-all duration-150 select-none"
-                        style={activeTagIds.has(tag.id)
-                            ? `background: color-mix(in srgb, ${tagColor(tag)} 30%, transparent); border-color: ${tagColor(tag)}; color: var(--text-primary);`
-                            : `background: transparent; border-color: var(--shell-border); color: var(--text-tertiary);`}
-                        onclick={() => toggleTagFilter(tag.id)}
-                        oncontextmenu={tag.is_system ? undefined : (e) => openTagMenu(tag.id, e)}
-                        title={tag.is_system ? tag.name : "Click to filter · Right-click to edit/delete"}
-                    >
-                        {#if tag.is_system}
-                            <Hammer size={10} class="shrink-0" />
-                        {:else}
-                            <span class="w-2 h-2 rounded-full shrink-0" style="background: {tagColor(tag)}"></span>
-                        {/if}
-                        {tag.name}
-                        {#if activeTagIds.has(tag.id)}
-                            <X size={10} class="ml-0.5 opacity-60" />
-                        {/if}
-                    </button>
-                {/each}
-
+            <TagBar
+                tags={allTags}
+                activeIds={activeTagIds}
+                ontoggle={toggleTagFilter}
+                oncreate={handleCreateTag}
+                ondelete={handleDeleteTag}
+                oncolorchange={handleTagColorChange}
+            >
                 {#if activeTagIds.size > 0}
                     <button
                         class="h-6 px-2 rounded-full text-xs font-semibold border border-[var(--accent-muted)] bg-transparent text-[var(--accent)] cursor-pointer transition-colors hover:bg-[var(--hover-overlay)]"
@@ -620,60 +570,7 @@
                         Clear
                     </button>
                 {/if}
-
-                {#if allTags.length > 0}
-                    <div class="w-px h-4 bg-[var(--shell-border)] mx-0.5"></div>
-                {/if}
-
-                <!-- Inline tag creation -->
-                {#if showTagCreate}
-                    <form
-                        class="inline-flex items-center gap-1"
-                        onsubmit={(e) => {
-                            e.preventDefault();
-                            handleCreateTag();
-                        }}
-                    >
-                        <input
-                            type="color"
-                            class="w-5 h-5 border-none rounded cursor-pointer p-0 bg-transparent"
-                            bind:value={newTagColor}
-                        />
-                        <input
-                            type="text"
-                            class="h-6 w-24 px-1.5 rounded text-xs bg-[var(--surface-secondary)] border border-[var(--shell-border)] text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-                            placeholder="Tag name"
-                            bind:value={newTagName}
-                        />
-                        <button
-                            type="submit"
-                            class="w-5 h-5 rounded bg-[var(--accent)] text-[var(--gray-0)] border-none cursor-pointer flex items-center justify-center"
-                            disabled={!newTagName.trim()}
-                        >
-                            <Check size={11} />
-                        </button>
-                        <button
-                            type="button"
-                            class="w-5 h-5 rounded bg-transparent text-[var(--text-tertiary)] border-none cursor-pointer flex items-center justify-center hover:text-[var(--text-primary)]"
-                            onclick={() => {
-                                showTagCreate = false;
-                                newTagName = "";
-                            }}
-                        >
-                            <X size={11} />
-                        </button>
-                    </form>
-                {:else}
-                    <button
-                        class="inline-flex items-center gap-1 h-6 px-2 rounded-full text-xs text-[var(--text-tertiary)] bg-transparent border border-dashed border-[var(--shell-border)] cursor-pointer transition-colors hover:text-[var(--accent)] hover:border-[var(--accent)]"
-                        onclick={() => (showTagCreate = true)}
-                        title={allTags.length > 0 ? "Create new tag" : "Create your first tag"}
-                    >
-                        <Plus size={10} />
-                        {allTags.length > 0 ? "Tag" : "Create a tag"}
-                    </button>
-                {/if}
-            </div>
+            </TagBar>
         </div>
 
         <!-- === Controls row: result count + sort + per-page === -->
@@ -865,6 +762,7 @@
         {#if selection.hasSelection}
             <div
                 class="shrink-0 flex items-center gap-2 px-4 py-2.5 border-t border-[var(--shell-border)] bg-[var(--surface-secondary)]"
+                style="scrollbar-gutter: stable"
             >
                 <StyledButton size="sm" variant="destructive" onclick={handleDelete}>
                     <Trash2 size={13} />
@@ -938,59 +836,6 @@
                 </button>
             {/each}
         {/if}
-    </div>
-{/if}
-
-<!-- === Tag Context Menu (right-click on tag chip) === -->
-{#if tagMenuId !== null}
-    <div
-        class="fixed inset-0 z-[249]"
-        onclick={closeTagMenu}
-        oncontextmenu={(e) => {
-            e.preventDefault();
-            closeTagMenu();
-        }}
-        role="presentation"
-    ></div>
-    <div
-        class="fixed w-[180px] bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-lg shadow-[0_12px_28px_rgba(0,0,0,0.45)] py-1 z-[250]"
-        style="left: {tagMenuX}px; top: {tagMenuY}px;"
-        role="menu"
-        tabindex="-1"
-        onpointerdown={(e) => e.stopPropagation()}
-    >
-        <div class="px-3 py-1.5 text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">Edit tag</div>
-        <!-- Color picker row -->
-        <div class="flex items-center gap-2 px-3 py-1.5">
-            <Palette size={13} class="text-[var(--text-tertiary)] shrink-0" />
-            <span class="text-xs text-[var(--text-secondary)]">Color</span>
-            <div class="flex-1"></div>
-            <input
-                type="color"
-                class="w-6 h-6 border border-[var(--shell-border)] rounded cursor-pointer p-0 bg-transparent"
-                value={tagMenuColor}
-                onchange={(e) => {
-                    const target = e.currentTarget as HTMLInputElement;
-                    if (tagMenuId !== null) {
-                        tagMenuColor = target.value;
-                        handleTagColorChange(tagMenuId, target.value);
-                    }
-                }}
-            />
-        </div>
-        <!-- Divider -->
-        <div class="h-px bg-[var(--shell-border)] mx-2 my-1"></div>
-        <!-- Delete -->
-        <button
-            class="w-full flex items-center gap-2 px-3 py-1.5 border-none bg-transparent text-left text-xs cursor-pointer transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--color-danger)_15%,transparent)] text-[var(--color-danger)]"
-            onclick={() => {
-                if (tagMenuId !== null) handleDeleteTag(tagMenuId);
-            }}
-            role="menuitem"
-        >
-            <Trash2 size={13} />
-            Delete tag
-        </button>
     </div>
 {/if}
 

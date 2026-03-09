@@ -2,6 +2,33 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.6.1 — TranscriptsView Action Bar Alignment (ISS-054)
+
+**Date:** 2026-03-09
+**Status:** Hotfix / Bug Fix
+
+### Fixed
+- **ISS-054** — TranscriptsView action bar padding now visually aligns with transcript list content edges by adding `scrollbar-gutter: stable` to the action bar container. The scroll container and action bar both reserve space for the scrollbar, eliminating the ~15px left-shift misalignment that occurred when the scrollbar was present.
+
+---
+
+## v5.6.0 — EditView Redesign (ISS-045)
+
+**Date:** 2026-03-09
+**Status:** Minor Release
+
+### Added
+- **ISS-045** — EditView redesign: tags panel, statistics strip (word count, duration, WPM, filler count), Refined status banner with revert-to-raw button, and full tag management.
+- **TagBar.svelte** — Extracted reusable tag chip bar component from TranscriptsView. Renders tag chips (system tag awareness), inline creation form, and right-click context menu (color picker + delete). Used by TranscriptsView (filter mode) and EditView (assignment mode). Ready for TranscribeView (ISS-046).
+- **RevertToRawIntent** — New backend intent that clears `normalized_text` and removes the Refined system tag, restoring original captured text. Wired through CommandBus, intent dispatch API, and coordinator.
+- **Toast positioning fix** — Moved toast stack from `fixed bottom-4 right-4` to `fixed top-12 right-4`, eliminating overlap with RefineView action bar buttons. Partial fix for ISS-047.
+
+### Changed
+- **TranscriptsView** — Tag filter chips, inline creation, and context menu replaced with shared TagBar component. Removed ~100 lines of inline tag management code.
+- **EditView** — Complete rewrite from bare textarea (160 lines) to full-featured editor (~270 lines) with tag management, statistics, Refined indicator, and revert capability.
+
+---
+
 ## v5.5.1 — Code-Level TODO Sweep
 
 **Date:** 2026-03-09
