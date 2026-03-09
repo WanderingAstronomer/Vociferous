@@ -65,7 +65,7 @@ export interface TranscriptsBatchDeletedData {
 export interface TranscriptUpdatedData {
     id: number;
     variant_id?: number;
-    tags?: { id: number; name: string; color: string | null }[];
+    tags?: { id: number; name: string; color: string | null; is_system?: boolean }[];
 }
 
 export interface ConfigUpdatedData {

@@ -35,6 +35,7 @@ export interface Tag {
     id: number;
     name: string;
     color: string | null;
+    is_system: boolean;
 }
 
 export interface PaginatedResult<T> {

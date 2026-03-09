@@ -2,6 +2,23 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.5.0 — Refined System Tag (ISS-044)
+
+**Date:** 2026-03-09
+**Status:** Minor Release
+
+### Added
+- **ISS-044** — "Refined" system tag: auto-applied to a transcript when refinement is committed.
+  - DB migration v5: `is_system` column added to `tags` table; "Refined" system tag seeded on first run / upgrade.
+  - `CommitRefinement` handler applies the Refined tag to the transcript and emits `transcript_updated` so TranscriptsView refreshes live.
+  - System tags cannot be edited, deleted, or manually assigned by the user — enforced at the handler, DB, and API levels.
+  - `assign_tags` now preserves system tags when a user changes their tag selection (no longer wipes auto-applied tags).
+  - Frontend: system tags render with a `Hammer` icon instead of a color dot in all tag surfaces (filter strip, transcript cards).
+  - Frontend: system tags are excluded from the tag assignment popover and the right-click edit/delete context menu.
+  - `remove_system_tag_from_transcript` DB method added (for the ISS-045 revert-to-raw flow).
+
+---
+
 ## v5.4.5 — Username Greeting, VAD Preload, Auto-Refine (ISS-050, ISS-048, ISS-051)
 
 **Date:** 2026-03-09

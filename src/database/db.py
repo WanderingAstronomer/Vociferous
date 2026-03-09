@@ -34,6 +34,7 @@ class Tag:
     id: int | None = None
     name: str = ""
     color: str | None = None
+    is_system: bool = False
     created_at: str = ""
 
 
@@ -77,6 +78,7 @@ CREATE TABLE IF NOT EXISTS tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     color TEXT,
+    is_system INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
 );
 
@@ -385,22 +387,27 @@ class TranscriptDB:
 
     # --- Tags ---
 
-    def add_tag(self, name: str, *, color: str | None = None) -> Tag:
+    def add_tag(self, name: str, *, color: str | None = None, is_system: bool = False) -> Tag:
         """Create a new tag."""
         ts = utc_now()
         with self._write_lock:
             cur = self._conn.execute(
-                "INSERT INTO tags (name, color, created_at) VALUES (?, ?, ?)",
-                (name, color, ts),
+                "INSERT INTO tags (name, color, is_system, created_at) VALUES (?, ?, ?, ?)",
+                (name, color, int(is_system), ts),
             )
             self._conn.commit()
-            return Tag(id=cur.lastrowid, name=name, color=color, created_at=ts)
+            return Tag(id=cur.lastrowid, name=name, color=color, is_system=is_system, created_at=ts)
 
     def get_tags(self) -> list[Tag]:
         """List all tags ordered by name."""
         with self._write_lock:
             rows = self._conn.execute("SELECT * FROM tags ORDER BY name").fetchall()
-        return [Tag(id=r["id"], name=r["name"], color=r["color"], created_at=r["created_at"]) for r in rows]
+        return [
+            Tag(
+                id=r["id"], name=r["name"], color=r["color"], is_system=bool(r["is_system"]), created_at=r["created_at"]
+            )
+            for r in rows
+        ]
 
     def get_tag(self, tag_id: int) -> Tag | None:
         """Fetch a single tag by ID."""
@@ -408,7 +415,13 @@ class TranscriptDB:
             row = self._conn.execute("SELECT * FROM tags WHERE id = ?", (tag_id,)).fetchone()
         if row is None:
             return None
-        return Tag(id=row["id"], name=row["name"], color=row["color"], created_at=row["created_at"])
+        return Tag(
+            id=row["id"],
+            name=row["name"],
+            color=row["color"],
+            is_system=bool(row["is_system"]),
+            created_at=row["created_at"],
+        )
 
     def update_tag(
         self,
@@ -417,7 +430,10 @@ class TranscriptDB:
         name: str | None = None,
         color: str | None = None,
     ) -> Tag | None:
-        """Update a tag's name and/or color."""
+        """Update a tag's name and/or color. System tags cannot be modified."""
+        existing = self.get_tag(tag_id)
+        if existing is None or existing.is_system:
+            return None
         updates: list[str] = []
         params: list[str | int | None] = []
         if name is not None:
@@ -427,7 +443,7 @@ class TranscriptDB:
             updates.append("color = ?")
             params.append(color)
         if not updates:
-            return self.get_tag(tag_id)
+            return existing
         params.append(tag_id)
         with self._write_lock:
             self._conn.execute(
@@ -438,17 +454,22 @@ class TranscriptDB:
         return self.get_tag(tag_id)
 
     def delete_tag(self, tag_id: int) -> bool:
-        """Delete a tag. Junction rows are cascade-deleted."""
+        """Delete a tag. System tags cannot be deleted. Junction rows are cascade-deleted."""
+        existing = self.get_tag(tag_id)
+        if existing is None or existing.is_system:
+            return False
         with self._write_lock:
             cur = self._conn.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
             self._conn.commit()
             return cur.rowcount > 0
 
     def assign_tags(self, transcript_id: int, tag_ids: list[int]) -> list[Tag]:
-        """Set the exact tag set for a transcript (replaces existing)."""
+        """Set the exact user-tag set for a transcript (preserves system tags)."""
         with self._write_lock:
+            # Only remove non-system tags so auto-applied system tags survive
             self._conn.execute(
-                "DELETE FROM transcript_tags WHERE transcript_id = ?",
+                """DELETE FROM transcript_tags WHERE transcript_id = ?
+                   AND tag_id NOT IN (SELECT id FROM tags WHERE is_system = 1)""",
                 (transcript_id,),
             )
             for tag_id in tag_ids:
@@ -494,6 +515,36 @@ class TranscriptDB:
                 )
             self._conn.commit()
 
+    def add_system_tag_to_transcript(self, transcript_id: int, tag_name: str) -> None:
+        """Add a system tag (looked up by name) to a transcript. No-op if tag not found."""
+        with self._write_lock:
+            row = self._conn.execute(
+                "SELECT id FROM tags WHERE name = ? AND is_system = 1",
+                (tag_name,),
+            ).fetchone()
+            if row is None:
+                return
+            self._conn.execute(
+                "INSERT OR IGNORE INTO transcript_tags (transcript_id, tag_id) VALUES (?, ?)",
+                (transcript_id, row["id"]),
+            )
+            self._conn.commit()
+
+    def remove_system_tag_from_transcript(self, transcript_id: int, tag_name: str) -> None:
+        """Remove a system tag (looked up by name) from a transcript. No-op if tag not found."""
+        with self._write_lock:
+            row = self._conn.execute(
+                "SELECT id FROM tags WHERE name = ? AND is_system = 1",
+                (tag_name,),
+            ).fetchone()
+            if row is None:
+                return
+            self._conn.execute(
+                "DELETE FROM transcript_tags WHERE transcript_id = ? AND tag_id = ?",
+                (transcript_id, row["id"]),
+            )
+            self._conn.commit()
+
     def _get_tags_for_transcript(self, transcript_id: int) -> list[Tag]:
         """Fetch all tags for a transcript. Caller must hold _write_lock."""
         rows = self._conn.execute(
@@ -503,7 +554,12 @@ class TranscriptDB:
                ORDER BY t.name""",
             (transcript_id,),
         ).fetchall()
-        return [Tag(id=r["id"], name=r["name"], color=r["color"], created_at=r["created_at"]) for r in rows]
+        return [
+            Tag(
+                id=r["id"], name=r["name"], color=r["color"], is_system=bool(r["is_system"]), created_at=r["created_at"]
+            )
+            for r in rows
+        ]
 
     # --- Helpers ---
 

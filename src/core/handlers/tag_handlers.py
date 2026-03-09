@@ -39,6 +39,9 @@ class TagHandlers:
         db = self._db_provider()
         if not db:
             return
+        existing = db.get_tag(intent.tag_id)
+        if existing is None or existing.is_system:
+            return
         kwargs: dict = {}
         if intent.name is not None:
             kwargs["name"] = intent.name
@@ -55,6 +58,9 @@ class TagHandlers:
         db = self._db_provider()
         if not db:
             return
+        existing = db.get_tag(intent.tag_id)
+        if existing is None or existing.is_system:
+            return
         deleted = db.delete_tag(intent.tag_id)
         if deleted:
             self._emit("tag_deleted", {"id": intent.tag_id})
@@ -68,12 +74,15 @@ class TagHandlers:
             "transcript_updated",
             {
                 "id": intent.transcript_id,
-                "tags": [{"id": t.id, "name": t.name, "color": t.color} for t in tags],
+                "tags": [{"id": t.id, "name": t.name, "color": t.color, "is_system": t.is_system} for t in tags],
             },
         )
 
     def handle_batch_toggle_tag(self, intent: Any) -> None:
         db = self._db_provider()
         if not db:
+            return
+        tag = db.get_tag(intent.tag_id)
+        if tag is None or tag.is_system:
             return
         db.batch_toggle_tag(list(intent.transcript_ids), intent.tag_id, add=intent.add)

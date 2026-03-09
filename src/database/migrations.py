@@ -215,6 +215,24 @@ def _v4_drop_projects_and_variants(conn: sqlite3.Connection) -> None:
     logger.info("v4 migration: dropped projects table, transcript_variants table, and vestigial columns")
 
 
+def _v5_system_tags(conn: sqlite3.Connection) -> None:
+    """v5 — Add is_system flag to tags; seed the 'Refined' system tag.
+
+    is_system=1 marks tags that are managed by the application and cannot be
+    edited or deleted by the user. Fresh installs get the column from
+    _CREATE_SQL; existing databases get it via ALTER TABLE here.
+    """
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(tags)").fetchall()}
+    if "is_system" not in cols:
+        conn.execute("ALTER TABLE tags ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0")
+
+    existing = conn.execute("SELECT id FROM tags WHERE name = 'Refined' AND is_system = 1").fetchone()
+    if not existing:
+        conn.execute("INSERT INTO tags (name, color, is_system) VALUES ('Refined', NULL, 1)")
+
+    logger.info("v5 migration: is_system column ensured + Refined system tag seeded")
+
+
 #: Ordered list of (human-readable description, migration function) pairs.
 #: Append here to add future migrations; do not edit existing entries.
 MIGRATIONS: list[tuple[str, object]] = [
@@ -222,6 +240,7 @@ MIGRATIONS: list[tuple[str, object]] = [
     ("v2 FTS5 full-text search index and sync triggers", _v2_add_fts5),
     ("v3 tags — flat tag system replacing hierarchical projects", _v3_projects_to_tags),
     ("v4 drop projects + variants — simplified transcript model", _v4_drop_projects_and_variants),
+    ("v5 system tags — is_system column + Refined tag seeded", _v5_system_tags),
 ]
 
 

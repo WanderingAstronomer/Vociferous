@@ -148,6 +148,19 @@ class RefinementHandlers:
             return
 
         db.update_normalized_text(intent.transcript_id, intent.text)
+        db.add_system_tag_to_transcript(intent.transcript_id, "Refined")
+
+        updated = db.get_transcript(intent.transcript_id)
+        if updated:
+            self._emit(
+                "transcript_updated",
+                {
+                    "id": intent.transcript_id,
+                    "tags": [
+                        {"id": t.id, "name": t.name, "color": t.color, "is_system": t.is_system} for t in updated.tags
+                    ],
+                },
+            )
 
         settings = self._settings_provider()
         if settings.output.auto_retitle_on_refine:

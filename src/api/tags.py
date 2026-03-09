@@ -21,7 +21,7 @@ def list_tags() -> list[dict]:
     if coordinator.db is None:
         return []
     tags = coordinator.db.get_tags()
-    return [{"id": t.id, "name": t.name, "color": t.color} for t in tags]
+    return [{"id": t.id, "name": t.name, "color": t.color, "is_system": t.is_system} for t in tags]
 
 
 @post("/api/tags")
@@ -47,6 +47,10 @@ async def update_tag(tag_id: int, data: dict) -> Response:
     from src.core.intents.definitions import UpdateTagIntent
 
     coordinator = get_coordinator()
+    if coordinator.db is not None:
+        tag = coordinator.db.get_tag(tag_id)
+        if tag is not None and tag.is_system:
+            return Response(content={"error": "System tags cannot be modified"}, status_code=403)
     intent = UpdateTagIntent(
         tag_id=tag_id,
         name=data.get("name"),
@@ -64,6 +68,10 @@ async def delete_tag(tag_id: int) -> Response:
     from src.core.intents.definitions import DeleteTagIntent
 
     coordinator = get_coordinator()
+    if coordinator.db is not None:
+        tag = coordinator.db.get_tag(tag_id)
+        if tag is not None and tag.is_system:
+            return Response(content={"error": "System tags cannot be deleted"}, status_code=403)
     intent = DeleteTagIntent(tag_id=tag_id)
     success = coordinator.command_bus.dispatch(intent)
     if not success:

@@ -12,7 +12,7 @@
     import { toast } from "../lib/toast.svelte";
     import { formatRelativeDate, formatDuration, wordCount } from "../lib/formatters";
     import StyledButton from "../lib/components/StyledButton.svelte";
-    import { ArrowLeft, Check, X } from "lucide-svelte";
+    import { ArrowLeft, Check, X, Hammer } from "lucide-svelte";
 
     /* ===== State ===== */
 
@@ -34,7 +34,7 @@
         return t.display_name?.trim() || `Transcript #${t.id}`;
     }
 
-    function tagColor(tag: { color: string | null }): string {
+    function tagColor(tag: { color: string | null; is_system?: boolean }): string {
         return tag.color ?? "var(--accent)";
     }
 
@@ -130,7 +130,11 @@
                                 tag,
                             )} 25%, transparent); color: var(--text-primary);"
                         >
-                            <span class="w-1.5 h-1.5 rounded-full" style="background: {tagColor(tag)}"></span>
+                            {#if tag.is_system}
+                                <Hammer size={9} class="shrink-0" />
+                            {:else}
+                                <span class="w-1.5 h-1.5 rounded-full" style="background: {tagColor(tag)}"></span>
+                            {/if}
                             {tag.name}
                         </span>
                     {/each}

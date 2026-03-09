@@ -38,6 +38,7 @@
         ArrowUpDown,
         Palette,
         Minus,
+        Hammer,
     } from "lucide-svelte";
     import StyledButton from "../lib/components/StyledButton.svelte";
     import EmptyState from "../lib/components/EmptyState.svelte";
@@ -399,7 +400,7 @@
         event.preventDefault();
         event.stopPropagation();
         const tag = allTags.find((t) => t.id === tagId);
-        if (!tag) return;
+        if (!tag || tag.is_system) return;
         tagMenuColor = tag.color ?? "#5a9fd4";
         tagMenuX = Math.min(event.clientX, window.innerWidth - 200);
         tagMenuY = event.clientY;
@@ -589,10 +590,14 @@
                             ? `background: color-mix(in srgb, ${tagColor(tag)} 30%, transparent); border-color: ${tagColor(tag)}; color: var(--text-primary);`
                             : `background: transparent; border-color: var(--shell-border); color: var(--text-tertiary);`}
                         onclick={() => toggleTagFilter(tag.id)}
-                        oncontextmenu={(e) => openTagMenu(tag.id, e)}
-                        title="Click to filter · Right-click to edit/delete"
+                        oncontextmenu={tag.is_system ? undefined : (e) => openTagMenu(tag.id, e)}
+                        title={tag.is_system ? tag.name : "Click to filter · Right-click to edit/delete"}
                     >
-                        <span class="w-2 h-2 rounded-full shrink-0" style="background: {tagColor(tag)}"></span>
+                        {#if tag.is_system}
+                            <Hammer size={10} class="shrink-0" />
+                        {:else}
+                            <span class="w-2 h-2 rounded-full shrink-0" style="background: {tagColor(tag)}"></span>
+                        {/if}
                         {tag.name}
                         {#if activeTagIds.has(tag.id)}
                             <X size={10} class="ml-0.5 opacity-60" />
@@ -802,8 +807,12 @@
                                             tag,
                                         )} 25%, transparent); color: var(--text-primary);"
                                     >
-                                        <span class="w-1.5 h-1.5 rounded-full" style="background: {tagColor(tag)}"
-                                        ></span>
+                                        {#if tag.is_system}
+                                            <Hammer size={9} class="shrink-0" />
+                                        {:else}
+                                            <span class="w-1.5 h-1.5 rounded-full" style="background: {tagColor(tag)}"
+                                            ></span>
+                                        {/if}
                                         {tag.name}
                                     </span>
                                 {/each}
@@ -903,7 +912,7 @@
         {#if allTags.length === 0}
             <div class="px-3 py-2 text-xs text-[var(--text-tertiary)]">No tags yet. Create one above.</div>
         {:else}
-            {#each allTags as tag (tag.id)}
+            {#each allTags.filter((t) => !t.is_system) as tag (tag.id)}
                 {@const isOn = selectedEntry ? selectedEntry.tags.some((t) => t.id === tag.id) : false}
                 {@const multiSelected = selection.isMulti
                     ? (selection.ids

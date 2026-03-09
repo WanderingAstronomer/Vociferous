@@ -206,5 +206,7 @@ def transcript_to_dict(transcript) -> dict:
         "duration_ms": transcript.duration_ms,
         "speech_duration_ms": transcript.speech_duration_ms,
         "created_at": transcript.created_at,
-        "tags": [{"id": tag.id, "name": tag.name, "color": tag.color} for tag in transcript.tags],
+        "tags": [
+            {"id": tag.id, "name": tag.name, "color": tag.color, "is_system": tag.is_system} for tag in transcript.tags
+        ],
     }
