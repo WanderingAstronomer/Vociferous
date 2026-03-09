@@ -2,6 +2,21 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.3.7 — Activity Heatmap Timescale Controls (ISS-034)
+
+**Date:** 2026-03-08
+**Status:** Hotfix / Feature
+
+### Added
+- **ISS-034** — Month / Quarter / Year timescale toggle on the activity heatmap.
+  - Three compact toggle buttons (Month, Quarter, Year) sit in the legend row between the stats text and the color legend.
+  - **Year** (default): all 12 months of the current year. When months must be trimmed for narrow containers, the trim is now centered on the current month rather than always removing from January (auto-center).
+  - **Quarter**: current month ±1 (3-month window); wraps year boundaries.
+  - **Month**: current month only.
+  - Cell size scales up to fill available width in all views.
+
+---
+
 ## v5.3.6 — Retire "Retitle All Untitled" (ISS-036)
 
 **Date:** 2026-03-08

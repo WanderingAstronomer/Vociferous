@@ -145,6 +145,11 @@
         return numCols * (cs + CELL_GAP) - CELL_GAP;
     }
 
+    /* ── Timescale toggle ── */
+    type Timescale = "month" | "quarter" | "year";
+    const TIMESCALE_LABELS: Record<Timescale, string> = { month: "Month", quarter: "Quarter", year: "Year" };
+    let timescale = $state<Timescale>("year");
+
     /* ── Grid layout computation ── */
     interface GridLayout {
         blocks: MonthBlock[];
@@ -161,11 +166,6 @@
 
         const year = today.getFullYear();
         const curM = today.getMonth();
-
-        // Mandatory months: Jan → current month of this year
-        const mandatoryKeys: [number, number][] = [];
-        for (let m = 0; m <= curM; m++) mandatoryKeys.push([year, m]);
-
         const availableW = containerWidth - LABEL_W;
 
         function colCount(y: number, m: number): number {
@@ -181,49 +181,56 @@
             return w;
         }
 
-        const mandatoryCols = mandatoryKeys.map(([y, m]) => colCount(y, m));
+        // Build candidate key list based on timescale
+        let candidateKeys: [number, number][];
 
-        // Find the largest cell size where all mandatory months fit;
-        // if even CELL_MIN is too wide, trim oldest mandatory months from left.
+        if (timescale === "month") {
+            candidateKeys = [[year, curM]];
+        } else if (timescale === "quarter") {
+            // current month ±1 (3-month window), wrapping year boundaries
+            const prevY = curM === 0 ? year - 1 : year;
+            const prevM = curM === 0 ? 11 : curM - 1;
+            const nextY = curM === 11 ? year + 1 : year;
+            const nextM = curM === 11 ? 0 : curM + 1;
+            candidateKeys = [[prevY, prevM], [year, curM], [nextY, nextM]];
+        } else {
+            // Year: all 12 months of current year
+            candidateKeys = Array.from({ length: 12 }, (_, m) => [year, m] as [number, number]);
+        }
+
+        let candidateCols = candidateKeys.map(([y, m]) => colCount(y, m));
         let cellSize = TARGET_CELL;
-        let trimmedKeys = [...mandatoryKeys];
-        let trimmedCols = [...mandatoryCols];
 
-        if (totalW(trimmedCols, cellSize) > availableW) {
-            // Try shrinking cell size first
+        if (totalW(candidateCols, cellSize) > availableW) {
+            // Shrink cell size first
             for (let cs = cellSize - 1; cs >= CELL_MIN; cs--) {
-                if (totalW(trimmedCols, cs) <= availableW) {
-                    cellSize = cs;
-                    break;
+                if (totalW(candidateCols, cs) <= availableW) { cellSize = cs; break; }
+                cellSize = CELL_MIN;
+            }
+            // For Year view: trim centering on current month
+            if (timescale === "year") {
+                while (candidateCols.length > 1 && totalW(candidateCols, cellSize) > availableW) {
+                    // Distance of first/last month from curM — remove the farther end
+                    const distFirst = curM - candidateKeys[0][1];
+                    const distLast = candidateKeys[candidateKeys.length - 1][1] - curM;
+                    if (distFirst >= distLast) {
+                        candidateKeys.shift();
+                        candidateCols.shift();
+                    } else {
+                        candidateKeys.pop();
+                        candidateCols.pop();
+                    }
                 }
-                cellSize = cs;
-            }
-            // If still doesn't fit at CELL_MIN, trim from the left
-            while (trimmedCols.length > 1 && totalW(trimmedCols, cellSize) > availableW) {
-                trimmedKeys.shift();
-                trimmedCols.shift();
             }
         }
 
-        // Add remaining year months (current+1 → Dec) if they fit
-        const allKeys: [number, number][] = [...trimmedKeys];
-        const allColCounts: number[] = [...trimmedCols];
-        for (let m = curM + 1; m <= 11; m++) {
-            const nc = colCount(year, m);
-            if (totalW([...allColCounts, nc], cellSize) > availableW) break;
-            allColCounts.push(nc);
-            allKeys.push([year, m]);
-        }
-
-        // Try to grow cell size now that we have a fixed set of months
-        while (cellSize < CELL_MAX) {
-            if (totalW(allColCounts, cellSize + 1) > availableW) break;
+        // Grow cell size to fill remaining space
+        while (cellSize < CELL_MAX && totalW(candidateCols, cellSize + 1) <= availableW) {
             cellSize++;
         }
 
-        const gridWidth = LABEL_W + totalW(allColCounts, cellSize);
-        const blocks = allKeys.map(([y, m]) => buildMonthBlock(y, m, today, dailyWords, q));
-
+        const gridWidth = LABEL_W + totalW(candidateCols, cellSize);
+        const blocks = candidateKeys.map(([y, m]) => buildMonthBlock(y, m, today, dailyWords, q));
         return { blocks, cellSize, gridWidth };
     });
 
@@ -317,12 +324,23 @@
                 </div>
             </div>
 
-            <!-- Legend -->
+            <!-- Legend + timescale toggle -->
             <div class="flex items-center justify-between mt-[var(--space-2)] w-full">
                 <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap pl-[36px]">
                     {activeDays} active day{activeDays !== 1 ? "s" : ""}
                     · {totalWords.toLocaleString()} words
                 </span>
+                <div class="flex items-center gap-[2px] shrink-0">
+                    {#each Object.entries(TIMESCALE_LABELS) as [ts, label]}
+                        <button
+                            onclick={() => (timescale = ts as Timescale)}
+                            class="text-[11px] px-[6px] py-[2px] rounded-[var(--radius-sm)] transition-colors leading-none"
+                            style={timescale === ts
+                                ? "color: var(--text-primary); background: var(--surface-tertiary);"
+                                : "color: var(--text-tertiary); background: transparent;"}
+                        >{label}</button>
+                    {/each}
+                </div>
                 <div class="flex items-center gap-1 shrink-0">
                     <span class="text-[12px] text-[var(--text-tertiary)]">Less</span>
                     {#each LEVEL_COLORS as color}
