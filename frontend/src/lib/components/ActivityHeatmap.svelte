@@ -31,7 +31,7 @@
     const MONTH_GAP = 10;
     const DIVIDER_W = 1;
     const LABEL_W = 36;
-    const MONTH_LABEL_H = 22;
+    const MONTH_LABEL_H = 30;
     const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
     /* ── Colors ── */
@@ -147,7 +147,7 @@
 
     /* ── Timescale toggle ── */
     type Timescale = "month" | "quarter" | "year";
-    const TIMESCALE_LABELS: Record<Timescale, string> = { month: "Month", quarter: "Quarter", year: "Year" };
+    const TIMESCALE_LABELS: Record<Timescale, string> = { month: "M", quarter: "Q", year: "Y" };
     let timescale = $state<Timescale>("year");
 
     /* ── Grid layout computation ── */
@@ -261,23 +261,34 @@
     {#if layout}
         {@const cs = layout.cellSize}
         <div class="mx-auto" style="width: {layout.gridWidth}px;">
-            <!-- Title -->
+            <!-- Title + timescale toggle -->
             {#if title}
-                <div
-                    class="text-[13px] font-medium text-[var(--text-tertiary)] uppercase tracking-widest mb-[var(--space-2)] text-center"
-                >
-                    {title}
+                <div class="flex items-center justify-between mb-[var(--space-2)]">
+                    <div class="text-[13px] font-medium text-[var(--text-tertiary)] uppercase tracking-widest">
+                        {title}
+                    </div>
+                    <div class="flex items-center gap-[2px]">
+                        {#each Object.entries(TIMESCALE_LABELS) as [ts, label]}
+                            <button
+                                onclick={() => (timescale = ts as Timescale)}
+                                class="text-[11px] w-[18px] h-[18px] rounded-[var(--radius-sm)] transition-colors leading-none flex items-center justify-center"
+                                style={timescale === ts
+                                    ? "color: var(--text-primary); background: var(--surface-tertiary);"
+                                    : "color: var(--text-tertiary); background: transparent;"}
+                            >{label}</button>
+                        {/each}
+                    </div>
                 </div>
             {/if}
 
             <!-- Month labels row -->
-            <div class="flex items-end" style="padding-left: {LABEL_W}px; height: {MONTH_LABEL_H}px;">
+            <div class="flex items-center" style="padding-left: {LABEL_W}px; height: {MONTH_LABEL_H}px;">
                 {#each layout.blocks as block, bi}
                     {#if bi > 0}
                         <div style="width: {MONTH_GAP + DIVIDER_W}px; height: 1px;"></div>
                     {/if}
                     <div
-                        class="text-[12px] text-[var(--text-secondary)] leading-none text-center shrink-0"
+                        class="text-[13px] font-medium text-[var(--text-primary)] leading-none text-center shrink-0"
                         style="width: {sectionWidth(block.numCols, cs)}px;"
                     >
                         {block.label}
@@ -324,30 +335,20 @@
                 </div>
             </div>
 
-            <!-- Legend + timescale toggle -->
-            <div class="flex items-center justify-between mt-[var(--space-2)] w-full">
-                <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap pl-[36px]">
+            <!-- Stats row -->
+            <div class="mt-[var(--space-2)]" style="padding-left: {LABEL_W}px;">
+                <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap">
                     {activeDays} active day{activeDays !== 1 ? "s" : ""}
                     · {totalWords.toLocaleString()} words
                 </span>
-                <div class="flex items-center gap-[2px] shrink-0">
-                    {#each Object.entries(TIMESCALE_LABELS) as [ts, label]}
-                        <button
-                            onclick={() => (timescale = ts as Timescale)}
-                            class="text-[11px] px-[6px] py-[2px] rounded-[var(--radius-sm)] transition-colors leading-none"
-                            style={timescale === ts
-                                ? "color: var(--text-primary); background: var(--surface-tertiary);"
-                                : "color: var(--text-tertiary); background: transparent;"}
-                        >{label}</button>
-                    {/each}
-                </div>
-                <div class="flex items-center gap-1 shrink-0">
-                    <span class="text-[12px] text-[var(--text-tertiary)]">Less</span>
-                    {#each LEVEL_COLORS as color}
-                        <div class="rounded-[2px] w-[10px] h-[10px]" style="background: {color};"></div>
-                    {/each}
-                    <span class="text-[12px] text-[var(--text-tertiary)]">More</span>
-                </div>
+            </div>
+            <!-- Legend row -->
+            <div class="flex items-center justify-center gap-1 mt-1">
+                <span class="text-[12px] text-[var(--text-tertiary)]">Less</span>
+                {#each LEVEL_COLORS as color}
+                    <div class="rounded-[2px] w-[10px] h-[10px]" style="background: {color};"></div>
+                {/each}
+                <span class="text-[12px] text-[var(--text-tertiary)]">More</span>
             </div>
         </div>
     {/if}

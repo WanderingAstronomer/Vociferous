@@ -2,6 +2,19 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.4.3 — ActivityHeatmap Layout Polish
+
+**Date:** 2026-03-09
+**Status:** Hotfix / Polish
+
+### Changed
+- **ActivityHeatmap** — Timescale toggle moved from bottom bar to title row, abbreviated as M/Q/Y single-letter buttons.
+- **ActivityHeatmap** — Month labels (Jan/Feb/Mar...) now rendered at `text-[var(--text-primary)] font-medium` for visual prominence, up from unstyled secondary color.
+- **ActivityHeatmap** — Month label row height increased (22→30px), `items-end` changed to `items-center` — eliminates the cramped gap between month name and grid top.
+- **ActivityHeatmap** — Bottom area split into two rows: stats line (left-aligned with grid) and legend row (centered), replacing the crowded three-element single row.
+
+---
+
 ## v5.4.2 — Toast & Confirmation System (ISS-026)
 
 **Date:** 2026-03-09
