@@ -53,6 +53,34 @@ export interface RefinementProgressData {
     elapsed_seconds?: number;
 }
 
+export interface BulkRefinementStartedData {
+    transcript_ids: number[];
+    total: number;
+    level: number;
+}
+
+export interface BulkRefinementProgressData {
+    completed: number;
+    failed: number;
+    total: number;
+    current_transcript_id: number;
+    skipped?: boolean;
+    error?: string;
+}
+
+export interface BulkRefinementCompleteData {
+    completed: number;
+    total: number;
+    failed: number;
+    cancelled: boolean;
+}
+
+export interface BulkRefinementErrorData {
+    message: string;
+    completed?: number;
+    total?: number;
+}
+
 export interface TranscriptDeletedData {
     id: number;
 }
@@ -128,6 +156,10 @@ export interface WSEventMap {
     refinement_complete: RefinementCompleteData;
     refinement_error: RefinementErrorData;
     refinement_progress: RefinementProgressData;
+    bulk_refinement_started: BulkRefinementStartedData;
+    bulk_refinement_progress: BulkRefinementProgressData;
+    bulk_refinement_complete: BulkRefinementCompleteData;
+    bulk_refinement_error: BulkRefinementErrorData;
     transcript_deleted: TranscriptDeletedData;
     transcripts_batch_deleted: TranscriptsBatchDeletedData;
     transcript_updated: TranscriptUpdatedData;

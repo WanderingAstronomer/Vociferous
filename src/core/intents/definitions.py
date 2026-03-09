@@ -60,6 +60,14 @@ class CommitEditsIntent(InteractionIntent):
 
 
 @dataclass(frozen=True, slots=True)
+class RevertToRawIntent(InteractionIntent):
+    """Revert a transcript to its original raw text, clearing edits/refinement."""
+
+    transcript_id: int = 0
+    source: IntentSource = IntentSource.CONTROLS
+
+
+@dataclass(frozen=True, slots=True)
 class DeleteTranscriptIntent(InteractionIntent):
     """Delete a transcript."""
 
@@ -91,6 +99,23 @@ class CommitRefinementIntent(InteractionIntent):
 
     transcript_id: int = 0
     text: str = ""
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class BulkRefineTranscriptsIntent(InteractionIntent):
+    """Trigger SLM refinement on multiple transcripts sequentially (auto-commit)."""
+
+    transcript_ids: tuple[int, ...] = field(default_factory=tuple)
+    level: int = 2
+    instructions: str = ""
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class CancelBulkRefinementIntent(InteractionIntent):
+    """Cancel an in-progress bulk refinement between transcript boundaries."""
+
     source: IntentSource = IntentSource.API
 
 

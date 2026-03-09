@@ -7,6 +7,8 @@
         searchTranscripts,
         deleteTranscript,
         batchDeleteTranscripts,
+        bulkRefineTranscripts,
+        cancelBulkRefinement,
         getTags,
         createTag,
         deleteTag,
@@ -85,6 +87,15 @@
 
     // Copy feedback
     let copied = $state(false);
+
+    // Bulk refinement state
+    let bulkRefineActive = $state(false);
+    let bulkRefineCompleted = $state(0);
+    let bulkRefineFailed = $state(0);
+    let bulkRefineTotal = $state(0);
+    let spotCheckRemaining: number[] | null = $state(null);
+    const SPOT_CHECK_SIZE = 10;
+    const DEFAULT_REFINEMENT_LEVEL = 2;
 
     /* ===== Multi-Selection ===== */
 
@@ -262,6 +273,82 @@
     function refineSelected() {
         if (!selectedEntry) return;
         nav.navigate("refine", selectedEntry.id);
+    }
+
+    async function handleBulkRefine() {
+        const ids = selection.ids;
+        if (ids.length === 0) return;
+
+        // Single selection → navigate to RefineView for preview
+        if (ids.length === 1) {
+            refineSelected();
+            return;
+        }
+
+        const total = ids.length;
+        const spotCheckCount = Math.min(SPOT_CHECK_SIZE, total);
+
+        if (total > spotCheckCount) {
+            // Offer spot-check gate
+            const choice = await toast.confirm({
+                title: `Refine ${total} Transcripts`,
+                message: `Bulk refinement will auto-commit refined text for each transcript.\n\nRecommended: spot-check the first ${spotCheckCount} to verify quality before processing all ${total}.`,
+                confirmLabel: `Spot-Check First ${spotCheckCount}`,
+                cancelLabel: "Cancel",
+            });
+
+            if (!choice) return;
+
+            // Spot-check: process first batch, stash remainder
+            spotCheckRemaining = ids.slice(spotCheckCount);
+            await startBulkRefine(ids.slice(0, spotCheckCount));
+        } else {
+            // Small enough to just do it, but still confirm
+            const confirmed = await toast.confirm({
+                title: `Refine ${total} Transcripts`,
+                message: `This will refine and auto-commit ${total} transcripts. Refined text replaces the current version. Individual transcripts can be reverted from Edit view.`,
+                confirmLabel: `Refine All ${total}`,
+                cancelLabel: "Cancel",
+            });
+            if (!confirmed) return;
+            spotCheckRemaining = null;
+            await startBulkRefine(ids);
+        }
+    }
+
+    async function startBulkRefine(ids: number[]) {
+        bulkRefineActive = true;
+        bulkRefineCompleted = 0;
+        bulkRefineFailed = 0;
+        bulkRefineTotal = ids.length;
+        try {
+            await bulkRefineTranscripts(ids, DEFAULT_REFINEMENT_LEVEL);
+        } catch (e: any) {
+            toast.error(`Bulk refine failed: ${e.message}`);
+            bulkRefineActive = false;
+        }
+    }
+
+    async function handleCancelBulkRefine() {
+        try {
+            await cancelBulkRefinement();
+        } catch (e: any) {
+            toast.error(`Cancel failed: ${e.message}`);
+        }
+    }
+
+    async function handleSpotCheckContinue() {
+        if (!spotCheckRemaining?.length) return;
+        const remaining = spotCheckRemaining;
+        const confirmed = await toast.confirm({
+            title: `Continue Bulk Refinement`,
+            message: `Spot-check complete (${bulkRefineCompleted} refined, ${bulkRefineFailed} failed). Continue with remaining ${remaining.length} transcripts?`,
+            confirmLabel: `Refine Remaining ${remaining.length}`,
+            cancelLabel: "Stop Here",
+        });
+        spotCheckRemaining = null;
+        if (!confirmed) return;
+        await startBulkRefine(remaining);
     }
 
     function copySelectedText() {
@@ -494,6 +581,32 @@
             }),
             ws.on("refinement_complete", () => loadTranscripts()),
             ws.on("transcript_updated", () => loadTranscripts()),
+            ws.on("bulk_refinement_progress", (data) => {
+                bulkRefineCompleted = data.completed;
+                bulkRefineFailed = data.failed;
+            }),
+            ws.on("bulk_refinement_complete", (data) => {
+                bulkRefineActive = false;
+                const msg = data.cancelled
+                    ? `Bulk refinement cancelled (${data.completed}/${data.total} done)`
+                    : data.failed > 0
+                      ? `Refined ${data.completed} of ${data.total} (${data.failed} failed)`
+                      : `Refined ${data.completed} transcripts`;
+                if (data.cancelled || data.failed > 0) toast.warning(msg);
+                else toast.success(msg);
+                loadTranscripts();
+                if (spotCheckRemaining?.length && !data.cancelled) {
+                    handleSpotCheckContinue();
+                } else {
+                    spotCheckRemaining = null;
+                    selection.clear();
+                }
+            }),
+            ws.on("bulk_refinement_error", (data) => {
+                bulkRefineActive = false;
+                spotCheckRemaining = null;
+                toast.error(`Bulk refinement error: ${data.message}`);
+            }),
             ws.on("tag_created", () => loadTags()),
             ws.on("tag_updated", () => loadTags()),
             ws.on("tag_deleted", () => {
@@ -759,7 +872,29 @@
         </div>
 
         <!-- === Bottom Action Bar === -->
-        {#if selection.hasSelection}
+        {#if bulkRefineActive}
+            <div
+                class="shrink-0 flex items-center gap-3 px-4 py-2.5 border-t border-[var(--shell-border)] bg-[var(--surface-secondary)]"
+                style="scrollbar-gutter: stable"
+            >
+                <Loader2 size={14} class="animate-spin text-[var(--accent)] shrink-0" />
+                <span class="text-sm text-[var(--text-secondary)]">
+                    Refining {bulkRefineCompleted} of {bulkRefineTotal}…
+                    {#if bulkRefineFailed > 0}
+                        <span class="text-[var(--text-warning)]">({bulkRefineFailed} failed)</span>
+                    {/if}
+                </span>
+                <div class="flex-1 h-1.5 rounded-full bg-[var(--shell-border)] overflow-hidden">
+                    <div
+                        class="h-full rounded-full bg-[var(--accent)] transition-all duration-300"
+                        style="width: {bulkRefineTotal > 0 ? ((bulkRefineCompleted + bulkRefineFailed) / bulkRefineTotal) * 100 : 0}%"
+                    ></div>
+                </div>
+                <StyledButton size="sm" variant="secondary" onclick={handleCancelBulkRefine}>
+                    <X size={13} /> Cancel
+                </StyledButton>
+            </div>
+        {:else if selection.hasSelection}
             <div
                 class="shrink-0 flex items-center gap-2 px-4 py-2.5 border-t border-[var(--shell-border)] bg-[var(--surface-secondary)]"
                 style="scrollbar-gutter: stable"
@@ -784,11 +919,10 @@
                     <TagIcon size={13} /> Tag
                 </StyledButton>
 
-                {#if selection.count === 1}
-                    <StyledButton size="sm" variant="primary" onclick={refineSelected}>
-                        <Sparkles size={13} /> Refine
-                    </StyledButton>
-                {/if}
+                <StyledButton size="sm" variant="primary" onclick={handleBulkRefine}>
+                    <Sparkles size={13} />
+                    {selection.isMulti ? `Refine ${selection.count}` : "Refine"}
+                </StyledButton>
             </div>
         {/if}
     </div>

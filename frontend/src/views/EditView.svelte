@@ -2,17 +2,31 @@
     /**
      * EditView — Dedicated transcript editor.
      *
-     * A focused, single-purpose editing surface. No recording machinery.
-     * Navigated to via nav.navigateToEdit(); returns to origin on save/discard.
+     * A focused, single-purpose editing surface with tag management,
+     * statistics, and revert-to-raw. Navigated to via nav.navigateToEdit();
+     * returns to origin on save/discard.
      */
 
-    import { onMount } from "svelte";
+    import { onMount, onDestroy } from "svelte";
     import { nav } from "../lib/navigation.svelte";
-    import { getTranscript, dispatchIntent, type Transcript } from "../lib/api";
+    import {
+        getTranscript,
+        getTags,
+        createTag,
+        deleteTag,
+        updateTag,
+        assignTags,
+        dispatchIntent,
+        type Transcript,
+        type Tag,
+    } from "../lib/api";
+    import { ws } from "../lib/ws";
     import { toast } from "../lib/toast.svelte";
-    import { formatRelativeDate, formatDuration, wordCount } from "../lib/formatters";
+    import { formatRelativeDate, formatDuration, wordCount, formatWpm } from "../lib/formatters";
+    import { countFillers } from "../lib/textAnalysis";
     import StyledButton from "../lib/components/StyledButton.svelte";
-    import { ArrowLeft, Check, X, Hammer } from "lucide-svelte";
+    import TagBar from "../lib/components/TagBar.svelte";
+    import { ArrowLeft, Check, X, Hammer, RotateCcw } from "lucide-svelte";
 
     /* ===== State ===== */
 
@@ -21,21 +35,22 @@
     let loading = $state(true);
     let saving = $state(false);
     let error = $state("");
+    let allTags: Tag[] = $state([]);
+    let tagMenuOpen = $state(false);
 
     /* ===== Derived ===== */
 
     let originalText = $derived(transcript ? transcript.normalized_text || transcript.raw_text || "" : "");
     let isDirty = $derived(editText !== originalText);
     let wc = $derived(wordCount(editText));
+    let fillerCount = $derived(editText ? countFillers(editText) : 0);
+    let assignedTagIds = $derived(new Set(transcript?.tags.map((t) => t.id) ?? []));
+    let isRefined = $derived(transcript?.tags.some((t) => t.is_system && t.name === "Refined") ?? false);
 
     /* ===== Helpers ===== */
 
     function getTitle(t: Transcript): string {
         return t.display_name?.trim() || `Transcript #${t.id}`;
-    }
-
-    function tagColor(tag: { color: string | null; is_system?: boolean }): string {
-        return tag.color ?? "var(--accent)";
     }
 
     /* ===== Actions ===== */
@@ -44,8 +59,10 @@
         loading = true;
         error = "";
         try {
-            transcript = await getTranscript(id);
-            editText = transcript.normalized_text || transcript.raw_text || "";
+            const [t, tags] = await Promise.all([getTranscript(id), getTags()]);
+            transcript = t;
+            allTags = tags;
+            editText = t.normalized_text || t.raw_text || "";
         } catch (e: any) {
             error = e.message;
         } finally {
@@ -75,26 +92,121 @@
         nav.completeEditSession();
     }
 
+    async function revertToRaw() {
+        if (!transcript?.id || !isRefined) return;
+        const confirmed = await toast.confirm({
+            title: "Revert to original text?",
+            message:
+                "This will discard the refined version and restore the original captured text. The Refined tag will be removed.",
+            confirmLabel: "Revert",
+            cancelLabel: "Keep refined",
+            danger: true,
+        });
+        if (!confirmed) return;
+        try {
+            await dispatchIntent("revert_to_raw", {
+                transcript_id: transcript.id,
+            });
+            // Reload to reflect changes
+            transcript = await getTranscript(transcript.id);
+            editText = transcript.normalized_text || transcript.raw_text || "";
+            toast.success("Reverted to original text");
+        } catch (e: any) {
+            toast.error(`Revert failed: ${e.message}`);
+        }
+    }
+
+    /* ===== Tag Actions ===== */
+
+    async function handleTagToggle(tagId: number) {
+        if (!transcript?.id) return;
+        const currentIds = transcript.tags.map((t) => t.id);
+        const newIds = currentIds.includes(tagId) ? currentIds.filter((id) => id !== tagId) : [...currentIds, tagId];
+        try {
+            await assignTags(transcript.id, newIds);
+            transcript = await getTranscript(transcript.id);
+        } catch (e: any) {
+            toast.error(`Tag update failed: ${e.message}`);
+        }
+    }
+
+    async function handleTagCreate(name: string, color: string) {
+        try {
+            await createTag(name, color);
+            allTags = await getTags();
+            toast.success(`Tag "${name}" created`);
+        } catch (e: any) {
+            toast.error(`Tag creation failed: ${e.message}`);
+        }
+    }
+
+    async function handleTagDelete(tagId: number) {
+        try {
+            await deleteTag(tagId);
+            allTags = await getTags();
+            if (transcript?.id) transcript = await getTranscript(transcript.id);
+            toast.success("Tag deleted");
+        } catch (e: any) {
+            toast.error(`Tag deletion failed: ${e.message}`);
+        }
+    }
+
+    async function handleTagColorChange(tagId: number, color: string) {
+        try {
+            await updateTag(tagId, { color });
+            allTags = await getTags();
+            if (transcript?.id) transcript = await getTranscript(transcript.id);
+        } catch (e: any) {
+            toast.error(`Failed to update tag color: ${e.message}`);
+        }
+    }
+
+    /* ===== Keyboard ===== */
+
     function handleKeydown(e: KeyboardEvent) {
         if ((e.ctrlKey || e.metaKey) && e.key === "s") {
             e.preventDefault();
             save();
         }
         if (e.key === "Escape") {
+            if (tagMenuOpen) return;
             discard();
         }
     }
 
-    /* ===== Lifecycle ===== */
+    /* ===== Lifecycle & WebSocket ===== */
+
+    let unsubs: (() => void)[] = [];
 
     onMount(() => {
         const id = nav.consumePendingTranscript();
         if (id !== null) {
             load(id);
         } else {
-            // Nothing to edit — bail
             nav.completeEditSession();
         }
+
+        unsubs = [
+            ws.on("tag_created", async () => {
+                allTags = await getTags();
+            }),
+            ws.on("tag_updated", async () => {
+                allTags = await getTags();
+            }),
+            ws.on("tag_deleted", async () => {
+                allTags = await getTags();
+                if (transcript?.id) transcript = await getTranscript(transcript.id);
+            }),
+            ws.on("transcript_updated", async (data) => {
+                if (transcript?.id && data.id === transcript.id) {
+                    transcript = await getTranscript(transcript.id);
+                }
+            }),
+        ];
+    });
+
+    onDestroy(() => {
+        unsubs.forEach((fn) => fn());
     });
 </script>
 
@@ -123,27 +235,43 @@
                     <span class="text-[13px] text-[var(--text-tertiary)]">
                         {formatDuration(transcript.duration_ms)}
                     </span>
-                    {#each transcript.tags as tag (tag.id)}
-                        <span
-                            class="inline-flex items-center gap-1 h-5 px-1.5 rounded-full text-[11px] font-medium"
-                            style="background: color-mix(in srgb, {tagColor(
-                                tag,
-                            )} 25%, transparent); color: var(--text-primary);"
-                        >
-                            {#if tag.is_system}
-                                <Hammer size={9} class="shrink-0" />
-                            {:else}
-                                <span class="w-1.5 h-1.5 rounded-full" style="background: {tagColor(tag)}"></span>
-                            {/if}
-                            {tag.name}
-                        </span>
-                    {/each}
                 </div>
             {:else if loading}
                 <div class="h-7 w-48 bg-[var(--hover-overlay)] rounded animate-pulse"></div>
             {/if}
         </div>
     </div>
+
+    <!-- ── Refined Banner ── -->
+    {#if isRefined}
+        <div
+            class="shrink-0 flex items-center gap-2 px-5 py-2 bg-[color-mix(in_srgb,var(--accent)_8%,transparent)] border-b border-[var(--shell-border)]"
+        >
+            <Hammer size={13} class="text-[var(--accent)] shrink-0" />
+            <span class="text-[13px] text-[var(--text-secondary)]">
+                This transcript has been refined. Original text is preserved.
+            </span>
+            <div class="flex-1"></div>
+            <StyledButton size="sm" variant="secondary" onclick={revertToRaw}>
+                <RotateCcw size={12} /> Revert to original
+            </StyledButton>
+        </div>
+    {/if}
+
+    <!-- ── Tag Bar ── -->
+    {#if !loading && transcript}
+        <div class="shrink-0 px-5 py-2 border-b border-[var(--shell-border)]">
+            <TagBar
+                tags={allTags}
+                activeIds={assignedTagIds}
+                ontoggle={handleTagToggle}
+                oncreate={handleTagCreate}
+                ondelete={handleTagDelete}
+                oncolorchange={handleTagColorChange}
+                onmenuchange={(open) => (tagMenuOpen = open)}
+            />
+        </div>
+    {/if}
 
     <!-- ── Editor ── -->
     <div class="flex-1 overflow-hidden px-5 py-3">
@@ -167,10 +295,28 @@
     <div
         class="shrink-0 flex items-center gap-2 px-5 py-3 border-t border-[var(--shell-border)] bg-[var(--surface-secondary)]"
     >
-        <!-- Word count -->
+        <!-- Statistics strip -->
         <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">
             {wc.toLocaleString()} word{wc !== 1 ? "s" : ""}
         </span>
+
+        {#if transcript?.duration_ms}
+            <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
+            <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">
+                {formatDuration(transcript.duration_ms)}
+            </span>
+            <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
+            <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">
+                {formatWpm(wc, transcript.duration_ms)}
+            </span>
+        {/if}
+
+        {#if fillerCount > 0}
+            <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
+            <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">
+                {fillerCount} filler{fillerCount !== 1 ? "s" : ""}
+            </span>
+        {/if}
 
         {#if isDirty}
             <span class="text-[12px] text-[var(--accent)] ml-1">● edited</span>

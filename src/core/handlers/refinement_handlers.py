@@ -34,6 +34,8 @@ class RefinementHandlers:
         self._settings_provider = settings_provider
         self._emit = event_bus_emit
         self._title_generator_provider = title_generator_provider
+        self._bulk_cancel = threading.Event()
+        self._bulk_active = False
 
     def handle_refine(self, intent: Any) -> None:
         db = self._db_provider()
@@ -71,6 +73,12 @@ class RefinementHandlers:
             self._emit(
                 "refinement_error",
                 {"message": "A refinement is already in progress. Please wait for it to finish."},
+            )
+            return
+        if self._bulk_active:
+            self._emit(
+                "refinement_error",
+                {"message": "A bulk refinement is in progress. Please wait for it to finish."},
             )
             return
         if state != SLMState.READY:
@@ -167,3 +175,153 @@ class RefinementHandlers:
             title_gen = self._title_generator_provider()
             if title_gen is not None:
                 title_gen.schedule(intent.transcript_id, intent.text)
+
+    # --- Bulk refinement ---
+
+    def _validate_slm_ready(self) -> tuple[Any, str | None]:
+        """Check SLM is ready; return (runtime, error_message_or_None)."""
+        slm_runtime = self._slm_runtime_provider()
+        if not slm_runtime:
+            return None, "Refinement is not configured. Enable it in Settings."
+        from src.services.slm_types import SLMState
+
+        state = slm_runtime.state
+        if state == SLMState.DISABLED:
+            return None, "Refinement is disabled. Enable it in Settings and ensure a model is downloaded."
+        if state == SLMState.LOADING:
+            return None, "The refinement model is still loading. Please wait a moment and try again."
+        if state == SLMState.ERROR:
+            return None, "The refinement model failed to load. Check Settings to verify a model is downloaded."
+        if state == SLMState.INFERRING:
+            return None, "A refinement is already in progress. Please wait for it to finish."
+        if state != SLMState.READY:
+            return None, f"Refinement model not ready (state: {state.value})"
+        return slm_runtime, None
+
+    def handle_bulk_refine(self, intent: Any) -> None:
+        db = self._db_provider()
+        if not db:
+            self._emit("bulk_refinement_error", {"message": "Database not available"})
+            return
+
+        transcript_ids: tuple[int, ...] = intent.transcript_ids
+        if not transcript_ids:
+            self._emit("bulk_refinement_error", {"message": "No transcripts provided"})
+            return
+
+        slm_runtime, err = self._validate_slm_ready()
+        if err:
+            self._emit("bulk_refinement_error", {"message": err})
+            return
+
+        if self._bulk_active:
+            self._emit(
+                "bulk_refinement_error",
+                {"message": "A bulk refinement is already in progress."},
+            )
+            return
+
+        total = len(transcript_ids)
+        self._bulk_active = True
+        self._bulk_cancel.clear()
+
+        self._emit(
+            "bulk_refinement_started",
+            {"transcript_ids": list(transcript_ids), "total": total, "level": intent.level},
+        )
+
+        def do_bulk() -> None:
+            completed = 0
+            failed = 0
+            try:
+                for tid in transcript_ids:
+                    if self._bulk_cancel.is_set():
+                        logger.info("Bulk refinement cancelled after %d/%d", completed, total)
+                        break
+
+                    _db = self._db_provider()
+                    if not _db:
+                        failed += 1
+                        continue
+
+                    transcript = _db.get_transcript(tid)
+                    if not transcript:
+                        logger.warning("Bulk refine: transcript %d not found, skipping", tid)
+                        failed += 1
+                        self._emit(
+                            "bulk_refinement_progress",
+                            {"completed": completed, "failed": failed, "total": total, "current_transcript_id": tid, "skipped": True},
+                        )
+                        continue
+
+                    text = transcript.normalized_text or transcript.raw_text
+                    try:
+                        _slm = self._slm_runtime_provider()
+                        refined = _slm.refine_text_sync(
+                            text, level=intent.level, instructions=intent.instructions,
+                        )
+                    except Exception as e:
+                        logger.exception("Bulk refine: inference failed for transcript %d", tid)
+                        failed += 1
+                        self._emit(
+                            "bulk_refinement_progress",
+                            {"completed": completed, "failed": failed, "total": total, "current_transcript_id": tid, "error": str(e)},
+                        )
+                        continue
+
+                    # Auto-commit: persist + tag
+                    _db.update_normalized_text(tid, refined)
+                    _db.add_system_tag_to_transcript(tid, "Refined")
+                    completed += 1
+
+                    updated = _db.get_transcript(tid)
+                    if updated:
+                        self._emit(
+                            "transcript_updated",
+                            {
+                                "id": tid,
+                                "tags": [
+                                    {"id": t.id, "name": t.name, "color": t.color, "is_system": t.is_system}
+                                    for t in updated.tags
+                                ],
+                            },
+                        )
+
+                    # Auto-retitle if enabled
+                    settings = self._settings_provider()
+                    if settings.output.auto_retitle_on_refine:
+                        title_gen = self._title_generator_provider()
+                        if title_gen is not None:
+                            title_gen.schedule(tid, refined)
+
+                    self._emit(
+                        "bulk_refinement_progress",
+                        {"completed": completed, "failed": failed, "total": total, "current_transcript_id": tid},
+                    )
+
+                self._emit(
+                    "bulk_refinement_complete",
+                    {
+                        "completed": completed,
+                        "total": total,
+                        "failed": failed,
+                        "cancelled": self._bulk_cancel.is_set(),
+                    },
+                )
+            except Exception as e:
+                logger.exception("Bulk refinement loop crashed")
+                self._emit(
+                    "bulk_refinement_error",
+                    {"message": str(e), "completed": completed, "total": total},
+                )
+            finally:
+                self._bulk_active = False
+
+        t = threading.Thread(target=do_bulk, daemon=True, name="bulk-refine")
+        t.start()
+
+    def handle_cancel_bulk_refine(self, intent: Any) -> None:
+        if not self._bulk_active:
+            return
+        self._bulk_cancel.set()
+        logger.info("Bulk refinement cancel requested")

@@ -434,11 +434,12 @@ class ApplicationCoordinator:
             BatchDeleteTranscriptsIntent,
             BatchToggleTagIntent,
             BeginRecordingIntent,
+            BulkRefineTranscriptsIntent,
+            CancelBulkRefinementIntent,
             CancelRecordingIntent,
             ClearTranscriptsIntent,
             CommitEditsIntent,
             CommitRefinementIntent,
-            RevertToRawIntent,
             CreateTagIntent,
             DeleteTagIntent,
             DeleteTranscriptIntent,
@@ -447,6 +448,7 @@ class ApplicationCoordinator:
             RenameTranscriptIntent,
             RestartEngineIntent,
             RetitleTranscriptIntent,
+            RevertToRawIntent,
             StopRecordingIntent,
             ToggleRecordingIntent,
             UpdateConfigIntent,
@@ -494,6 +496,8 @@ class ApplicationCoordinator:
         bus.register(RenameTranscriptIntent, transcript.handle_rename)
         bus.register(RefineTranscriptIntent, refinement.handle_refine)
         bus.register(CommitRefinementIntent, refinement.handle_commit_refinement)
+        bus.register(BulkRefineTranscriptsIntent, refinement.handle_bulk_refine)
+        bus.register(CancelBulkRefinementIntent, refinement.handle_cancel_bulk_refine)
         bus.register(CreateTagIntent, tag.handle_create)
         bus.register(UpdateTagIntent, tag.handle_update)
         bus.register(DeleteTagIntent, tag.handle_delete)

@@ -87,7 +87,7 @@
 
 <!-- ── Toast stack ── -->
 {#if toast.items.length > 0}
-    <div class="fixed bottom-4 right-4 z-[200] flex flex-col-reverse gap-2 pointer-events-none max-w-[380px]">
+    <div class="fixed top-12 right-4 z-[200] flex flex-col gap-2 pointer-events-none max-w-[380px]">
         {#each toast.items as item (item.id)}
             {@const Icon = iconMap[item.variant]}
             <div
@@ -109,4 +109,3 @@
         {/each}
     </div>
 {/if}
-

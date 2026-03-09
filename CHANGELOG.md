@@ -2,6 +2,26 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.6.3 — Bulk Refinement (ISS-020)
+
+**Date:** 2026-03-09
+**Status:** Hotfix / Feature
+
+### Added
+- **ISS-020** — Bulk refinement of transcripts from TranscriptsView.
+  - Multi-select transcripts and click "Refine N" in the action bar to queue sequential SLM refinement.
+  - Spot-check safety gate: for batches larger than 10, a confirmation dialog offers to refine the first 10 before proceeding with the full set.
+  - Auto-commit: each transcript is refined, persisted, and tagged "Refined" automatically — no manual accept step.
+  - Progress bar with live count in the action bar during processing.
+  - Cancel support: stop between transcripts without losing already-committed work.
+  - Errors on individual transcripts are skipped without aborting the batch.
+  - Auto-retitle fires per transcript if enabled in settings.
+  - Backend: `BulkRefineTranscriptsIntent`, `CancelBulkRefinementIntent`, `POST /api/transcripts/batch-refine`, `POST /api/transcripts/batch-refine/cancel`.
+  - WebSocket events: `bulk_refinement_started`, `bulk_refinement_progress`, `bulk_refinement_complete`, `bulk_refinement_error`.
+  - Single-transcript refine blocked while bulk is in progress (and vice versa).
+
+---
+
 ## v5.6.2 — Session Auto-Tagging (ISS-046)
 
 **Date:** 2026-03-09

@@ -58,6 +58,17 @@ class TranscriptHandlers:
                 {"id": intent.transcript_id},
             )
 
+    def handle_revert_to_raw(self, intent: Any) -> None:
+        """Clear normalized_text and remove the Refined system tag."""
+        db = self._db_provider()
+        if db:
+            db.update_normalized_text(intent.transcript_id, "")
+            db.remove_system_tag_from_transcript(intent.transcript_id, "Refined")
+            self._emit(
+                "transcript_updated",
+                {"id": intent.transcript_id},
+            )
+
     def handle_rename(self, intent: Any) -> None:
         """Set or update a transcript's display_name."""
         db = self._db_provider()

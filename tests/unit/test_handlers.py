@@ -310,6 +310,198 @@ class TestRefinementHandlersHappyPath:
 
 
 # ===========================================================================
+# BulkRefinementHandlers
+# ===========================================================================
+
+
+class TestBulkRefinementHappyPath:
+    """Bulk refinement: sequential processing, auto-commit, tagged."""
+
+    def _make_handler(self, *, db, slm=None, events_list=None, title_gen=None):
+        from src.core.handlers.refinement_handlers import RefinementHandlers
+        from src.core.settings import VociferousSettings
+
+        settings = VociferousSettings()
+        ev = events_list or []
+        return RefinementHandlers(
+            db_provider=lambda: db,
+            slm_runtime_provider=lambda: slm,
+            settings_provider=lambda: settings,
+            event_bus_emit=_emit_to(ev),
+            title_generator_provider=lambda: title_gen,
+        ), ev
+
+    def test_bulk_refine_processes_all_transcripts(self, db, events):
+        t1 = db.add_transcript(raw_text="first text", duration_ms=1000)
+        t2 = db.add_transcript(raw_text="second text", duration_ms=2000)
+        t3 = db.add_transcript(raw_text="third text", duration_ms=3000)
+
+        mock_slm = MagicMock()
+        mock_slm.state = SLMState.READY
+        mock_slm.refine_text_sync.side_effect = lambda text, **kw: f"refined: {text}"
+
+        handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
+        handler.handle_bulk_refine(SimpleNamespace(
+            transcript_ids=(t1.id, t2.id, t3.id), level=2, instructions="",
+        ))
+        _wait_for_threads("bulk-refine")
+
+        # All three should be auto-committed
+        for tid, original in [(t1.id, "first text"), (t2.id, "second text"), (t3.id, "third text")]:
+            t = db.get_transcript(tid)
+            assert t.normalized_text == f"refined: {original}"
+            assert any(tag.name == "Refined" for tag in t.tags)
+
+        # Events: started + 3 progress + complete
+        started = _events_of(ev, "bulk_refinement_started")
+        assert len(started) == 1
+        assert started[0]["total"] == 3
+
+        progress = _events_of(ev, "bulk_refinement_progress")
+        assert len(progress) == 3
+        assert progress[-1]["completed"] == 3
+        assert progress[-1]["failed"] == 0
+
+        complete = _events_of(ev, "bulk_refinement_complete")
+        assert len(complete) == 1
+        assert complete[0]["completed"] == 3
+        assert complete[0]["total"] == 3
+        assert complete[0]["failed"] == 0
+        assert complete[0]["cancelled"] is False
+
+    def test_bulk_refine_skips_missing_transcripts(self, db, events):
+        t1 = db.add_transcript(raw_text="exists", duration_ms=1000)
+
+        mock_slm = MagicMock()
+        mock_slm.state = SLMState.READY
+        mock_slm.refine_text_sync.return_value = "refined"
+
+        handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
+        handler.handle_bulk_refine(SimpleNamespace(
+            transcript_ids=(t1.id, 99999), level=2, instructions="",
+        ))
+        _wait_for_threads("bulk-refine")
+
+        complete = _events_of(ev, "bulk_refinement_complete")
+        assert complete[0]["completed"] == 1
+        assert complete[0]["failed"] == 1
+
+    def test_bulk_refine_continues_on_inference_error(self, db, events):
+        t1 = db.add_transcript(raw_text="will fail", duration_ms=1000)
+        t2 = db.add_transcript(raw_text="will succeed", duration_ms=2000)
+
+        mock_slm = MagicMock()
+        mock_slm.state = SLMState.READY
+        mock_slm.refine_text_sync.side_effect = [
+            RuntimeError("inference kaboom"),
+            "refined text",
+        ]
+
+        handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
+        handler.handle_bulk_refine(SimpleNamespace(
+            transcript_ids=(t1.id, t2.id), level=2, instructions="",
+        ))
+        _wait_for_threads("bulk-refine")
+
+        # t1 should not be modified, t2 should be refined
+        assert db.get_transcript(t1.id).normalized_text == "will fail"
+        assert db.get_transcript(t2.id).normalized_text == "refined text"
+
+        complete = _events_of(ev, "bulk_refinement_complete")
+        assert complete[0]["completed"] == 1
+        assert complete[0]["failed"] == 1
+
+    def test_bulk_refine_cancel_stops_between_transcripts(self, db, events):
+        t1 = db.add_transcript(raw_text="first", duration_ms=1000)
+        t2 = db.add_transcript(raw_text="second", duration_ms=2000)
+
+        mock_slm = MagicMock()
+        mock_slm.state = SLMState.READY
+
+        call_count = 0
+        handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
+
+        def refine_and_cancel(text, **kw):
+            nonlocal call_count
+            call_count += 1
+            # After the first transcript, trigger cancel
+            if call_count >= 1:
+                handler._bulk_cancel.set()
+            return f"refined: {text}"
+
+        mock_slm.refine_text_sync.side_effect = refine_and_cancel
+
+        handler.handle_bulk_refine(SimpleNamespace(
+            transcript_ids=(t1.id, t2.id), level=2, instructions="",
+        ))
+        _wait_for_threads("bulk-refine")
+
+        complete = _events_of(ev, "bulk_refinement_complete")
+        assert len(complete) == 1
+        assert complete[0]["cancelled"] is True
+        assert complete[0]["completed"] == 1
+
+    def test_bulk_refine_rejects_when_already_active(self, db, events):
+        mock_slm = MagicMock()
+        mock_slm.state = SLMState.READY
+
+        handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
+        handler._bulk_active = True
+
+        handler.handle_bulk_refine(SimpleNamespace(
+            transcript_ids=(1,), level=2, instructions="",
+        ))
+
+        errors = _events_of(ev, "bulk_refinement_error")
+        assert len(errors) == 1
+        assert "already in progress" in errors[0]["message"].lower()
+
+    def test_single_refine_blocked_during_bulk(self, db, events):
+        mock_slm = MagicMock()
+        mock_slm.state = SLMState.READY
+
+        handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
+        handler._bulk_active = True
+
+        handler.handle_refine(SimpleNamespace(transcript_id=1, level=2, instructions=""))
+
+        errors = _events_of(ev, "refinement_error")
+        assert len(errors) == 1
+        assert "bulk" in errors[0]["message"].lower()
+
+    def test_bulk_refine_empty_ids_emits_error(self, db, events):
+        mock_slm = MagicMock()
+        mock_slm.state = SLMState.READY
+
+        handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
+        handler.handle_bulk_refine(SimpleNamespace(
+            transcript_ids=(), level=2, instructions="",
+        ))
+
+        errors = _events_of(ev, "bulk_refinement_error")
+        assert len(errors) == 1
+
+    def test_bulk_refine_emits_transcript_updated_per_item(self, db, events):
+        t1 = db.add_transcript(raw_text="alpha", duration_ms=1000)
+        t2 = db.add_transcript(raw_text="beta", duration_ms=2000)
+
+        mock_slm = MagicMock()
+        mock_slm.state = SLMState.READY
+        mock_slm.refine_text_sync.return_value = "polished"
+
+        handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
+        handler.handle_bulk_refine(SimpleNamespace(
+            transcript_ids=(t1.id, t2.id), level=2, instructions="",
+        ))
+        _wait_for_threads("bulk-refine")
+
+        updated = _events_of(ev, "transcript_updated")
+        assert len(updated) == 2
+        updated_ids = {u["id"] for u in updated}
+        assert updated_ids == {t1.id, t2.id}
+
+
+# ===========================================================================
 # RecordingSession
 # ===========================================================================
 

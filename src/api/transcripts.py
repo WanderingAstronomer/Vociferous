@@ -151,6 +151,41 @@ async def refine_transcript(transcript_id: int, data: dict) -> Response:
     return Response(content={"status": "queued"})
 
 
+@post("/api/transcripts/batch-refine")
+async def batch_refine_transcripts(data: dict) -> Response:
+    """Queue bulk refinement of multiple transcripts via CommandBus intent."""
+    ids = data.get("ids", [])
+    if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+        return Response(content={"error": "'ids' must be a list of integers"}, status_code=400)
+    if not ids:
+        return Response(content={"error": "No transcript IDs provided"}, status_code=400)
+
+    level = data.get("level", 2)
+    if not isinstance(level, int) or not (1 <= level <= 5):
+        return Response(content={"error": "level must be an integer between 1 and 5"}, status_code=400)
+
+    from src.core.intents.definitions import BulkRefineTranscriptsIntent
+
+    coordinator = get_coordinator()
+    intent = BulkRefineTranscriptsIntent(
+        transcript_ids=tuple(ids),
+        level=level,
+        instructions=data.get("instructions", ""),
+    )
+    coordinator.command_bus.dispatch(intent)
+    return Response(content={"status": "queued", "total": len(ids)})
+
+
+@post("/api/transcripts/batch-refine/cancel")
+async def cancel_batch_refine() -> Response:
+    """Cancel an in-progress bulk refinement."""
+    from src.core.intents.definitions import CancelBulkRefinementIntent
+
+    coordinator = get_coordinator()
+    coordinator.command_bus.dispatch(CancelBulkRefinementIntent())
+    return Response(content={"status": "cancel_requested"})
+
+
 @post("/api/transcripts/{transcript_id:int}/refine/commit")
 async def commit_refinement(transcript_id: int, data: dict) -> Response:
     """Persist accepted refinement text to normalized_text via CommandBus intent."""

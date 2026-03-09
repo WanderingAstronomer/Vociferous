@@ -303,9 +303,7 @@
                 if (sessionTagIds.size > 0 && data.id) {
                     const ids = [...sessionTagIds];
                     assignedTagIds = new Set(ids);
-                    assignTags(data.id, ids).catch((e) =>
-                        console.warn("Session tag auto-assign failed:", e),
-                    );
+                    assignTags(data.id, ids).catch((e) => console.warn("Session tag auto-assign failed:", e));
                 } else {
                     assignedTagIds = new Set();
                 }
@@ -656,7 +654,9 @@
         <div class="shrink-0 flex items-center gap-[var(--space-2)] py-[var(--space-1)] px-[var(--space-1)]">
             <Bookmark
                 size={13}
-                class={sessionTagIds.size > 0 ? "text-[var(--accent)] shrink-0" : "text-[var(--text-tertiary)] shrink-0"}
+                class={sessionTagIds.size > 0
+                    ? "text-[var(--accent)] shrink-0"
+                    : "text-[var(--text-tertiary)] shrink-0"}
             />
             <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] shrink-0 select-none">Session tags</span>
             <TagBar
@@ -697,7 +697,7 @@
             <div class="flex-1 flex flex-col min-h-0">
                 <div class="flex-1 min-h-0 flex flex-col items-center justify-center gap-[var(--space-4)]">
                     <RecordingControls
-                        isRecording={isRecording}
+                        {isRecording}
                         {audioLevel}
                         elapsedMs={recordingElapsedMs}
                         onstart={startRecording}
@@ -752,8 +752,9 @@
                 {#each appliedTags as tag (tag.id)}
                     <span
                         class="inline-flex items-center h-5 px-1.5 rounded-full text-[10px] font-medium"
-                        style="background: color-mix(in srgb, {tag.color ?? 'var(--accent)'} 25%, transparent); color: var(--text-primary);"
-                    >{tag.name}</span>
+                        style="background: color-mix(in srgb, {tag.color ??
+                            'var(--accent)'} 25%, transparent); color: var(--text-primary);">{tag.name}</span
+                    >
                 {/each}
             </div>
         {/if}

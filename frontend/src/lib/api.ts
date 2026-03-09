@@ -101,6 +101,21 @@ export function commitRefinement(id: number, text: string): Promise<{ status: st
     });
 }
 
+export function bulkRefineTranscripts(
+    ids: number[],
+    level: number,
+    instructions = "",
+): Promise<{ status: string; total: number }> {
+    return request("/transcripts/batch-refine", {
+        method: "POST",
+        body: JSON.stringify({ ids, level, instructions }),
+    });
+}
+
+export function cancelBulkRefinement(): Promise<{ status: string }> {
+    return request("/transcripts/batch-refine/cancel", { method: "POST" });
+}
+
 // --- Tags ---
 
 export function getTags(): Promise<Tag[]> {
