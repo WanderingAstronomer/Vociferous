@@ -238,6 +238,30 @@ export const wsEventValidators: {
         isNumber(data.transcript_id) &&
         (data.message === undefined || isString(data.message)) &&
         (data.elapsed_seconds === undefined || isNumber(data.elapsed_seconds)),
+    bulk_refinement_started: (data): data is BulkRefinementStartedData =>
+        isObject(data) &&
+        isNumberArray(data.transcript_ids) &&
+        isNumber(data.total) &&
+        isNumber(data.level),
+    bulk_refinement_progress: (data): data is BulkRefinementProgressData =>
+        isObject(data) &&
+        isNumber(data.completed) &&
+        isNumber(data.failed) &&
+        isNumber(data.total) &&
+        isNumber(data.current_transcript_id) &&
+        (data.skipped === undefined || isBoolean(data.skipped)) &&
+        (data.error === undefined || isString(data.error)),
+    bulk_refinement_complete: (data): data is BulkRefinementCompleteData =>
+        isObject(data) &&
+        isNumber(data.completed) &&
+        isNumber(data.total) &&
+        isNumber(data.failed) &&
+        isBoolean(data.cancelled),
+    bulk_refinement_error: (data): data is BulkRefinementErrorData =>
+        isObject(data) &&
+        isString(data.message) &&
+        (data.completed === undefined || isNumber(data.completed)) &&
+        (data.total === undefined || isNumber(data.total)),
     transcript_deleted: (data): data is TranscriptDeletedData =>
         isObject(data) && isNumber(data.id),
     transcripts_batch_deleted: (data): data is TranscriptsBatchDeletedData =>

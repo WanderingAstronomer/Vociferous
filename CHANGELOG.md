@@ -2,6 +2,20 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.6.4 — UI Reactivity Fix (ISS-065)
+
+**Date:** 2026-03-09
+**Status:** Hotfix / Bug Fix
+
+### Fixed
+- **ISS-065** — localStorage unavailable in pywebview's WebKitGTK context crashed Svelte's effect scheduler.
+  - TranscribeView's session tag persistence $effect threw on mount, breaking all downstream reactivity (navigation, animations, rendering).
+  - Wrapped localStorage access with try/catch to gracefully degrade when unavailable.
+- Missing WebSocket event validators for bulk refinement events (v5.6.3 regression).
+  - Added validators for `bulk_refinement_started`, `bulk_refinement_progress`, `bulk_refinement_complete`, `bulk_refinement_error` to prevent type errors.
+
+---
+
 ## v5.6.3 — Bulk Refinement (ISS-020)
 
 **Date:** 2026-03-09

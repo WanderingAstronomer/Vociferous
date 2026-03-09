@@ -84,7 +84,11 @@
     let sessionTagIds = $state<Set<number>>(loadSessionTagIdsFromStorage());
 
     $effect(() => {
-        localStorage.setItem(SESSION_TAGS_STORAGE_KEY, JSON.stringify([...sessionTagIds]));
+        try {
+            localStorage.setItem(SESSION_TAGS_STORAGE_KEY, JSON.stringify([...sessionTagIds]));
+        } catch {
+            /* localStorage unavailable in some WebKitGTK contexts */
+        }
     });
 
     function toggleSessionTag(tagId: number) {
