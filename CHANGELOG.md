@@ -2,6 +2,22 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.3.8 — Settings View Overhaul (ISS-006)
+
+**Date:** 2026-03-08
+**Status:** Hotfix / Polish
+
+### Changed
+- **ISS-006** — Settings view overhaul addressing six sub-items of accumulated UX debt.
+  - **Max-width constraint**: content wrapper now uses `max-w-6xl` matching UserView, preventing edge-to-edge stretch at fullscreen.
+  - **Help text → tooltips**: all inline italic description paragraphs converted to `title` attributes on their labels. Dramatic reduction in visual noise.
+  - **Font-size hierarchy**: labels promoted from `text-base text-secondary` to `text-sm text-primary`, creating clear dominance over controls. Grid rows use `items-center` instead of `items-start` for tighter alignment.
+  - **Status bar removed**: the "Online · v5.0.0 · 259 transcripts" bar at the top of Settings added little value and displayed stale data; removed entirely.
+  - **Export section cleanup**: shortened button labels ("Export" / "Clear All"), removed inline help text, removed uppercase micro-labels, tightened spacing.
+  - **Grid alignment**: consistent `items-center` alignment across all setting cards (SettingsView, AsrModelCard, OutputCard). Controls sit on the same baseline as their labels.
+
+---
+
 ## v5.3.7 — Activity Heatmap Timescale Controls (ISS-034)
 
 **Date:** 2026-03-08

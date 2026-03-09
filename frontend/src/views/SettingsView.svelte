@@ -6,7 +6,7 @@
     import { getConfig, updateConfig, getModels, getHealth, downloadModel } from "../lib/api";
     import { ws } from "../lib/ws";
     import { onMount, onDestroy } from "svelte";
-    import { Save, Undo2, Loader2, Mic, Eye, Activity, Check } from "lucide-svelte";
+    import { Save, Undo2, Loader2, Mic, Eye, Check } from "lucide-svelte";
     import CustomSelect from "../lib/components/CustomSelect.svelte";
     import KeyBindCapture from "../lib/components/KeyBindCapture.svelte";
     import MaintenanceCard from "../lib/components/MaintenanceCard.svelte";
@@ -182,27 +182,8 @@
         <!-- Scrollable content -->
         <div class="flex-1 overflow-y-auto overflow-x-hidden">
             <div
-                class="w-full min-w-[var(--content-min-width)] mx-auto py-[var(--space-5)] px-[var(--space-5)] pb-[var(--space-7)] flex flex-col gap-[var(--space-4)]"
+                class="w-full max-w-6xl min-w-[var(--content-min-width)] mx-auto py-[var(--space-5)] px-[var(--space-5)] pb-[var(--space-7)] flex flex-col gap-[var(--space-4)]"
             >
-                <!-- System Status -->
-                <div
-                    class="flex items-center gap-[var(--space-2)] px-[var(--space-4)] py-[var(--space-2)] rounded-[var(--radius-md)] bg-[var(--surface-secondary)] border border-[var(--shell-border)]"
-                >
-                    <Activity size={14} class="text-[var(--text-tertiary)] shrink-0" />
-                    <span
-                        class="w-2 h-2 rounded-full shrink-0 transition-[background] duration-[var(--transition-fast)] {health.status ===
-                        'ok'
-                            ? 'bg-[var(--color-success)]'
-                            : 'bg-[var(--color-danger)]'}"
-                    ></span>
-                    <span class="text-[var(--text-sm)] text-[var(--text-secondary)]">
-                        {health.status === "ok" ? "Online" : health.status}
-                        {#if health.version}
-                            · v{health.version}{/if}
-                        · {health.transcripts} transcript{health.transcripts !== 1 ? "s" : ""}
-                    </span>
-                </div>
-
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-[var(--space-4)] items-start">
                     <!-- ASR Model Settings -->
                     <AsrModelCard
@@ -228,74 +209,62 @@
                         </div>
                         <div class="flex flex-col gap-[var(--space-3)]">
                             <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
+                                class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
                             >
                                 <label
-                                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                    for="setting-hotkey">Activation Key</label
+                                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                    for="setting-hotkey"
+                                    title="Click Set Key to capture a new global hotkey. Works system-wide, even when the app is in the background."
+                                    >Activation Key</label
                                 >
-                                <div class="flex flex-col gap-1 flex-1">
-                                    <KeyBindCapture
-                                        id="setting-hotkey"
-                                        value={getSafe(config, "recording.activation_key") ?? ""}
-                                        onchange={(combo) => setSafe("recording.activation_key", combo)}
+                                <KeyBindCapture
+                                    id="setting-hotkey"
+                                    value={getSafe(config, "recording.activation_key") ?? ""}
+                                    onchange={(combo) => setSafe("recording.activation_key", combo)}
+                                />
+                            </div>
+                            <div
+                                class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
+                            >
+                                <label
+                                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                    for="setting-recmode"
+                                    title="Toggle: press once to start, again to stop. Hold: hold key to record, release to stop."
+                                    >Recording Mode</label
+                                >
+                                <div class="w-full max-w-[460px]">
+                                    <CustomSelect
+                                        id="setting-recmode"
+                                        options={[
+                                            { value: "press_to_toggle", label: "Press to Toggle" },
+                                            { value: "hold_to_record", label: "Hold to Record" },
+                                        ]}
+                                        value={getSafe(config, "recording.recording_mode", "press_to_toggle")}
+                                        onchange={(v: string) => setSafe("recording.recording_mode", v)}
                                     />
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                        >Left: current binding. Right: click Set Key to capture a new global hotkey.
-                                        Works system-wide, even when the app is in the background.</span
-                                    >
                                 </div>
                             </div>
                             <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
+                                class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
                             >
                                 <label
-                                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                    for="setting-recmode">Recording Mode</label
+                                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                    for="setting-typing-wpm"
+                                    title="Your manual typing speed. Used to calculate Time Saved on the dashboard. Default: 40 WPM."
+                                    >Typing Speed (WPM)</label
                                 >
-                                <div class="flex flex-col gap-1 flex-1">
-                                    <div class="w-full max-w-[460px]">
-                                        <CustomSelect
-                                            id="setting-recmode"
-                                            options={[
-                                                { value: "press_to_toggle", label: "Press to Toggle" },
-                                                { value: "hold_to_record", label: "Hold to Record" },
-                                            ]}
-                                            value={getSafe(config, "recording.recording_mode", "press_to_toggle")}
-                                            onchange={(v: string) => setSafe("recording.recording_mode", v)}
-                                        />
-                                    </div>
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                        >Toggle: Press once to start, again to stop. Hold: Hold key to record, release
-                                        to stop.</span
-                                    >
-                                </div>
-                            </div>
-                            <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
-                            >
-                                <label
-                                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                    for="setting-typing-wpm">Typing Speed (WPM)</label
-                                >
-                                <div class="flex flex-col gap-1 flex-1">
-                                    <input
-                                        id="setting-typing-wpm"
-                                        type="number"
-                                        min="10"
-                                        max="200"
-                                        class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                                        value={getSafe(config, "user.typing_wpm", 40)}
-                                        onchange={(e: Event) => {
-                                            const v = parseInt((e.target as HTMLInputElement).value);
-                                            if (!isNaN(v) && v >= 10 && v <= 200) setSafe("user.typing_wpm", v);
-                                        }}
-                                    />
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                        >Your manual typing speed in words per minute. Used to calculate "Time Saved" on
-                                        the dashboard. Default: 40 WPM (average typist).</span
-                                    >
-                                </div>
+                                <input
+                                    id="setting-typing-wpm"
+                                    type="number"
+                                    min="10"
+                                    max="200"
+                                    class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                    value={getSafe(config, "user.typing_wpm", 40)}
+                                    onchange={(e: Event) => {
+                                        const v = parseInt((e.target as HTMLInputElement).value);
+                                        if (!isNaN(v) && v >= 10 && v <= 200) setSafe("user.typing_wpm", v);
+                                    }}
+                                />
                             </div>
                         </div>
                     </div>
@@ -311,30 +280,27 @@
                         </div>
                         <div class="flex flex-col gap-[var(--space-3)]">
                             <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]"
+                                class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
                             >
                                 <label
-                                    class="text-[var(--text-base)] text-[var(--text-secondary)] pt-2"
-                                    for="setting-uiscale">UI Scale</label
+                                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                    for="setting-uiscale"
+                                    title="Scale the entire interface. Useful for high-DPI displays or accessibility."
+                                    >UI Scale</label
                                 >
-                                <div class="flex flex-col gap-1 flex-1">
-                                    <div class="w-full max-w-[460px]">
-                                        <CustomSelect
-                                            id="setting-uiscale"
-                                            options={[
-                                                { value: "100", label: "100%" },
-                                                { value: "125", label: "125%" },
-                                                { value: "150", label: "150%" },
-                                                { value: "175", label: "175%" },
-                                                { value: "200", label: "200%" },
-                                            ]}
-                                            value={String(getSafe(config, "display.ui_scale", 100))}
-                                            onchange={(v: string) => setSafe("display.ui_scale", parseInt(v, 10))}
-                                        />
-                                    </div>
-                                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                                        >Scale the entire interface. Useful for high-DPI displays or accessibility.</span
-                                    >
+                                <div class="w-full max-w-[460px]">
+                                    <CustomSelect
+                                        id="setting-uiscale"
+                                        options={[
+                                            { value: "100", label: "100%" },
+                                            { value: "125", label: "125%" },
+                                            { value: "150", label: "150%" },
+                                            { value: "175", label: "175%" },
+                                            { value: "200", label: "200%" },
+                                        ]}
+                                        value={String(getSafe(config, "display.ui_scale", 100))}
+                                        onchange={(v: string) => setSafe("display.ui_scale", parseInt(v, 10))}
+                                    />
                                 </div>
                             </div>
                         </div>

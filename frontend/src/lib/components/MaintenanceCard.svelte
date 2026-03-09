@@ -199,12 +199,12 @@
         <div
             class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
         >
-            <span class="text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]"
+            <span class="text-[var(--text-sm)] text-[var(--text-primary)] font-[var(--weight-emphasis)]"
                 >Transcriptions</span
             >
-            <div class="flex flex-col gap-[var(--space-2)] mb-[var(--space-1)]">
+            <div class="flex flex-col gap-[var(--space-2)]">
                 <div class="flex items-center justify-between gap-[var(--space-3)]">
-                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase">Format</span>
+                    <span class="text-[var(--text-xs)] text-[var(--text-secondary)]">Format</span>
                     <div class="w-full max-w-[180px]">
                         <CustomSelect
                             id="history-export-format"
@@ -224,17 +224,18 @@
                     </div>
                 </div>
                 <div class="flex items-center justify-between gap-[var(--space-3)]">
-                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase">Choose Location</span>
+                    <span
+                        class="text-[var(--text-xs)] text-[var(--text-secondary)]"
+                        title="Uses native save dialog when supported; otherwise downloads to your default location."
+                        >Choose Location</span
+                    >
                     <ToggleSwitch checked={preferSaveDialog} onChange={() => (preferSaveDialog = !preferSaveDialog)} />
                 </div>
-                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] italic"
-                    >Uses native save dialog when supported; otherwise downloads to your default location.</span
-                >
             </div>
             <div class="flex gap-[var(--space-2)] flex-wrap">
-                <StyledButton variant="secondary" onclick={handleExportTranscripts}>Export Transcriptions</StyledButton>
+                <StyledButton variant="secondary" onclick={handleExportTranscripts}>Export</StyledButton>
                 <StyledButton variant="destructive" onclick={handleClearTranscripts} disabled={clearingTranscripts}>
-                    {clearingTranscripts ? "Clearing…" : "Clear All Transcriptions"}</StyledButton
+                    {clearingTranscripts ? "Clearing…" : "Clear All"}</StyledButton
                 >
             </div>
         </div>
@@ -243,7 +244,7 @@
         <div
             class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
         >
-            <span class="text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]">Engine</span>
+            <span class="text-[var(--text-sm)] text-[var(--text-primary)] font-[var(--weight-emphasis)]">Engine</span>
             <div class="flex flex-col gap-1">
                 <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
                     ASR: {(models.asr[getSafe(config, "model.model", "")] as any)?.name ??
