@@ -14,7 +14,7 @@
     import { ws } from "../lib/ws";
     import { onMount } from "svelte";
     import RecordingOrrery from "../lib/components/RecordingOrrery.svelte";
-    import { Mic, Square, Copy, Check, Pencil, Trash2, Save, Undo2, Loader2, Sparkles, Home } from "lucide-svelte";
+    import { Mic, Copy, Check, Pencil, Trash2, Save, Undo2, Loader2, Sparkles, Home } from "lucide-svelte";
     import { nav } from "../lib/navigation.svelte";
     import WorkspacePanel from "../lib/components/WorkspacePanel.svelte";
     import StyledButton from "../lib/components/StyledButton.svelte";
@@ -570,8 +570,15 @@
                             <p class="text-[var(--text-base)] text-[var(--text-tertiary)] m-0">Click to record</p>
                         </div>
                     {:else}
-                        <div class="w-full flex-1 min-h-0">
-                            <RecordingOrrery {audioLevel} />
+                        <div class="flex flex-col items-center justify-center gap-[var(--space-4)]">
+                            <button
+                                class="w-[160px] h-[160px] rounded-full cursor-pointer p-0 bg-transparent border-none focus:outline-none"
+                                onclick={stopRecording}
+                                aria-label="Stop recording"
+                                title="Stop recording and transcribe"
+                            >
+                                <RecordingOrrery {audioLevel} size={160} />
+                            </button>
                         </div>
                     {/if}
                 </div>
@@ -625,29 +632,19 @@
                 <Trash2 size={15} /> Cancel
             </StyledButton>
 
-            <div class="flex-1 flex items-center justify-center gap-[var(--space-2)] min-w-0">
+            <div class="flex-1 flex items-center justify-center gap-[var(--space-2)]">
                 <span
                     class="w-2 h-2 rounded-full bg-[var(--color-danger)] shrink-0 animate-[pulse-dot_1.2s_ease-in-out_infinite]"
                 ></span>
                 <span class="text-[var(--text-sm)] text-[var(--color-danger)] whitespace-nowrap"
                     >Recording in progress…</span
                 >
-                <span class="w-px h-4 bg-[var(--shell-border)] shrink-0"></span>
-                <span
-                    class="text-[var(--text-sm)] font-[var(--font-mono)] text-[var(--text-tertiary)] tabular-nums whitespace-nowrap"
-                    >{formatElapsed(recordingElapsedMs)}</span
-                >
             </div>
 
-            <StyledButton
-                variant="primary"
-                size="sm"
-                onclick={stopRecording}
-                ariaLabel="Stop recording and transcribe"
-                title="Stop recording and transcribe audio"
+            <span
+                class="text-[var(--text-sm)] font-[var(--font-mono)] text-[var(--text-tertiary)] tabular-nums whitespace-nowrap"
+                >{formatElapsed(recordingElapsedMs)}</span
             >
-                <Square size={15} fill="currentColor" /> Stop &amp; Transcribe
-            </StyledButton>
         </div>
     {/if}
 

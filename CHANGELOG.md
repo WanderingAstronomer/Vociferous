@@ -2,6 +2,19 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.4.1 — Recording Active State UX Overhaul
+
+**Date:** 2026-03-09
+**Status:** Hotfix / Polish
+
+### Changed
+- **RecordingOrrery** — the mic button in the recording state is now a fixed 160 px circle, matching the idle mic button exactly. Both states use the same visual footprint for a seamless transition.
+- **Stop interaction** — the large central orrery button is now clickable and stops the recording. The redundant "Stop & Transcribe" button in the control bar has been removed.
+- **Control bar** — "Recording in progress…" text is now centered; the elapsed timer moves to the far right (occupying the space vacated by the stop button); the divider between them is removed.
+- **RecordingOrrery** — mic icon size now scales proportionally with the circle diameter (35% of `micSizePx`, matching the idle button's icon-to-circle ratio).
+
+---
+
 ## v5.4.0 — Inference Quantization + Decoding Optimization (ISS-042, ISS-043)
 
 **Date:** 2026-03-09

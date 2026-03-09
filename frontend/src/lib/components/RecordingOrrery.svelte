@@ -3,15 +3,20 @@
 
     interface Props {
         audioLevel?: number;
+        size?: number; // Fixed size override — skips ResizeObserver when provided
     }
 
-    let { audioLevel = 0 }: Props = $props();
+    let { audioLevel = 0, size = undefined }: Props = $props();
 
-    /* ── Responsive mic sizing ── */
+    /* ── Mic sizing: fixed when size prop is set, responsive otherwise ── */
     let containerEl: HTMLDivElement | undefined = $state();
     let micSizePx = $state(96);
 
     $effect(() => {
+        if (size !== undefined) {
+            micSizePx = size;
+            return;
+        }
         if (!containerEl) return;
         const ro = new ResizeObserver(([e]) => {
             const side = Math.min(e.contentRect.width, e.contentRect.height);
@@ -20,6 +25,9 @@
         ro.observe(containerEl);
         return () => ro.disconnect();
     });
+
+    /* ── Icon size scales with mic circle (35% of diameter, matching idle button) ── */
+    let micIconSizePx = $derived(Math.max(28, Math.round(micSizePx * 0.35)));
 
     /* ── Audio-reactive glow + dynamic button ── */
     let glowEl: HTMLDivElement | undefined = $state();
@@ -88,7 +96,7 @@
         <div class="ripple-ring" class:active={speaking}></div>
         <div class="ripple-ring staggered" class:active={speaking}></div>
         <div class="mic-button" class:speaking bind:this={micBtnEl}>
-            <Mic size={36} strokeWidth={1.5} />
+            <Mic size={micIconSizePx} strokeWidth={1.5} />
         </div>
     </div>
 </div>
