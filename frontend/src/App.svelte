@@ -107,7 +107,7 @@
 
 <div class="flex flex-col h-screen overflow-hidden">
     <TitleBar isRecording={recordingActive} />
-    <div class="flex flex-1 bg-[var(--shell-bg)] text-[var(--text-primary)] overflow-hidden">
+    <div class="flex flex-1 bg-[var(--shell-bg)] text-[var(--text-primary)] overflow-clip">
         {#if !appReady}
             <!-- Waiting for initial status check -->
         {:else}
@@ -118,7 +118,7 @@
                 onNavigate={(view) => nav.navigate(view)}
             />
 
-            <main class="flex-1 overflow-hidden bg-[var(--surface-secondary)]">
+            <main class="flex-1 overflow-clip bg-[var(--surface-secondary)]">
                 <!-- TranscribeView stays mounted to preserve recording/visualizer state -->
                 <div class="h-full" style:display={nav.current === "transcribe" ? "block" : "none"}>
                     <TranscribeView />

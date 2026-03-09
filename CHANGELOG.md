@@ -2,6 +2,23 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.3.9 — Settings Tabbed Redesign + Scroll Fix (ISS-038)
+
+**Date:** 2026-03-09
+**Status:** Hotfix / Polish
+
+### Changed
+- **ISS-038** — Settings view rebuilt with a horizontal tab bar replacing the stacked-card layout.
+  - **Tab bar**: five tabs (Speech Recognition, Recording, Output, Appearance, Maintenance) with lucide icons. Active tab indicated by accent underline and color change. Tab bar is sticky so it remains visible while scrolling long sections.
+  - **Card chrome stripped**: outer wrapper divs and header rows removed from `AsrModelCard`, `OutputCard`, and `MaintenanceCard`. The tab header replaces the need for per-card section titles.
+  - **Centering fix**: tab bar moved inside the `overflow-y-auto` scroll container as `sticky top-0`. Root cause: when the tab bar lived outside the scroll area, a visible scrollbar reduced the scroll container width by ~15 px, shifting `mx-auto` content left while the tab bar stayed centered at full width. Both now reference the same parent width.
+  - **Maintenance layout**: Transcriptions and Engine cards changed from single-column to side-by-side (`grid-cols-2`).
+
+### Fixed
+- **Scroll throttling** — `overflow-hidden` → `overflow-clip` on the flex-row and `<main>` wrappers in `App.svelte`. `clip` prevents visual overflow identically but does not create a scroll container, eliminating the scroll geometry conflict that caused mouse-wheel fighting in Settings and UserView.
+
+---
+
 ## v5.3.8 — Settings View Overhaul (ISS-006)
 
 **Date:** 2026-03-08

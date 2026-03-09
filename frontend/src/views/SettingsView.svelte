@@ -1,12 +1,15 @@
 <script lang="ts">
     /**
-     * SettingsView — Card-based configuration surface.
+     * SettingsView — Tabbed configuration surface.
+     *
+     * Horizontal tab bar at top, one section per tab. Content scrolls
+     * independently; save bar pins to the bottom.
      */
 
     import { getConfig, updateConfig, getModels, getHealth, downloadModel } from "../lib/api";
     import { ws } from "../lib/ws";
     import { onMount, onDestroy } from "svelte";
-    import { Save, Undo2, Loader2, Mic, Eye, Check } from "lucide-svelte";
+    import { Save, Undo2, Loader2, Cpu, Mic, Sliders, Eye, RotateCcw, Check } from "lucide-svelte";
     import CustomSelect from "../lib/components/CustomSelect.svelte";
     import KeyBindCapture from "../lib/components/KeyBindCapture.svelte";
     import MaintenanceCard from "../lib/components/MaintenanceCard.svelte";
@@ -14,6 +17,20 @@
     import AsrModelCard from "../lib/components/AsrModelCard.svelte";
     import StyledButton from "../lib/components/StyledButton.svelte";
     import type { DownloadProgressData, EngineStatusData } from "../lib/events";
+
+    /* ===== Tabs ===== */
+
+    type SettingsTab = "asr" | "recording" | "output" | "appearance" | "maintenance";
+
+    const tabs: { id: SettingsTab; label: string; icon: typeof Cpu }[] = [
+        { id: "asr", label: "Speech Recognition", icon: Cpu },
+        { id: "recording", label: "Recording", icon: Mic },
+        { id: "output", label: "Output", icon: Sliders },
+        { id: "appearance", label: "Appearance", icon: Eye },
+        { id: "maintenance", label: "Maintenance", icon: RotateCcw },
+    ];
+
+    let activeTab = $state<SettingsTab>("asr");
 
     /* ===== State ===== */
 
@@ -52,7 +69,6 @@
     let unsubEngineStatus: (() => void) | null = null;
 
     onMount(async () => {
-        // Subscribe to download progress events
         unsubDownload = ws.on("download_progress", (data: DownloadProgressData) => {
             if (data.status === "downloading") {
                 downloadMessage = data.message || "Downloading...";
@@ -61,13 +77,11 @@
                 downloadingModel = null;
                 downloadErrorAsr = "";
                 downloadErrorSlm = "";
-                // Refresh model list to update downloaded status
                 getModels()
                     .then((m) => (models = m))
                     .catch(() => {});
                 showMessage(`${data.model_id} downloaded`, "success");
             } else if (data.status === "error") {
-                // Route error to the correct section
                 const isSlm = Object.keys(models.slm).includes(data.model_id);
                 if (isSlm) {
                     downloadErrorSlm = data.message || "Download failed";
@@ -79,7 +93,6 @@
             }
         });
 
-        // Subscribe to engine status updates (e.g. after restart)
         unsubEngineStatus = ws.on("engine_status", (data: EngineStatusData) => {
             if (data?.asr === "ready") {
                 showMessage("Engine restarted — ASR ready", "success");
@@ -91,8 +104,6 @@
         try {
             const [c, m, h] = await Promise.all([getConfig(), getModels(), getHealth()]);
             config = c;
-            // Coerce stale/removed config values so the UI is never in an
-            // invalid state after a setting option is removed.
             const validRecordingModes = ["press_to_toggle", "hold_to_record"];
             if (!validRecordingModes.includes(getSafe(config, "recording.recording_mode", ""))) {
                 setSafe("recording.recording_mode", "press_to_toggle");
@@ -171,7 +182,7 @@
     }
 </script>
 
-<div class="flex flex-col h-full overflow-hidden">
+<div class="flex flex-col h-full">
     {#if loading}
         <div
             class="flex-1 flex flex-col items-center justify-center gap-[var(--space-2)] text-[var(--text-tertiary)] text-[var(--text-sm)]"
@@ -179,13 +190,35 @@
             <Loader2 size={24} class="spin" /><span>Loading settings…</span>
         </div>
     {:else}
-        <!-- Scrollable content -->
-        <div class="flex-1 overflow-y-auto overflow-x-hidden">
+        <!-- Unified scroll area — tab bar is sticky inside so both it and content share the same
+             width reference for mx-auto. When a scrollbar appears it affects both equally,
+             eliminating the centering offset that occurs when the tab bar is outside the scroll container. -->
+        <div class="flex-1 overflow-y-auto">
+            <div class="sticky top-0 z-10 border-b border-[var(--shell-border)] bg-[var(--surface-primary)]">
+                <div class="w-full max-w-5xl mx-auto px-[var(--space-5)] flex gap-0" role="tablist">
+                    {#each tabs as tab (tab.id)}
+                        <button
+                            role="tab"
+                            aria-selected={activeTab === tab.id}
+                            class="relative flex items-center gap-[var(--space-1)] px-[var(--space-3)] py-[var(--space-2)] text-[var(--text-sm)] border-b-2 transition-colors duration-[var(--transition-fast)] bg-transparent cursor-pointer
+                                {activeTab === tab.id
+                                ? 'text-[var(--accent)] border-[var(--accent)] font-[var(--weight-emphasis)]'
+                                : 'text-[var(--text-tertiary)] border-transparent hover:text-[var(--text-primary)]'}"
+                            onclick={() => (activeTab = tab.id)}
+                        >
+                            <tab.icon size={15} />
+                            {tab.label}
+                        </button>
+                    {/each}
+                </div>
+            </div>
+
+            <!-- Tab panel content -->
             <div
-                class="w-full max-w-6xl min-w-[var(--content-min-width)] mx-auto py-[var(--space-5)] px-[var(--space-5)] pb-[var(--space-7)] flex flex-col gap-[var(--space-4)]"
+                class="w-full max-w-5xl min-w-[var(--content-min-width)] mx-auto py-[var(--space-5)] px-[var(--space-5)] pb-[var(--space-7)]"
+                role="tabpanel"
             >
-                <div class="grid grid-cols-1 xl:grid-cols-2 gap-[var(--space-4)] items-start">
-                    <!-- ASR Model Settings -->
+                {#if activeTab === "asr"}
                     <AsrModelCard
                         {config}
                         {models}
@@ -197,116 +230,68 @@
                         {setSafe}
                         {handleDownload}
                     />
-
-                    <!-- Recording Settings -->
-                    <div
-                        class="bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] p-[var(--space-4)]"
-                    >
+                {:else if activeTab === "recording"}
+                    <div class="flex flex-col gap-[var(--space-3)]">
                         <div
-                            class="flex items-center gap-[var(--space-2)] text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-primary)] mb-[var(--space-4)] pb-[var(--space-2)] border-b border-[var(--shell-border)]"
+                            class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
                         >
-                            <Mic size={18} class="text-[var(--accent)]" /><span>Recording</span>
+                            <label
+                                class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                for="setting-hotkey"
+                                title="Click Set Key to capture a new global hotkey. Works system-wide, even when the app is in the background."
+                                >Activation Key</label
+                            >
+                            <KeyBindCapture
+                                id="setting-hotkey"
+                                value={getSafe(config, "recording.activation_key") ?? ""}
+                                onchange={(combo) => setSafe("recording.activation_key", combo)}
+                            />
                         </div>
-                        <div class="flex flex-col gap-[var(--space-3)]">
-                            <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
+                        <div
+                            class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
+                        >
+                            <label
+                                class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                for="setting-recmode"
+                                title="Toggle: press once to start, again to stop. Hold: hold key to record, release to stop."
+                                >Recording Mode</label
                             >
-                                <label
-                                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                                    for="setting-hotkey"
-                                    title="Click Set Key to capture a new global hotkey. Works system-wide, even when the app is in the background."
-                                    >Activation Key</label
-                                >
-                                <KeyBindCapture
-                                    id="setting-hotkey"
-                                    value={getSafe(config, "recording.activation_key") ?? ""}
-                                    onchange={(combo) => setSafe("recording.activation_key", combo)}
-                                />
-                            </div>
-                            <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
-                            >
-                                <label
-                                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                                    for="setting-recmode"
-                                    title="Toggle: press once to start, again to stop. Hold: hold key to record, release to stop."
-                                    >Recording Mode</label
-                                >
-                                <div class="w-full max-w-[460px]">
-                                    <CustomSelect
-                                        id="setting-recmode"
-                                        options={[
-                                            { value: "press_to_toggle", label: "Press to Toggle" },
-                                            { value: "hold_to_record", label: "Hold to Record" },
-                                        ]}
-                                        value={getSafe(config, "recording.recording_mode", "press_to_toggle")}
-                                        onchange={(v: string) => setSafe("recording.recording_mode", v)}
-                                    />
-                                </div>
-                            </div>
-                            <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
-                            >
-                                <label
-                                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                                    for="setting-typing-wpm"
-                                    title="Your manual typing speed. Used to calculate Time Saved on the dashboard. Default: 40 WPM."
-                                    >Typing Speed (WPM)</label
-                                >
-                                <input
-                                    id="setting-typing-wpm"
-                                    type="number"
-                                    min="10"
-                                    max="200"
-                                    class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                                    value={getSafe(config, "user.typing_wpm", 40)}
-                                    onchange={(e: Event) => {
-                                        const v = parseInt((e.target as HTMLInputElement).value);
-                                        if (!isNaN(v) && v >= 10 && v <= 200) setSafe("user.typing_wpm", v);
-                                    }}
+                            <div class="w-full max-w-[460px]">
+                                <CustomSelect
+                                    id="setting-recmode"
+                                    options={[
+                                        { value: "press_to_toggle", label: "Press to Toggle" },
+                                        { value: "hold_to_record", label: "Hold to Record" },
+                                    ]}
+                                    value={getSafe(config, "recording.recording_mode", "press_to_toggle")}
+                                    onchange={(v: string) => setSafe("recording.recording_mode", v)}
                                 />
                             </div>
                         </div>
-                    </div>
-
-                    <!-- Appearance -->
-                    <div
-                        class="bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] p-[var(--space-4)]"
-                    >
                         <div
-                            class="flex items-center gap-[var(--space-2)] text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-primary)] mb-[var(--space-4)] pb-[var(--space-2)] border-b border-[var(--shell-border)]"
+                            class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
                         >
-                            <Eye size={18} class="text-[var(--accent)]" /><span>Appearance</span>
-                        </div>
-                        <div class="flex flex-col gap-[var(--space-3)]">
-                            <div
-                                class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
+                            <label
+                                class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                for="setting-typing-wpm"
+                                title="Your manual typing speed. Used to calculate Time Saved on the dashboard. Default: 40 WPM."
+                                >Typing Speed (WPM)</label
                             >
-                                <label
-                                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                                    for="setting-uiscale"
-                                    title="Scale the entire interface. Useful for high-DPI displays or accessibility."
-                                    >UI Scale</label
-                                >
-                                <div class="w-full max-w-[460px]">
-                                    <CustomSelect
-                                        id="setting-uiscale"
-                                        options={[
-                                            { value: "100", label: "100%" },
-                                            { value: "125", label: "125%" },
-                                            { value: "150", label: "150%" },
-                                            { value: "175", label: "175%" },
-                                            { value: "200", label: "200%" },
-                                        ]}
-                                        value={String(getSafe(config, "display.ui_scale", 100))}
-                                        onchange={(v: string) => setSafe("display.ui_scale", parseInt(v, 10))}
-                                    />
-                                </div>
-                            </div>
+                            <input
+                                id="setting-typing-wpm"
+                                type="number"
+                                min="10"
+                                max="200"
+                                class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                value={getSafe(config, "user.typing_wpm", 40)}
+                                onchange={(e: Event) => {
+                                    const v = parseInt((e.target as HTMLInputElement).value);
+                                    if (!isNaN(v) && v >= 10 && v <= 200) setSafe("user.typing_wpm", v);
+                                }}
+                            />
                         </div>
                     </div>
-
-                    <!-- Output & Processing -->
+                {:else if activeTab === "output"}
                     <OutputCard
                         {config}
                         {models}
@@ -317,10 +302,36 @@
                         {setSafe}
                         {handleDownload}
                     />
-
-                    <!-- Maintenance -->
+                {:else if activeTab === "appearance"}
+                    <div class="flex flex-col gap-[var(--space-3)]">
+                        <div
+                            class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
+                        >
+                            <label
+                                class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                for="setting-uiscale"
+                                title="Scale the entire interface. Useful for high-DPI displays or accessibility."
+                                >UI Scale</label
+                            >
+                            <div class="w-full max-w-[460px]">
+                                <CustomSelect
+                                    id="setting-uiscale"
+                                    options={[
+                                        { value: "100", label: "100%" },
+                                        { value: "125", label: "125%" },
+                                        { value: "150", label: "150%" },
+                                        { value: "175", label: "175%" },
+                                        { value: "200", label: "200%" },
+                                    ]}
+                                    value={String(getSafe(config, "display.ui_scale", 100))}
+                                    onchange={(v: string) => setSafe("display.ui_scale", parseInt(v, 10))}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                {:else if activeTab === "maintenance"}
                     <MaintenanceCard {config} {models} {health} {getSafe} {showMessage} />
-                </div>
+                {/if}
             </div>
         </div>
 

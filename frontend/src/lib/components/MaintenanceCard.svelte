@@ -182,87 +182,76 @@
             showMessage(e.message || "Engine restart failed", "error");
         }
     }
-
-
 </script>
 
-<div
-    class="bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] p-[var(--space-4)] xl:col-span-2"
->
+<div class="grid grid-cols-2 gap-[var(--space-4)]">
+    <!-- Transcriptions: export + clear -->
     <div
-        class="flex items-center gap-[var(--space-2)] text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-primary)] mb-[var(--space-4)] pb-[var(--space-2)] border-b border-[var(--shell-border)]"
+        class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
     >
-        <RotateCcw size={18} class="text-[var(--accent)]" /><span>Maintenance</span>
-    </div>
-    <div class="grid grid-cols-1 gap-[var(--space-3)]">
-        <!-- Transcriptions: export + clear -->
-        <div
-            class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
+        <span class="text-[var(--text-sm)] text-[var(--text-primary)] font-[var(--weight-emphasis)]"
+            >Transcriptions</span
         >
-            <span class="text-[var(--text-sm)] text-[var(--text-primary)] font-[var(--weight-emphasis)]"
-                >Transcriptions</span
-            >
-            <div class="flex flex-col gap-[var(--space-2)]">
-                <div class="flex items-center justify-between gap-[var(--space-3)]">
-                    <span class="text-[var(--text-xs)] text-[var(--text-secondary)]">Format</span>
-                    <div class="w-full max-w-[180px]">
-                        <CustomSelect
-                            id="history-export-format"
-                            options={[
-                                { value: "json", label: "JSON" },
-                                { value: "csv", label: "CSV" },
-                                { value: "txt", label: "Plain Text" },
-                                { value: "md", label: "Markdown" },
-                            ]}
-                            value={exportFormat}
-                            onchange={(v: string) => {
-                                if (v === "json" || v === "csv" || v === "txt" || v === "md") {
-                                    exportFormat = v;
-                                }
-                            }}
-                        />
-                    </div>
-                </div>
-                <div class="flex items-center justify-between gap-[var(--space-3)]">
-                    <span
-                        class="text-[var(--text-xs)] text-[var(--text-secondary)]"
-                        title="Uses native save dialog when supported; otherwise downloads to your default location."
-                        >Choose Location</span
-                    >
-                    <ToggleSwitch checked={preferSaveDialog} onChange={() => (preferSaveDialog = !preferSaveDialog)} />
+        <div class="flex flex-col gap-[var(--space-2)]">
+            <div class="flex items-center justify-between gap-[var(--space-3)]">
+                <span class="text-[var(--text-xs)] text-[var(--text-secondary)]">Format</span>
+                <div class="w-full max-w-[180px]">
+                    <CustomSelect
+                        id="history-export-format"
+                        options={[
+                            { value: "json", label: "JSON" },
+                            { value: "csv", label: "CSV" },
+                            { value: "txt", label: "Plain Text" },
+                            { value: "md", label: "Markdown" },
+                        ]}
+                        value={exportFormat}
+                        onchange={(v: string) => {
+                            if (v === "json" || v === "csv" || v === "txt" || v === "md") {
+                                exportFormat = v;
+                            }
+                        }}
+                    />
                 </div>
             </div>
-            <div class="flex gap-[var(--space-2)] flex-wrap">
-                <StyledButton variant="secondary" onclick={handleExportTranscripts}>Export</StyledButton>
-                <StyledButton variant="destructive" onclick={handleClearTranscripts} disabled={clearingTranscripts}>
-                    {clearingTranscripts ? "Clearing…" : "Clear All"}</StyledButton
+            <div class="flex items-center justify-between gap-[var(--space-3)]">
+                <span
+                    class="text-[var(--text-xs)] text-[var(--text-secondary)]"
+                    title="Uses native save dialog when supported; otherwise downloads to your default location."
+                    >Choose Location</span
                 >
+                <ToggleSwitch checked={preferSaveDialog} onChange={() => (preferSaveDialog = !preferSaveDialog)} />
             </div>
         </div>
+        <div class="flex gap-[var(--space-2)] flex-wrap">
+            <StyledButton variant="secondary" onclick={handleExportTranscripts}>Export</StyledButton>
+            <StyledButton variant="destructive" onclick={handleClearTranscripts} disabled={clearingTranscripts}>
+                {clearingTranscripts ? "Clearing…" : "Clear All"}</StyledButton
+            >
+        </div>
+    </div>
 
-        <!-- Engine: status + restart -->
-        <div
-            class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
-        >
-            <span class="text-[var(--text-sm)] text-[var(--text-primary)] font-[var(--weight-emphasis)]">Engine</span>
-            <div class="flex flex-col gap-1">
-                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
-                    ASR: {(models.asr[getSafe(config, "model.model", "")] as any)?.name ??
-                        (getSafe(config, "model.model", "") || "—")}
-                </span>
-                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
-                    SLM: {getSafe(config, "refinement.enabled", false)
-                        ? ((models.slm[getSafe(config, "refinement.model_id", "")] as any)?.name ??
-                          (getSafe(config, "refinement.model_id", "") || "—"))
-                        : "Disabled"}
-                </span>
-                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
-                    Compute: {health.gpu?.cuda_available ? "GPU (CUDA)" : "CPU"}
-                </span>
-            </div>
-            <div class="flex gap-[var(--space-2)] flex-wrap">
-                <StyledButton variant="secondary" onclick={handleRestartEngine}>Restart Engine</StyledButton>
-            </div>
+    <!-- Engine: status + restart -->
+    <div
+        class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-md)] p-[var(--space-3)]"
+    >
+        <span class="text-[var(--text-sm)] text-[var(--text-primary)] font-[var(--weight-emphasis)]">Engine</span>
+        <div class="flex flex-col gap-1">
+            <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
+                ASR: {(models.asr[getSafe(config, "model.model", "")] as any)?.name ??
+                    (getSafe(config, "model.model", "") || "—")}
+            </span>
+            <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
+                SLM: {getSafe(config, "refinement.enabled", false)
+                    ? ((models.slm[getSafe(config, "refinement.model_id", "")] as any)?.name ??
+                      (getSafe(config, "refinement.model_id", "") || "—"))
+                    : "Disabled"}
+            </span>
+            <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">
+                Compute: {health.gpu?.cuda_available ? "GPU (CUDA)" : "CPU"}
+            </span>
+        </div>
+        <div class="flex gap-[var(--space-2)] flex-wrap">
+            <StyledButton variant="secondary" onclick={handleRestartEngine}>Restart Engine</StyledButton>
         </div>
     </div>
 </div>
