@@ -2,6 +2,16 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.6.5 — Bulk Refine Route Fix (ISS-055)
+
+**Date:** 2026-03-09
+**Status:** Hotfix / Bug Fix
+
+### Fixed
+- **ISS-055** — `batch_refine_transcripts` and `cancel_batch_refine` handlers were defined in `transcripts.py` but never imported into `app.py` or added to `route_handlers`. Every bulk-refine attempt returned HTTP 405 Method Not Allowed. Both handlers now registered correctly.
+
+---
+
 ## v5.6.4 — UI Reactivity Fix (ISS-065)
 
 **Date:** 2026-03-09

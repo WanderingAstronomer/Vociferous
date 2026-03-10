@@ -1,6 +1,6 @@
 <div align="center">
 
-## Vociferous v5.6.4
+## Vociferous v5.6.5
 
 **March 2026**
 

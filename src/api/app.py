@@ -46,7 +46,9 @@ from src.api.system import (
 from src.api.tags import assign_tags, create_tag, delete_tag, list_tags, update_tag
 from src.api.transcripts import (
     batch_delete_transcripts,
+    batch_refine_transcripts,
     batch_tag_toggle,
+    cancel_batch_refine,
     clear_all_transcripts,
     commit_refinement,
     delete_transcript,
@@ -259,6 +261,8 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             batch_tag_toggle,
             clear_all_transcripts,
             refine_transcript,
+            batch_refine_transcripts,
+            cancel_batch_refine,
             commit_refinement,
             rename_transcript,
             retitle_transcript,
