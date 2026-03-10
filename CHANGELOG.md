@@ -2,6 +2,27 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.6.7 — Model Maintenance & Restart Toast (ISS-061, ISS-062)
+
+**Date:** 2026-03-09
+**Status:** Hotfix / Maintenance
+
+### Changed
+- **ISS-062** — Dropped sub-4B SLM model support. The Qwen3 1.7B model has been removed from the registry; Qwen3 4B is now the smallest selectable refinement model.
+  - Existing installations configured for 1.7B automatically fall back to the smallest remaining model on next startup.
+  - Qwen3 4B tier relabelled from "balanced" to "fast".
+
+### Added
+- **ISS-061** — Model-change toast now informs the user a restart is required. When either the ASR or SLM model is changed and settings are saved, the toast reads: "Model change saved. Go to Maintenance → Restart Engine to apply."
+
+---
+
+## v5.6.6 — RESERVED — UI Bug Fixes (ISS-056, ISS-057, ISS-058, ISS-059, ISS-060)
+
+> **RESERVED** — Do not use this version number. Work in progress.
+
+---
+
 ## v5.6.5 — Bulk Refine Route Fix (ISS-055)
 
 **Date:** 2026-03-09

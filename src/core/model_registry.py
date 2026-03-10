@@ -86,20 +86,12 @@ ASR_MODELS: dict[str, ASRModel] = {
 # Pre-converted CT2 directories. Downloaded via snapshot_download().
 
 SLM_MODELS: dict[str, SLMModel] = {
-    "qwen1.7b": SLMModel(
-        id="qwen1.7b",
-        name="Qwen3 1.7B",
-        repo="jncraton/Qwen3-1.7B-ct2-int8",
-        size_mb=1661,
-        tier="fast",
-        quant="int8",
-    ),
     "qwen4b": SLMModel(
         id="qwen4b",
         name="Qwen3 4B",
         repo="jncraton/Qwen3-4B-ct2-int8",
         size_mb=3858,
-        tier="balanced",
+        tier="fast",
         quant="int8",
     ),
     "qwen8b": SLMModel(
@@ -141,6 +133,11 @@ def get_asr_model(model_id: str) -> ASRModel | None:
 def get_slm_model(model_id: str) -> SLMModel | None:
     """Look up an SLM model by ID."""
     return SLM_MODELS.get(model_id)
+
+
+def get_smallest_slm_id() -> str:
+    """Return the ID of the smallest SLM model (by size_mb)."""
+    return min(SLM_MODELS, key=lambda k: SLM_MODELS[k].size_mb)
 
 
 def get_model_catalog() -> dict:

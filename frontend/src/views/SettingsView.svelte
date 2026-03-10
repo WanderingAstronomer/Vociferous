@@ -129,11 +129,24 @@
 
     async function saveConfig() {
         saving = true;
+        // Snapshot model IDs before save to detect model changes (ISS-061).
+        const prev = JSON.parse(originalConfig);
+        const prevAsr = prev?.model?.model ?? "";
+        const prevSlm = prev?.refinement?.model_id ?? "";
         try {
             config = (await updateConfig(config)) as Record<string, any>;
             originalConfig = JSON.stringify(config);
-            showMessage("Settings saved", "success");
-            toast.success("Settings saved");
+
+            const asrChanged = prevAsr !== getSafe(config, "model.model", "");
+            const slmChanged = prevSlm !== getSafe(config, "refinement.model_id", "");
+
+            if (asrChanged || slmChanged) {
+                showMessage("Settings saved — restart required to apply model change", "success");
+                toast.success("Model change saved. Go to Maintenance → Restart Engine to apply.");
+            } else {
+                showMessage("Settings saved", "success");
+                toast.success("Settings saved");
+            }
         } catch (e: any) {
             showMessage(`Error: ${e.message}`, "error");
             toast.error(`Settings save failed: ${e.message}`);
@@ -268,6 +281,44 @@
                                 />
                             </div>
                         </div>
+                    </div>
+                {:else if activeTab === "output"}
+                    <OutputCard
+                        {config}
+                        {models}
+                        {downloadingModel}
+                        {downloadMessage}
+                        {downloadErrorSlm}
+                        {getSafe}
+                        {setSafe}
+                        {handleDownload}
+                    />
+                {:else if activeTab === "appearance"}
+                    <div class="flex flex-col gap-[var(--space-3)]">
+                        <div
+                            class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
+                        >
+                            <label
+                                class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                for="setting-uiscale"
+                                title="Scale the entire interface. Useful for high-DPI displays or accessibility."
+                                >UI Scale</label
+                            >
+                            <div class="w-full max-w-[460px]">
+                                <CustomSelect
+                                    id="setting-uiscale"
+                                    options={[
+                                        { value: "100", label: "100%" },
+                                        { value: "125", label: "125%" },
+                                        { value: "150", label: "150%" },
+                                        { value: "175", label: "175%" },
+                                        { value: "200", label: "200%" },
+                                    ]}
+                                    value={String(getSafe(config, "display.ui_scale", 100))}
+                                    onchange={(v: string) => setSafe("display.ui_scale", parseInt(v, 10))}
+                                />
+                            </div>
+                        </div>
                         <div
                             class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
                         >
@@ -307,44 +358,6 @@
                                     if (!isNaN(v) && v >= 10 && v <= 200) setSafe("user.typing_wpm", v);
                                 }}
                             />
-                        </div>
-                    </div>
-                {:else if activeTab === "output"}
-                    <OutputCard
-                        {config}
-                        {models}
-                        {downloadingModel}
-                        {downloadMessage}
-                        {downloadErrorSlm}
-                        {getSafe}
-                        {setSafe}
-                        {handleDownload}
-                    />
-                {:else if activeTab === "appearance"}
-                    <div class="flex flex-col gap-[var(--space-3)]">
-                        <div
-                            class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
-                        >
-                            <label
-                                class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                                for="setting-uiscale"
-                                title="Scale the entire interface. Useful for high-DPI displays or accessibility."
-                                >UI Scale</label
-                            >
-                            <div class="w-full max-w-[460px]">
-                                <CustomSelect
-                                    id="setting-uiscale"
-                                    options={[
-                                        { value: "100", label: "100%" },
-                                        { value: "125", label: "125%" },
-                                        { value: "150", label: "150%" },
-                                        { value: "175", label: "175%" },
-                                        { value: "200", label: "200%" },
-                                    ]}
-                                    value={String(getSafe(config, "display.ui_scale", 100))}
-                                    onchange={(v: string) => setSafe("display.ui_scale", parseInt(v, 10))}
-                                />
-                            </div>
                         </div>
                     </div>
                 {:else if activeTab === "maintenance"}
