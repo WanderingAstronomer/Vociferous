@@ -11,9 +11,13 @@ import logging
 import platform
 import subprocess
 import threading
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
+    from src.services.audio_cache import AudioCacheManager
+    from src.services.audio_spool import AudioSpoolWriter
     from src.core.settings import VociferousSettings
     from src.database.db import TranscriptDB
     from src.services.audio_service import AudioService
@@ -95,6 +99,8 @@ class RecordingSession:
         self._recording_thread: threading.Thread | None = None
         self._asr_model: Any = None
         self._audio_pipeline: Any = None  # lazy AudioPipeline instance
+        self._spool: AudioSpoolWriter | None = None
+        self._audio_cache: AudioCacheManager | None = None
 
     # --- Public lifecycle interface ---
 
@@ -105,6 +111,14 @@ class RecordingSession:
     @property
     def is_recording(self) -> bool:
         return self._is_recording
+
+    @property
+    def audio_cache(self) -> AudioCacheManager | None:
+        return self._audio_cache
+
+    @audio_cache.setter
+    def audio_cache(self, value: AudioCacheManager) -> None:
+        self._audio_cache = value
 
     def load_asr_model(self) -> None:
         """Warm-load the Whisper model (faster-whisper/CTranslate2) and emit engine_status events."""
@@ -143,6 +157,9 @@ class RecordingSession:
         """Signal the recording loop to abort without transcribing."""
         self._recording_stop.set()
         self._is_recording = False
+        if self._spool is not None:
+            self._spool.discard()
+            self._spool = None
 
     # --- Intent handlers ---
 
@@ -172,6 +189,14 @@ class RecordingSession:
             self._is_recording = True
 
         self._recording_stop.clear()
+
+        # Create disk spool for crash-resilient recording
+        from src.services.audio_spool import AudioSpoolWriter
+
+        session_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        settings = self._settings_provider()
+        self._spool = AudioSpoolWriter(session_id, sample_rate=settings.recording.sample_rate)
+
         self._emit("recording_started", {})
 
         t = threading.Thread(target=self._recording_loop, daemon=True, name="recording")
@@ -188,6 +213,9 @@ class RecordingSession:
             return
         self._recording_stop.set()
         self._is_recording = False
+        if self._spool is not None:
+            self._spool.discard()
+            self._spool = None
         self._emit("recording_stopped", {"cancelled": True})
 
     def handle_toggle(self, intent: Any) -> None:
@@ -200,12 +228,24 @@ class RecordingSession:
 
     def _recording_loop(self) -> None:
         """Background thread: record audio → transcribe → store → emit."""
+        spool = self._spool
+        spool_path: Path | None = None
         try:
             audio_service = self._audio_service_provider()
-            audio_data = audio_service.record_audio(should_stop=lambda: self._recording_stop.is_set())
+            audio_data = audio_service.record_audio(
+                should_stop=lambda: self._recording_stop.is_set(),
+                spool_writer=spool,
+            )
+
+            # Finalize spool regardless of cancel state
+            if spool is not None:
+                spool_path = spool.finalize()
+                self._spool = None
 
             # Check if cancelled during recording
             if not self._is_recording:
+                # Cancelled — spool already finalized (not discarded) for
+                # crash-recovery.  handle_cancel discards it explicitly.
                 return
 
             self._is_recording = False
@@ -213,17 +253,25 @@ class RecordingSession:
 
             if audio_data is None or len(audio_data) == 0:
                 self._emit("transcription_error", {"message": "Recording too short or empty"})
+                self._cleanup_spool(spool_path)
                 return
 
-            self._transcribe_and_store(audio_data)
+            self._transcribe_and_store(audio_data, spool_path=spool_path)
 
         except Exception as e:
             logger.exception("Recording loop error")
+            # Finalize spool on error so audio survives on disk
+            if spool is not None and spool_path is None:
+                try:
+                    spool.finalize()
+                except Exception:
+                    pass
+                self._spool = None
             self._is_recording = False
             self._emit("recording_stopped", {"cancelled": False})
             self._emit("transcription_error", {"message": str(e)})
 
-    def _transcribe_and_store(self, audio_data: Any) -> None:
+    def _transcribe_and_store(self, audio_data: Any, *, spool_path: Path | None = None) -> None:
         """Run transcription on audio data, store result, and emit events."""
         if self._shutdown_event.is_set():
             logger.debug("Transcription skipped — shutdown in progress")
@@ -264,6 +312,7 @@ class RecordingSession:
 
             if not text.strip():
                 self._emit("transcription_error", {"message": "No speech detected"})
+                self._cleanup_spool(spool_path)
                 return
 
             # Store in database
@@ -306,8 +355,32 @@ class RecordingSession:
             if settings.output.auto_copy_to_clipboard:
                 _copy_to_system_clipboard(text)
 
+            # Cache audio WAV for crash recovery / future re-transcription
+            if spool_path is not None and transcript is not None and self._audio_cache is not None:
+                try:
+                    self._audio_cache.store(
+                        transcript.id,
+                        spool_path,
+                        max_cache_minutes=settings.recording.audio_cache_minutes,
+                    )
+                except Exception:
+                    logger.warning("Audio cache store failed", exc_info=True)
+                    self._cleanup_spool(spool_path)
+            else:
+                self._cleanup_spool(spool_path)
+
             logger.info("Transcription complete: %d chars, %dms", len(text), duration_ms)
 
         except Exception as e:
             logger.exception("Transcription failed")
+            self._cleanup_spool(spool_path)
             self._emit("transcription_error", {"message": str(e)})
+
+    @staticmethod
+    def _cleanup_spool(spool_path: Path | None) -> None:
+        """Delete a spool file if it exists (cache disabled or error path)."""
+        if spool_path is not None:
+            try:
+                spool_path.unlink(missing_ok=True)
+            except OSError:
+                pass

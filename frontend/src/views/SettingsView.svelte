@@ -281,6 +281,29 @@
                                 />
                             </div>
                         </div>
+                        <div
+                            class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
+                        >
+                            <label
+                                class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                for="setting-audiocache"
+                                title="Keep recorded audio on disk for crash recovery. Oldest recordings are pruned when the limit is exceeded. Set to 0 to disable."
+                                >Audio Cache (minutes)</label
+                            >
+                            <input
+                                id="setting-audiocache"
+                                type="number"
+                                min="0"
+                                max="480"
+                                step="15"
+                                class="h-9 w-28 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                                value={getSafe(config, "recording.audio_cache_minutes", 60)}
+                                oninput={(e) => {
+                                    const v = parseFloat((e.target as HTMLInputElement).value);
+                                    if (!isNaN(v) && v >= 0 && v <= 480) setSafe("recording.audio_cache_minutes", v);
+                                }}
+                            />
+                        </div>
                     </div>
                 {:else if activeTab === "output"}
                     <OutputCard

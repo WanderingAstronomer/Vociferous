@@ -109,6 +109,18 @@ class ApplicationCoordinator:
             title_generator_provider=lambda: self.title_generator,
         )
 
+        # 2b. Audio cache manager (WAV cache + orphan spool detection).
+        from src.services.audio_cache import AudioCacheManager
+
+        audio_cache = AudioCacheManager(sample_rate=self.settings.recording.sample_rate)
+        self.recording_session.audio_cache = audio_cache
+        orphans = audio_cache.cleanup_stale_spools()
+        if orphans:
+            logger.warning(
+                "%d orphaned audio spool(s) found from prior crash — see log above for paths",
+                len(orphans),
+            )
+
         # 3. SLM runtime (CTranslate2 Generator).
         self._init_slm_runtime()
 

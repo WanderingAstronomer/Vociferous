@@ -66,6 +66,7 @@ class RecordingSettings(BaseModel):
     sample_rate: int = 16000
     min_duration_ms: int = 100
     max_recording_minutes: float = 30.0
+    audio_cache_minutes: float = 60.0
 
 
 class UserSettings(BaseModel):

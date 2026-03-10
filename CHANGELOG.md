@@ -2,6 +2,20 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.9.0 — Crash-Resilient Audio Recording (ISS-083)
+
+**Date:** 2026-03-10
+**Status:** Minor Release
+
+### Added
+- **Disk spool during recording** — Audio frames are now incrementally written to a raw PCM spool file on disk as they are captured. If the process crashes, the spool file survives with all audio up to the last ~1-second flush. Spool files live in `<cache_dir>/audio_spool/`.
+- **Audio cache with LRU pruning** — After successful transcription, the spool is converted to a standard WAV file in `<cache_dir>/audio_cache/{transcript_id}.wav`. Cache size is bounded by a configurable duration limit (default: 60 minutes, ~115 MB). Oldest recordings are evicted first.
+- **`audio_cache_minutes` setting** — New field in Settings → Recording. Controls how much recorded audio to keep on disk (0 = disabled, max 480 minutes). Spool still provides crash safety even when cache is disabled.
+- **Startup orphan detection** — On launch, any orphaned `.pcm` spool files (from prior crashes) are logged with duration and path for manual recovery.
+- **Navigation lock during recording** — View switching is now blocked while a recording is active, preventing accidental data loss from navigation. Uses the existing `isNavigationLocked` mechanism.
+
+---
+
 ## v5.8.7 — Deferred Items Reconciliation
 
 **Date:** 2026-03-10

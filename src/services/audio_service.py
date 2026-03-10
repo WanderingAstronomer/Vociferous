@@ -10,7 +10,7 @@ recording loop, and compute cheap RMS for the level meter.
 
 import logging
 from queue import Empty, Queue
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
 import sounddevice as sd
@@ -19,6 +19,9 @@ from numpy.typing import NDArray
 from src.core.constants import FlowTiming
 from src.core.exceptions import AudioError
 from src.core.settings import VociferousSettings
+
+if TYPE_CHECKING:
+    from src.services.audio_spool import AudioSpoolWriter
 
 logger = logging.getLogger(__name__)
 
@@ -92,12 +95,17 @@ class AudioService:
     # Recording
     # ------------------------------------------------------------------
 
-    def record_audio(self, should_stop: Callable[[], bool]) -> NDArray[np.int16] | None:
+    def record_audio(
+        self,
+        should_stop: Callable[[], bool],
+        spool_writer: AudioSpoolWriter | None = None,
+    ) -> NDArray[np.int16] | None:
         """
         Record audio until should_stop() returns True.
 
         Args:
             should_stop: Callback that returns True when recording should stop.
+            spool_writer: Optional disk spool for crash-resilient recording.
 
         Returns:
             Recorded audio data or None if too short/failed.
@@ -191,6 +199,8 @@ class AudioService:
                         continue
 
                     recording.extend(frame)
+                    if spool_writer is not None:
+                        spool_writer.write_frames(frame)
 
                     if len(recording) >= max_recording_samples:
                         logger.warning(
@@ -220,6 +230,8 @@ class AudioService:
                     frame = audio_queue.get_nowait()
                     if len(frame) >= frame_size:
                         recording.extend(frame)
+                        if spool_writer is not None:
+                            spool_writer.write_frames(frame)
                         drained += 1
                 except Empty:
                     break
