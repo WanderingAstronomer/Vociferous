@@ -146,9 +146,7 @@ async def export_file(data: dict) -> Response:
     return Response(content={"path": save_path})
 
 
-_ALLOWED_AUDIO_EXTENSIONS = frozenset(
-    (".wav", ".mp3", ".m4a", ".flac", ".ogg", ".webm", ".wma", ".aac", ".opus")
-)
+_ALLOWED_AUDIO_EXTENSIONS = frozenset((".wav", ".mp3", ".m4a", ".flac", ".ogg", ".webm", ".wma", ".aac", ".opus"))
 
 
 @post("/api/import-audio")
@@ -184,9 +182,7 @@ async def import_audio_file(
     intent = ImportAudioFileIntent(file_path=tmp_path, cleanup_source=True)
     success = coordinator.command_bus.dispatch(intent)
 
-    return Response(
-        content={"status": "importing", "file": original_name, "dispatched": success}
-    )
+    return Response(content={"status": "importing", "file": original_name, "dispatched": success})
 
 
 @get("/api/models", sync_to_thread=True)

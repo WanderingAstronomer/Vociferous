@@ -71,10 +71,9 @@
     let autoRefine = $state(false);
     let username = $state("");
 
-    /* ===== Audio file import (drag-and-drop + file picker) ===== */
+    /* ===== Audio file import ===== */
     const AUDIO_ACCEPT = ".wav,.mp3,.m4a,.flac,.ogg,.webm,.wma,.aac,.opus";
     let fileInput: HTMLInputElement | undefined = $state();
-    let dragOver = $state(false);
 
     /* ===== Quick-tag state ===== */
     let allTags = $state<Tag[]>([]);
@@ -501,19 +500,6 @@
         input.value = "";
     }
 
-    function handleDrop(e: DragEvent) {
-        e.preventDefault();
-        dragOver = false;
-        const file = e.dataTransfer?.files[0];
-        if (!file) return;
-        const ext = "." + file.name.split(".").pop()?.toLowerCase();
-        if (!AUDIO_ACCEPT.split(",").includes(ext)) {
-            toast.warning(`Unsupported format: ${ext}`);
-            return;
-        }
-        submitAudioFile(file);
-    }
-
     function toggleRecording() {
         if (isRecording) stopRecording();
         else startRecording();
@@ -868,28 +854,16 @@
                 <div class="flex-1 min-h-0 flex flex-col items-center justify-center gap-[var(--space-4)]">
                     <RecordingControls {isRecording} {audioLevel} onstart={startRecording} onstop={stopRecording} />
                     {#if viewState === "idle"}
-                        <!-- svelte-ignore a11y_no_static_element_interactions -->
-                        <div
-                            class="flex flex-col items-center gap-2 rounded-lg border-2 border-dashed px-6 py-4 transition-colors duration-150
-                                {dragOver ? 'border-[var(--accent)] bg-[var(--accent)]/8' : 'border-transparent'}"
-                            ondragover={(e) => { e.preventDefault(); dragOver = true; }}
-                            ondragleave={() => { dragOver = false; }}
-                            ondrop={handleDrop}
-                        >
-                            <input
-                                bind:this={fileInput}
-                                type="file"
-                                accept={AUDIO_ACCEPT}
-                                class="hidden"
-                                onchange={handleFileSelected}
-                            />
-                            <StyledButton variant="ghost" size="sm" onclick={importAudio}>
-                                <FileAudio size={14} /> Import Audio File
-                            </StyledButton>
-                            <span class="text-[11px] text-[var(--text-tertiary)] select-none">
-                                {dragOver ? "Drop to import" : "or drag & drop an audio file"}
-                            </span>
-                        </div>
+                        <input
+                            bind:this={fileInput}
+                            type="file"
+                            accept={AUDIO_ACCEPT}
+                            class="hidden"
+                            onchange={handleFileSelected}
+                        />
+                        <StyledButton variant="ghost" size="sm" onclick={importAudio}>
+                            <FileAudio size={14} /> Import Audio File
+                        </StyledButton>
                     {/if}
                 </div>
 
