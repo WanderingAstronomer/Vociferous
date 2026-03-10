@@ -19,7 +19,7 @@
     import WorkspacePanel from "../lib/components/WorkspacePanel.svelte";
     import StyledButton from "../lib/components/StyledButton.svelte";
     import ActivityHeatmap from "../lib/components/ActivityHeatmap.svelte";
-    import { formatDuration, formatWpm } from "../lib/formatters";
+    import { formatDuration, formatElapsed, formatWpm } from "../lib/formatters";
     import { Tag as TagIcon, Bookmark } from "lucide-svelte";
     import {
         deleteTranscript as apiDeleteTranscript,
@@ -655,7 +655,7 @@
 
     <!-- Session tag bar (idle/recording — selects tags auto-applied to every new transcript) -->
     {#if (viewState === "idle" || viewState === "recording") && allTags.filter((t) => !t.is_system).length > 0}
-        <div class="shrink-0 flex items-center gap-[var(--space-2)] py-[var(--space-1)] px-[var(--space-1)]">
+        <div class="shrink-0 flex items-center justify-center gap-[var(--space-2)] py-[var(--space-1)] px-[var(--space-1)]">
             <Bookmark
                 size={13}
                 class={sessionTagIds.size > 0
@@ -703,10 +703,8 @@
                     <RecordingControls
                         {isRecording}
                         {audioLevel}
-                        elapsedMs={recordingElapsedMs}
                         onstart={startRecording}
                         onstop={stopRecording}
-                        oncancel={cancelRecording}
                     />
                 </div>
 
@@ -745,6 +743,35 @@
             </div>
         {/if}
     </WorkspacePanel>
+
+    <!-- Recording status bar (cancel + timer) — below the panel during active recording -->
+    {#if isRecording}
+        <div class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] shrink-0">
+            <StyledButton
+                variant="danger-outline"
+                size="sm"
+                onclick={cancelRecording}
+                ariaLabel="Cancel recording and discard audio"
+                title="Cancel recording and discard captured audio"
+            >
+                <Trash2 size={15} /> Cancel
+            </StyledButton>
+
+            <div class="flex-1 flex items-center justify-center gap-[var(--space-2)]">
+                <span
+                    class="w-2 h-2 rounded-full bg-[var(--color-danger)] shrink-0 animate-[pulse-dot_1.2s_ease-in-out_infinite]"
+                ></span>
+                <span class="text-[var(--text-sm)] text-[var(--color-danger)] whitespace-nowrap"
+                    >Recording in progress…</span
+                >
+            </div>
+
+            <span
+                class="text-[var(--text-sm)] font-[var(--font-mono)] text-[var(--text-tertiary)] tabular-nums whitespace-nowrap"
+                >{formatElapsed(recordingElapsedMs)}</span
+            >
+        </div>
+    {/if}
 
     <!-- Session tags applied confirmation (ready state only) -->
     {#if viewState === "ready" && sessionTagIds.size > 0}

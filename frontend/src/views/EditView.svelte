@@ -17,6 +17,7 @@
         updateTag,
         assignTags,
         dispatchIntent,
+        renameTranscript,
         type Transcript,
         type Tag,
     } from "../lib/api";
@@ -26,7 +27,7 @@
     import { countFillers } from "../lib/textAnalysis";
     import StyledButton from "../lib/components/StyledButton.svelte";
     import TagBar from "../lib/components/TagBar.svelte";
-    import { ArrowLeft, Check, X, Hammer, RotateCcw } from "lucide-svelte";
+    import { ArrowLeft, Check, X, Hammer, RotateCcw, Pencil } from "lucide-svelte";
 
     /* ===== State ===== */
 
@@ -37,6 +38,8 @@
     let error = $state("");
     let allTags: Tag[] = $state([]);
     let tagMenuOpen = $state(false);
+    let editingTitle = $state(false);
+    let titleDraft = $state("");
 
     /* ===== Derived ===== */
 
@@ -54,6 +57,45 @@
     }
 
     /* ===== Actions ===== */
+
+    function startTitleEdit() {
+        if (!transcript) return;
+        titleDraft = transcript.display_name?.trim() || "";
+        editingTitle = true;
+    }
+
+    async function commitTitleEdit() {
+        if (!transcript?.id) return;
+        const trimmed = titleDraft.trim();
+        if (!trimmed) {
+            editingTitle = false;
+            return;
+        }
+        try {
+            await renameTranscript(transcript.id, trimmed);
+            transcript = await getTranscript(transcript.id);
+            toast.success("Title updated");
+        } catch (e: any) {
+            toast.error(`Rename failed: ${e.message}`);
+        } finally {
+            editingTitle = false;
+        }
+    }
+
+    function cancelTitleEdit() {
+        editingTitle = false;
+    }
+
+    function handleTitleKeydown(e: KeyboardEvent) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            commitTitleEdit();
+        } else if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            cancelTitleEdit();
+        }
+    }
 
     async function load(id: number) {
         loading = true;
@@ -225,9 +267,47 @@
 
         <div class="flex-1 min-w-0">
             {#if transcript}
-                <h1 class="text-[18px] font-semibold text-[var(--text-primary)] leading-snug truncate m-0">
-                    {getTitle(transcript)}
-                </h1>
+                {#if editingTitle}
+                    <div class="flex items-center gap-2 min-w-0">
+                        <input
+                            type="text"
+                            class="flex-1 min-w-0 h-8 text-[18px] font-semibold text-[var(--text-primary)] bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-[var(--radius-md)] px-2 outline-none focus:border-[var(--accent)]"
+                            maxlength="120"
+                            bind:value={titleDraft}
+                            onkeydown={handleTitleKeydown}
+                            onblur={commitTitleEdit}
+                            autofocus
+                        />
+                        <button
+                            class="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-transparent border-none text-[var(--accent)] hover:bg-[var(--hover-overlay)] cursor-pointer"
+                            onmousedown={(e: MouseEvent) => { e.preventDefault(); commitTitleEdit(); }}
+                            title="Confirm rename"
+                        >
+                            <Check size={14} />
+                        </button>
+                        <button
+                            class="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-transparent border-none text-[var(--text-tertiary)] hover:bg-[var(--hover-overlay)] cursor-pointer"
+                            onmousedown={(e: MouseEvent) => { e.preventDefault(); cancelTitleEdit(); }}
+                            title="Cancel rename"
+                        >
+                            <X size={14} />
+                        </button>
+                    </div>
+                {:else}
+                    <button
+                        class="group/title flex items-center gap-1.5 bg-transparent border-none p-0 cursor-pointer text-left min-w-0 max-w-full"
+                        onclick={startTitleEdit}
+                        title="Click to rename"
+                    >
+                        <h1 class="text-[18px] font-semibold text-[var(--text-primary)] leading-snug truncate m-0">
+                            {getTitle(transcript)}
+                        </h1>
+                        <Pencil
+                            size={13}
+                            class="shrink-0 text-[var(--text-tertiary)] opacity-0 group-hover/title:opacity-100 transition-opacity"
+                        />
+                    </button>
+                {/if}
                 <div class="flex items-center gap-3 mt-1 flex-wrap">
                     <span class="text-[13px] text-[var(--text-tertiary)]">
                         {formatRelativeDate(transcript.created_at)}

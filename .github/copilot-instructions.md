@@ -177,6 +177,78 @@ Mandatory behavior:
 3. Keep updates short and current. Update the `Last updated` header line on every edit.
 4. Do not recreate the old split-file structure (`open_issues.md`, `kanban_snapshot.md`, `refactoring_status.md`). Those files are gone intentionally.
 
+### 8.8 Multi-Agent Coordination
+
+Multiple AI agents may operate concurrently in this repository. The `docs/agent_resources/` directory is **gitignored** and serves as the shared local coordination surface. All agents can read and write files there without polluting the commit history.
+
+#### 8.8.0 Agent Codename (Pick Once, Keep Forever)
+
+**Every agent must pick a codename at the start of their session — before reading the lockfile, before touching any file.**
+
+A codename is two words: one from the **Adjectives** list, one from the **Objects** list, joined by a hyphen.
+
+**Adjectives**: amber, cobalt, crimson, cyan, glacial, golden, indigo, jade, lunar, magenta, obsidian, onyx, opal, ruby, sapphire, scarlet, silver, teal, violet, zinc
+
+**Objects**: aphelion, aurora, binary, corona, equinox, lagrange, meridian, nadir, nebula, nova, parsec, perihelion, pulsar, quasar, solstice, syzygy, transit, umbra, vega, zenith
+
+Rules:
+
+1. Pick randomly. Don't always pick the first option — distribute across the list.
+2. Check `AGENT_LOCKS.md` for existing codenames. If yours is taken, pick another.
+3. Keep the same codename for the **entire session**. Do not change it mid-task.
+4. The codename appears only in `docs/agent_resources/` files. It never appears in commit messages, source code, or CHANGELOG entries.
+5. When your work is committed and your lock section is removed, the codename is retired for that session.
+
+#### 8.8.1 Agent Lockfile (`docs/agent_resources/AGENT_LOCKS.md`)
+
+Before starting implementation work, each agent **must** create or update `docs/agent_resources/AGENT_LOCKS.md` to declare the files it intends to modify. Before editing any source file, check the lockfile to see if another agent has claimed it.
+
+Format:
+
+```markdown
+# Agent Locks
+
+## amber-pulsar · v5.6.x — Short description
+- path/to/file.svelte
+- path/to/other_file.py
+
+## cobalt-zenith · v5.6.y — Short description
+- path/to/different_file.ts
+```
+
+Rules:
+
+1. **Check before you edit.** Read `AGENT_LOCKS.md` before modifying any file. If another agent has claimed it, do not touch it — find an alternative approach or wait.
+2. **Declare before you start.** Add your section (using your codename) before writing any code. Update it if your scope changes (new files needed, files no longer needed).
+3. **Release when done.** Remove your section from the lockfile after your release commit lands.
+4. **Shared files require coordination.** `CHANGELOG.md`, `pyproject.toml`, `README.md`, and `docs/agent_resources/workboard.md` are shared release infrastructure — they cannot be exclusively locked. Instead, each agent edits only its own section (e.g., its own RESERVED block in CHANGELOG) and avoids rewriting the entire file.
+
+#### 8.8.2 Working Tree Discipline
+
+* **Never leave uncommitted changes in files you are not actively working on.** If you discover dirty files in the working tree that are not yours, run `git restore <file>` for those files before proceeding. Do not stage, stash, or commit another agent's work.
+* **Before committing**, run `git status --short` and verify every dirty file is one you intentionally modified. If you see files you didn't touch, restore them.
+* **Before committing**, run `git log --oneline -5` to check for new commits from other agents. If a new version landed while you were working, verify your changes still apply cleanly and your CHANGELOG entry is in the right position.
+
+#### 8.8.3 Version Ordering
+
+CHANGELOG reservations establish the *intended* version number, not the commit order. If another agent commits a higher version while your lower version is still in progress:
+
+1. **Do not panic.** Out-of-order commits are acceptable — the version numbers in the CHANGELOG are what matter for the project narrative.
+2. **Commit your version as reserved.** The CHANGELOG sections define the canonical version sequence. `git log` order may differ from version number order. This is fine.
+3. **Do not renumber.** Your reserved version is your version. Period.
+
+#### 8.8.4 Pre-Commit Sync Checklist
+
+Before every release commit, execute this sequence:
+
+```bash
+git status --short          # Verify only YOUR files are dirty
+git log --oneline -5        # Check for new commits from other agents
+git diff --name-only        # Final confirmation of changed files
+```
+
+If you see unexpected files or commits, stop and reconcile before committing.
+
 ---
 
 ## 9. Change Playbooks

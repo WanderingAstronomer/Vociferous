@@ -69,6 +69,14 @@ export function formatDuration(ms: number): string {
     return `${m}m`;
 }
 
+/** Format elapsed milliseconds as a digital MM:SS timer string. */
+export function formatElapsed(ms: number): string {
+    const totalSec = Math.floor(ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 /** Format words-per-minute from word count and duration in ms. Returns "—" for invalid inputs. */
 export function formatWpm(words: number, ms: number): string {
     if (ms <= 0 || words <= 0) return "—";

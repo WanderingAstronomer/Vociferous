@@ -116,6 +116,13 @@ export function cancelBulkRefinement(): Promise<{ status: string }> {
     return request("/transcripts/batch-refine/cancel", { method: "POST" });
 }
 
+export function renameTranscript(id: number, title: string): Promise<{ status: string; title: string }> {
+    return request(`/transcripts/${id}/rename`, {
+        method: "POST",
+        body: JSON.stringify({ title }),
+    });
+}
+
 // --- Tags ---
 
 export function getTags(): Promise<Tag[]> {

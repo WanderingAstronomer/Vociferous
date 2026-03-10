@@ -2,6 +2,12 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.6.8 — RESERVED — MOTD Enrichment & Orrery Performance (ISS-070, ISS-071)
+
+> **RESERVED** — Do not use this version number. Work in progress.
+
+---
+
 ## v5.6.7 — Model Maintenance & Restart Toast (ISS-061, ISS-062)
 
 **Date:** 2026-03-09
@@ -17,9 +23,17 @@
 
 ---
 
-## v5.6.6 — RESERVED — UI Bug Fixes (ISS-056, ISS-057, ISS-058, ISS-059, ISS-060)
+## v5.6.6 — UI Bug Fixes (ISS-056, ISS-057, ISS-058, ISS-059, ISS-060)
 
-> **RESERVED** — Do not use this version number. Work in progress.
+**Date:** 2026-03-09
+**Status:** Hotfix / Bug Fix
+
+### Fixed
+- **ISS-056** — "Your Name" and "Typing Speed (WPM)" fields were mis-filed in the Recording tab. Both are user identity/preference settings with no relation to recording behaviour. Moved to the Appearance tab.
+- **ISS-057** — Action bar background in TranscriptsView bled edge-to-edge while transcript cards have `rounded-lg` insets, creating a visual shelf. Both action bar variants (selection and bulk-refine progress) now wrap their content in a `rounded-lg` inner div that aligns with card edges.
+- **ISS-058** — Recording status bar (Cancel button, pulse indicator, timer) was rendered inside `RecordingControls` and got vertically centred with the mic button. Extracted from `RecordingControls` and placed in `TranscribeView` below `<WorkspacePanel>`, matching the position of action bars for all other view states. `formatElapsed` extracted to `formatters.ts`.
+- **ISS-059** — Session tags strip in TranscribeView was left-aligned. Added `justify-center` to horizontally centre tag content with the rest of the view.
+- **ISS-060** — Transcript rename was unimplemented in EditView despite backend endpoint and intent existing. Added `renameTranscript()` to `api.ts`. EditView header title is now click-to-edit: clicking shows an inline input with confirm (Enter/blur) and cancel (Esc) behaviour.
 
 ---
 
