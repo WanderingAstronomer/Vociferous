@@ -2,6 +2,24 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.8.7 — Deferred Items Reconciliation
+
+**Date:** 2026-03-10
+**Status:** Hotfix / Maintenance
+
+### Changed
+- **Deferred items audit** — Reconciled six of seven deferred workboard items. Five closed with no code changes (correctly audited as theoretical or already clean). One fixed.
+  - **Inline validation duplication** (fixed): `level` validation moved from duplicated inline checks in `refine_transcript()` and `batch_refine_transcripts()` API handlers into `RefineTranscriptIntent.__post_init__` and `BulkRefineTranscriptsIntent.__post_init__`. API handlers now catch `ValueError` at intent construction. Self-validating intents — validation applies regardless of dispatch origin.
+  - **`transcript_to_dict()` location** (closed): audited WebSocket broadcast paths — function is API-layer-only, not used by WS. No move needed.
+  - **`system.py` download_model thread** (closed): documented H-pattern exception; thread-safe EventBus emit is correct.
+  - **Settings global singleton** (closed): startup order and graceful fallbacks eliminate theoretical risk.
+  - **DB None handling audit** (closed): re-confirmed schema `NOT NULL` constraints and dataclass defaults.
+
+### Fixed
+- **Stale test assertions** — Handler registration tests updated: added `RevertToRawIntent`, `SetAnalyticsInclusionIntent`, `AppendToTranscriptIntent` to expected intent list; handler count assertion corrected from 23 to 25. Bulk refine `SimpleNamespace` test stubs updated with missing `skip_refined` attribute.
+
+---
+
 ## v5.8.6 — Recording UI & Auto-Title Fixes (ISS-082)
 
 **Date:** 2026-03-10

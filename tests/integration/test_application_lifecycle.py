@@ -120,6 +120,7 @@ class TestHandlerRegistration:
     def test_all_intents_registered(self, coordinator):
         """Every intent defined in the coordinator must have a handler."""
         from src.core.intents.definitions import (
+            AppendToTranscriptIntent,
             AssignTagsIntent,
             BatchDeleteTranscriptsIntent,
             BatchToggleTagIntent,
@@ -138,6 +139,8 @@ class TestHandlerRegistration:
             RenameTranscriptIntent,
             RestartEngineIntent,
             RetitleTranscriptIntent,
+            RevertToRawIntent,
+            SetAnalyticsInclusionIntent,
             StopRecordingIntent,
             ToggleRecordingIntent,
             UpdateConfigIntent,
@@ -153,7 +156,10 @@ class TestHandlerRegistration:
             BatchDeleteTranscriptsIntent,
             ClearTranscriptsIntent,
             CommitEditsIntent,
+            RevertToRawIntent,
             RenameTranscriptIntent,
+            AppendToTranscriptIntent,
+            SetAnalyticsInclusionIntent,
             RefineTranscriptIntent,
             CommitRefinementIntent,
             BulkRefineTranscriptsIntent,
@@ -176,8 +182,8 @@ class TestHandlerRegistration:
 
     def test_handler_count_matches_intent_count(self, coordinator):
         """No extra/ghost handlers registered beyond the expected set."""
-        # 23 intents are registered in _register_handlers
-        assert len(coordinator.command_bus._handlers) == 23
+        # 25 intents are registered in _register_handlers
+        assert len(coordinator.command_bus._handlers) == 25
 
     def test_handlers_are_callable(self, coordinator):
         """Every registered handler must be callable."""
@@ -187,7 +193,7 @@ class TestHandlerRegistration:
     def test_double_register_does_not_duplicate(self, coordinator):
         """Calling _register_handlers again overwrites, doesn't stack."""
         coordinator._register_handlers()
-        assert len(coordinator.command_bus._handlers) == 23
+        assert len(coordinator.command_bus._handlers) == 25
 
 
 # ── Shutdown & Cleanup ────────────────────────────────────────────────────

@@ -135,18 +135,18 @@ async def batch_tag_toggle(data: dict) -> Response:
 @post("/api/transcripts/{transcript_id:int}/refine")
 async def refine_transcript(transcript_id: int, data: dict) -> Response:
     """Queue a refinement via CommandBus intent."""
-    level = data.get("level", 2)
-    if not isinstance(level, int) or not (1 <= level <= 5):
-        return Response(content={"error": "level must be an integer between 1 and 5"}, status_code=400)
-
-    coordinator = get_coordinator()
     from src.core.intents.definitions import RefineTranscriptIntent
 
-    intent = RefineTranscriptIntent(
-        transcript_id=transcript_id,
-        level=level,
-        instructions=data.get("instructions", ""),
-    )
+    try:
+        intent = RefineTranscriptIntent(
+            transcript_id=transcript_id,
+            level=data.get("level", 2),
+            instructions=data.get("instructions", ""),
+        )
+    except ValueError as e:
+        return Response(content={"error": str(e)}, status_code=400)
+
+    coordinator = get_coordinator()
     coordinator.command_bus.dispatch(intent)
     return Response(content={"status": "queued"})
 
@@ -160,23 +160,23 @@ async def batch_refine_transcripts(data: dict) -> Response:
     if not ids:
         return Response(content={"error": "No transcript IDs provided"}, status_code=400)
 
-    level = data.get("level", 2)
-    if not isinstance(level, int) or not (1 <= level <= 5):
-        return Response(content={"error": "level must be an integer between 1 and 5"}, status_code=400)
-
     from src.core.intents.definitions import BulkRefineTranscriptsIntent
 
-    coordinator = get_coordinator()
     skip_refined = data.get("skip_refined", True)
     if not isinstance(skip_refined, bool):
         skip_refined = True
 
-    intent = BulkRefineTranscriptsIntent(
-        transcript_ids=tuple(ids),
-        level=level,
-        instructions=data.get("instructions", ""),
-        skip_refined=skip_refined,
-    )
+    try:
+        intent = BulkRefineTranscriptsIntent(
+            transcript_ids=tuple(ids),
+            level=data.get("level", 2),
+            instructions=data.get("instructions", ""),
+            skip_refined=skip_refined,
+        )
+    except ValueError as e:
+        return Response(content={"error": str(e)}, status_code=400)
+
+    coordinator = get_coordinator()
     coordinator.command_bus.dispatch(intent)
     return Response(content={"status": "queued", "total": len(ids)})
 

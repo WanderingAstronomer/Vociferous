@@ -92,6 +92,10 @@ class RefineTranscriptIntent(InteractionIntent):
     instructions: str = ""
     source: IntentSource = IntentSource.CONTROLS
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.level, int) or not (1 <= self.level <= 5):
+            raise ValueError("level must be an integer between 1 and 5")
+
 
 @dataclass(frozen=True, slots=True)
 class CommitRefinementIntent(InteractionIntent):
@@ -111,6 +115,10 @@ class BulkRefineTranscriptsIntent(InteractionIntent):
     instructions: str = ""
     skip_refined: bool = True
     source: IntentSource = IntentSource.API
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.level, int) or not (1 <= self.level <= 5):
+            raise ValueError("level must be an integer between 1 and 5")
 
 
 @dataclass(frozen=True, slots=True)

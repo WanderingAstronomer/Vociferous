@@ -342,7 +342,7 @@ class TestBulkRefinementHappyPath:
 
         handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
         handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(t1.id, t2.id, t3.id), level=2, instructions="",
+            transcript_ids=(t1.id, t2.id, t3.id), level=2, instructions="", skip_refined=False,
         ))
         _wait_for_threads("bulk-refine")
 
@@ -378,7 +378,7 @@ class TestBulkRefinementHappyPath:
 
         handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
         handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(t1.id, 99999), level=2, instructions="",
+            transcript_ids=(t1.id, 99999), level=2, instructions="", skip_refined=False,
         ))
         _wait_for_threads("bulk-refine")
 
@@ -399,7 +399,7 @@ class TestBulkRefinementHappyPath:
 
         handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
         handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(t1.id, t2.id), level=2, instructions="",
+            transcript_ids=(t1.id, t2.id), level=2, instructions="", skip_refined=False,
         ))
         _wait_for_threads("bulk-refine")
 
@@ -432,7 +432,7 @@ class TestBulkRefinementHappyPath:
         mock_slm.refine_text_sync.side_effect = refine_and_cancel
 
         handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(t1.id, t2.id), level=2, instructions="",
+            transcript_ids=(t1.id, t2.id), level=2, instructions="", skip_refined=False,
         ))
         _wait_for_threads("bulk-refine")
 
@@ -449,7 +449,7 @@ class TestBulkRefinementHappyPath:
         handler._bulk_active = True
 
         handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(1,), level=2, instructions="",
+            transcript_ids=(1,), level=2, instructions="", skip_refined=False,
         ))
 
         errors = _events_of(ev, "bulk_refinement_error")
@@ -475,7 +475,7 @@ class TestBulkRefinementHappyPath:
 
         handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
         handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(), level=2, instructions="",
+            transcript_ids=(), level=2, instructions="", skip_refined=False,
         ))
 
         errors = _events_of(ev, "bulk_refinement_error")
@@ -491,7 +491,7 @@ class TestBulkRefinementHappyPath:
 
         handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
         handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(t1.id, t2.id), level=2, instructions="",
+            transcript_ids=(t1.id, t2.id), level=2, instructions="", skip_refined=False,
         ))
         _wait_for_threads("bulk-refine")
 
