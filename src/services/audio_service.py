@@ -8,6 +8,8 @@ The PortAudio C callback does only: copy frame, enqueue for the
 recording loop, and compute cheap RMS for the level meter.
 """
 
+from __future__ import annotations
+
 import logging
 from queue import Empty, Queue
 from typing import TYPE_CHECKING, Callable
