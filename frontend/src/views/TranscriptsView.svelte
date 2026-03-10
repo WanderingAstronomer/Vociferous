@@ -873,7 +873,7 @@
 
         <!-- === Bottom Action Bar === -->
         {#if bulkRefineActive}
-            <div class="shrink-0 px-4 py-2 border-t border-[var(--shell-border)]" style="scrollbar-gutter: stable">
+            <div class="shrink-0 px-4 py-2 overflow-y-auto" style="scrollbar-gutter: stable">
                 <div class="flex items-center gap-3 bg-[var(--surface-secondary)] rounded-lg px-3 py-1.5">
                     <Loader2 size={14} class="animate-spin text-[var(--accent)] shrink-0" />
                     <span class="text-sm text-[var(--text-secondary)]">
@@ -896,7 +896,7 @@
                 </div>
             </div>
         {:else if selection.hasSelection}
-            <div class="shrink-0 px-4 py-2 border-t border-[var(--shell-border)]" style="scrollbar-gutter: stable">
+            <div class="shrink-0 px-4 py-2 overflow-y-auto" style="scrollbar-gutter: stable">
                 <div class="flex items-center gap-2 bg-[var(--surface-secondary)] rounded-lg px-3 py-1.5">
                     <StyledButton size="sm" variant="destructive" onclick={handleDelete}>
                         <Trash2 size={13} />

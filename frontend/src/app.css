@@ -208,12 +208,18 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--shell-border);
+    background: var(--accent-muted);
     border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--text-tertiary);
+    background: var(--accent);
+}
+
+/* Standard scrollbar properties (Firefox / future browsers) */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent-muted) var(--surface-secondary);
 }
 
 /* ==========================================================================

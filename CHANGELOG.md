@@ -2,6 +2,28 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.7.1 — UI Polish & Recording Blob Animation (ISS-074, ISS-075, ISS-076, ISS-077)
+
+**Date:** 2026-03-09
+**Status:** Visual / UX polish
+
+### Fixed
+- **ISS-074** — TranscriptsView action bar: removed top border divider; right edge now aligns with transcript cards via matching `scrollbar-gutter: stable` on an `overflow-y: auto` container.
+- **ISS-076** — Global scrollbar stutter mitigation: applied `scrollbar-width: thin` and `scrollbar-color` standard properties as a cross-browser fallback.
+
+### Changed
+- **ISS-075** — Scrollbar thumb color changed from gray (`--shell-border`) to blue accent (`--accent-muted` idle, `--accent` on hover). Standard `scrollbar-color` fallback added for non-WebKit browsers. Defined once in `app.css`.
+- **ISS-077** — Recording animation overhaul:
+  - Removed concentric sonar ripple rings entirely.
+  - Replaced with an **amorphous SVG blob** ring that subtly deforms when voice activity is detected.
+  - Blob uses 10-point Catmull-Rom spline with RAF-driven random retargeting every ~280ms during speech.
+  - Idle state: blob renders as a near-perfect circle with gentle opacity breathing animation (GPU-composited).
+  - Mic button border replaced with transparent (blob is the visual ring).
+  - Glow radiance response increased: outer glow scale range 0.85→1.65 (was 1.45), box-shadow spread 8→44px (was 32px).
+  - Drop-shadow filter on blob SVG provides soft ambient glow without expensive SVG filters.
+
+---
+
 ## v5.7.0 — Toast Positioning Overhaul (ISS-047)
 
 **Date:** 2026-03-09
