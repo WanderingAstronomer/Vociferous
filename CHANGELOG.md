@@ -16,6 +16,21 @@
 
 ---
 
+## v5.8.9 — Code Quality Pass (cont.)
+
+**Date:** 2026-03-10
+**Status:** Hotfix / Maintenance
+
+### Fixed
+- **`clearAllTranscripts` wrong response shape** — `DELETE /api/transcripts` returned `{"status": "cleared"}`, but the TypeScript client expected `{"deleted": number}`. `MaintenanceCard` always displayed "Cleared undefined transcripts". Endpoint now counts before clearing and returns `{"deleted": count}`.
+- **`EngineStatusData` type gap** — Input-handler degradation events (`{"component": "input", "status": ..., "message": ...}`) were silently dropped by the frontend because `EngineStatusData` only declared `asr` and `slm` fields. Interface and validator extended with the three optional fields.
+
+### Changed
+- **Logging style consistency** — One f-string logger call in `application_coordinator.py` converted to `%`-style to match the file's existing convention.
+- **Comment cleanup (continued)** — Removed two remaining ISS-ticket annotations from `settings.py` and `SettingsView.svelte`.
+
+---
+
 ## v5.8.8 — Code Quality Pass
 
 **Date:** 2026-03-10

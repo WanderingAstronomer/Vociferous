@@ -409,7 +409,7 @@ class ApplicationCoordinator:
                 )
             else:
                 backend_name = type(self.input_listener.active_backend).__name__
-                logger.info(f"Input handler ready (backend: {backend_name})")
+                logger.info("Input handler ready (backend: %s)", backend_name)
                 if backend_name == "PynputBackend" and (
                     os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
                     or bool(os.environ.get("WAYLAND_DISPLAY"))

@@ -91,14 +91,20 @@ async def batch_delete_transcripts(data: dict) -> Response:
 @delete("/api/transcripts", status_code=200)
 async def clear_all_transcripts() -> Response:
     """Delete all transcripts via CommandBus intent."""
+    import asyncio
+
     from src.core.intents.definitions import ClearTranscriptsIntent
 
     coordinator = get_coordinator()
+    if coordinator.db is None:
+        return Response(content={"error": "Database not available"}, status_code=503)
+
+    count = await asyncio.to_thread(coordinator.db.transcript_count)
     intent = ClearTranscriptsIntent()
     success = coordinator.command_bus.dispatch(intent)
     if not success:
         return Response(content={"error": "Clear failed"}, status_code=500)
-    return Response(content={"status": "cleared"})
+    return Response(content={"deleted": count})
 
 
 @get("/api/transcripts/search", sync_to_thread=True)

@@ -129,7 +129,7 @@
 
     async function saveConfig() {
         saving = true;
-        // Snapshot model IDs before save to detect model changes (ISS-061).
+        // Snapshot model IDs before save to detect model changes.
         const prev = JSON.parse(originalConfig);
         const prevAsr = prev?.model?.model ?? "";
         const prevSlm = prev?.refinement?.model_id ?? "";

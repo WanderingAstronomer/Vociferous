@@ -189,7 +189,7 @@ def init_settings(config_path: Path | str | None = None) -> VociferousSettings:
     else:
         _settings = VociferousSettings()
 
-    # Migrate removed SLM models to the smallest available model (ISS-062).
+    # Migrate removed SLM models to the smallest available model.
     from src.core.model_registry import SLM_MODELS, get_smallest_slm_id
 
     if _settings.refinement.model_id not in SLM_MODELS:

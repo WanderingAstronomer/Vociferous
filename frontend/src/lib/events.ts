@@ -103,6 +103,10 @@ export interface ConfigUpdatedData {
 export interface EngineStatusData {
     asr?: string;
     slm?: string;
+    // Input handler status events use a different shape.
+    component?: string;
+    status?: string;
+    message?: string;
 }
 
 export interface OnboardingRequiredData {
@@ -272,7 +276,10 @@ export const wsEventValidators: {
     engine_status: (data): data is EngineStatusData =>
         isObject(data) &&
         (data.asr === undefined || isString(data.asr)) &&
-        (data.slm === undefined || isString(data.slm)),
+        (data.slm === undefined || isString(data.slm)) &&
+        (data.component === undefined || isString(data.component)) &&
+        (data.status === undefined || isString(data.status)) &&
+        (data.message === undefined || isString(data.message)),
     onboarding_required: (data): data is OnboardingRequiredData =>
         isObject(data) && isString(data.reason),
     download_progress: (data): data is DownloadProgressData =>

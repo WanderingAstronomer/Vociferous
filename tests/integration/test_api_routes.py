@@ -43,6 +43,7 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
         update_config,
     )
     from src.api.transcripts import (
+        clear_all_transcripts,
         delete_transcript,
         get_transcript,
         list_transcripts,
@@ -75,6 +76,7 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
             list_transcripts,
             get_transcript,
             delete_transcript,
+            clear_all_transcripts,
             refine_transcript,
             search_transcripts,
             get_config,
@@ -185,6 +187,19 @@ class TestTranscriptRoutes:
         deleted = events.of_type("transcript_deleted")
         assert len(deleted) == 1
         assert deleted[0]["id"] == t.id
+
+    def test_clear_all_transcripts(self, api):
+        """DELETE /api/transcripts returns deleted count and clears all records."""
+        client, coord, events = api
+        coord.db.add_transcript(raw_text="first", duration_ms=100)
+        coord.db.add_transcript(raw_text="second", duration_ms=200)
+
+        resp = client.delete("/api/transcripts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "deleted" in data
+        assert data["deleted"] == 2
+        assert coord.db.transcript_count() == 0
 
     def test_search_transcripts(self, api):
         client, coord, _ = api
