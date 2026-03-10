@@ -2,6 +2,21 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.7.0 — Toast Positioning Overhaul (ISS-047)
+
+**Date:** 2026-03-09
+**Status:** Minor Release / Infrastructure
+
+### Changed
+- **ISS-047** — Replaced floating toast notifications with a dedicated bottom-strip layout.
+  - Toasts now render in a collapsible static strip at the bottom of the window, part of the layout flow.
+  - The strip pushes main content upward when active, eliminating z-index conflicts and overlap with action bars.
+  - Confirmation dialogs now render inline within the strip (with a backdrop overlay), no longer floating.
+  - Empty strip collapses to zero height — no wasted vertical space.
+  - Applies consistently across all views: TranscribeView, TranscriptsView, RefineView, EditView, SettingsView, UserView.
+
+---
+
 ## v5.6.10 — UserView Silence Metrics Use Measured VAD Data (ISS-073)
 
 **Date:** 2026-03-09
