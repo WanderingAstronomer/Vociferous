@@ -2,6 +2,22 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.9.2 — Advanced Sampling Settings (ISS-025)
+
+**Date:** 2026-03-10
+**Status:** Hotfix / Feature
+
+### Added
+- **Advanced sampling parameters in Settings** — The Output tab now exposes Temperature, Top-P, Top-K, and Repetition Penalty behind a collapsible "Advanced Sampling" section. These fields already existed in `RefinementSettings` and were read by `SLMRuntime` at inference time, but were invisible to users. Now they can be tuned from the UI.
+  - Temperature (0.01–2.0, default 0.3): controls randomness.
+  - Top-P (0.01–1.0, default 0.9): nucleus sampling threshold.
+  - Top-K (1–200, default 20): limits token candidates per step.
+  - Repetition Penalty (1.0–2.0, default 1.0): penalizes repeated tokens.
+- Section is hidden by default (collapsed). Only visible when Grammar Refinement is enabled.
+- Uses the same grid layout, input styling, and validation patterns as existing settings controls.
+
+---
+
 ## v5.9.0 — Crash-Resilient Audio Recording (ISS-083)
 
 **Date:** 2026-03-10
