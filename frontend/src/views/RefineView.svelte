@@ -7,6 +7,7 @@
         getConfig,
         refineTranscript,
         commitRefinement,
+        cancelBulkRefinement,
         type Transcript,
         type Tag,
     } from "../lib/api";
@@ -19,6 +20,7 @@
     import MarkdownBody from "../lib/components/MarkdownBody.svelte";
     import DiffView from "../lib/components/DiffView.svelte";
     import CustomSelect from "../lib/components/CustomSelect.svelte";
+    import Tooltip from "../lib/components/Tooltip.svelte";
     import StyledButton from "../lib/components/StyledButton.svelte";
     import EmptyState from "../lib/components/EmptyState.svelte";
     import ActionBar from "../lib/components/ActionBar.svelte";
@@ -35,6 +37,7 @@
         FileText,
         ExternalLink,
         ArrowUpDown,
+        X,
     } from "lucide-svelte";
 
     const DEFAULT_REFINEMENT_LEVEL = 2;
@@ -60,6 +63,12 @@
     /* ── Prompt System ── */
     let savedPrompts: Transcript[] = $state([]);
     let selectedPromptId: string = $state("");
+
+    /* ── Bulk Refinement Tracking ── */
+    let bulkRefineActive = $state(false);
+    let bulkRefineCompleted = $state(0);
+    let bulkRefineFailed = $state(0);
+    let bulkRefineTotal = $state(0);
 
     /* ── Derived analytics ── */
     let origMetrics: TextMetrics = $derived(computeTextMetrics(originalText));
@@ -211,6 +220,10 @@
     let unsubRefinement: (() => void) | undefined;
     let unsubRefinementError: (() => void) | undefined;
     let unsubRefinementProgress: (() => void) | undefined;
+    let unsubBulkStarted: (() => void) | undefined;
+    let unsubBulkProgress: (() => void) | undefined;
+    let unsubBulkComplete: (() => void) | undefined;
+    let unsubBulkError: (() => void) | undefined;
 
     onMount(async () => {
         loadPrompts();
@@ -219,7 +232,9 @@
             const cfg = await getConfig();
             const display = cfg.display as Record<string, unknown> | undefined;
             renderMarkdown = Boolean(display?.render_markdown_in_editor);
-        } catch { /* default false */ }
+        } catch {
+            /* default false */
+        }
 
         unsubRefinement = ws.on("refinement_complete", (data) => {
             if (data.transcript_id === selectedId) {
@@ -247,12 +262,36 @@
                 refineStatus = data.message || "Processing…";
             }
         });
+
+        unsubBulkStarted = ws.on("bulk_refinement_started", (data) => {
+            bulkRefineActive = true;
+            bulkRefineTotal = data.total;
+            bulkRefineCompleted = 0;
+            bulkRefineFailed = 0;
+        });
+
+        unsubBulkProgress = ws.on("bulk_refinement_progress", (data) => {
+            bulkRefineCompleted = data.completed;
+            bulkRefineFailed = data.failed;
+        });
+
+        unsubBulkComplete = ws.on("bulk_refinement_complete", () => {
+            bulkRefineActive = false;
+        });
+
+        unsubBulkError = ws.on("bulk_refinement_error", () => {
+            bulkRefineActive = false;
+        });
     });
 
     onDestroy(() => {
         unsubRefinement?.();
         unsubRefinementError?.();
         unsubRefinementProgress?.();
+        unsubBulkStarted?.();
+        unsubBulkProgress?.();
+        unsubBulkComplete?.();
+        unsubBulkError?.();
         stopRefineTimer();
     });
 
@@ -261,6 +300,16 @@
         const pending = nav.consumePendingTranscriptRequest();
         if (!pending) return;
         if (pending.id === selectedId) return;
+
+        if (isRefining) {
+            toast.warning("A refinement is in progress — wait for it to finish or discard first");
+            return;
+        }
+        if (hasRefined && refinedText && !accepted) {
+            toast.warning("Accept or discard the current refinement before switching transcripts");
+            return;
+        }
+
         void selectTranscript(pending.id);
     });
 </script>
@@ -299,7 +348,9 @@
                             </button>
                         {/if}
                     </div>
-                    <h3 class="m-0 flex-1 text-center text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-secondary)]">
+                    <h3
+                        class="m-0 flex-1 text-center text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-secondary)]"
+                    >
                         Original Transcript
                     </h3>
                     <div class="flex items-center gap-1 w-10 justify-end">
@@ -318,9 +369,16 @@
                     {#if originalText}
                         <WorkspacePanel>
                             {#if renderMarkdown}
-                                <MarkdownBody text={originalText} className="text-[var(--text-sm)] text-[var(--text-primary)]" />
+                                <MarkdownBody
+                                    text={originalText}
+                                    className="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                />
                             {:else}
-                                <p class="m-0 text-[var(--text-sm)] text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">{originalText}</p>
+                                <p
+                                    class="m-0 text-[var(--text-sm)] text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed"
+                                >
+                                    {originalText}
+                                </p>
                             {/if}
                         </WorkspacePanel>
                     {:else}
@@ -351,7 +409,9 @@
                             </button>
                         {/if}
                     </div>
-                    <h3 class="m-0 flex-1 text-center text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-secondary)]">
+                    <h3
+                        class="m-0 flex-1 text-center text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-secondary)]"
+                    >
                         Refined / AI Suggestion
                     </h3>
                     <div class="flex items-center gap-1 w-10 justify-end">
@@ -369,7 +429,9 @@
                 <div class="flex-1 overflow-y-auto p-[var(--space-4)]">
                     {#if isRefining}
                         <EmptyState icon={Loader2} spinning>
-                            <p class="m-0 text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]">
+                            <p
+                                class="m-0 text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]"
+                            >
                                 {refineStatus}
                             </p>
                             <p class="m-0 font-[var(--font-mono)] text-[var(--text-xs)] text-[var(--text-tertiary)]">
@@ -384,24 +446,34 @@
                                 <p class="m-0 text-[var(--text-sm)] text-red-400 font-[var(--weight-emphasis)]">
                                     Refinement Failed
                                 </p>
-                                <p class="m-0 mt-[var(--space-1)] text-[var(--text-xs)] text-red-400/80">{refineError}</p>
+                                <p class="m-0 mt-[var(--space-1)] text-[var(--text-xs)] text-red-400/80">
+                                    {refineError}
+                                </p>
                             </div>
                         </EmptyState>
                     {:else if refinedText}
                         <WorkspacePanel>
                             {#if showDiff}
-                                <DiffView original={originalText} revised={refinedText} className="text-[var(--text-sm)]" />
+                                <DiffView
+                                    original={originalText}
+                                    revised={refinedText}
+                                    className="text-[var(--text-sm)]"
+                                />
                             {:else if renderMarkdown}
-                                <MarkdownBody text={refinedText} className="text-[var(--text-sm)] text-[var(--text-primary)]" />
+                                <MarkdownBody
+                                    text={refinedText}
+                                    className="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                />
                             {:else}
-                                <p class="m-0 text-[var(--text-sm)] text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">{refinedText}</p>
+                                <p
+                                    class="m-0 text-[var(--text-sm)] text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed"
+                                >
+                                    {refinedText}
+                                </p>
                             {/if}
                         </WorkspacePanel>
                     {:else}
-                        <EmptyState
-                            icon={Sparkles}
-                            message="Ready to refine"
-                        />
+                        <EmptyState icon={Sparkles} message="Ready to refine" />
                     {/if}
                 </div>
             </div>
@@ -409,32 +481,89 @@
 
         <!-- Analytics Delta (visible after refinement) -->
         {#if hasRefined && refinedText}
-            <div class="shrink-0 mx-[var(--space-4)] mb-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] px-[var(--space-4)] py-[var(--space-2)]">
+            <div
+                class="shrink-0 mx-[var(--space-4)] mb-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] px-[var(--space-4)] py-[var(--space-2)]"
+            >
                 <div class="flex items-center justify-center gap-[var(--space-6)] flex-wrap text-[13px]">
                     <div class="flex items-center gap-1.5">
-                        <span class="text-[var(--text-tertiary)]">Words</span>
-                        <span class="text-[var(--text-primary)] tabular-nums">{origMetrics.wordCount} → {refMetrics.wordCount}</span>
-                        <span class="text-[var(--accent)] tabular-nums text-[12px]">({delta(origMetrics.wordCount, refMetrics.wordCount)})</span>
+                        <Tooltip
+                            text="Total number of words in the text. Fewer words after refinement usually means filler and redundancy were removed."
+                        >
+                            <span
+                                class="text-[var(--text-tertiary)] cursor-help border-b border-dotted border-[var(--text-tertiary)]/40"
+                                >Words</span
+                            >
+                        </Tooltip>
+                        <span class="text-[var(--text-primary)] tabular-nums"
+                            >{origMetrics.wordCount} → {refMetrics.wordCount}</span
+                        >
+                        <span class="text-[var(--accent)] tabular-nums text-[12px]"
+                            >({delta(origMetrics.wordCount, refMetrics.wordCount)})</span
+                        >
                     </div>
                     <div class="flex items-center gap-1.5">
-                        <span class="text-[var(--text-tertiary)]">Sentences</span>
-                        <span class="text-[var(--text-primary)] tabular-nums">{origMetrics.sentenceCount} → {refMetrics.sentenceCount}</span>
-                        <span class="text-[var(--accent)] tabular-nums text-[12px]">({delta(origMetrics.sentenceCount, refMetrics.sentenceCount)})</span>
+                        <Tooltip
+                            text="Number of sentences detected. Changes indicate the model split or merged sentences for clarity."
+                        >
+                            <span
+                                class="text-[var(--text-tertiary)] cursor-help border-b border-dotted border-[var(--text-tertiary)]/40"
+                                >Sentences</span
+                            >
+                        </Tooltip>
+                        <span class="text-[var(--text-primary)] tabular-nums"
+                            >{origMetrics.sentenceCount} → {refMetrics.sentenceCount}</span
+                        >
+                        <span class="text-[var(--accent)] tabular-nums text-[12px]"
+                            >({delta(origMetrics.sentenceCount, refMetrics.sentenceCount)})</span
+                        >
                     </div>
                     <div class="flex items-center gap-1.5">
-                        <span class="text-[var(--text-tertiary)]">Avg Sentence</span>
-                        <span class="text-[var(--text-primary)] tabular-nums">{origMetrics.avgSentenceLength} → {refMetrics.avgSentenceLength}</span>
-                        <span class="text-[var(--accent)] tabular-nums text-[12px]">({deltaF(origMetrics.avgSentenceLength, refMetrics.avgSentenceLength)})</span>
+                        <Tooltip
+                            text="Average number of words per sentence. Lower values mean shorter, punchier sentences. Typical prose is 15–20."
+                        >
+                            <span
+                                class="text-[var(--text-tertiary)] cursor-help border-b border-dotted border-[var(--text-tertiary)]/40"
+                                >Avg Sentence Length</span
+                            >
+                        </Tooltip>
+                        <span class="text-[var(--text-primary)] tabular-nums"
+                            >{origMetrics.avgSentenceLength} → {refMetrics.avgSentenceLength}</span
+                        >
+                        <span class="text-[var(--accent)] tabular-nums text-[12px]"
+                            >({deltaF(origMetrics.avgSentenceLength, refMetrics.avgSentenceLength)})</span
+                        >
                     </div>
                     <div class="flex items-center gap-1.5">
-                        <span class="text-[var(--text-tertiary)]">Grade</span>
-                        <span class="text-[var(--text-primary)] tabular-nums">{origMetrics.fkGrade} → {refMetrics.fkGrade}</span>
-                        <span class="text-[var(--accent)] tabular-nums text-[12px]">({deltaF(origMetrics.fkGrade, refMetrics.fkGrade)})</span>
+                        <Tooltip
+                            text="Flesch-Kincaid Grade Level — the U.S. school grade needed to understand the text. Lower is more accessible. 8–10 is typical for general audiences."
+                        >
+                            <span
+                                class="text-[var(--text-tertiary)] cursor-help border-b border-dotted border-[var(--text-tertiary)]/40"
+                                >FK Score</span
+                            >
+                        </Tooltip>
+                        <span class="text-[var(--text-primary)] tabular-nums"
+                            >{origMetrics.fkGrade} → {refMetrics.fkGrade}</span
+                        >
+                        <span class="text-[var(--accent)] tabular-nums text-[12px]"
+                            >({deltaF(origMetrics.fkGrade, refMetrics.fkGrade)})</span
+                        >
                     </div>
                     <div class="flex items-center gap-1.5">
-                        <span class="text-[var(--text-tertiary)]">Fillers</span>
-                        <span class="text-[var(--text-primary)] tabular-nums">{origMetrics.fillerCount} → {refMetrics.fillerCount}</span>
-                        <span class="text-[var(--accent)] tabular-nums text-[12px]">({delta(origMetrics.fillerCount, refMetrics.fillerCount)})</span>
+                        <Tooltip
+                            text="Common filler words and phrases like 'um', 'uh', 'you know', 'basically', 'literally'. Fewer is better — refinement should strip most of these."
+                        >
+                            <span
+                                class="text-[var(--text-tertiary)] cursor-help border-b border-dotted border-[var(--text-tertiary)]/40"
+                                >Filler Words</span
+                            >
+                        </Tooltip>
+                        <span class="text-[var(--text-primary)] tabular-nums"
+                            >{origMetrics.fillerCount} → {refMetrics.fillerCount}</span
+                        >
+                        <span class="text-[var(--accent)] tabular-nums text-[12px]"
+                            >({delta(origMetrics.fillerCount, refMetrics.fillerCount)})</span
+                        >
                     </div>
                 </div>
             </div>
@@ -442,6 +571,40 @@
 
         <!-- Footer Controls -->
         <div class="px-[var(--space-4)]">
+            <!-- Bulk Refinement Progress -->
+            {#if bulkRefineActive}
+                <div
+                    class="flex items-center gap-3 border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] px-[var(--space-4)] py-[var(--space-2)] mb-[var(--space-2)]"
+                >
+                    <Loader2 size={14} class="animate-spin text-[var(--accent)] shrink-0" />
+                    <span class="text-[13px] text-[var(--text-secondary)]">
+                        Bulk refine: {bulkRefineCompleted} of {bulkRefineTotal}
+                        {#if bulkRefineFailed > 0}
+                            <span class="text-red-400">({bulkRefineFailed} failed)</span>
+                        {/if}
+                    </span>
+                    <div class="flex-1 h-1.5 rounded-full bg-[var(--shell-border)] overflow-hidden">
+                        <div
+                            class="h-full rounded-full bg-[var(--accent)] transition-all duration-300"
+                            style="width: {bulkRefineTotal > 0
+                                ? ((bulkRefineCompleted + bulkRefineFailed) / bulkRefineTotal) * 100
+                                : 0}%"
+                        ></div>
+                    </div>
+                    <button
+                        class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-red-400"
+                        onclick={async () => {
+                            try {
+                                await cancelBulkRefinement();
+                            } catch {}
+                        }}
+                        title="Cancel bulk refinement"
+                    >
+                        <X size={14} />
+                    </button>
+                </div>
+            {/if}
+
             <!-- Custom Instructions Card -->
             <div
                 class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] py-[var(--space-3)] px-[var(--space-4)] bg-[var(--surface-secondary)]"
@@ -459,7 +622,10 @@
                         <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] shrink-0">Saved Prompts</span>
                         <div class="flex-1">
                             <CustomSelect
-                                options={savedPrompts.map((p) => ({ value: String(p.id), label: p.display_name || `Prompt #${p.id}` }))}
+                                options={savedPrompts.map((p) => ({
+                                    value: String(p.id),
+                                    label: p.display_name || `Prompt #${p.id}`,
+                                }))}
                                 value={selectedPromptId}
                                 onchange={handlePromptSelect}
                                 placeholder="Load a saved prompt…"
@@ -500,6 +666,14 @@
                 <div class="flex items-center gap-1.5 ml-2" title="Toggle diff highlight view">
                     <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap select-none">Diff</span>
                     <ToggleSwitch size="sm" checked={showDiff} onChange={() => (showDiff = !showDiff)} />
+                </div>
+                <div class="flex items-center gap-1.5 ml-2" title="Render text as formatted markdown">
+                    <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap select-none">Markdown</span>
+                    <ToggleSwitch
+                        size="sm"
+                        checked={renderMarkdown}
+                        onChange={() => (renderMarkdown = !renderMarkdown)}
+                    />
                 </div>
                 <div class="flex-1"></div>
                 {#if !accepted}

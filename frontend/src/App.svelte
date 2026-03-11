@@ -115,6 +115,7 @@
                 currentView={nav.current}
                 navigationLocked={nav.isNavigationLocked}
                 {hiddenViews}
+                isRecording={recordingActive}
                 onNavigate={(view) => nav.navigate(view)}
             />
 

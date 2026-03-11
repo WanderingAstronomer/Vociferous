@@ -23,10 +23,17 @@
         currentView: ViewId;
         navigationLocked?: boolean;
         hiddenViews?: Set<ViewId>;
+        isRecording?: boolean;
         onNavigate: (view: ViewId) => void;
     }
 
-    let { currentView, navigationLocked = false, hiddenViews = new Set(), onNavigate }: Props = $props();
+    let {
+        currentView,
+        navigationLocked = false,
+        hiddenViews = new Set(),
+        isRecording = false,
+        onNavigate,
+    }: Props = $props();
 
     const mainItems = $derived(navItems.filter((i) => i.section === "main" && !hiddenViews.has(i.id)));
     const footerItems = $derived(navItems.filter((i) => i.section === "footer" && !hiddenViews.has(i.id)));
@@ -57,10 +64,15 @@
             <button
                 class="rail-button"
                 class:active={currentView === item.id}
+                class:recording={isRecording && item.id === "transcribe" && currentView !== "transcribe"}
                 class:blink={blinkTarget === item.id}
                 class:locked={isLockedDestination(item.id)}
                 disabled={isLockedDestination(item.id)}
-                title={isLockedDestination(item.id) ? "Finish or discard edits first" : item.label}
+                title={isLockedDestination(item.id)
+                    ? "Finish or discard edits first"
+                    : isRecording && item.id === "transcribe"
+                      ? "Recording in progress"
+                      : item.label}
                 onclick={() => handleClick(item.id)}
             >
                 <span class="flex items-center justify-center w-10 h-10 shrink-0">
@@ -147,6 +159,26 @@
     .rail-button.locked {
         opacity: 0.5;
         cursor: not-allowed;
+    }
+
+    .rail-button.recording {
+        color: #ef4444;
+        animation: recording-pulse 2s ease-in-out infinite;
+    }
+
+    .rail-button.recording::before {
+        height: 32px;
+        background: #ef4444;
+    }
+
+    @keyframes recording-pulse {
+        0%,
+        100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.5;
+        }
     }
 
     .rail-button.blink {

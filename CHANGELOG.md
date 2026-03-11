@@ -2,6 +2,32 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.10.6 — RefineView & TranscriptionsView Polish, Recording Rail Indicator
+
+**Date:** 2026-03-11
+**Status:** Feature / Bugfix
+
+### Fixed
+- **RefineView transcript switch guard** — Clicking "Refine" on a transcript in TranscriptionsView while a refinement was already in progress would silently overwrite the active transcript, making the Accept/Copy buttons unreachable forever. Navigation requests are now blocked (with a toast) when `isRefining` is true or when an unaccepted refinement result is pending.
+
+### Added
+- **Bulk refinement progress bar in RefineView** — While a bulk refinement is running, a slim progress card (spinner + "Bulk refine: X of Y" + progress bar + cancel button) appears above the Instructions panel in RefineView. RefineView stays mounted across navigation so this bar persists regardless of which view you're on. Navigating away from TranscriptionsView naturally hides its own progress bar (it unmounts), while RefineView remains the live status surface.
+- **IconRail recording indicator** — The Transcribe rail button pulses red with a 2s breathing animation when a recording is active and you're on any other view. The left accent bar also turns red. Tooltip changes to "Recording in progress". Uses the existing `recordingActive` state from App.svelte.
+- **Analytics delta label improvements** — "Avg Sentence" → "Avg Sentence Length", "Grade" → "FK Score", "Fillers" → "Filler Words". All five metric labels now have styled hover tooltips explaining what each metric measures.
+- **Markdown toggle in RefineView action bar** — Added a "Markdown" toggle (next to the existing "Diff" toggle) to render both text panels as formatted markdown. Uses the same `display.render_markdown_in_editor` config setting initialized on mount.
+- **New `Tooltip` component** (`frontend/src/lib/components/Tooltip.svelte`) — Reusable cursor-following tooltip rendered via a fixed-position overlay. Dark-themed, max-width 280px, uses Svelte 5 snippet slot.
+
+### Changed
+- **TranscriptionsView controls layout reorganized** — Sort buttons moved to the left, page navigation (Prev / X of Y / Next) moved to the center of the controls row (visible without scrolling regardless of page size), per-page selector stays on the right. Total transcript count moved from the top-left to a blue accent footer at the bottom center of the card list.
+
+### Technical Notes
+- `IconRail.svelte`: Added `isRecording?: boolean` prop. New `.recording` CSS class + `recording-pulse` keyframe animation.
+- `App.svelte`: Passes `isRecording={recordingActive}` to `<IconRail>`.
+- `RefineView.svelte`: Added `bulkRefineActive/Completed/Failed/Total` state, four new WebSocket subscriptions (`bulk_refinement_started/progress/complete/error`), cancel button calling `cancelBulkRefinement()`, and the `$effect` guard.
+- `TranscriptsView.svelte`: Controls row fully restructured. Bottom-of-list total count replaces the old per-page-scroll pagination.
+
+---
+
 ## v5.10.5 — RefineView Overhaul: Diff Highlighting, Analytics Delta, Prompt UX
 
 **Date:** 2026-03-11

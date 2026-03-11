@@ -696,30 +696,9 @@
             </TagBar>
         </div>
 
-        <!-- === Controls row: result count + sort + per-page === -->
+        <!-- === Controls row: sort (left) + pagination (center) + per-page (right) === -->
         <div class="shrink-0 px-4 py-1.5 flex items-center gap-3 text-[13px] text-[var(--text-tertiary)]">
-            <!-- Result count (left) -->
-            <span class="shrink-0">
-                {#if isSearching && !searching}
-                    {#if searchTotal > filteredEntries.length}
-                        Showing {filteredEntries.length} of {searchTotal} results for "{searchQuery}"
-                    {:else}
-                        {filteredEntries.length} result{filteredEntries.length !== 1 ? "s" : ""} for "{searchQuery}"
-                    {/if}
-                {:else if !loading}
-                    {displayTotal} transcript{displayTotal !== 1 ? "s" : ""}
-                    {#if activeTagIds.size > 0}
-                        <span class="text-[var(--accent)]">(filtered)</span>
-                    {/if}
-                {/if}
-            </span>
-            {#if selection.hasSelection}
-                <span class="text-xs font-semibold text-[var(--accent)]">{selection.count} selected</span>
-            {/if}
-
-            <div class="flex-1"></div>
-
-            <!-- Sort control (right, browse mode only) -->
+            <!-- Sort control (left, browse mode only) -->
             {#if !isSearching}
                 <div class="flex items-center gap-1 shrink-0">
                     <ArrowUpDown size={12} class="text-[var(--text-tertiary)]" />
@@ -743,9 +722,49 @@
                         </button>
                     {/each}
                 </div>
+            {:else}
+                <!-- Search result count (left in search mode) -->
+                <span class="shrink-0">
+                    {#if !searching}
+                        {#if searchTotal > filteredEntries.length}
+                            Showing {filteredEntries.length} of {searchTotal} results for "{searchQuery}"
+                        {:else}
+                            {filteredEntries.length} result{filteredEntries.length !== 1 ? "s" : ""} for "{searchQuery}"
+                        {/if}
+                    {/if}
+                </span>
+            {/if}
 
-                <!-- Per-page selector -->
-                <div class="flex items-center gap-0.5 shrink-0 border-l border-[var(--shell-border)] pl-3">
+            <div class="flex-1"></div>
+
+            <!-- Page navigation (center, browse mode only) -->
+            {#if !isSearching && totalPages > 1}
+                <div class="flex items-center gap-2 shrink-0">
+                    <button
+                        class="flex items-center gap-1 h-6 px-2 rounded text-[var(--text-secondary)] bg-transparent border border-[var(--shell-border)] cursor-pointer transition-colors text-[11px] hover:bg-[var(--hover-overlay)] disabled:opacity-30 disabled:cursor-default"
+                        onclick={() => goToPage(currentPage - 1)}
+                        disabled={currentPage <= 1}
+                    >
+                        <ChevronLeft size={12} /> Prev
+                    </button>
+                    <span class="text-[var(--text-tertiary)] tabular-nums text-[11px]">
+                        {currentPage} / {totalPages}
+                    </span>
+                    <button
+                        class="flex items-center gap-1 h-6 px-2 rounded text-[var(--text-secondary)] bg-transparent border border-[var(--shell-border)] cursor-pointer transition-colors text-[11px] hover:bg-[var(--hover-overlay)] disabled:opacity-30 disabled:cursor-default"
+                        onclick={() => goToPage(currentPage + 1)}
+                        disabled={currentPage >= totalPages}
+                    >
+                        Next <ChevronRight size={12} />
+                    </button>
+                </div>
+            {/if}
+
+            <div class="flex-1"></div>
+
+            <!-- Per-page selector (right, browse mode only) -->
+            {#if !isSearching}
+                <div class="flex items-center gap-0.5 shrink-0">
                     {#each PAGE_SIZES as size (size)}
                         <button
                             class="h-6 px-1.5 rounded text-[11px] border-none cursor-pointer transition-colors"
@@ -811,11 +830,15 @@
 
                             <!-- Text preview -->
                             {#if isSearching}
-                                <p class="text-[15px] text-[var(--text-secondary)] leading-relaxed m-0 mb-2 line-clamp-2">
+                                <p
+                                    class="text-[15px] text-[var(--text-secondary)] leading-relaxed m-0 mb-2 line-clamp-2"
+                                >
                                     {@html highlight(truncate(getDisplayText(entry)), searchQuery)}
                                 </p>
                             {:else}
-                                <div class="text-[15px] text-[var(--text-secondary)] leading-relaxed mb-2 max-h-[3.25em] overflow-hidden">
+                                <div
+                                    class="text-[15px] text-[var(--text-secondary)] leading-relaxed mb-2 max-h-[3.25em] overflow-hidden"
+                                >
                                     <MarkdownBody text={getDisplayText(entry)} className="[&>*:first-child]:mt-0" />
                                 </div>
                             {/if}
@@ -859,25 +882,20 @@
                                     searchResults.length} remaining){/if}
                         </StyledButton>
                     </div>
-                {:else if !isSearching && totalPages > 1}
-                    <div class="flex items-center justify-center gap-3 py-3 text-[13px]">
-                        <button
-                            class="flex items-center gap-1 h-7 px-2 rounded text-[var(--text-secondary)] bg-transparent border border-[var(--shell-border)] cursor-pointer transition-colors hover:bg-[var(--hover-overlay)] disabled:opacity-30 disabled:cursor-default"
-                            onclick={() => goToPage(currentPage - 1)}
-                            disabled={currentPage <= 1}
-                        >
-                            <ChevronLeft size={14} /> Prev
-                        </button>
-                        <span class="text-[var(--text-tertiary)] tabular-nums">
-                            Page {currentPage} of {totalPages}
+                {/if}
+
+                <!-- Total count (bottom center) -->
+                {#if !loading}
+                    <div class="flex items-center justify-center gap-2 py-3 text-[13px]">
+                        <span class="text-[var(--accent)] font-semibold tabular-nums">
+                            {displayTotal} transcript{displayTotal !== 1 ? "s" : ""}
+                            {#if activeTagIds.size > 0}
+                                <span class="text-[var(--accent)]/70">(filtered)</span>
+                            {/if}
                         </span>
-                        <button
-                            class="flex items-center gap-1 h-7 px-2 rounded text-[var(--text-secondary)] bg-transparent border border-[var(--shell-border)] cursor-pointer transition-colors hover:bg-[var(--hover-overlay)] disabled:opacity-30 disabled:cursor-default"
-                            onclick={() => goToPage(currentPage + 1)}
-                            disabled={currentPage >= totalPages}
-                        >
-                            Next <ChevronRight size={14} />
-                        </button>
+                        {#if selection.hasSelection}
+                            <span class="text-[var(--accent)] font-semibold">· {selection.count} selected</span>
+                        {/if}
                     </div>
                 {/if}
             {/if}
