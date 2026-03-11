@@ -29,6 +29,8 @@
         FileCheck2,
         Flame,
         Mic,
+        Zap,
+        Cpu,
     } from "lucide-svelte";
 
     /* ── Constants ── */
@@ -250,6 +252,44 @@
 
     let fkGradeDelta = $derived(hasRefinements ? Math.round((refinedAvgFkGrade - verbatimFkForRefined) * 10) / 10 : 0);
 
+    /* ── Processing Performance (transcription + refinement timing) ── */
+    let totalTranscriptionTime = $derived.by(() => {
+        let total = 0;
+        for (const e of entries) total += e.transcription_time_ms || 0;
+        return total / 1000; // seconds
+    });
+
+    let totalRefinementTime = $derived.by(() => {
+        let total = 0;
+        for (const e of entries) total += e.refinement_time_ms || 0;
+        return total / 1000; // seconds
+    });
+
+    let hasTimingData = $derived(totalTranscriptionTime > 0 || totalRefinementTime > 0);
+
+    let avgTranscriptionSpeedX = $derived(
+        totalTranscriptionTime > 0 && recordedSeconds > 0
+            ? Math.round((recordedSeconds / totalTranscriptionTime) * 10) / 10
+            : 0,
+    );
+
+    let avgRefinementWpm = $derived.by(() => {
+        if (totalRefinementTime <= 0) return 0;
+        const refinedWords = refinedEntries.reduce((s, e) => s + safeText(e).split(/\s+/).filter(Boolean).length, 0);
+        return Math.round(refinedWords / (totalRefinementTime / 60));
+    });
+
+    /* Refinement time saved: manual editing time minus actual SLM time.
+       Manual editing speed ≈ typing_wpm / 2 (reading + restructuring). */
+    let refinementTimeSaved = $derived.by(() => {
+        if (!hasRefinements) return 0;
+        const refinedWords = refinedEntries.reduce((s, e) => s + safeText(e).split(/\s+/).filter(Boolean).length, 0);
+        if (refinedWords === 0) return 0;
+        const manualEditWpm = Math.max(1, typingWpm / 2);
+        const manualSeconds = (refinedWords / manualEditWpm) * 60;
+        return Math.max(0, manualSeconds - totalRefinementTime);
+    });
+
     let insight = $derived.by(() => {
         if (slmInsight) return slmInsight;
         if (count < 3) return "Don't be shy! Record a bit more to see your Vociferous metrics!";
@@ -362,6 +402,18 @@
         {
             title: "FK Grade",
             text: "Flesch-Kincaid Grade Level measures sentence structure complexity. Lower = more readable. Hemingway ~4; newspaper ~8; Harvard Law Review ~18. Raw speech scores high because Whisper produces long unpunctuated runs; refinement breaks these into proper sentences.",
+        },
+        {
+            title: "Est. Editing Time Saved",
+            text: `Estimated time saved by using SLM refinement vs. manual editing. Manual editing speed assumed at ${Math.round(typingWpm / 2)} WPM (half your ${typingWpm} WPM typing speed — editing requires reading, restructuring, and proofreading). Formula: (refined_words ÷ editing_WPM × 60) − actual_SLM_time.`,
+        },
+        {
+            title: "Transcription Speed",
+            text: "Realtime multiplier for ASR inference. A value of 45× means 30 minutes of audio was transcribed in ~40 seconds. Computed as: total_recording_duration ÷ total_Whisper_processing_time.",
+        },
+        {
+            title: "Refinement Throughput",
+            text: "Words processed per minute by the SLM during refinement. Computed as: total_refined_words ÷ total_SLM_processing_minutes.",
         },
     ]);
 </script>
@@ -508,6 +560,16 @@
                                     sublabel="Verbatim → Refined ({fkGradeDelta > 0 ? '+' : ''}{fkGradeDelta})"
                                 />
                             </div>
+                            {#if refinementTimeSaved > 0}
+                                <div class="grid grid-cols-1 gap-[var(--space-3)]">
+                                    <StatCard
+                                        icon={Timer}
+                                        value={formatDuration(refinementTimeSaved)}
+                                        label="Est. Editing Time Saved"
+                                        sublabel="vs manual proofreading at {Math.round(typingWpm / 2)} WPM"
+                                    />
+                                </div>
+                            {/if}
                         </div>
                     {/if}
 
@@ -680,6 +742,52 @@
                             {/if}
                         </div>
                     </div>
+
+                    <!-- ═══ Processing Performance (only shown if timing data exists) ═══ -->
+                    {#if hasTimingData}
+                        <div class="flex flex-col gap-[var(--space-3)]">
+                            <span
+                                class="font-[var(--weight-emphasis)] text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase tracking-[1px] text-center"
+                                >Processing Performance</span
+                            >
+                            <div class="grid grid-cols-2 gap-[var(--space-3)]">
+                                {#if avgTranscriptionSpeedX > 0}
+                                    <StatCard
+                                        icon={Zap}
+                                        value="{avgTranscriptionSpeedX}×"
+                                        label="Transcription Speed"
+                                        sublabel="realtime multiplier"
+                                    />
+                                {/if}
+                                {#if avgRefinementWpm > 0}
+                                    <StatCard
+                                        icon={Cpu}
+                                        value="{formatCount(avgRefinementWpm)} WPM"
+                                        label="Refinement Throughput"
+                                        sublabel="SLM processing speed"
+                                    />
+                                {/if}
+                            </div>
+                            <div class="grid grid-cols-2 gap-[var(--space-3)]">
+                                {#if totalTranscriptionTime > 0}
+                                    <StatCard
+                                        icon={Clock}
+                                        value={formatDuration(totalTranscriptionTime)}
+                                        label="ASR Processing"
+                                        sublabel="Total transcription time"
+                                    />
+                                {/if}
+                                {#if totalRefinementTime > 0}
+                                    <StatCard
+                                        icon={Clock}
+                                        value={formatDuration(totalRefinementTime)}
+                                        label="SLM Processing"
+                                        sublabel="Total refinement time"
+                                    />
+                                {/if}
+                            </div>
+                        </div>
+                    {/if}
 
                     <div class="h-px bg-[var(--shell-border)]"></div>
 

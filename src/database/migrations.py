@@ -317,6 +317,21 @@ def _v9_prompt_system(conn: sqlite3.Connection) -> None:
     logger.info("v9 migration: Prompt system tag + default system prompt transcript seeded")
 
 
+def _v10_processing_timing(conn: sqlite3.Connection) -> None:
+    """v10 — Add transcription_time_ms and refinement_time_ms to transcripts.
+
+    Stores how long Whisper inference took (transcription) and how long
+    SLM refinement took, enabling processing performance analytics.
+    Both default to 0 for existing transcripts (no historical timing data).
+    """
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(transcripts)").fetchall()}
+    if "transcription_time_ms" not in cols:
+        conn.execute("ALTER TABLE transcripts ADD COLUMN transcription_time_ms INTEGER DEFAULT 0")
+    if "refinement_time_ms" not in cols:
+        conn.execute("ALTER TABLE transcripts ADD COLUMN refinement_time_ms INTEGER DEFAULT 0")
+    logger.info("v10 migration: transcription_time_ms + refinement_time_ms columns added")
+
+
 #: Ordered list of (human-readable description, migration function) pairs.
 #: Append here to add future migrations; do not edit existing entries.
 MIGRATIONS: list[tuple[str, object]] = [
@@ -329,6 +344,7 @@ MIGRATIONS: list[tuple[str, object]] = [
     ("v7 compound system tag — seed Compound tag for transcript continuation", _v7_compound_tag),
     ("v8 audio cache flag — has_audio_cached column on transcripts", _v8_audio_cache_flag),
     ("v9 prompt system — Prompt tag + is_protected column + default system prompt transcript", _v9_prompt_system),
+    ("v10 processing timing — transcription_time_ms + refinement_time_ms columns", _v10_processing_timing),
 ]
 
 

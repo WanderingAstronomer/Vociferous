@@ -215,6 +215,14 @@ class TestReturnShape:
             "refined_vocab_ratio",
             "refined_avg_fk_grade",
             "refined_avg_sentence_length",
+            # Processing performance
+            "total_transcription_time_seconds",
+            "total_refinement_time_seconds",
+            "avg_transcription_speed_x",
+            "avg_refinement_wpm",
+            "refinement_time_saved_seconds",
+            "transcripts_with_transcription_time",
+            "transcripts_with_refinement_time",
             # Streaks
             "current_streak",
             "longest_streak",

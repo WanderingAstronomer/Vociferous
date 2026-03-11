@@ -122,6 +122,11 @@ class RefinementHandlers:
 
                 elapsed = round(time.monotonic() - start_time, 1)
 
+                # Persist refinement processing time for analytics
+                _db = self._db_provider()
+                if _db:
+                    _db.update_refinement_time(intent.transcript_id, int(elapsed * 1000))
+
                 self._emit(
                     "refinement_complete",
                     {
@@ -282,11 +287,13 @@ class RefinementHandlers:
                     text = transcript.normalized_text or transcript.raw_text
                     try:
                         _slm = self._slm_runtime_provider()
+                        refine_start = time.monotonic()
                         refined = _slm.refine_text_sync(
                             text,
                             level=intent.level,
                             instructions=intent.instructions,
                         )
+                        refine_elapsed_ms = int((time.monotonic() - refine_start) * 1000)
                     except Exception as e:
                         logger.exception("Bulk refine: inference failed for transcript %d", tid)
                         failed += 1
@@ -302,9 +309,10 @@ class RefinementHandlers:
                         )
                         continue
 
-                    # Auto-commit: persist + tag
+                    # Auto-commit: persist + tag + timing
                     _db.update_normalized_text(tid, refined)
                     _db.add_system_tag_to_transcript(tid, "Refined")
+                    _db.update_refinement_time(tid, refine_elapsed_ms)
                     completed += 1
 
                     updated = _db.get_transcript(tid)

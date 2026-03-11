@@ -271,6 +271,8 @@ def transcript_to_dict(transcript) -> dict:
         "display_name": transcript.display_name,
         "duration_ms": transcript.duration_ms,
         "speech_duration_ms": transcript.speech_duration_ms,
+        "transcription_time_ms": transcript.transcription_time_ms,
+        "refinement_time_ms": transcript.refinement_time_ms,
         "created_at": transcript.created_at,
         "include_in_analytics": transcript.include_in_analytics,
         "has_audio_cached": transcript.has_audio_cached,

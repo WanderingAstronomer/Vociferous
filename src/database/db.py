@@ -47,6 +47,8 @@ class Transcript:
     display_name: str | None = None
     duration_ms: int = 0
     speech_duration_ms: int = 0
+    transcription_time_ms: int = 0
+    refinement_time_ms: int = 0
     created_at: str = ""
     include_in_analytics: bool = True
     has_audio_cached: bool = False
@@ -72,6 +74,8 @@ CREATE TABLE IF NOT EXISTS transcripts (
     display_name TEXT,
     duration_ms INTEGER DEFAULT 0,
     speech_duration_ms INTEGER DEFAULT 0,
+    transcription_time_ms INTEGER DEFAULT 0,
+    refinement_time_ms INTEGER DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
     include_in_analytics INTEGER NOT NULL DEFAULT 1,
     has_audio_cached INTEGER NOT NULL DEFAULT 0,
@@ -139,6 +143,7 @@ class TranscriptDB:
         normalized_text: str | None = None,
         duration_ms: int = 0,
         speech_duration_ms: int = 0,
+        transcription_time_ms: int = 0,
         display_name: str | None = None,
         tag_ids: list[int] | None = None,
     ) -> Transcript:
@@ -149,8 +154,8 @@ class TranscriptDB:
             cur = self._conn.execute(
                 """INSERT INTO transcripts
                    (timestamp, raw_text, normalized_text, display_name,
-                    duration_ms, speech_duration_ms, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    duration_ms, speech_duration_ms, transcription_time_ms, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     ts,
                     raw_text,
@@ -158,6 +163,7 @@ class TranscriptDB:
                     display_name,
                     duration_ms,
                     speech_duration_ms,
+                    transcription_time_ms,
                     ts,
                 ),
             )
@@ -182,6 +188,7 @@ class TranscriptDB:
             display_name=display_name,
             duration_ms=duration_ms,
             speech_duration_ms=speech_duration_ms,
+            transcription_time_ms=transcription_time_ms,
             created_at=ts,
             tags=tags,
         )
@@ -394,6 +401,15 @@ class TranscriptDB:
             )
             self._conn.commit()
             return cur.rowcount > 0
+
+    def update_refinement_time(self, transcript_id: int, refinement_time_ms: int) -> None:
+        """Set the refinement_time_ms for a transcript (called after SLM inference completes)."""
+        with self._write_lock:
+            self._conn.execute(
+                "UPDATE transcripts SET refinement_time_ms = ? WHERE id = ?",
+                (refinement_time_ms, transcript_id),
+            )
+            self._conn.commit()
 
     # --- Tags ---
 
@@ -628,6 +644,8 @@ class TranscriptDB:
             display_name=row["display_name"],
             duration_ms=row["duration_ms"],
             speech_duration_ms=row["speech_duration_ms"],
+            transcription_time_ms=row["transcription_time_ms"],
+            refinement_time_ms=row["refinement_time_ms"],
             created_at=row["created_at"],
             include_in_analytics=bool(row["include_in_analytics"]),
             has_audio_cached=bool(row["has_audio_cached"]),

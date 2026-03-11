@@ -150,6 +150,12 @@ def compute_usage_stats(db: TranscriptDB, typing_wpm: int = _TYPING_WPM) -> dict
     refined_fk_sum = 0.0
     refined_avg_sentence_len_sum = 0.0
 
+    # Processing performance accumulators
+    total_transcription_time = 0.0  # seconds
+    total_refinement_time = 0.0  # seconds
+    transcripts_with_transcription_time = 0
+    transcripts_with_refinement_time = 0
+
     for t in transcripts:
         raw = t.raw_text or ""
         norm = t.normalized_text or ""
@@ -204,6 +210,14 @@ def compute_usage_stats(db: TranscriptDB, typing_wpm: int = _TYPING_WPM) -> dict
                 expected = (len(words) / _SPEAKING_WPM) * 60
                 total_speech_seconds += min(expected, dur)
                 total_silence += max(0.0, dur - expected)
+
+        # Processing timing — only count transcripts that have data (post-v10 migration)
+        if t.transcription_time_ms > 0:
+            total_transcription_time += t.transcription_time_ms / 1000
+            transcripts_with_transcription_time += 1
+        if t.refinement_time_ms > 0:
+            total_refinement_time += t.refinement_time_ms / 1000
+            transcripts_with_refinement_time += 1
 
     # Fallback estimate when no duration metadata is present
     if recorded_seconds == 0 and total_words > 0:
@@ -280,6 +294,25 @@ def compute_usage_stats(db: TranscriptDB, typing_wpm: int = _TYPING_WPM) -> dict
     # Top fillers — sorted by count descending, capped at 5
     top_fillers = dict(sorted(filler_breakdown.items(), key=lambda x: x[1], reverse=True)[:5])
 
+    # ── Processing performance ──
+    # Transcription speed: realtime multiplier (recording_duration / transcription_time)
+    avg_transcription_speed_x = 0.0
+    if total_transcription_time > 0 and recorded_seconds > 0:
+        avg_transcription_speed_x = round(recorded_seconds / total_transcription_time, 1)
+
+    # Refinement throughput: words processed per minute by SLM
+    avg_refinement_wpm = 0
+    if total_refinement_time > 0 and refined_total_words > 0:
+        avg_refinement_wpm = round(refined_total_words / (total_refinement_time / 60))
+
+    # Refinement time saved: estimated manual editing time minus actual SLM time
+    # Manual editing speed ≈ typing_wpm / 2 (reading + restructuring is slower than straight typing)
+    manual_editing_wpm = max(1, typing_wpm / 2)
+    refinement_time_saved = 0.0
+    if refined_total_words > 0:
+        manual_edit_seconds = (refined_total_words / manual_editing_wpm) * 60
+        refinement_time_saved = max(0.0, manual_edit_seconds - total_refinement_time)
+
     return {
         # ── Overall (backward-compatible) ──
         "count": count,
@@ -308,6 +341,14 @@ def compute_usage_stats(db: TranscriptDB, typing_wpm: int = _TYPING_WPM) -> dict
         "refined_vocab_ratio": round(refined_vocab_ratio, 3),
         "refined_avg_fk_grade": round(refined_fk_sum / r_count, 1),
         "refined_avg_sentence_length": round(refined_avg_sentence_len_sum / r_count, 1),
+        # ── Processing performance ──
+        "total_transcription_time_seconds": round(total_transcription_time, 1),
+        "total_refinement_time_seconds": round(total_refinement_time, 1),
+        "avg_transcription_speed_x": avg_transcription_speed_x,
+        "avg_refinement_wpm": avg_refinement_wpm,
+        "refinement_time_saved_seconds": round(refinement_time_saved, 1),
+        "transcripts_with_transcription_time": transcripts_with_transcription_time,
+        "transcripts_with_refinement_time": transcripts_with_refinement_time,
         # ── Streaks ──
         "current_streak": current_streak,
         "longest_streak": longest_streak,

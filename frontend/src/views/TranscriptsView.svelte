@@ -1092,28 +1092,23 @@
 {#if exportOpen}
     <div class="fixed inset-0 z-[199]" onclick={closeExportPopover} role="presentation"></div>
     <div
-        class="fixed min-w-[180px] bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-lg shadow-[0_12px_28px_rgba(0,0,0,0.45)] py-1 z-[200] -translate-y-full"
-        style="left: {exportBtnEl ? Math.min(exportBtnEl.getBoundingClientRect().left, window.innerWidth - 200) : 0}px; top: {exportBtnEl ? exportBtnEl.getBoundingClientRect().top - 8 : 0}px"
+        class="fixed min-w-[260px] bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-lg shadow-[0_12px_28px_rgba(0,0,0,0.45)] py-1 z-[200] -translate-y-full"
+        style="left: {exportBtnEl
+            ? Math.min(exportBtnEl.getBoundingClientRect().left, window.innerWidth - 280)
+            : 0}px; top: {exportBtnEl ? exportBtnEl.getBoundingClientRect().top - 8 : 0}px"
         role="menu"
         tabindex="-1"
         onpointerdown={(e) => e.stopPropagation()}
     >
-        <div class="px-3 py-1.5 text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">
-            Export as
-        </div>
-        {#each [
-            { format: "md" as ExportFormat, label: "Markdown", desc: "Readable document" },
-            { format: "json" as ExportFormat, label: "JSON", desc: "Structured data" },
-            { format: "csv" as ExportFormat, label: "CSV", desc: "Spreadsheet" },
-            { format: "txt" as ExportFormat, label: "Plain Text", desc: "Simple text" },
-        ] as opt (opt.format)}
+        <div class="px-3 py-1.5 text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">Export as</div>
+        {#each [{ format: "md" as ExportFormat, label: "Markdown", desc: "Readable document" }, { format: "json" as ExportFormat, label: "JSON", desc: "Structured data" }, { format: "csv" as ExportFormat, label: "CSV", desc: "Spreadsheet" }, { format: "txt" as ExportFormat, label: "Plain Text", desc: "Simple text" }] as opt (opt.format)}
             <button
-                class="w-full flex items-center justify-between px-3 py-2 border-none bg-transparent text-left cursor-pointer transition-colors duration-150 hover:bg-[var(--hover-overlay)] text-[var(--text-primary)]"
+                class="w-full flex items-center justify-between gap-4 px-3 py-2 border-none bg-transparent text-left cursor-pointer transition-colors duration-150 hover:bg-[var(--hover-overlay)] text-[var(--text-primary)]"
                 onclick={() => handleExport(opt.format)}
                 role="menuitem"
             >
                 <span class="text-sm font-medium">{opt.label}</span>
-                <span class="text-[11px] text-[var(--text-tertiary)]">{opt.desc}</span>
+                <span class="text-[11px] text-[var(--text-tertiary)] shrink-0">{opt.desc}</span>
             </button>
         {/each}
     </div>

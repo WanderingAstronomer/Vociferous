@@ -132,7 +132,7 @@ class TestTranscribeAndStore:
         self, mock_create, mock_transcribe, mock_pipeline, mock_clip, session, emit, fake_db, fresh_settings
     ):
         """Full pipeline: ASR → store → emit transcription_complete."""
-        mock_transcribe.return_value = ("Hello world", 850)
+        mock_transcribe.return_value = ("Hello world", 850, 120)
         session._asr_model = MagicMock()
         session._audio_pipeline = MagicMock()
 
@@ -153,7 +153,7 @@ class TestTranscribeAndStore:
     @patch("src.services.transcription_service.transcribe")
     def test_no_speech_detected(self, mock_transcribe, mock_pipeline, session, emit, fake_db):
         """Empty transcription text → transcription_error, no DB write."""
-        mock_transcribe.return_value = ("   ", 0)
+        mock_transcribe.return_value = ("   ", 0, 0)
         session._asr_model = MagicMock()
         session._audio_pipeline = MagicMock()
 
@@ -206,7 +206,7 @@ class TestTranscribeAndStore:
         self, mock_transcribe, mock_pipeline, mock_clip, session, emit, fake_db, fresh_settings
     ):
         """auto_copy_to_clipboard=False → clipboard not called."""
-        mock_transcribe.return_value = ("text", 500)
+        mock_transcribe.return_value = ("text", 500, 100)
         new_output = fresh_settings.output.model_copy(update={"auto_copy_to_clipboard": False})
         new_settings = fresh_settings.model_copy(update={"output": new_output})
         session._settings_provider = lambda: new_settings
@@ -222,7 +222,7 @@ class TestTranscribeAndStore:
     @patch("src.services.transcription_service.transcribe")
     def test_auto_copy_enabled(self, mock_transcribe, mock_pipeline, mock_clip, session, emit, fake_db, fresh_settings):
         """auto_copy_to_clipboard=True → clipboard called with text."""
-        mock_transcribe.return_value = ("Copied text", 500)
+        mock_transcribe.return_value = ("Copied text", 500, 100)
         # Default is True, but let's be explicit
         new_output = fresh_settings.output.model_copy(update={"auto_copy_to_clipboard": True})
         new_settings = fresh_settings.model_copy(update={"output": new_output})
@@ -238,7 +238,7 @@ class TestTranscribeAndStore:
     @patch("src.services.transcription_service.transcribe")
     def test_insight_manager_scheduled(self, mock_transcribe, mock_pipeline, session, emit, fake_db):
         """Non-None insight_manager gets maybe_schedule() called."""
-        mock_transcribe.return_value = ("text", 500)
+        mock_transcribe.return_value = ("text", 500, 100)
         session._asr_model = MagicMock()
         session._audio_pipeline = MagicMock()
         mock_insight = MagicMock()
@@ -252,7 +252,7 @@ class TestTranscribeAndStore:
     @patch("src.services.transcription_service.transcribe")
     def test_title_generator_scheduled(self, mock_transcribe, mock_pipeline, session, emit, fake_db):
         """Non-None title_generator gets schedule() called with transcript id and text."""
-        mock_transcribe.return_value = ("some text", 500)
+        mock_transcribe.return_value = ("some text", 500, 100)
         session._asr_model = MagicMock()
         session._audio_pipeline = MagicMock()
         mock_title_gen = MagicMock()
@@ -266,7 +266,7 @@ class TestTranscribeAndStore:
     @patch("src.services.transcription_service.transcribe")
     def test_no_db_still_emits_complete(self, mock_transcribe, mock_pipeline, session, emit):
         """If db_provider returns None, still emit transcription_complete with id=None."""
-        mock_transcribe.return_value = ("hello", 500)
+        mock_transcribe.return_value = ("hello", 500, 100)
         session._asr_model = MagicMock()
         session._audio_pipeline = MagicMock()
         session._db_provider = lambda: None
@@ -284,7 +284,7 @@ class TestTranscribeAndStore:
         """ASR model is None → lazy load succeeds → transcription proceeds."""
         mock_model = MagicMock()
         mock_create.return_value = mock_model
-        mock_transcribe.return_value = ("recovered text", 500)
+        mock_transcribe.return_value = ("recovered text", 500, 100)
         session._asr_model = None
         session._audio_pipeline = MagicMock()
 

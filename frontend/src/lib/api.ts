@@ -27,6 +27,8 @@ export interface Transcript {
     display_name: string | null;
     duration_ms: number;
     speech_duration_ms: number;
+    transcription_time_ms: number;
+    refinement_time_ms: number;
     created_at: string;
     include_in_analytics: boolean;
     has_audio_cached: boolean;

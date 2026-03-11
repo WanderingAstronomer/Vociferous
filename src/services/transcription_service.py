@@ -111,7 +111,7 @@ def transcribe(
     settings: VociferousSettings,
     local_model=None,
     audio_pipeline: AudioPipeline | None = None,
-) -> tuple[str, int]:
+) -> tuple[str, int, int]:
     """
     Transcribe audio data to text using faster-whisper (CTranslate2 backend).
 
@@ -125,10 +125,10 @@ def transcribe(
         audio_pipeline: Reusable AudioPipeline instance (created if None).
 
     Returns:
-        Tuple of (transcription_text, speech_duration_ms).
+        Tuple of (transcription_text, speech_duration_ms, transcription_time_ms).
     """
     if audio_data is None or len(audio_data) == 0:
-        return "", 0
+        return "", 0, 0
 
     if local_model is None:
         local_model = create_local_model(settings)
@@ -145,7 +145,7 @@ def transcribe(
 
     if clean_audio is None:
         logger.info("AudioPipeline detected no speech; skipping transcription")
-        return "", 0
+        return "", 0, 0
 
     try:
         audio_float: NDArray[np.float32] = clean_audio
@@ -190,6 +190,7 @@ def transcribe(
         speech_duration_ms = total_duration_ms if total_duration_ms > 0 else 0
 
         elapsed = time.perf_counter() - start
+        transcription_time_ms = int(elapsed * 1000)
         logger.info(
             "Transcription completed in %.2fs (%d segments, speech=%dms)",
             elapsed,
@@ -197,7 +198,7 @@ def transcribe(
             speech_duration_ms,
         )
 
-        return post_process_transcription(transcription, settings), speech_duration_ms
+        return post_process_transcription(transcription, settings), speech_duration_ms, transcription_time_ms
 
     except Exception as e:
         raise EngineError(f"Transcription failed: {e}") from e

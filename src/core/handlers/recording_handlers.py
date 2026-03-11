@@ -318,7 +318,7 @@ class RecordingSession:
                     from src.services.audio_pipeline import AudioPipeline
                     self._audio_pipeline = AudioPipeline()
 
-                text, speech_duration_ms = transcribe(
+                text, speech_duration_ms, _transcription_time_ms = transcribe(
                     int16_audio,
                     settings=settings,
                     local_model=self._asr_model,
@@ -430,7 +430,7 @@ class RecordingSession:
 
                 self._audio_pipeline = AudioPipeline()
 
-            text, speech_duration_ms = transcribe(
+            text, speech_duration_ms, transcription_time_ms = transcribe(
                 audio_data,
                 settings=settings,
                 local_model=self._asr_model,
@@ -451,6 +451,7 @@ class RecordingSession:
                     raw_text=text,
                     duration_ms=duration_ms,
                     speech_duration_ms=speech_duration_ms,
+                    transcription_time_ms=transcription_time_ms,
                     display_name=display_name,
                 )
                 if source_tag and transcript:

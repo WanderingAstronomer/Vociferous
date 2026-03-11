@@ -1,5 +1,31 @@
 # Vociferous Changelog
 
+## v5.12.0 — Processing Performance Analytics
+
+**Date:** 2025-07-15
+**Status:** Feature / Fix
+
+### Added
+- **Processing performance tracking** — Transcription inference time and SLM refinement time are now measured and persisted per transcript. Timing data powers new analytics in UserView.
+- **UserView: Processing Performance section** (Deep Dive tab) — Four stat cards: Transcription Speed (realtime multiplier), Refinement Throughput (WPM), total ASR processing time, total SLM processing time. Only appears once post-update transcripts exist.
+- **UserView: "Est. Editing Time Saved" card** (Dashboard) — Estimates time saved by SLM refinement vs. manual editing at half the user's configured typing speed. Scales automatically with the WPM setting.
+- **DB migration v10** — Adds `transcription_time_ms` and `refinement_time_ms` columns to transcripts table.
+
+### Changed
+- **`transcribe()` return signature** — Now returns `tuple[str, int, int]` (text, speech_duration_ms, transcription_time_ms). Third element captures inference wall-clock time that was previously logged and discarded.
+- **Refinement handlers** — Both single and bulk refinement paths now persist SLM processing time via `update_refinement_time()`.
+- **`usage_stats`** — Computes 7 new metrics: avg transcription speed multiplier, avg refinement WPM, total transcription/refinement time, and estimated editing time saved.
+
+### Fixed
+- **Export popover width** — Minimum width increased to 260px, overflow guard widened, layout tightened to prevent clipping on narrow viewports.
+
+### Technical Notes
+- Historical transcripts (pre-migration) have 0 for both timing columns. Stats code excludes zero values from averages so legacy data doesn't pollute metrics.
+- Time-saved heuristic: `manual_editing_wpm = typing_wpm / 2`. At default 40 WPM → 20 WPM editing speed, tracking professional substantive editing rates (~1200 words/hour).
+- Retranscription timing is intentionally not persisted — original inference timing is the meaningful metric.
+
+---
+
 ## v5.11.0 — TranscriptsView Contextual Export
 
 **Date:** 2026-03-11
