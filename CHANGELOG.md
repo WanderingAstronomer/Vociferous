@@ -2,6 +2,18 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.9.5 — Re-Transcribe EditView Polish
+
+**Date:** 2026-03-10
+**Status:** Hotfix / Polish
+
+### Changed
+- **EditView action bar copy** — Standardized wording to **Re-transcribe** (button label, tooltip, and queued/failure toasts) for consistency with existing TranscribeView/TranscriptsView terminology.
+- **EditView analytics control layout** — Swapped control order to text-first then toggle (`Include in analytics` on the left, toggle on the right), matching expected reading/scanning order.
+- **ToggleSwitch sizing** — Added a compact `size="sm"` variant and applied it in EditView so the analytics switch is visually less bulky without changing global defaults.
+
+---
+
 ## v5.9.4 — Analytics Import Toggle + Re-Transcribe from Cached Audio
 
 **Date:** 2026-03-10

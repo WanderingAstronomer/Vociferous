@@ -358,10 +358,10 @@
 
         {#if transcript}
             <div class="shrink-0 flex items-center gap-1.5 mt-0.5" title="Toggle analytics inclusion">
-                <ToggleSwitch checked={transcript.include_in_analytics} onChange={toggleAnalyticsInclusion} />
                 <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap select-none"
                     >Include in analytics</span
                 >
+                <ToggleSwitch size="sm" checked={transcript.include_in_analytics} onChange={toggleAnalyticsInclusion} />
             </div>
         {/if}
     </div>
@@ -421,23 +421,25 @@
             <X size={13} /> Discard
         </StyledButton>
 
-        {#if transcript?.has_audio_cached}
-            <StyledButton
-                size="sm"
-                variant="secondary"
-                onclick={async () => {
-                    if (!transcript) return;
-                    try {
-                        await retranscribeTranscript(transcript.id);
-                        toast.info("Re-transcription queued");
-                    } catch {
-                        toast.error("Failed to queue re-transcription");
-                    }
-                }}
-            >
-                <RefreshCw size={13} /> Re-transcribe
-            </StyledButton>
-        {/if}
+        <StyledButton
+            size="sm"
+            variant="secondary"
+            disabled={!transcript?.has_audio_cached}
+            title={transcript?.has_audio_cached
+                ? "Re-run transcription using this transcript's cached audio"
+                : "Re-transcribe unavailable: no cached audio for this transcript"}
+            onclick={async () => {
+                if (!transcript?.has_audio_cached) return;
+                try {
+                    await retranscribeTranscript(transcript.id);
+                    toast.info("Re-transcription queued");
+                } catch {
+                    toast.error("Failed to queue re-transcription");
+                }
+            }}
+        >
+            <RefreshCw size={13} /> Re-transcribe
+        </StyledButton>
 
         <div class="flex-1"></div>
 
