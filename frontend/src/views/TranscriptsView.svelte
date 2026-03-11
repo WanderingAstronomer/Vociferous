@@ -15,10 +15,12 @@
         assignTags,
         batchToggleTag,
         retranscribeTranscript,
+        exportFile,
         type Transcript,
         type Tag,
         type SearchResult,
     } from "../lib/api";
+    import { buildExportPayload, type ExportFormat } from "../lib/exportUtils";
     import { ws } from "../lib/ws";
     import { toast } from "../lib/toast.svelte";
     import { nav } from "../lib/navigation.svelte";
@@ -42,6 +44,7 @@
         Hammer,
         Mic,
         RefreshCw,
+        Download,
     } from "lucide-svelte";
     import StyledButton from "../lib/components/StyledButton.svelte";
     import EmptyState from "../lib/components/EmptyState.svelte";
@@ -92,6 +95,11 @@
 
     // Copy feedback
     let copied = $state(false);
+
+    // Export
+    let exportOpen = $state(false);
+    let exporting = $state(false);
+    let exportBtnEl: HTMLElement | undefined = $state(undefined);
 
     // Bulk refinement state
     let bulkRefineActive = $state(false);
@@ -500,6 +508,46 @@
         tagAssignOpen = false;
     }
 
+    /* ===== Export ===== */
+
+    async function handleExport(format: ExportFormat) {
+        exportOpen = false;
+        exporting = true;
+        try {
+            // Gather transcripts: selected IDs from in-memory data
+            const selectedIds = new Set(selection.ids);
+            const selected = filteredEntries.filter((e) => selectedIds.has(e.id));
+
+            if (selected.length === 0) {
+                toast.error("No transcripts selected");
+                return;
+            }
+
+            const { filename, content } = buildExportPayload(selected, format);
+            const result = await exportFile(content, filename);
+            toast.success(
+                `Exported ${selected.length} transcript${selected.length !== 1 ? "s" : ""} to ${result.path}`,
+            );
+        } catch (e: any) {
+            if (e?.error === "cancelled" || e?.message?.includes("cancelled")) {
+                toast.info("Export cancelled");
+                return;
+            }
+            toast.error(e?.message || "Export failed");
+        } finally {
+            exporting = false;
+        }
+    }
+
+    function toggleExportPopover(event?: MouseEvent) {
+        event?.stopPropagation();
+        exportOpen = !exportOpen;
+    }
+
+    function closeExportPopover() {
+        exportOpen = false;
+    }
+
     async function toggleTagOnSelected(tagId: number) {
         const ids = selection.ids;
         if (ids.length === 0) return;
@@ -533,11 +581,14 @@
 
     function handleGlobalPointerDown() {
         if (tagAssignOpen) closeTagAssign();
+        if (exportOpen) closeExportPopover();
     }
 
     function handleGlobalKeydown(event: KeyboardEvent) {
         if (event.key === "Escape") {
-            if (tagAssignOpen) {
+            if (exportOpen) {
+                closeExportPopover();
+            } else if (tagAssignOpen) {
                 closeTagAssign();
             } else if (selection.hasSelection) {
                 selection.clear();
@@ -970,6 +1021,19 @@
                     <TagIcon size={13} /> Tag
                 </StyledButton>
 
+                <div class="relative" bind:this={exportBtnEl}>
+                    <StyledButton
+                        size="sm"
+                        variant="secondary"
+                        onclick={toggleExportPopover}
+                        disabled={exporting}
+                        title="Export selected transcripts"
+                    >
+                        <Download size={13} />
+                        {exporting ? "Exporting…" : selection.isMulti ? `Export ${selection.count}` : "Export"}
+                    </StyledButton>
+                </div>
+
                 <StyledButton size="sm" variant="primary" onclick={handleBulkRefine}>
                     <Sparkles size={13} />
                     {selection.isMulti ? `Refine ${selection.count}` : "Refine"}
@@ -1021,6 +1085,37 @@
                 </button>
             {/each}
         {/if}
+    </div>
+{/if}
+
+<!-- === Export Format Picker === -->
+{#if exportOpen}
+    <div class="fixed inset-0 z-[199]" onclick={closeExportPopover} role="presentation"></div>
+    <div
+        class="fixed min-w-[180px] bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-lg shadow-[0_12px_28px_rgba(0,0,0,0.45)] py-1 z-[200] -translate-y-full"
+        style="left: {exportBtnEl ? Math.min(exportBtnEl.getBoundingClientRect().left, window.innerWidth - 200) : 0}px; top: {exportBtnEl ? exportBtnEl.getBoundingClientRect().top - 8 : 0}px"
+        role="menu"
+        tabindex="-1"
+        onpointerdown={(e) => e.stopPropagation()}
+    >
+        <div class="px-3 py-1.5 text-[11px] uppercase tracking-wide text-[var(--text-tertiary)]">
+            Export as
+        </div>
+        {#each [
+            { format: "md" as ExportFormat, label: "Markdown", desc: "Readable document" },
+            { format: "json" as ExportFormat, label: "JSON", desc: "Structured data" },
+            { format: "csv" as ExportFormat, label: "CSV", desc: "Spreadsheet" },
+            { format: "txt" as ExportFormat, label: "Plain Text", desc: "Simple text" },
+        ] as opt (opt.format)}
+            <button
+                class="w-full flex items-center justify-between px-3 py-2 border-none bg-transparent text-left cursor-pointer transition-colors duration-150 hover:bg-[var(--hover-overlay)] text-[var(--text-primary)]"
+                onclick={() => handleExport(opt.format)}
+                role="menuitem"
+            >
+                <span class="text-sm font-medium">{opt.label}</span>
+                <span class="text-[11px] text-[var(--text-tertiary)]">{opt.desc}</span>
+            </button>
+        {/each}
     </div>
 {/if}
 

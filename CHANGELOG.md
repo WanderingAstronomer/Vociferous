@@ -1,5 +1,25 @@
 # Vociferous Changelog
 
+## v5.11.0 — TranscriptsView Contextual Export
+
+**Date:** 2026-03-11
+**Status:** Feature
+**Issue:** ISS-093
+
+### Added
+- **Export button in TranscriptsView action bar** — Select one or more transcripts, click Export, pick a format from the popover (Markdown, JSON, CSV, Plain Text), and save via native file dialog. Export respects current sort order. Single-transcript exports use the transcript title as filename.
+- **Shared export utilities** (`frontend/src/lib/exportUtils.ts`) — Extracted export formatting from MaintenanceCard into a properly typed shared module. Markdown formatter upgraded with display_name titles, human-readable durations, and formatted timestamps.
+
+### Changed
+- **MaintenanceCard refactored** — Now imports from shared `exportUtils.ts` instead of owning ~91 lines of inline formatting. "Export All" in Maintenance continues to work unchanged as the bulk fallback.
+
+### Technical Notes
+- No new backend endpoint or intent needed — export uses the existing `POST /api/export` (native save dialog) and formats data entirely frontend-side from already-loaded transcript objects.
+- Format picker is a position-anchored popover following the same pattern as the tag assignment popover.
+- Escape key and click-outside dismiss the export popover.
+
+---
+
 ## v5.10.8 — UserView Overhaul, Analytics Audit, SettingsView Polish, Clipboard Fix
 
 **Date:** 2026-03-11

@@ -7,6 +7,7 @@
      */
 
     import { getTranscripts, clearAllTranscripts, exportFile, restartEngine } from "../api";
+    import { buildExportPayload, type ExportFormat } from "../exportUtils";
     import { RotateCcw } from "lucide-svelte";
     import ToggleSwitch from "./ToggleSwitch.svelte";
     import CustomSelect from "./CustomSelect.svelte";
@@ -25,7 +26,7 @@
 
     /* ===== Export state ===== */
 
-    let exportFormat = $state<"json" | "csv" | "txt" | "md">("json");
+    let exportFormat = $state<ExportFormat>("json");
     let preferSaveDialog = $state(true);
 
     /* ===== Clear state ===== */
@@ -33,100 +34,12 @@
     let clearingTranscripts = $state(false);
     let showClearTranscriptsConfirm = $state(false);
 
-    /* ===== Export helpers ===== */
-
-    function escapeCsvValue(value: unknown): string {
-        const text = String(value ?? "").replace(/"/g, '""');
-        return `"${text}"`;
-    }
-
-    function transcriptsToCsv(transcripts: Record<string, unknown>[]): string {
-        const headers = [
-            "id",
-            "timestamp",
-            "tags",
-            "text",
-            "raw_text",
-            "normalized_text",
-            "duration_ms",
-            "speech_duration_ms",
-        ];
-        const lines = [headers.join(",")];
-        for (const transcript of transcripts) {
-            const tags = Array.isArray(transcript.tags)
-                ? (transcript.tags as { name: string }[]).map((t) => t.name).join("; ")
-                : "";
-            const row = [
-                transcript.id,
-                transcript.timestamp,
-                tags,
-                transcript.text,
-                transcript.raw_text,
-                transcript.normalized_text,
-                transcript.duration_ms,
-                transcript.speech_duration_ms,
-            ].map(escapeCsvValue);
-            lines.push(row.join(","));
-        }
-        return lines.join("\n");
-    }
-
-    function transcriptsToTxt(transcripts: Record<string, unknown>[]): string {
-        return transcripts
-            .map((transcript, index) => {
-                const title = `Transcript ${index + 1}`;
-                const timestamp = `Timestamp: ${String(transcript.timestamp ?? "unknown")}`;
-                const tags = Array.isArray(transcript.tags)
-                    ? `Tags: ${(transcript.tags as { name: string }[]).map((t) => t.name).join(", ") || "none"}`
-                    : "Tags: none";
-                const text = String(transcript.text ?? transcript.normalized_text ?? transcript.raw_text ?? "");
-                return `${title}\n${timestamp}\n${tags}\n\n${text}`;
-            })
-            .join("\n\n---\n\n");
-    }
-
-    function transcriptsToMarkdown(transcripts: Record<string, unknown>[]): string {
-        const header = `# Vociferous Export\n\n_${new Date().toLocaleDateString()} — ${transcripts.length} transcripts_\n`;
-        const body = transcripts
-            .map((t, i) => {
-                const ts = String(t.timestamp ?? "unknown");
-                const tags = Array.isArray(t.tags)
-                    ? (t.tags as { name: string }[]).map((tg) => tg.name).join(", ") || "none"
-                    : "none";
-                const text = String(t.text ?? t.normalized_text ?? t.raw_text ?? "");
-                return `## ${i + 1}. Transcript\n\n**Date:** ${ts}  \n**Tags:** ${tags}\n\n${text}`;
-            })
-            .join("\n\n---\n\n");
-        return `${header}\n${body}\n`;
-    }
-
-    function buildExportPayload(transcripts: Record<string, unknown>[], format: "json" | "csv" | "txt" | "md") {
-        const datePart = new Date().toISOString().slice(0, 10);
-        if (format === "csv") {
-            const content = transcriptsToCsv(transcripts);
-            return { filename: `vociferous-export-${datePart}.csv`, content };
-        }
-        if (format === "txt") {
-            const content = transcriptsToTxt(transcripts);
-            return { filename: `vociferous-export-${datePart}.txt`, content };
-        }
-        if (format === "md") {
-            const content = transcriptsToMarkdown(transcripts);
-            return { filename: `vociferous-export-${datePart}.md`, content };
-        }
-        const content = JSON.stringify(transcripts, null, 2);
-        return { filename: `vociferous-export-${datePart}.json`, content };
-    }
-
     /* ===== Actions ===== */
 
     async function handleExportTranscripts() {
         try {
             const { items: transcripts } = await getTranscripts({ limit: 99999 });
-            const { filename, content } = buildExportPayload(
-                transcripts as unknown as Record<string, unknown>[],
-                exportFormat,
-            );
+            const { filename, content } = buildExportPayload(transcripts, exportFormat);
 
             if (preferSaveDialog) {
                 const result = await exportFile(content, filename);
