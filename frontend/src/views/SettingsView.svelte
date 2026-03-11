@@ -394,7 +394,11 @@
                             >
                             <ToggleSwitch
                                 checked={getSafe(config, "display.render_markdown_in_editor", false)}
-                                onChange={() => setSafe("display.render_markdown_in_editor", !getSafe(config, "display.render_markdown_in_editor", false))}
+                                onChange={() =>
+                                    setSafe(
+                                        "display.render_markdown_in_editor",
+                                        !getSafe(config, "display.render_markdown_in_editor", false),
+                                    )}
                             />
                         </div>
                     </div>

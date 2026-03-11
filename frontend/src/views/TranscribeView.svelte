@@ -349,7 +349,7 @@
                         /* Clean up the temporary transcript the ASR pipeline created */
                         if (data.id) await apiDeleteTranscript(data.id);
                         toast.success("Recording appended");
-                        
+
                         /* Auto-refine the combined transcript if enabled */
                         if (autoRefine && refinementEnabled) {
                             const DEFAULT_LEVEL = 2;
@@ -603,7 +603,7 @@
             });
             await apiDeleteTranscript(currentId);
             toast.success("Appended to previous recording");
-            
+
             /* Auto-refine the combined transcript if enabled */
             if (autoRefine && refinementEnabled) {
                 const DEFAULT_LEVEL = 2;
@@ -611,7 +611,7 @@
                     console.warn("Auto-refine after append failed:", e),
                 );
             }
-            
+
             await openTranscript(targetId, "view");
             loadRecentSessions();
         } catch (e: any) {

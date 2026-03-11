@@ -2,6 +2,32 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.10.5 — RefineView Overhaul: Diff Highlighting, Analytics Delta, Prompt UX
+
+**Date:** 2026-03-11
+**Status:** Feature / Polish
+
+### Changed
+- **Removed transcript selector dropdown** — RefineView no longer loads all transcripts into a picker dropdown. Users navigate to refine from TranscribeView or TranscriptionsView, which is the natural flow. When no transcript is pending, an EmptyState guides the user. Eliminated ~80 lines of picker UI and the `loadTranscripts()` call.
+- **Centered card titles** — "Original Transcript" and "Refined / AI Suggestion" headings are now horizontally centered with action icons balanced on each side.
+- **Markdown rendering respects setting** — Both text panels now conditionally render MarkdownBody or raw pre-wrapped text based on the `display.render_markdown_in_editor` config setting (introduced in v5.10.4). Raw text is the default.
+- **Replaced native `<select>` with `CustomSelect`** for saved prompts — fixes the white-on-dark theme rendering issue caused by GTK+WebKit ignoring CSS on native `<option>` elements.
+- **Saved prompt selection is tracked** — The dropdown now shows which prompt is currently loaded instead of always resetting to "Load a saved prompt…".
+- **Discard button is always red** — Changed from `danger-reveal` (only red on hover) to `destructive` variant (always visible as destructive action).
+
+### Added
+- **Diff highlighting toggle** — After refinement, a "Diff" toggle in the action bar (and a diff icon in the refined panel header) toggles a word-level diff view showing exactly what changed. Uses the `diff` npm package for word-level comparison. Added text is highlighted in accent blue, removed text in red with strikethrough.
+- **Analytics delta card** — After refinement, a horizontal metrics strip appears between the comparison panels and the instructions card. Shows before→after deltas for: word count, sentence count, average sentence length, Flesch-Kincaid grade, and filler count.
+- **Edit prompt button** — When a saved prompt is selected, an edit icon appears next to the dropdown that navigates to EditView for that prompt.
+- **New `DiffView` component** (`frontend/src/lib/components/DiffView.svelte`) — Reusable word-level diff renderer using the `diff` library.
+
+### Technical Notes
+- `RefineView.svelte`: Complete rewrite of template and significant script refactoring. Removed `transcripts`, `showPicker`, `loadingTranscripts`, `loadTranscripts()`, `truncateText()`. Added `showDiff`, `renderMarkdown`, `transcriptName`, `selectedPromptId`, `origMetrics`/`refMetrics` derived analytics, `delta()`/`deltaF()` helpers, `editSelectedPrompt()`.
+- Installed `diff` and `@types/diff` npm packages.
+- `computeTextMetrics()` from `textAnalysis.ts` drives the analytics delta card.
+
+---
+
 ## v5.10.4 — Markdown Preview in Editor & Compound Continue Fix
 
 **Date:** 2026-03-11

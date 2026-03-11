@@ -256,7 +256,9 @@
             const cfg = await getConfig();
             const display = cfg.display as Record<string, unknown> | undefined;
             showMarkdownPreview = Boolean(display?.render_markdown_in_editor);
-        } catch { /* fall back to default false */ }
+        } catch {
+            /* fall back to default false */
+        }
 
         const id = nav.consumePendingTranscript();
         if (id !== null) {
@@ -368,16 +370,22 @@
         {#if transcript}
             <div class="shrink-0 flex items-center gap-3 mt-0.5">
                 <div class="flex items-center gap-1.5" title="Render transcript text as markdown">
-                    <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap select-none"
-                        >Markdown</span
-                    >
-                    <ToggleSwitch size="sm" checked={showMarkdownPreview} onChange={() => (showMarkdownPreview = !showMarkdownPreview)} />
+                    <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap select-none">Markdown</span>
+                    <ToggleSwitch
+                        size="sm"
+                        checked={showMarkdownPreview}
+                        onChange={() => (showMarkdownPreview = !showMarkdownPreview)}
+                    />
                 </div>
                 <div class="flex items-center gap-1.5" title="Toggle analytics inclusion">
                     <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap select-none"
                         >Include in analytics</span
                     >
-                    <ToggleSwitch size="sm" checked={transcript.include_in_analytics} onChange={toggleAnalyticsInclusion} />
+                    <ToggleSwitch
+                        size="sm"
+                        checked={transcript.include_in_analytics}
+                        onChange={toggleAnalyticsInclusion}
+                    />
                 </div>
             </div>
         {/if}
@@ -423,7 +431,9 @@
                 {error}
             </div>
         {:else if showMarkdownPreview}
-            <div class="w-full h-full overflow-y-auto bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-lg p-4">
+            <div
+                class="w-full h-full overflow-y-auto bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-lg p-4"
+            >
                 <MarkdownBody text={editText} className="text-[15px] text-[var(--text-primary)]" />
             </div>
         {:else}
