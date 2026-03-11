@@ -316,6 +316,7 @@ class RecordingSession:
 
                 if self._audio_pipeline is None:
                     from src.services.audio_pipeline import AudioPipeline
+
                     self._audio_pipeline = AudioPipeline()
 
                 text, speech_duration_ms, _transcription_time_ms = transcribe(

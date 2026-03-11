@@ -142,6 +142,7 @@ class RefinementHandlers:
                 settings = self._settings_provider()
                 if settings.output.auto_refine and settings.output.auto_copy_to_clipboard:
                     from src.core.handlers.recording_handlers import _copy_to_system_clipboard
+
                     _copy_to_system_clipboard(refined)
             except Exception as e:
                 logger.exception("Refinement failed for transcript %d", intent.transcript_id)
