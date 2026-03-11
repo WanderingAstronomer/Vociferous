@@ -1027,7 +1027,7 @@
                         <PlusCircle size={14} /> Append to Previous
                     </StyledButton>
                 {/if}
-                {#if viewState === "ready"}
+                {#if viewState === "ready" || viewState === "viewing"}
                     <StyledButton variant="ghost" size="sm" onclick={queueContinueMode}>
                         <Mic size={14} /> Continue
                     </StyledButton>

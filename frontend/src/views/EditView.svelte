@@ -30,6 +30,8 @@
     import TagBar from "../lib/components/TagBar.svelte";
     import ActionBar from "../lib/components/ActionBar.svelte";
     import ToggleSwitch from "../lib/components/ToggleSwitch.svelte";
+    import MarkdownBody from "../lib/components/MarkdownBody.svelte";
+    import { getConfig } from "../lib/api";
     import { ArrowLeft, Check, X, Hammer, RotateCcw, Pencil, Copy, RefreshCw } from "lucide-svelte";
 
     /* ===== State ===== */
@@ -44,6 +46,7 @@
     let tagMenuOpen = $state(false);
     let editingTitle = $state(false);
     let titleDraft = $state("");
+    let showMarkdownPreview = $state(false);
 
     /* ===== Derived ===== */
 
@@ -248,7 +251,13 @@
 
     let unsubs: (() => void)[] = [];
 
-    onMount(() => {
+    onMount(async () => {
+        try {
+            const cfg = await getConfig();
+            const display = cfg.display as Record<string, unknown> | undefined;
+            showMarkdownPreview = Boolean(display?.render_markdown_in_editor);
+        } catch { /* fall back to default false */ }
+
         const id = nav.consumePendingTranscript();
         if (id !== null) {
             load(id);
@@ -357,11 +366,19 @@
         </div>
 
         {#if transcript}
-            <div class="shrink-0 flex items-center gap-1.5 mt-0.5" title="Toggle analytics inclusion">
-                <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap select-none"
-                    >Include in analytics</span
-                >
-                <ToggleSwitch size="sm" checked={transcript.include_in_analytics} onChange={toggleAnalyticsInclusion} />
+            <div class="shrink-0 flex items-center gap-3 mt-0.5">
+                <div class="flex items-center gap-1.5" title="Render transcript text as markdown">
+                    <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap select-none"
+                        >Markdown</span
+                    >
+                    <ToggleSwitch size="sm" checked={showMarkdownPreview} onChange={() => (showMarkdownPreview = !showMarkdownPreview)} />
+                </div>
+                <div class="flex items-center gap-1.5" title="Toggle analytics inclusion">
+                    <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap select-none"
+                        >Include in analytics</span
+                    >
+                    <ToggleSwitch size="sm" checked={transcript.include_in_analytics} onChange={toggleAnalyticsInclusion} />
+                </div>
             </div>
         {/if}
     </div>
@@ -404,6 +421,10 @@
         {:else if error}
             <div class="flex items-center justify-center h-full text-[var(--color-danger)] text-sm">
                 {error}
+            </div>
+        {:else if showMarkdownPreview}
+            <div class="w-full h-full overflow-y-auto bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-lg p-4">
+                <MarkdownBody text={editText} className="text-[15px] text-[var(--text-primary)]" />
             </div>
         {:else}
             <textarea

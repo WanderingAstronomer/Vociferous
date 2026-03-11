@@ -107,6 +107,7 @@ class DisplaySettings(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     ui_scale: int = 100
+    render_markdown_in_editor: bool = False
 
 
 class RefinementSettings(BaseModel):

@@ -2,6 +2,26 @@
 
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
+## v5.10.4 — Markdown Preview in Editor & Compound Continue Fix
+
+**Date:** 2026-03-11
+**Status:** Feature / Bugfix
+
+### Fixed
+- **Continue button missing on compound transcripts** — After appending to an existing transcript (via "Continue" flow), the `viewState` transitions to `"viewing"` rather than `"ready"`. The Continue button was only rendered for `viewState === "ready"`, so it disappeared on compound transcripts. Now shows for both `"ready"` and `"viewing"` states.
+
+### Added
+- **Markdown preview toggle in EditView** — New "Markdown" toggle in the EditView header (next to analytics toggle) renders the transcript text as formatted markdown instead of raw text in the textarea. Useful for reviewing refined transcripts that contain headings, lists, and formatting.
+- **"Markdown in Editor" setting in Settings > Appearance** — New persistent setting (`display.render_markdown_in_editor`, default: off) controls the default state of the markdown preview toggle when opening EditView. Per-session toggling still works independently.
+
+### Technical Notes
+- `TranscribeView.svelte`: Changed Continue button condition from `viewState === "ready"` to `viewState === "ready" || viewState === "viewing"`.
+- `EditView.svelte`: Added `MarkdownBody` import, `showMarkdownPreview` state (initialized from config on mount), toggle UI, and conditional textarea/MarkdownBody rendering.
+- `SettingsView.svelte`: Added `ToggleSwitch` import and "Markdown in Editor" toggle row in the Appearance tab.
+- `src/core/settings.py`: Added `render_markdown_in_editor: bool = False` to `DisplaySettings` model.
+
+---
+
 ## v5.10.3 — Recording UX & Append Auto-Refine Fixes
 
 **Date:** 2026-03-11

@@ -18,6 +18,7 @@
     import AsrModelCard from "../lib/components/AsrModelCard.svelte";
     import StyledButton from "../lib/components/StyledButton.svelte";
     import EmptyState from "../lib/components/EmptyState.svelte";
+    import ToggleSwitch from "../lib/components/ToggleSwitch.svelte";
     import type { DownloadProgressData, EngineStatusData } from "../lib/events";
 
     /* ===== Tabs ===== */
@@ -380,6 +381,20 @@
                                     const v = parseInt((e.target as HTMLInputElement).value);
                                     if (!isNaN(v) && v >= 10 && v <= 200) setSafe("user.typing_wpm", v);
                                 }}
+                            />
+                        </div>
+                        <div
+                            class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
+                        >
+                            <label
+                                class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                for="setting-markdown-editor"
+                                title="Render transcript text as formatted markdown in the Edit View by default. You can still toggle per-session."
+                                >Markdown in Editor</label
+                            >
+                            <ToggleSwitch
+                                checked={getSafe(config, "display.render_markdown_in_editor", false)}
+                                onChange={() => setSafe("display.render_markdown_in_editor", !getSafe(config, "display.render_markdown_in_editor", false))}
                             />
                         </div>
                     </div>
