@@ -1,5 +1,21 @@
 # Vociferous Changelog
 
+## v5.10.7 — Architecture Audit Cleanup
+
+**Date:** 2026-03-11
+**Status:** Hotfix / Cleanup
+
+### Removed
+- **Dead event bridge entry** — `batch_retitle_progress` was registered in the
+  WebSocket event bridge but was never emitted by any Python code and never
+  subscribed to on the frontend. Removed.
+
+### Fixed
+- **Unused variable** — `info` return value from `faster-whisper`'s `transcribe()`
+  replaced with `_` in `transcription_service.py`.
+
+---
+
 **Vociferous** is a cross-platform speech-to-text application with offline transcription powered by CTranslate2 (via faster-whisper) and text refinement via a local Small Language Model.
 
 ## v5.10.6 — RefineView & TranscriptionsView Polish, Recording Rail Indicator

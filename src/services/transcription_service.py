@@ -166,7 +166,7 @@ def transcribe(
         # ── faster-whisper inference ──
         initial_prompt = settings.model.initial_prompt or None
 
-        segments_iter, info = local_model.transcribe(
+        segments_iter, _ = local_model.transcribe(
             audio_float,
             language=language,
             initial_prompt=initial_prompt,

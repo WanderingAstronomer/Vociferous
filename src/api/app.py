@@ -351,7 +351,6 @@ def _wire_event_bridge(coordinator: ApplicationCoordinator, ws_manager: Connecti
         "bulk_refinement_error",
         "insight_ready",
         "motd_ready",
-        "batch_retitle_progress",
         "transcripts_cleared",
     ]
 
