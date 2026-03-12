@@ -300,6 +300,7 @@
                                 <button
                                     type="button"
                                     class="flex items-center justify-center w-9 h-9 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] text-[var(--accent)] cursor-pointer transition-colors duration-150 hover:bg-[var(--hover-overlay-blue)] disabled:opacity-40 disabled:cursor-not-allowed"
+                                    aria-label="Decrease audio cache"
                                     disabled={getSafe(config, "recording.audio_cache_minutes", 60) <= 0}
                                     onclick={() => {
                                         const cur = getSafe(config, "recording.audio_cache_minutes", 60);
@@ -332,6 +333,7 @@
                                 <button
                                     type="button"
                                     class="flex items-center justify-center w-9 h-9 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] text-[var(--accent)] cursor-pointer transition-colors duration-150 hover:bg-[var(--hover-overlay-blue)] disabled:opacity-40 disabled:cursor-not-allowed"
+                                    aria-label="Increase audio cache"
                                     disabled={getSafe(config, "recording.audio_cache_minutes", 60) >= 480}
                                     onclick={() => {
                                         const cur = getSafe(config, "recording.audio_cache_minutes", 60);
