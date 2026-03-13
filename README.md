@@ -167,7 +167,7 @@ make provision
 
 #### 1. Install Prerequisites
 
-You need **Python 3.12+** and **Node.js 18+** on your PATH. If you don't have them,
+You need **Python 3.12+** and **Node.js 18+**. If you don't have them,
 [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/) is the easiest route:
 
 ```powershell
@@ -175,9 +175,9 @@ winget install --id Python.Python.3.12 --accept-package-agreements
 winget install --id OpenJS.NodeJS.LTS --accept-package-agreements
 ```
 
-> **Restart your terminal** after installing Python/Node so the new PATH entries take effect.
-> If `python` still opens the Microsoft Store, disable the "App execution aliases" for Python
-> in **Settings → Apps → Advanced app settings → App execution aliases**.
+> **No PATH configuration required.** The install script automatically finds Python and Node.js
+> in their standard install locations even if they aren't on your PATH — including the common case
+> where `python` on PATH is the inert Microsoft Store stub. Just install them and run the script.
 
 #### 2. Set Execution Policy (One-Time)
 

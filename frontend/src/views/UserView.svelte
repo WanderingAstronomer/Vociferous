@@ -332,7 +332,7 @@
                 getInsight().catch(() => ({ text: "" })),
             ]);
             if (gen !== loadGeneration) return; // stale response
-            entries = transcriptResult.items;
+            entries = transcriptResult.items.filter((t) => t.include_in_analytics);
             healthInfo = health;
             slmInsight = insightRes.text || "";
             // Extract user name and typing WPM from config

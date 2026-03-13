@@ -1,5 +1,20 @@
 # Vociferous Changelog
 
+## v6.1.2 — Windows Installer Robustness, Analytics Filter Fix
+
+**Date:** 2026-03-12
+**Status:** Hotfix
+
+### Fixed
+- **Windows installer Python detection** (`scripts/install_windows.ps1`) — The installer now skips Microsoft Store stub executables (`WindowsApps\python.exe`) that shadow real Python on PATH without returning a valid version. Falls back to probing well-known install locations: the `py` launcher and per-user/system Python directories. Failure message explicitly identifies the Store stub and instructs the user to disable the App Execution Alias.
+- **Windows installer Node.js detection** — Same approach for npm/Node: probes `C:\Program Files\nodejs\` when `npm` is not on PATH, then adds the directory to the session PATH before invoking npm so postinstall scripts (esbuild etc.) that spawn `cmd.exe /c node` can resolve `node`.
+- **UserView analytics filter** (`UserView.svelte`) — `entries` was populated from the raw transcript list without filtering on `include_in_analytics`. The default system prompt transcript (seeded with `include_in_analytics=0`) and any user-excluded transcripts inflated time saved, total words, WPM, filler stats, and FK grades. `entries` is now filtered at load time, consistent with how `compute_usage_stats()` behaves on the backend.
+
+### Changed
+- **README Windows prerequisites** — Removed "must be on PATH" requirement and terminal-restart/App-Execution-Alias workaround instructions. Replaced with a note that the installer locates Python and Node automatically.
+
+---
+
 ## v6.1.1 — Layout Fix, Thinking Mode, CPU Model Note
 
 **Date:** 2026-03-12

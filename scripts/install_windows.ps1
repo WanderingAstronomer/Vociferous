@@ -14,29 +14,98 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectDir = Split-Path -Parent $ScriptDir
 
 # --- Check Python ---
+# Windows Python detection is notoriously tricky. The Microsoft Store installs
+# "app execution alias" stubs (WindowsApps\python.exe) that shadow real Python
+# on PATH. The py launcher and real Python installs are often not on PATH at all.
+# Strategy: try PATH candidates (filtering out MS Store stubs), then probe
+# well-known install locations, then give actionable guidance on failure.
+
+function Test-PythonCandidate {
+    param([string]$Exe, [string[]]$ExtraArgs)
+    try {
+        # Reject Microsoft Store stubs — they never return a real version
+        $resolved = (Get-Command $Exe -ErrorAction SilentlyContinue).Source
+        if ($resolved -and $resolved -match "Microsoft\\WindowsApps") { return $false }
+
+        $allArgs = @($ExtraArgs) + "--version"
+        $ver = & $Exe @allArgs 2>&1
+        return ($ver -match "Python (3\.1[2-9]|3\.[2-9]\d)")
+    } catch { return $false }
+}
+
 $PythonCmd = $null
 $PythonArgs = @()
-foreach ($candidate in @(
+
+# Phase 1: PATH-based candidates (filtered for MS Store stubs)
+$pathCandidates = @(
     @{ Cmd = "python3"; Args = @() },
-    @{ Cmd = "python"; Args = @() },
-    @{ Cmd = "py"; Args = @("-3.13") },
-    @{ Cmd = "py"; Args = @("-3.12") },
-    @{ Cmd = "py"; Args = @() }
-)) {
-    try {
-        $ver = & $candidate.Cmd @($candidate.Args + "--version") 2>&1
-        if ($ver -match "Python (3\.1[2-9]|3\.[2-9]\d)") {
-            $PythonCmd = $candidate.Cmd
-            $PythonArgs = $candidate.Args
+    @{ Cmd = "python";  Args = @() },
+    @{ Cmd = "py";      Args = @("-3") },
+    @{ Cmd = "py";      Args = @() }
+)
+
+foreach ($c in $pathCandidates) {
+    if (Test-PythonCandidate -Exe $c.Cmd -ExtraArgs $c.Args) {
+        $PythonCmd = $c.Cmd
+        $PythonArgs = $c.Args
+        break
+    }
+}
+
+# Phase 2: Well-known install locations (py launcher, per-user, system-wide)
+if (-not $PythonCmd) {
+    $probePaths = @()
+
+    # py launcher — winget and python.org both install it here
+    $pyLauncher = "$env:LOCALAPPDATA\Programs\Python\Launcher\py.exe"
+    if (Test-Path $pyLauncher) {
+        $probePaths += @{ Cmd = $pyLauncher; Args = @("-3") }
+        $probePaths += @{ Cmd = $pyLauncher; Args = @() }
+    }
+
+    # Per-user installs (the default for python.org and winget)
+    foreach ($minor in @(13, 12)) {
+        $perUser = "$env:LOCALAPPDATA\Programs\Python\Python3${minor}\python.exe"
+        if (Test-Path $perUser) { $probePaths += @{ Cmd = $perUser; Args = @() } }
+    }
+
+    # System-wide installs
+    foreach ($minor in @(13, 12)) {
+        foreach ($root in @("$env:ProgramFiles\Python3${minor}", "C:\Python3${minor}")) {
+            $sysExe = "$root\python.exe"
+            if (Test-Path $sysExe) { $probePaths += @{ Cmd = $sysExe; Args = @() } }
+        }
+    }
+
+    foreach ($c in $probePaths) {
+        if (Test-PythonCandidate -Exe $c.Cmd -ExtraArgs $c.Args) {
+            $PythonCmd = $c.Cmd
+            $PythonArgs = $c.Args
+            Write-Host "[INFO] Found Python at $($c.Cmd) (not on PATH)" -ForegroundColor Yellow
             break
         }
-    } catch {}
+    }
 }
 
 if (-not $PythonCmd) {
     Write-Host "Error: Python 3.12 or newer is required." -ForegroundColor Red
-    Write-Host "Download from: https://www.python.org/downloads/"
-    Write-Host "Make sure to check 'Add Python to PATH' during installation."
+    Write-Host ""
+
+    # Detect the MS Store stub specifically — this is by far the most common cause
+    $storeStub = (Get-Command python -ErrorAction SilentlyContinue).Source
+    if ($storeStub -and $storeStub -match "Microsoft\\WindowsApps") {
+        Write-Host "DETECTED: 'python' on your PATH is the Microsoft Store stub," -ForegroundColor Yellow
+        Write-Host "          not a real Python installation." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "Fix options:" -ForegroundColor White
+        Write-Host "  1. Disable the stub: Settings > Apps > Advanced app settings"
+        Write-Host "     > App execution aliases > turn OFF 'python.exe' and 'python3.exe'"
+        Write-Host "  2. Reinstall Python from https://www.python.org/downloads/"
+        Write-Host "     and CHECK 'Add Python to PATH' during installation."
+    } else {
+        Write-Host "Download from: https://www.python.org/downloads/"
+        Write-Host "Make sure to check 'Add Python to PATH' during installation."
+    }
     exit 1
 }
 
@@ -133,14 +202,33 @@ $FrontendDistDir = Join-Path $FrontendDir "dist"
 if (Test-Path $FrontendDistDir) {
     Write-Host "[OK] Frontend already built (frontend/dist exists)" -ForegroundColor Green
 } else {
-    $npmCmd = Get-Command npm -ErrorAction SilentlyContinue
-    if ($npmCmd) {
+    # Find npm — same approach as Python: check PATH first, then well-known locations
+    $npmExe = $null
+    $npxExe = $null
+    $npmOnPath = Get-Command npm -ErrorAction SilentlyContinue
+    if ($npmOnPath) {
+        $npmExe = "npm"
+        $npxExe = "npx"
+    } else {
+        # Probe the standard Node.js install location
+        $nodeDir = "$env:ProgramFiles\nodejs"
+        if (Test-Path "$nodeDir\npm.cmd") {
+            # Add to session PATH — postinstall scripts (esbuild etc.) spawn
+            # child processes via cmd.exe that need 'node' resolvable on PATH
+            $env:PATH = "$nodeDir;$env:PATH"
+            $npmExe = "npm"
+            $npxExe = "npx"
+            Write-Host "[INFO] Found Node.js at $nodeDir (added to session PATH)" -ForegroundColor Yellow
+        }
+    }
+
+    if ($npmExe) {
         Push-Location $FrontendDir
         try {
-            & npm install --silent
+            & $npmExe install --silent
             if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
 
-            & npx vite build
+            & $npxExe vite build
             if ($LASTEXITCODE -ne 0) { throw "vite build failed" }
 
             Write-Host "[OK] Frontend built" -ForegroundColor Green
