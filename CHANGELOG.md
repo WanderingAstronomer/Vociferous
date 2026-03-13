@@ -1,5 +1,15 @@
 # Vociferous Changelog
 
+## v6.1.4 — CustomSelect Dropdown Positioning Fix
+
+**Date:** 2026-03-13
+**Status:** Hotfix
+
+### Fixed
+- **CustomSelect dropdown floating detached / off-screen at all window sizes** — The dropdown was using `position: fixed` with coordinate math that divided `getBoundingClientRect()` values by the CSS zoom factor. On WebKitGTK (pywebview's Linux backend), whether portalled outside the tree or left in-place, `position: fixed` produced unreliable positioning due to zoom-level containing-block behavior and `overflow-clip` interactions on ancestor elements. Replaced with `position: absolute` — the dropdown now renders as a direct child of the trigger's `.relative` container. No zoom math, no portal, no fixed positioning. Coordinates are pure CSS: `top: 100%` (below trigger) or `bottom: 100%` (flip above when space is tight). Uses smart flip-up detection via `getBoundingClientRect()` to avoid extending past the viewport edge. z-index 9999 ensures the dropdown overlays sibling content (textarea, action bars) without clipping.
+
+---
+
 ## v6.1.3 — Prompt Tag Assignment, Stale Prompts Refresh, Dropdown Stability
 
 **Date:** 2026-03-13
