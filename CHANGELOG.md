@@ -1,5 +1,20 @@
 # Vociferous Changelog
 
+## v6.1.1 — Layout Fix, Thinking Mode, CPU Model Note
+
+**Date:** 2026-03-12
+**Status:** Hotfix / Feature
+
+### Fixed
+- **CSS zoom target** — Zoom was being applied to `<html>` but `zoom.ts` and all zoom-corrected components read from `#app`. This mismatch caused a dead-space gap at the bottom of every view proportional to the zoom offset (e.g. 75% scale = 25% gap). Zoom now targets `#app`; root div uses `h-full` instead of `h-screen`.
+- **Horizontal content overflow** — `<main>` flex item lacked `min-w-0`, so `overflow: clip` alone couldn't prevent the heatmap's explicit pixel width from expanding the main area past the viewport. Added `min-w-0` to establish a proper shrink constraint.
+
+### Added
+- **Thinking mode toggle** (`refinement.use_thinking`) — Exposes the previously hardcoded `use_thinking: False` in `SLMRuntime`. When enabled, the model reasons internally before producing output. The `<think>…</think>` block is stripped from the final result; only the cleaned response is stored and displayed. Visible in Settings → Refinement → Advanced Sampling.
+- **CPU model caveat note** — When device is set to CPU, a muted info banner in Settings → Refinement explains that only the 4B (int8) model supports CPU inference; the 8B and 14B are AWQ-quantised and require a GPU.
+
+---
+
 ## v6.1.0 — Windows Platform, Settings Overhaul, Refinement CPU Fix
 
 **Date:** 2026-03-12

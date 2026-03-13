@@ -25,10 +25,11 @@
 
     function applyUiScale(scale: number): void {
         const clamped = VALID_SCALES.includes(scale) ? scale : 100;
-        // CSS zoom on <html> is all we need. Chromium adjusts the layout
-        // viewport so 100vh/100vw still map to the physical window after
-        // zoom — no width/height compensation required.
-        document.documentElement.style.zoom = clamped === 100 ? "" : `${clamped}%`;
+        // Zoom lives on #app (not <html>) so percentage heights chain
+        // correctly through the viewport. 100vh is never used under zoom —
+        // the root div uses h-full so it inherits #app's zoomed height.
+        const appEl = document.getElementById("app");
+        if (appEl) appEl.style.zoom = clamped === 100 ? "" : `${clamped}%`;
     }
 
     let unsubConfigUpdated: (() => void) | null = null;
@@ -107,7 +108,7 @@
     });
 </script>
 
-<div class="flex flex-col h-screen overflow-hidden">
+<div class="flex flex-col h-full overflow-hidden">
     <div class="flex flex-1 min-h-0 bg-[var(--shell-bg)] text-[var(--text-primary)] overflow-clip">
         {#if !appReady}
             <!-- Waiting for initial status check -->
@@ -120,7 +121,7 @@
                 onNavigate={(view) => nav.navigate(view)}
             />
 
-            <main class="flex-1 overflow-clip bg-[var(--surface-secondary)]">
+            <main class="flex-1 min-w-0 overflow-clip bg-[var(--surface-secondary)]">
                 <!-- TranscribeView stays mounted to preserve recording/visualizer state -->
                 <div class="h-full" style:display={nav.current === "transcribe" ? "block" : "none"}>
                     <TranscribeView />

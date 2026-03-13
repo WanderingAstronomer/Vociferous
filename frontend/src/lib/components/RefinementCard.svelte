@@ -6,7 +6,7 @@
      * auto-refine / auto-retitle toggles, and advanced sampling collapsible.
      */
 
-    import { Loader2, CheckCircle, AlertCircle, ChevronDown } from "lucide-svelte";
+    import { Loader2, CheckCircle, AlertCircle, ChevronDown, Info } from "lucide-svelte";
     import ToggleSwitch from "./ToggleSwitch.svelte";
     import CustomSelect from "./CustomSelect.svelte";
     import DownloadButton from "./DownloadButton.svelte";
@@ -163,6 +163,13 @@
                     >AWQ models require GPU. Switch to an int8 model for CPU inference.</span
                 >
             </div>
+        {:else if isCpu}
+            <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--text-secondary)] py-1">
+                <Info size={14} class="shrink-0 mt-px" />
+                <span class="leading-[var(--leading-normal)]"
+                    >Only the 4B model (int8) supports CPU inference. The 8B and 14B are AWQ-quantized and require a GPU.</span
+                >
+            </div>
         {/if}
         <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
             <label
@@ -287,6 +294,19 @@
                             const v = parseFloat((e.target as HTMLInputElement).value);
                             if (!isNaN(v) && v >= 1.0 && v <= 2.0) setSafe("refinement.repetition_penalty", v);
                         }}
+                    />
+                </div>
+                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                    <label
+                        class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                        for="setting-use-thinking"
+                        data-tip="Allow the model to reason internally before producing output. Improves quality on complex edits but uses more tokens and is slower. Only effective on reasoning-capable models."
+                        >Enable Thinking Mode</label
+                    >
+                    <ToggleSwitch
+                        checked={getSafe(config, "refinement.use_thinking", false)}
+                        onChange={() =>
+                            setSafe("refinement.use_thinking", !getSafe(config, "refinement.use_thinking", false))}
                     />
                 </div>
             </div>

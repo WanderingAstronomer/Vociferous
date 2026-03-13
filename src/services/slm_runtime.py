@@ -182,7 +182,7 @@ class SLMRuntime:
             "top_p": r.top_p,
             "top_k": r.top_k,
             "repetition_penalty": r.repetition_penalty,
-            "use_thinking": False,
+            "use_thinking": r.use_thinking,
         }
 
     def refine_text(self, text: str, level: int = 1, instructions: str = "") -> None:
