@@ -1061,7 +1061,7 @@
         {#if allTags.length === 0}
             <div class="px-3 py-2 text-xs text-[var(--text-tertiary)]">No tags yet. Create one above.</div>
         {:else}
-            {#each allTags.filter((t) => !t.is_system) as tag (tag.id)}
+            {#each allTags.filter((t) => !t.is_system || t.name === "Prompt") as tag (tag.id)}
                 {@const isOn = selectedEntry ? selectedEntry.tags.some((t) => t.id === tag.id) : false}
                 {@const multiSelected = selection.isMulti
                     ? (selection.ids

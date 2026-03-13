@@ -1,5 +1,17 @@
 # Vociferous Changelog
 
+## v6.1.3 — Prompt Tag Assignment, Stale Prompts Refresh, Dropdown Stability
+
+**Date:** 2026-03-13
+**Status:** Bugfix
+
+### Fixed
+- **"Prompt" tag not assignable from Transcriptions view** — The tag assignment popup filtered out ALL `is_system` tags, lumping the user-assignable "Prompt" tag in with auto-managed system tags like "Refined" and "Compound". The frontend filter now exposes "Prompt" while still hiding the auto-managed ones. The backend `assign_tags` DB method was updated to preserve only auto-managed system tags ("Refined", "Compound") during the DELETE phase, allowing the "Prompt" tag to be added or removed just like a user tag. The `handle_batch_toggle_tag` handler was similarly unblocked for non-auto-managed system tags.
+- **Stale "Default Refinement Prompt" text in Refinement view** — `loadPrompts()` was only called once on mount. If the user edited a prompt from the Transcriptions/EditView and navigated back to the Refine view, the dropdown still showed the old text. Fixed by: (1) subscribing to `transcript_updated` WS events — if the updated transcript is a known prompt or gains the Prompt tag, the list is reloaded immediately; (2) adding a `$effect` that reloads the list every time the Refine view becomes active. When reloading, if a prompt is currently selected, `customInstructions` is also refreshed to the latest saved text.
+- **Saved Prompts dropdown rendering instability after selection** — When no prompt was selected the ExternalLink (edit) button was absent from the DOM, making the CustomSelect `flex-1` wider. After a selection the button appeared, shrinking the trigger button. On the next dropdown open, `positionDropdown()` measured a narrower trigger and placed the dropdown at a different width and offset, causing a visible jump. The ExternalLink button is now always present in the layout (using `invisible` + `pointer-events-none` when no prompt is selected), so the CustomSelect width and position are stable across all opens.
+
+---
+
 ## v6.1.2 — Windows Installer Robustness, Analytics Filter Fix
 
 **Date:** 2026-03-12

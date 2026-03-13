@@ -489,13 +489,27 @@ class TranscriptDB:
             self._conn.commit()
             return cur.rowcount > 0
 
+    # System tags that are auto-managed by the engine and must never be
+    # stripped by a user-driven assign_tags call.
+    _AUTO_MANAGED_SYSTEM_TAGS = ("Refined", "Compound")
+
     def assign_tags(self, transcript_id: int, tag_ids: list[int]) -> list[Tag]:
-        """Set the exact user-tag set for a transcript (preserves system tags)."""
+        """Set the exact user-tag set for a transcript.
+
+        Preserves auto-managed system tags (Refined, Compound) that are
+        applied by the engine.  User-assignable system tags (e.g. Prompt)
+        are treated like normal tags and CAN be toggled via this method.
+        """
         with self._write_lock:
-            # Only remove non-system tags so auto-applied system tags survive
+            # Keep only the auto-managed system tags intact; everything else
+            # (user tags AND user-assignable system tags like Prompt) is
+            # replaced with the caller-supplied list.
             self._conn.execute(
                 """DELETE FROM transcript_tags WHERE transcript_id = ?
-                   AND tag_id NOT IN (SELECT id FROM tags WHERE is_system = 1)""",
+                   AND tag_id NOT IN (
+                       SELECT id FROM tags WHERE is_system = 1
+                       AND name IN ('Refined', 'Compound')
+                   )""",
                 (transcript_id,),
             )
             for tag_id in tag_ids:

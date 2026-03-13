@@ -82,6 +82,15 @@
             if (!promptTag) return;
             const result = await getTranscripts({ limit: 100, tag_ids: [promptTag.id] });
             savedPrompts = result.items;
+            // If a prompt is selected, keep customInstructions in sync with
+            // any edits that were saved while this view wasn't active.
+            if (selectedPromptId) {
+                const id = Number(selectedPromptId);
+                const fresh = savedPrompts.find((p) => p.id === id);
+                if (fresh) {
+                    customInstructions = fresh.text || fresh.normalized_text || fresh.raw_text || "";
+                }
+            }
         } catch (e) {
             console.error("Failed to load saved prompts:", e);
         }
@@ -224,10 +233,9 @@
     let unsubBulkProgress: (() => void) | undefined;
     let unsubBulkComplete: (() => void) | undefined;
     let unsubBulkError: (() => void) | undefined;
+    let unsubTranscriptUpdated: (() => void) | undefined;
 
     onMount(async () => {
-        loadPrompts();
-
         try {
             const cfg = await getConfig();
             const display = cfg.display as Record<string, unknown> | undefined;
@@ -282,6 +290,17 @@
         unsubBulkError = ws.on("bulk_refinement_error", () => {
             bulkRefineActive = false;
         });
+
+        // Reload the saved-prompts list whenever a prompt transcript is edited
+        // or whenever a transcript is tagged/untagged as a Prompt.
+        unsubTranscriptUpdated = ws.on("transcript_updated", (data) => {
+            if (
+                savedPrompts.some((p) => p.id === data.id) ||
+                data.tags?.some((t) => t.name === "Prompt")
+            ) {
+                void loadPrompts();
+            }
+        });
     });
 
     onDestroy(() => {
@@ -292,7 +311,16 @@
         unsubBulkProgress?.();
         unsubBulkComplete?.();
         unsubBulkError?.();
+        unsubTranscriptUpdated?.();
         stopRefineTimer();
+    });
+
+    // Reload the saved-prompts list every time the view becomes active so
+    // edits made in EditView are immediately reflected in the dropdown.
+    $effect(() => {
+        if (nav.current === "refine") {
+            void loadPrompts();
+        }
     });
 
     $effect(() => {
@@ -631,15 +659,19 @@
                                 placeholder="Load a saved prompt…"
                             />
                         </div>
-                        {#if selectedPromptId}
-                            <button
-                                class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
-                                onclick={editSelectedPrompt}
-                                title="Edit this prompt"
-                            >
-                                <ExternalLink size={14} />
-                            </button>
-                        {/if}
+                        <!-- Always rendered so the CustomSelect width stays stable
+                             between the first open (no prompt selected) and subsequent
+                             opens (prompt selected). Visibility toggles via CSS only. -->
+                        <button
+                            class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
+                            class:invisible={!selectedPromptId}
+                            class:pointer-events-none={!selectedPromptId}
+                            tabindex={selectedPromptId ? 0 : -1}
+                            onclick={editSelectedPrompt}
+                            title="Edit this prompt"
+                        >
+                            <ExternalLink size={14} />
+                        </button>
                     </div>
                 {/if}
                 <textarea

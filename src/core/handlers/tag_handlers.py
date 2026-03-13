@@ -78,11 +78,17 @@ class TagHandlers:
             },
         )
 
+    # Auto-managed system tags that the engine controls — these must never
+    # be toggled by a user interaction.
+    _AUTO_MANAGED_SYSTEM_TAGS = {"Refined", "Compound"}
+
     def handle_batch_toggle_tag(self, intent: Any) -> None:
         db = self._db_provider()
         if not db:
             return
         tag = db.get_tag(intent.tag_id)
-        if tag is None or tag.is_system:
+        # Block non-existent tags and auto-managed system tags (Refined,
+        # Compound) but allow user-assignable system tags (e.g. Prompt).
+        if tag is None or (tag.is_system and tag.name in self._AUTO_MANAGED_SYSTEM_TAGS):
             return
         db.batch_toggle_tag(list(intent.transcript_ids), intent.tag_id, add=intent.add)
