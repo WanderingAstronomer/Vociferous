@@ -3,7 +3,8 @@
 Platform-specific:
   Windows — DwmSetWindowAttribute(DWMWA_USE_IMMERSIVE_DARK_MODE) to
             force the native title bar to dark mode.
-  Linux   — No patches needed; title bar follows GTK/system theme.
+  Linux   — gtk-application-prefer-dark-theme set on GtkSettings to
+            force the dark variant of whatever GTK theme is installed.
 """
 
 from __future__ import annotations
@@ -29,17 +30,38 @@ class WindowController:
 
     def _on_shown(self) -> None:
         """Apply platform-specific title bar theming after the window is visible."""
-        if sys.platform != "win32":
-            return
-        try:
-            form = getattr(self._main_window, "native", None)
-            if form is None:
-                return
-            from System import Action  # type: ignore[import-untyped]
+        if sys.platform == "win32":
+            try:
+                form = getattr(self._main_window, "native", None)
+                if form is None:
+                    return
+                from System import Action  # type: ignore[import-untyped]
 
-            form.Invoke(Action(self._apply_dark_titlebar))
+                form.Invoke(Action(self._apply_dark_titlebar))
+            except Exception:
+                logger.warning("Failed to apply dark title bar", exc_info=True)
+        elif sys.platform.startswith("linux"):
+            self._apply_dark_titlebar_gtk()
+
+    def _apply_dark_titlebar_gtk(self) -> None:
+        """Request the dark theme variant from GTK (Linux only).
+
+        Sets gtk-application-prefer-dark-theme on the default GtkSettings
+        object, which covers only this process and forces the title bar to
+        honour the dark variant of whatever GTK theme is installed.
+        """
+        try:
+            import gi
+
+            gi.require_version("Gtk", "3.0")
+            from gi.repository import Gtk  # type: ignore[import-untyped]
+
+            settings = Gtk.Settings.get_default()
+            if settings is not None:
+                settings.set_property("gtk-application-prefer-dark-theme", True)
+                logger.info("GTK dark title bar applied")
         except Exception:
-            logger.warning("Failed to apply dark title bar", exc_info=True)
+            logger.warning("Failed to apply GTK dark title bar", exc_info=True)
 
     def _apply_dark_titlebar(self) -> None:
         """Use DWM to force the native title bar to dark mode (Windows only).
@@ -54,7 +76,10 @@ class WindowController:
         # DWMWA_USE_IMMERSIVE_DARK_MODE = 20
         value = ctypes.c_int(1)
         ctypes.windll.dwmapi.DwmSetWindowAttribute(
-            hwnd, 20, ctypes.byref(value), ctypes.sizeof(value),
+            hwnd,
+            20,
+            ctypes.byref(value),
+            ctypes.sizeof(value),
         )
 
         # Replace the default Python icon — pywebview's WinForms backend
@@ -67,8 +92,10 @@ class WindowController:
         """Load vociferous_icon.png and set it as the Form icon."""
         try:
             import ctypes
-            from src.core.resource_manager import ResourceManager
+
             from System.Drawing import Bitmap, Icon  # type: ignore[import-untyped]
+
+            from src.core.resource_manager import ResourceManager
 
             icon_path = ResourceManager.get_icon_path("vociferous_icon")
             bitmap = Bitmap(icon_path)
