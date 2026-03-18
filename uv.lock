@@ -762,6 +762,14 @@ wheels = [
 ]
 
 [[package]]
+name = "nvidia-cublas-cu12"
+version = "12.9.1.4"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/45/a1/a17fade6567c57452cfc8f967a40d1035bb9301db52f27808167fbb2be2f/nvidia_cublas_cu12-12.9.1.4-py3-none-win_amd64.whl", hash = "sha256:1e5fee10662e6e52bd71dec533fbbd4971bb70a5f24f3bc3793e5c2e9dc640bf", size = 553153899, upload-time = "2025-06-05T20:13:35.556Z" },
+]
+
+[[package]]
 name = "onnxruntime"
 version = "1.24.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1541,7 +1549,7 @@ wheels = [
 
 [[package]]
 name = "vociferous"
-version = "5.13.0"
+version = "6.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "ctranslate2" },
@@ -1552,6 +1560,7 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "litestar" },
     { name = "numpy" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'" },
     { name = "onnxruntime" },
     { name = "platformdirs" },
     { name = "psutil" },
@@ -1587,6 +1596,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.26.0" },
     { name = "litestar", specifier = ">=2.0" },
     { name = "numpy", specifier = ">=2.0.0" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'", specifier = ">=12.4.0" },
     { name = "onnxruntime", specifier = ">=1.17.0" },
     { name = "platformdirs", specifier = ">=4.0" },
     { name = "psutil", specifier = ">=6.0.0" },
