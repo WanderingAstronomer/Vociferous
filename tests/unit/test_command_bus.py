@@ -9,6 +9,7 @@ Verifies:
 """
 
 from dataclasses import dataclass
+from abc import ABCMeta
 
 import pytest
 
@@ -27,6 +28,10 @@ class _AnotherIntent(InteractionIntent):
 
 
 class TestCommandBus:
+    def test_interaction_intent_is_plain_marker_base(self):
+        assert isinstance(InteractionIntent, type)
+        assert not isinstance(InteractionIntent, ABCMeta)
+
     def test_register_and_dispatch(self):
         bus = CommandBus()
         received = []
