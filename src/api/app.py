@@ -176,6 +176,13 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
     # Bridge EventBus → WebSocket broadcast
     _wire_event_bridge(coordinator, ws_manager)
 
+    # When the engine restarts (ASR/SLM models reloaded), clear the GPU status
+    # cache so the next health check reflects the new device configuration.
+    # Subscribing here keeps this API-layer concern out of the core layer.
+    from src.api.system import _detect_gpu_status
+
+    coordinator.event_bus.on("engine_restarted", lambda _data: _detect_gpu_status.cache_clear())
+
     # --- WebSocket lifecycle ---
 
     @websocket("/ws")

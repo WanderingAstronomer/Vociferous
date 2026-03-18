@@ -110,6 +110,15 @@ class TestInitializationState:
         assert hasattr(fresh_coordinator.settings, "recording")
         assert hasattr(fresh_coordinator.settings, "refinement")
 
+    def test_restart_lock_initialized(self, fresh_coordinator):
+        """_restart_lock must be a real Lock after __init__, not lazily created."""
+        # Previously created lazily with `if not hasattr(self, "_restart_lock")`.
+        # Now it must exist immediately after construction — no hasattr required.
+        lock = fresh_coordinator._restart_lock
+        assert lock is not None
+        assert hasattr(lock, "acquire")
+        assert hasattr(lock, "release")
+
 
 # ── Handler Registration ──────────────────────────────────────────────────
 
@@ -464,3 +473,83 @@ class TestGracefulDegradation:
         assert len(event_collector.of_type("transcript_deleted")) == 0
         assert len(event_collector.of_type("tag_created")) == 0
         assert len(event_collector.of_type("tag_deleted")) == 0
+
+
+# ── Coordinator Query Accessors ───────────────────────────────────────────
+
+
+class TestCoordinatorAccessors:
+    """Verify coordinator query accessor methods that shield the API layer from internals."""
+
+    def test_get_transcript_count_with_db(self, coordinator):
+        """get_transcript_count() returns correct count from the database."""
+        baseline = coordinator.get_transcript_count()
+        coordinator.db.add_transcript(raw_text="hello", duration_ms=100)
+        assert coordinator.get_transcript_count() == baseline + 1
+
+    def test_get_transcript_count_no_db(self, fresh_coordinator):
+        """get_transcript_count() returns 0 when db is None (safe default)."""
+        assert fresh_coordinator.db is None
+        assert fresh_coordinator.get_transcript_count() == 0
+
+    def test_is_recording_active_idle(self, coordinator):
+        """is_recording_active() returns False when the session is not recording."""
+        assert coordinator.is_recording_active() is False
+
+    def test_is_recording_active_no_session(self, fresh_coordinator):
+        """is_recording_active() returns False when recording_session is None."""
+        assert fresh_coordinator.recording_session is None
+        assert fresh_coordinator.is_recording_active() is False
+
+    def test_get_insight_text_no_manager(self, coordinator):
+        """get_insight_text() returns empty string when insight_manager is None."""
+        assert coordinator.insight_manager is None
+        assert coordinator.get_insight_text() == ""
+
+    def test_get_insight_text_with_manager(self, coordinator):
+        """get_insight_text() delegates to insight_manager.cached_text."""
+        from unittest.mock import MagicMock
+
+        mock_manager = MagicMock()
+        mock_manager.cached_text = "Some insight text"
+        coordinator.insight_manager = mock_manager
+        assert coordinator.get_insight_text() == "Some insight text"
+
+    def test_get_motd_text_no_manager(self, coordinator):
+        """get_motd_text() returns empty string when motd_manager is None."""
+        assert coordinator.motd_manager is None
+        assert coordinator.get_motd_text() == ""
+
+    def test_get_motd_text_with_manager(self, coordinator):
+        """get_motd_text() delegates to motd_manager.cached_text."""
+        from unittest.mock import MagicMock
+
+        mock_manager = MagicMock()
+        mock_manager.cached_text = "Today's MOTD"
+        coordinator.motd_manager = mock_manager
+        assert coordinator.get_motd_text() == "Today's MOTD"
+
+
+# ── Engine Restarted Event ────────────────────────────────────────────────
+
+
+class TestEngineRestartedEvent:
+    """engine_restarted event is emitted after restart, not a direct API import."""
+
+    def test_engine_restarted_event_emitted(self, coordinator, event_collector):
+        """restart_engine() emits 'engine_restarted' on the event bus when done."""
+        import threading
+
+        event_received = threading.Event()
+        coordinator.event_bus.on("engine_restarted", lambda _data: event_received.set())
+
+        # Use patches so the actual heavy model reload is skipped
+        from unittest.mock import patch
+
+        with (
+            patch.object(coordinator, "_init_slm_runtime"),
+            patch("src.core.settings.get_settings", return_value=coordinator.settings),
+        ):
+            coordinator.restart_engine()
+            # Wait until the background thread signals completion, or time out
+            assert event_received.wait(timeout=5.0), "engine_restarted event not emitted within 5 s"
