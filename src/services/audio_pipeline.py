@@ -146,8 +146,8 @@ class AudioPipeline:
             logger.info("Dead silence (RMS=%.6f), skipping pipeline", rms)
             return None
 
-        # Stage 2: RMS normalization
-        audio_f32 = self._rms_normalize(audio_f32)
+        # Stage 2: RMS normalization (reuse pre-computed RMS from Stage 0)
+        audio_f32 = self._rms_normalize(audio_f32, current_rms=rms)
 
         # Stage 3: Highpass filter @ 100 Hz
         audio_f32 = self._highpass(audio_f32)
@@ -168,13 +168,20 @@ class AudioPipeline:
     # Pipeline stages
     # ------------------------------------------------------------------
 
-    def _rms_normalize(self, audio: NDArray[np.float32]) -> NDArray[np.float32]:
+    def _rms_normalize(
+        self, audio: NDArray[np.float32], current_rms: float | None = None
+    ) -> NDArray[np.float32]:
         """Scale audio to a consistent RMS level.
 
         Ensures quiet mic recordings and loud recordings enter downstream
         stages at the same level so thresholds work consistently.
+
+        Args:
+            audio: float32 audio samples.
+            current_rms: Pre-computed RMS to avoid redundant calculation.
         """
-        current_rms = float(np.sqrt(np.mean(audio**2)))
+        if current_rms is None:
+            current_rms = float(np.sqrt(np.mean(audio**2)))
         if current_rms < 1e-8:
             return audio
         gain = min(self._TARGET_RMS / current_rms, 10.0)
@@ -186,9 +193,12 @@ class AudioPipeline:
         Removes DC offset, AC hum (50/60 Hz), and sub-bass rumble below
         100 Hz.  No effect on speech content — fundamental floor is ~85 Hz.
 
-        Uses a simple recursive filter.  For a 10 s recording at 16 kHz
-        that's ~160 k iterations, taking ~20 ms in pure Python.  Not worth
-        adding scipy as a dependency for a one-shot preprocessing step.
+        Uses a recursive filter: ``y[n] = α·(y[n-1] + x[n] - x[n-1])``.
+        For a 10 s recording at 16 kHz that's ~160 k iterations in Python.
+        IIR recurrences are inherently sequential — vectorizing with pure
+        NumPy is numerically unstable for long sequences, and adding
+        ``scipy.signal.lfilter`` isn't worth the 40 MB dependency for a
+        one-shot postprocessing step that completes in tens of milliseconds.
         """
         alpha = self._hp_alpha
         n = len(audio)

@@ -7,7 +7,6 @@ Used by usage_stats (backend) and mirrored in frontend/src/lib/textAnalysis.ts.
 
 from __future__ import annotations
 
-import math
 import re
 
 # ---------------------------------------------------------------------------
@@ -147,16 +146,3 @@ def compute_text_metrics(text: str) -> dict:
         "syllables_per_word": round(total_syllables / word_count, 2) if word_count else 0.0,
     }
 
-
-# ---------------------------------------------------------------------------
-# Standard deviation helper
-# ---------------------------------------------------------------------------
-
-
-def std_dev(values: list[float]) -> float:
-    """Population standard deviation.  Returns 0.0 for empty or single-element lists."""
-    if len(values) < 2:
-        return 0.0
-    mean = sum(values) / len(values)
-    variance = sum((x - mean) ** 2 for x in values) / len(values)
-    return round(math.sqrt(variance), 2)

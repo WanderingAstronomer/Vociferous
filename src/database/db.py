@@ -299,11 +299,7 @@ class TranscriptDB:
                     (limit, offset),
                 ).fetchall()
             transcripts = [self._row_to_transcript(r) for r in rows]
-            transcript_ids = [t.id for t in transcripts if t.id is not None]
-            tags_by_transcript = self._get_tags_for_transcripts(transcript_ids)
-            for transcript in transcripts:
-                if transcript.id is not None:
-                    transcript.tags = tags_by_transcript.get(transcript.id, [])
+            self._enrich_transcripts_with_tags(transcripts)
         return transcripts, total
 
     def search(self, query: str, limit: int = 50, offset: int = 0) -> list[Transcript]:
@@ -330,11 +326,7 @@ class TranscriptDB:
                 (fts_terms, limit, offset),
             ).fetchall()
             transcripts = [self._row_to_transcript(r) for r in rows]
-            transcript_ids = [t.id for t in transcripts if t.id is not None]
-            tags_by_transcript = self._get_tags_for_transcripts(transcript_ids)
-            for t in transcripts:
-                if t.id is not None:
-                    t.tags = tags_by_transcript.get(t.id, [])
+            self._enrich_transcripts_with_tags(transcripts)
         return transcripts
 
     def search_count(self, query: str) -> int:
@@ -541,33 +533,35 @@ class TranscriptDB:
                 )
             self._conn.commit()
 
+    def _get_system_tag_id(self, tag_name: str) -> int | None:
+        """Look up a system tag ID by name. Caller must hold _write_lock."""
+        row = self._conn.execute(
+            "SELECT id FROM tags WHERE name = ? AND is_system = 1",
+            (tag_name,),
+        ).fetchone()
+        return row["id"] if row is not None else None
+
     def add_system_tag_to_transcript(self, transcript_id: int, tag_name: str) -> None:
         """Add a system tag (looked up by name) to a transcript. No-op if tag not found."""
         with self._write_lock:
-            row = self._conn.execute(
-                "SELECT id FROM tags WHERE name = ? AND is_system = 1",
-                (tag_name,),
-            ).fetchone()
-            if row is None:
+            tag_id = self._get_system_tag_id(tag_name)
+            if tag_id is None:
                 return
             self._conn.execute(
                 "INSERT OR IGNORE INTO transcript_tags (transcript_id, tag_id) VALUES (?, ?)",
-                (transcript_id, row["id"]),
+                (transcript_id, tag_id),
             )
             self._conn.commit()
 
     def remove_system_tag_from_transcript(self, transcript_id: int, tag_name: str) -> None:
         """Remove a system tag (looked up by name) from a transcript. No-op if tag not found."""
         with self._write_lock:
-            row = self._conn.execute(
-                "SELECT id FROM tags WHERE name = ? AND is_system = 1",
-                (tag_name,),
-            ).fetchone()
-            if row is None:
+            tag_id = self._get_system_tag_id(tag_name)
+            if tag_id is None:
                 return
             self._conn.execute(
                 "DELETE FROM transcript_tags WHERE transcript_id = ? AND tag_id = ?",
-                (transcript_id, row["id"]),
+                (transcript_id, tag_id),
             )
             self._conn.commit()
 
@@ -585,6 +579,16 @@ class TranscriptDB:
                 (tag_name, *ids),
             ).fetchall()
         return {row["transcript_id"] for row in rows}
+
+    def _enrich_transcripts_with_tags(self, transcripts: list[Transcript]) -> None:
+        """Batch-load and attach tags to a list of transcripts. Caller must hold _write_lock."""
+        transcript_ids = [t.id for t in transcripts if t.id is not None]
+        if not transcript_ids:
+            return
+        tags_by_transcript = self._get_tags_for_transcripts(transcript_ids)
+        for transcript in transcripts:
+            if transcript.id is not None:
+                transcript.tags = tags_by_transcript.get(transcript.id, [])
 
     def _get_tags_for_transcript(self, transcript_id: int) -> list[Tag]:
         """Fetch all tags for a transcript. Caller must hold _write_lock."""

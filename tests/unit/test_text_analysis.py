@@ -11,7 +11,6 @@ from src.core.text_analysis import (
     estimate_syllables,
     flesch_kincaid_grade,
     split_sentences,
-    std_dev,
 )
 
 # ---------------------------------------------------------------------------
@@ -149,24 +148,3 @@ class TestComputeTextMetrics:
         assert metrics["fk_grade"] == 0.0
 
 
-# ---------------------------------------------------------------------------
-# Standard deviation
-# ---------------------------------------------------------------------------
-
-
-class TestStdDev:
-    """Verify population std dev."""
-
-    def test_uniform_values(self):
-        assert std_dev([5.0, 5.0, 5.0]) == 0.0
-
-    def test_known_values(self):
-        # Population std dev of [2, 4, 4, 4, 5, 5, 7, 9] = 2.0
-        result = std_dev([2, 4, 4, 4, 5, 5, 7, 9])
-        assert result == 2.0
-
-    def test_single_value_returns_zero(self):
-        assert std_dev([42.0]) == 0.0
-
-    def test_empty_returns_zero(self):
-        assert std_dev([]) == 0.0

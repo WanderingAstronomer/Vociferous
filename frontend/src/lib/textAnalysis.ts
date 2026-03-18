@@ -181,44 +181,5 @@ export function computeTextMetrics(text: string): TextMetrics {
     };
 }
 
-// ---------------------------------------------------------------------------
-// Statistics helpers
-// ---------------------------------------------------------------------------
 
-/** Population standard deviation. Returns 0 for < 2 values. */
-export function stdDev(values: number[]): number {
-    if (values.length < 2) return 0;
-    const mean = values.reduce((s, v) => s + v, 0) / values.length;
-    const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
-    return Math.round(Math.sqrt(variance) * 100) / 100;
-}
 
-/** Build a normal distribution curve from raw values for visualization. */
-export function buildDistributionCurve(
-    values: number[],
-    bucketCount = 20,
-): { x: number; y: number }[] {
-    if (values.length < 2) return [];
-
-    const mean = values.reduce((s, v) => s + v, 0) / values.length;
-    const sd = stdDev(values);
-    if (sd === 0) return [{ x: mean, y: 1 }];
-
-    // Use μ ± 3σ for the range (covers 99.7% of the distribution)
-    // clamped so x never goes below 0 for count-like data.
-    const lo = Math.max(0, mean - 3 * sd);
-    const hi = mean + 3 * sd;
-    const range = hi - lo || 1;
-    const step = range / bucketCount;
-
-    const points: { x: number; y: number }[] = [];
-    for (let i = 0; i <= bucketCount; i++) {
-        const x = lo + i * step;
-        // Gaussian PDF
-        const exp = -0.5 * ((x - mean) / sd) ** 2;
-        const y = (1 / (sd * Math.sqrt(2 * Math.PI))) * Math.E ** exp;
-        points.push({ x: Math.round(x * 10) / 10, y });
-    }
-
-    return points;
-}

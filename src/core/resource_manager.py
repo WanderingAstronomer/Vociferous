@@ -144,20 +144,8 @@ class ResourceManager:
 
         Returns:
             Absolute Path object.
-
-        Raises:
-            FileNotFoundError: If the asset cannot be strictly resolved in dev mode.
         """
-        root = ResourceManager.get_assets_root()
-        candidate = root / relative_path
-
-        # in typical PyInstaller --onefile, assets are at root level of _MEIPASS
-        if getattr(sys, "frozen", False):
-            # Sometimes assets are bundled into a subfolder 'assets'
-            # adjust based on .spec file. Assuming 'assets' folder is included.
-            pass
-
-        return candidate
+        return ResourceManager.get_assets_root() / relative_path
 
     @staticmethod
     def get_icon_path(icon_name: str) -> str:
