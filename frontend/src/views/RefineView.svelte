@@ -63,6 +63,7 @@
     /* ── Prompt System ── */
     let savedPrompts: Transcript[] = $state([]);
     let selectedPromptId: string = $state("");
+    let defaultPromptId: number | null = $state(null);
 
     /* ── Bulk Refinement Tracking ── */
     let bulkRefineActive = $state(false);
@@ -82,6 +83,14 @@
             if (!promptTag) return;
             const result = await getTranscripts({ limit: 100, tag_ids: [promptTag.id] });
             savedPrompts = result.items;
+
+            if (!selectedPromptId && defaultPromptId) {
+                const def = savedPrompts.find((p) => p.id === defaultPromptId);
+                if (def) {
+                    selectedPromptId = String(def.id);
+                }
+            }
+
             // If a prompt is selected, keep customInstructions in sync with
             // any edits that were saved while this view wasn't active.
             if (selectedPromptId) {
@@ -240,6 +249,18 @@
             const cfg = await getConfig();
             const display = cfg.display as Record<string, unknown> | undefined;
             renderMarkdown = Boolean(display?.render_markdown_in_editor);
+
+            const refinement = cfg.refinement as Record<string, unknown> | undefined;
+            if (refinement?.default_prompt_transcript_id) {
+                defaultPromptId = Number(refinement.default_prompt_transcript_id);
+                if (!selectedPromptId && savedPrompts.length > 0) {
+                    const def = savedPrompts.find((p) => p.id === defaultPromptId);
+                    if (def) {
+                        selectedPromptId = String(def.id);
+                        customInstructions = def.text || def.normalized_text || def.raw_text || "";
+                    }
+                }
+            }
         } catch {
             /* default false */
         }
@@ -294,10 +315,7 @@
         // Reload the saved-prompts list whenever a prompt transcript is edited
         // or whenever a transcript is tagged/untagged as a Prompt.
         unsubTranscriptUpdated = ws.on("transcript_updated", (data) => {
-            if (
-                savedPrompts.some((p) => p.id === data.id) ||
-                data.tags?.some((t) => t.name === "Prompt")
-            ) {
+            if (savedPrompts.some((p) => p.id === data.id) || data.tags?.some((t) => t.name === "Prompt")) {
                 void loadPrompts();
             }
         });

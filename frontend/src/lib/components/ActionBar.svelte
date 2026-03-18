@@ -11,7 +11,7 @@
 </script>
 
 <div class="shrink-0 {padx} py-2 overflow-y-auto" style="scrollbar-gutter: stable">
-    <div class="flex items-center {gap} bg-[var(--surface-secondary)] rounded-lg px-3 py-1.5">
+    <div class="flex flex-wrap items-center {gap} bg-[var(--surface-secondary)] rounded-lg px-3 py-1.5">
         {@render children()}
     </div>
 </div>

@@ -60,6 +60,20 @@ class RefinementHandlers:
             _copy_to_system_clipboard(text)
             logger.info("Auto-copy fallback: copied raw text for transcript %d", transcript_id)
 
+    def _resolve_instructions(self, provided: str, db: Any) -> str:
+        instructions = provided or ""
+        if not instructions.strip():
+            settings = self._settings_provider()
+            prompt_id = settings.refinement.default_prompt_transcript_id
+            if prompt_id is not None:
+                try:
+                    prompt_t = db.get_transcript(prompt_id)
+                    if prompt_t:
+                        instructions = prompt_t.normalized_text or prompt_t.raw_text or ""
+                except Exception as e:
+                    logger.warning("Failed to resolve default prompt (ID %d): %s", prompt_id, e)
+        return instructions
+
     def handle_refine(self, intent: Any) -> None:
         db = self._db_provider()
         if not db:
@@ -92,7 +106,9 @@ class RefinementHandlers:
         if state == SLMState.ERROR:
             self._emit(
                 "refinement_error",
-                {"message": "The refinement model failed to load. Try restarting the engine in Settings → Maintenance."},
+                {
+                    "message": "The refinement model failed to load. Try restarting the engine in Settings → Maintenance."
+                },
             )
             self._fallback_raw_clipboard(intent.transcript_id)
             return
@@ -119,6 +135,8 @@ class RefinementHandlers:
         if not transcript:
             self._emit("refinement_error", {"message": "Transcript not found"})
             return
+
+        resolved_instructions = self._resolve_instructions(intent.instructions, db)
 
         self._emit(
             "refinement_started",
@@ -147,7 +165,7 @@ class RefinementHandlers:
                 refined = _slm.refine_text_sync(
                     text,
                     level=intent.level,
-                    instructions=intent.instructions,
+                    instructions=resolved_instructions,
                 )
 
                 elapsed = round(time.monotonic() - start_time, 1)
@@ -286,6 +304,8 @@ class RefinementHandlers:
             {"transcript_ids": list(transcript_ids), "total": total, "level": intent.level},
         )
 
+        resolved_instructions = self._resolve_instructions(intent.instructions, db)
+
         def do_bulk() -> None:
             completed = 0
             failed = 0
@@ -323,7 +343,7 @@ class RefinementHandlers:
                         refined = _slm.refine_text_sync(
                             text,
                             level=intent.level,
-                            instructions=intent.instructions,
+                            instructions=resolved_instructions,
                         )
                         refine_elapsed_ms = int((time.monotonic() - refine_start) * 1000)
                     except Exception as e:

@@ -32,7 +32,7 @@
 
     let selectedLabel = $derived(options.find((o) => o.value === value)?.label ?? placeholder);
 
-    const DROP_GAP = 4;     // px gap between trigger edge and dropdown
+    const DROP_GAP = 4; // px gap between trigger edge and dropdown
     const MAX_DROP_H = 240; // max-h-60 = 15rem = 240px
 
     function checkFlip() {
