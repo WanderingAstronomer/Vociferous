@@ -71,6 +71,10 @@ class ApplicationCoordinator:
 
         self._server_thread: threading.Thread | None = None
 
+        # Engine restart serialization — initialized here so it is always present
+        # (previously created lazily with hasattr(), which is a code smell).
+        self._restart_lock = threading.Lock()
+
     def start(self) -> None:
         """
         Initialize all services and start the application.
@@ -333,9 +337,6 @@ class ApplicationCoordinator:
         Called when the user clicks "Restart Engine" in settings, typically
         after changing model selection or GPU/CPU preference.
         """
-        if not hasattr(self, "_restart_lock"):
-            self._restart_lock = threading.Lock()
-
         if not self._restart_lock.acquire(blocking=False):
             logger.warning("Engine restart already in progress — ignoring duplicate request.")
             return
@@ -367,14 +368,11 @@ class ApplicationCoordinator:
                     self.recording_session.load_asr_model()
                 self._init_slm_runtime()
 
-                # Clear cached GPU/health status so the maintenance
-                # tab picks up new device configuration on next poll.
-                try:
-                    from src.api.system import _detect_gpu_status
-
-                    _detect_gpu_status.cache_clear()
-                except Exception:
-                    pass
+                # Notify the API layer that the engine has been restarted so it
+                # can clear any caches that depend on engine state (e.g. GPU status).
+                # Using the event bus here keeps the core layer free of any
+                # dependency on the API layer.
+                self.event_bus.emit("engine_restarted", {})
 
                 logger.info("Engine restart complete.")
             finally:
@@ -743,3 +741,25 @@ class ApplicationCoordinator:
     def show_open_dialog(self, file_types: tuple[str, ...] = ()) -> str | None:
         """Show a native open-file dialog and return the chosen path, or None if cancelled."""
         return self.window.show_open_dialog(file_types)
+
+    # --- Query accessors (used by the API layer to avoid drilling into internals) ---
+
+    def get_transcript_count(self) -> int:
+        """Return the number of transcripts in the database."""
+        return self.db.transcript_count() if self.db else 0
+
+    def is_recording_active(self) -> bool:
+        """Return whether a recording is currently in progress."""
+        return self.recording_session is not None and self.recording_session.is_recording
+
+    def get_insight_text(self) -> str:
+        """Return the cached insight text, or empty string if unavailable."""
+        if self.insight_manager is not None:
+            return self.insight_manager.cached_text
+        return ""
+
+    def get_motd_text(self) -> str:
+        """Return the cached MOTD text, or empty string if unavailable."""
+        if self.motd_manager is not None:
+            return self.motd_manager.cached_text
+        return ""

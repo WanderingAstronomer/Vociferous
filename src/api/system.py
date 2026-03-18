@@ -62,10 +62,7 @@ def restart_engine() -> dict:
 def get_insight() -> dict:
     """Return the cached UserView insight, or empty text if none exists yet."""
     coordinator = get_coordinator()
-    text = ""
-    if coordinator.insight_manager is not None:
-        text = coordinator.insight_manager.cached_text
-    return {"text": text}
+    return {"text": coordinator.get_insight_text()}
 
 
 @post("/api/insight/refresh", sync_to_thread=True)
@@ -82,10 +79,7 @@ def refresh_insight() -> dict:
 def get_motd() -> dict:
     """Return the cached TranscribeView header MOTD, or empty text if none exists yet."""
     coordinator = get_coordinator()
-    text = ""
-    if coordinator.motd_manager is not None:
-        text = coordinator.motd_manager.cached_text
-    return {"text": text}
+    return {"text": coordinator.get_motd_text()}
 
 
 @post("/api/export")
@@ -335,10 +329,8 @@ def health() -> dict:
     return {
         "status": "ok",
         "version": APP_VERSION,
-        "transcripts": coordinator.db.transcript_count() if coordinator.db else 0,
-        "recording_active": (
-            coordinator.recording_session.is_recording if coordinator.recording_session is not None else False
-        ),
+        "transcripts": coordinator.get_transcript_count(),
+        "recording_active": coordinator.is_recording_active(),
         "gpu": _detect_gpu_status(),
     }
 
