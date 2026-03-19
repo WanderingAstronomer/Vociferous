@@ -1,5 +1,9 @@
 """
-System API routes — config, models, health, mini widget, key capture.
+System API routes — health, audio import, key capture.
+
+Config/insight routes → config.py
+Model catalog/download → models.py
+Window control/export  → window.py
 """
 
 from __future__ import annotations
@@ -8,10 +12,9 @@ import functools
 import logging
 import os
 import tempfile
-import threading
 from pathlib import Path
 
-from litestar import Response, get, post, put
+from litestar import Response, get, post
 from litestar.datastructures import UploadFile
 from litestar.enums import RequestEncodingType
 from litestar.params import Body
@@ -20,228 +23,6 @@ from src.api.deps import get_coordinator
 from src.core.constants import APP_VERSION
 
 logger = logging.getLogger(__name__)
-
-
-# --- Config ---
-
-
-@get("/api/config", sync_to_thread=True)
-def get_config() -> dict:
-    coordinator = get_coordinator()
-    return coordinator.settings.model_dump()
-
-
-@put("/api/config", sync_to_thread=True)
-def update_config(data: dict) -> dict:
-    from litestar.exceptions import InternalServerException
-
-    from src.core.intents.definitions import UpdateConfigIntent
-
-    coordinator = get_coordinator()
-    intent = UpdateConfigIntent(settings=data)
-    success = coordinator.command_bus.dispatch(intent)
-
-    if not success:
-        logger.error("Failed to update config via intent")
-        raise InternalServerException(detail="Config update failed")
-
-    return coordinator.settings.model_dump()
-
-
-@post("/api/engine/restart", sync_to_thread=True)
-def restart_engine() -> dict:
-    """Restart ASR + SLM models (background thread)."""
-    from src.core.intents.definitions import RestartEngineIntent
-
-    coordinator = get_coordinator()
-    coordinator.command_bus.dispatch(RestartEngineIntent())
-    return {"status": "restarting"}
-
-
-@get("/api/insight", sync_to_thread=True)
-def get_insight() -> dict:
-    """Return the cached UserView insight, or empty text if none exists yet."""
-    coordinator = get_coordinator()
-    return {"text": coordinator.get_insight_text()}
-
-
-@get("/api/motd", sync_to_thread=True)
-def get_motd() -> dict:
-    """Return the cached insight text (alias for /api/insight; kept for frontend compat)."""
-    coordinator = get_coordinator()
-    return {"text": coordinator.get_insight_text()}
-
-
-@post("/api/export")
-async def export_file(data: dict) -> Response:
-    """
-    Write exported content to a user-chosen path via the native save dialog.
-
-    Expects: { "content": str, "filename": str }
-    Returns: { "path": str } on success, or error.
-    """
-    import asyncio
-
-    content: str = data.get("content", "")
-    filename: str = Path(data.get("filename", "export.txt")).name
-
-    coordinator = get_coordinator()
-
-    # create_file_dialog must run on the main (GTK/UI) thread — use run_in_executor
-    # so we don't block the async API event loop.
-    loop = asyncio.get_running_loop()
-    save_path: str | None = await loop.run_in_executor(None, coordinator.show_save_dialog, filename)
-
-    if save_path is None:
-        return Response(content={"error": "cancelled"}, status_code=400)
-
-    try:
-        Path(save_path).write_text(content, encoding="utf-8")
-    except OSError as e:
-        logger.error("Export write failed: %s", e)
-        return Response(content={"error": str(e)}, status_code=500)
-
-    return Response(content={"path": save_path})
-
-
-_ALLOWED_AUDIO_EXTENSIONS = frozenset((".wav", ".mp3", ".m4a", ".flac", ".ogg", ".webm", ".wma", ".aac", ".opus"))
-
-
-@post("/api/import-audio")
-async def import_audio_file(
-    data: UploadFile = Body(media_type=RequestEncodingType.MULTI_PART),
-) -> Response:
-    """
-    Accept an uploaded audio file, save to temp, dispatch transcription.
-
-    The heavy lifting (decode + transcribe) runs on a background thread.
-    The temp file is cleaned up after processing.
-    Results arrive via WebSocket: transcription_complete / transcription_error.
-    """
-    from src.core.intents.definitions import ImportAudioFileIntent
-
-    coordinator = get_coordinator()
-
-    original_name = data.filename or "upload.wav"
-    ext = Path(original_name).suffix.lower()
-    if ext not in _ALLOWED_AUDIO_EXTENSIONS:
-        return Response(content={"error": f"Unsupported format: {ext}"}, status_code=400)
-
-    content = await data.read()
-    if not content:
-        return Response(content={"error": "Empty file"}, status_code=400)
-
-    fd, tmp_path = tempfile.mkstemp(suffix=ext, prefix="vociferous_import_")
-    try:
-        os.write(fd, content)
-    finally:
-        os.close(fd)
-
-    intent = ImportAudioFileIntent(file_path=tmp_path, cleanup_source=True)
-    success = coordinator.command_bus.dispatch(intent)
-
-    return Response(content={"status": "importing", "file": original_name, "dispatched": success})
-
-
-@get("/api/models", sync_to_thread=True)
-def list_models() -> dict:
-    from src.core.model_registry import get_model_catalog
-    from src.core.resource_manager import ResourceManager
-
-    catalog = get_model_catalog()
-    models_dir = ResourceManager.get_user_cache_dir("models")
-
-    # Attach download status to each model entry.
-    # CT2 models are directories named after the repo slug.
-    for category in ("asr", "slm"):
-        for model_id, info in catalog[category].items():
-            local_dir_name = info["repo"].split("/")[-1]
-            model_bin = models_dir / local_dir_name / info["model_file"]
-            info["downloaded"] = model_bin.is_file()
-
-    return catalog
-
-
-@post("/api/models/download")
-async def download_model(data: dict) -> Response:
-    """Start downloading a model. Sends progress via WebSocket.
-
-    H-pattern exception: this spawns a progress-emitting thread with inline
-    callbacks — wrapping it in an intent would just relocate the thread logic
-    without adding any decoupling benefit.
-    """
-    from src.core.model_registry import ASRModel, SLMModel, get_asr_model, get_slm_model
-    from src.core.resource_manager import ResourceManager
-
-    coordinator = get_coordinator()
-    model_type = data.get("model_type", "asr")
-    model_id = data.get("model_id")
-    if not model_id:
-        return Response(content={"error": "Missing model_id"}, status_code=400)
-
-    if model_type == "asr":
-        model: ASRModel | SLMModel | None = get_asr_model(model_id)
-    else:
-        model = get_slm_model(model_id)
-
-    if model is None:
-        return Response(content={"error": f"Unknown model: {model_id}"}, status_code=404)
-
-    cache_dir = ResourceManager.get_user_cache_dir("models")
-
-    def do_download():
-        from src.provisioning.core import ProvisioningError, download_model_directory
-
-        def on_progress(msg: str):
-            coordinator.event_bus.emit(
-                "download_progress",
-                {"model_id": model_id, "status": "downloading", "message": msg},
-            )
-
-        try:
-            coordinator.event_bus.emit(
-                "download_progress",
-                {
-                    "model_id": model_id,
-                    "status": "started",
-                    "message": f"Starting download of {model.name}...",
-                },
-            )
-            download_model_directory(
-                repo_id=model.repo,
-                target_dir=cache_dir,
-                progress_callback=on_progress,
-                expected_sha256=getattr(model, "sha256", None),
-                model_file=model.model_file,
-            )
-            coordinator.event_bus.emit(
-                "download_progress",
-                {
-                    "model_id": model_id,
-                    "status": "complete",
-                    "message": f"{model.name} downloaded successfully.",
-                },
-            )
-        except ProvisioningError as e:
-            coordinator.event_bus.emit(
-                "download_progress",
-                {"model_id": model_id, "status": "error", "message": str(e)},
-            )
-        except Exception as e:
-            logger.exception("Model download failed: %s", model_id)
-            coordinator.event_bus.emit(
-                "download_progress",
-                {
-                    "model_id": model_id,
-                    "status": "error",
-                    "message": f"Download failed: {e}",
-                },
-            )
-
-    download_thread = threading.Thread(target=do_download, daemon=True, name=f"download-{model_id}")
-    download_thread.start()
-
-    return Response(content={"status": "started", "model_id": model_id})
 
 
 # --- Health ---
@@ -325,31 +106,46 @@ def health() -> dict:
     }
 
 
-# --- Window control (frameless title-bar) ---
+# --- Audio Import ---
 
 
-@post("/api/window/minimize", sync_to_thread=True)
-def minimize_window() -> dict:
-    """Minimize the main window."""
+_ALLOWED_AUDIO_EXTENSIONS = frozenset((".wav", ".mp3", ".m4a", ".flac", ".ogg", ".webm", ".wma", ".aac", ".opus"))
+
+
+@post("/api/import-audio")
+async def import_audio_file(
+    data: UploadFile = Body(media_type=RequestEncodingType.MULTI_PART),
+) -> Response:
+    """
+    Accept an uploaded audio file, save to temp, dispatch transcription.
+
+    The heavy lifting (decode + transcribe) runs on a background thread.
+    The temp file is cleaned up after processing.
+    Results arrive via WebSocket: transcription_complete / transcription_error.
+    """
+    from src.core.intents.definitions import ImportAudioFileIntent
+
     coordinator = get_coordinator()
-    coordinator.minimize_window()
-    return {"status": "ok"}
 
+    original_name = data.filename or "upload.wav"
+    ext = Path(original_name).suffix.lower()
+    if ext not in _ALLOWED_AUDIO_EXTENSIONS:
+        return Response(content={"error": f"Unsupported format: {ext}"}, status_code=400)
 
-@post("/api/window/maximize", sync_to_thread=True)
-def maximize_window() -> dict:
-    """Toggle maximize/restore on the main window."""
-    coordinator = get_coordinator()
-    coordinator.maximize_window()
-    return {"status": "ok", "maximized": coordinator.is_window_maximized()}
+    content = await data.read()
+    if not content:
+        return Response(content={"error": "Empty file"}, status_code=400)
 
+    fd, tmp_path = tempfile.mkstemp(suffix=ext, prefix="vociferous_import_")
+    try:
+        os.write(fd, content)
+    finally:
+        os.close(fd)
 
-@post("/api/window/close", sync_to_thread=True)
-def close_window() -> dict:
-    """Close the main window and shut down."""
-    coordinator = get_coordinator()
-    coordinator.close_window()
-    return {"status": "ok"}
+    intent = ImportAudioFileIntent(file_path=tmp_path, cleanup_source=True)
+    success = coordinator.command_bus.dispatch(intent)
+
+    return Response(content={"status": "importing", "file": original_name, "dispatched": success})
 
 
 # --- Key Capture ---
@@ -410,52 +206,3 @@ async def stop_key_capture() -> Response:
     if coordinator.input_listener:
         coordinator.input_listener.disable_capture_mode()
     return Response(content={"status": "stopped"})
-
-
-# --- Generic intent dispatch ---
-
-
-@post("/api/intents")
-async def dispatch_intent(data: dict) -> Response:
-    """
-    Generic intent dispatch from frontend.
-
-    Expects: {"type": "begin_recording", ...fields}
-    """
-    from src.core.intents import definitions as defs
-
-    coordinator = get_coordinator()
-    intent_type_name = data.pop("type", None)
-    if not intent_type_name:
-        return Response(content={"error": "Missing 'type'"}, status_code=400)
-
-    intent_map = {
-        "begin_recording": defs.BeginRecordingIntent,
-        "stop_recording": defs.StopRecordingIntent,
-        "cancel_recording": defs.CancelRecordingIntent,
-        "toggle_recording": defs.ToggleRecordingIntent,
-        "commit_edits": defs.CommitEditsIntent,
-        "revert_to_raw": defs.RevertToRawIntent,
-        "refine_transcript": defs.RefineTranscriptIntent,
-        "retitle_transcript": defs.RetitleTranscriptIntent,
-        "append_to_transcript": defs.AppendToTranscriptIntent,
-        "set_analytics_inclusion": defs.SetAnalyticsInclusionIntent,
-        "update_config": defs.UpdateConfigIntent,
-        "restart_engine": defs.RestartEngineIntent,
-        "import_audio_file": defs.ImportAudioFileIntent,
-    }
-
-    intent_cls = intent_map.get(intent_type_name)
-    if intent_cls is None:
-        return Response(
-            content={"error": f"Unknown intent: {intent_type_name}"},
-            status_code=400,
-        )
-
-    try:
-        intent = intent_cls(**data)
-    except Exception as e:
-        return Response(content={"error": str(e)}, status_code=400)
-
-    success = coordinator.command_bus.dispatch(intent)
-    return Response(content={"dispatched": success})
