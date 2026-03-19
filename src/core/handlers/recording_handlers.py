@@ -15,6 +15,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from src.core.command_bus import handles
+from src.core.intents.definitions import (
+    BeginRecordingIntent,
+    CancelRecordingIntent,
+    ImportAudioFileIntent,
+    RetranscribeIntent,
+    StopRecordingIntent,
+    ToggleRecordingIntent,
+)
+
 if TYPE_CHECKING:
     from src.core.settings import VociferousSettings
     from src.database.db import TranscriptDB
@@ -170,6 +180,7 @@ class RecordingSession:
 
     # --- Intent handlers ---
 
+    @handles(BeginRecordingIntent)
     def handle_begin(self, intent: Any) -> None:
         with self._recording_lock:
             audio_service = self._audio_service_provider()
@@ -210,11 +221,13 @@ class RecordingSession:
         self._recording_thread = t
         t.start()
 
+    @handles(StopRecordingIntent)
     def handle_stop(self, intent: Any) -> None:
         if not self._is_recording:
             return
         self._recording_stop.set()
 
+    @handles(CancelRecordingIntent)
     def handle_cancel(self, intent: Any) -> None:
         if not self._is_recording:
             return
@@ -225,12 +238,14 @@ class RecordingSession:
             self._spool = None
         self._emit("recording_stopped", {"cancelled": True})
 
+    @handles(ToggleRecordingIntent)
     def handle_toggle(self, intent: Any) -> None:
         if self._is_recording:
             self.handle_stop(intent)
         else:
             self.handle_begin(intent)
 
+    @handles(ImportAudioFileIntent)
     def handle_import(self, intent: Any) -> None:
         """Import an audio file for transcription (runs decode+transcribe on a background thread)."""
         file_path: str = intent.file_path
@@ -276,6 +291,7 @@ class RecordingSession:
         t = threading.Thread(target=_import_worker, daemon=True, name="audio-import")
         t.start()
 
+    @handles(RetranscribeIntent)
     def handle_retranscribe(self, intent: Any) -> None:
         """Re-transcribe a transcript from its cached audio WAV."""
         transcript_id: int = intent.transcript_id

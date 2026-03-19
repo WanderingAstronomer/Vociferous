@@ -426,30 +426,15 @@ class ApplicationCoordinator:
     # --- Intent Handlers ---
 
     def _register_handlers(self) -> None:
-        """Instantiate domain handler objects and wire them into the CommandBus."""
+        """Instantiate domain handler objects and wire them into the CommandBus.
+
+        Each handler method is decorated with @handles(IntentType), so
+        register_all() discovers and wires them automatically.
+        """
         from src.core.handlers.refinement_handlers import RefinementHandlers
         from src.core.handlers.system_handlers import SystemHandlers
         from src.core.handlers.title_handlers import TitleHandlers
         from src.core.handlers.transcript_handlers import TranscriptHandlers
-        from src.core.intents.definitions import (
-            AppendToTranscriptIntent,
-            BeginRecordingIntent,
-            BulkRefineTranscriptsIntent,
-            CancelBulkRefinementIntent,
-            CancelRecordingIntent,
-            CommitEditsIntent,
-            CommitRefinementIntent,
-            ImportAudioFileIntent,
-            RefineTranscriptIntent,
-            RetranscribeIntent,
-            RestartEngineIntent,
-            RetitleTranscriptIntent,
-            RevertToRawIntent,
-            SetAnalyticsInclusionIntent,
-            StopRecordingIntent,
-            ToggleRecordingIntent,
-            UpdateConfigIntent,
-        )
 
         transcript = TranscriptHandlers(
             db_provider=lambda: self.db,
@@ -476,23 +461,11 @@ class ApplicationCoordinator:
         )
 
         bus = self.command_bus
-        bus.register(BeginRecordingIntent, self.recording_session.handle_begin)
-        bus.register(StopRecordingIntent, self.recording_session.handle_stop)
-        bus.register(CancelRecordingIntent, self.recording_session.handle_cancel)
-        bus.register(ToggleRecordingIntent, self.recording_session.handle_toggle)
-        bus.register(ImportAudioFileIntent, self.recording_session.handle_import)
-        bus.register(RetranscribeIntent, self.recording_session.handle_retranscribe)
-        bus.register(CommitEditsIntent, transcript.handle_commit_edits)
-        bus.register(RevertToRawIntent, transcript.handle_revert_to_raw)
-        bus.register(AppendToTranscriptIntent, transcript.handle_append)
-        bus.register(SetAnalyticsInclusionIntent, transcript.handle_set_analytics_inclusion)
-        bus.register(RefineTranscriptIntent, refinement.handle_refine)
-        bus.register(CommitRefinementIntent, refinement.handle_commit_refinement)
-        bus.register(BulkRefineTranscriptsIntent, refinement.handle_bulk_refine)
-        bus.register(CancelBulkRefinementIntent, refinement.handle_cancel_bulk_refine)
-        bus.register(UpdateConfigIntent, system.handle_update_config)
-        bus.register(RestartEngineIntent, system.handle_restart_engine)
-        bus.register(RetitleTranscriptIntent, title.handle_retitle)
+        bus.register_all(self.recording_session)
+        bus.register_all(transcript)
+        bus.register_all(refinement)
+        bus.register_all(system)
+        bus.register_all(title)
 
     # --- Hotkey ---
 

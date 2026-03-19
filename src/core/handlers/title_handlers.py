@@ -7,6 +7,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Callable
 
+from src.core.command_bus import handles
+from src.core.intents.definitions import RetitleTranscriptIntent
+
 if TYPE_CHECKING:
     from src.core.title_generator import TitleGenerator
     from src.database.db import TranscriptDB
@@ -28,6 +31,7 @@ class TitleHandlers:
         self._title_generator_provider = title_generator_provider
         self._emit = event_bus_emit
 
+    @handles(RetitleTranscriptIntent)
     def handle_retitle(self, intent: Any) -> None:
         """Re-generate the SLM title for a single transcript."""
         title_gen = self._title_generator_provider()

@@ -7,6 +7,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, Callable
 
+from src.core.command_bus import handles
+from src.core.intents.definitions import RestartEngineIntent, UpdateConfigIntent
+
 if TYPE_CHECKING:
     from src.core.settings import VociferousSettings
     from src.input_handler.listener import KeyListener
@@ -32,6 +35,7 @@ class SystemHandlers:
         self._restart_engine = restart_engine
         self._insight_manager_provider = insight_manager_provider
 
+    @handles(UpdateConfigIntent)
     def handle_update_config(self, intent: Any) -> None:
         from src.core.settings import update_settings
 
@@ -49,6 +53,7 @@ class SystemHandlers:
             except Exception:
                 logger.exception("Failed to reload activation keys")
 
+    @handles(RestartEngineIntent)
     def handle_restart_engine(self, intent: Any) -> None:
         self._restart_engine()
 

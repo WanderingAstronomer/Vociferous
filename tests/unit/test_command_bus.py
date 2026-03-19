@@ -13,7 +13,7 @@ from abc import ABCMeta
 
 import pytest
 
-from src.core.command_bus import CommandBus
+from src.core.command_bus import CommandBus, handles
 from src.core.intents import InteractionIntent
 
 
@@ -78,3 +78,64 @@ class TestCommandBus:
         # Should not raise — but returns False because handler failed
         result = bus.dispatch(_TestIntent())
         assert result is False
+
+
+class TestHandlesDecorator:
+    """Tests for @handles decorator and register_all() auto-wiring."""
+
+    def test_handles_decorator_sets_attribute(self):
+        @handles(_TestIntent)
+        def handler(intent):
+            pass
+
+        assert hasattr(handler, "_handles_intent")
+        assert handler._handles_intent is _TestIntent
+
+    def test_register_all_discovers_decorated_methods(self):
+        class MyHandlers:
+            def __init__(self):
+                self.log = []
+
+            @handles(_TestIntent)
+            def handle_test(self, intent):
+                self.log.append(("test", intent.value))
+
+            @handles(_AnotherIntent)
+            def handle_another(self, intent):
+                self.log.append(("another", intent.name))
+
+        bus = CommandBus()
+        obj = MyHandlers()
+        bus.register_all(obj)
+
+        bus.dispatch(_TestIntent(value=99))
+        bus.dispatch(_AnotherIntent(name="hello"))
+
+        assert obj.log == [("test", 99), ("another", "hello")]
+        assert set(bus.registered_types) == {_TestIntent, _AnotherIntent}
+
+    def test_register_all_ignores_undecorated_methods(self):
+        class Mixed:
+            @handles(_TestIntent)
+            def handle_test(self, intent):
+                pass
+
+            def not_a_handler(self):
+                pass
+
+        bus = CommandBus()
+        bus.register_all(Mixed())
+
+        assert bus.registered_types == [_TestIntent]
+
+    def test_register_all_skips_private_methods(self):
+        class Private:
+            @handles(_TestIntent)
+            def _private_handler(self, intent):
+                pass
+
+        bus = CommandBus()
+        bus.register_all(Private())
+
+        # Private methods (starting with _) are skipped by register_all
+        assert bus.registered_types == []

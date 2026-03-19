@@ -15,6 +15,19 @@ logger = logging.getLogger(__name__)
 # Type alias for intent handlers
 IntentHandler = Callable[[InteractionIntent], Any]
 
+# Sentinel attribute name set by the @handles decorator.
+_HANDLES_ATTR = "_handles_intent"
+
+
+def handles(intent_type: type[InteractionIntent]) -> Callable:
+    """Mark a handler method so CommandBus.register_all() can auto-wire it."""
+
+    def decorator(fn: Callable) -> Callable:
+        setattr(fn, _HANDLES_ATTR, intent_type)
+        return fn
+
+    return decorator
+
 
 class CommandBus:
     """
@@ -31,6 +44,16 @@ class CommandBus:
     ) -> None:
         """Register a handler for an intent type."""
         self._handlers[intent_type] = handler
+
+    def register_all(self, handler_obj: object) -> None:
+        """Auto-register every @handles-decorated method on *handler_obj*."""
+        for name in dir(handler_obj):
+            if name.startswith("_"):
+                continue
+            method = getattr(handler_obj, name, None)
+            intent_type = getattr(method, _HANDLES_ATTR, None)
+            if intent_type is not None:
+                self._handlers[intent_type] = method
 
     def unregister(self, intent_type: type[InteractionIntent]) -> None:
         """Remove a handler registration."""

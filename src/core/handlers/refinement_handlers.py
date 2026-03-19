@@ -9,6 +9,14 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
+from src.core.command_bus import handles
+from src.core.intents.definitions import (
+    BulkRefineTranscriptsIntent,
+    CancelBulkRefinementIntent,
+    CommitRefinementIntent,
+    RefineTranscriptIntent,
+)
+
 if TYPE_CHECKING:
     from src.core.settings import VociferousSettings
     from src.database.db import TranscriptDB
@@ -74,6 +82,7 @@ class RefinementHandlers:
                     logger.warning("Failed to resolve default prompt (ID %d): %s", prompt_id, e)
         return instructions
 
+    @handles(RefineTranscriptIntent)
     def handle_refine(self, intent: Any) -> None:
         db = self._db_provider()
         if not db:
@@ -206,6 +215,7 @@ class RefinementHandlers:
         t = threading.Thread(target=do_refine, daemon=True, name="refine")
         t.start()
 
+    @handles(CommitRefinementIntent)
     def handle_commit_refinement(self, intent: Any) -> None:
         db = self._db_provider()
         if not db:
@@ -260,6 +270,7 @@ class RefinementHandlers:
             return None, f"Refinement model not ready (state: {state.value})"
         return slm_runtime, None
 
+    @handles(BulkRefineTranscriptsIntent)
     def handle_bulk_refine(self, intent: Any) -> None:
         db = self._db_provider()
         if not db:
@@ -413,6 +424,7 @@ class RefinementHandlers:
         t = threading.Thread(target=do_bulk, daemon=True, name="bulk-refine")
         t.start()
 
+    @handles(CancelBulkRefinementIntent)
     def handle_cancel_bulk_refine(self, intent: Any) -> None:
         if not self._bulk_active:
             return
