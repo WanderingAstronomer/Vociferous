@@ -1,5 +1,20 @@
 # Vociferous Changelog
 
+## v6.2.2 — API Domain Split & Decorator-Based Handler Registration
+
+**Date:** 2026-03-19
+**Status:** Refactor
+**Issues:** ISS-101, ISS-105, ISS-107
+
+### Refactored
+- **Split system.py into domain API modules** (ISS-107) — Extracted `config.py` (config, insight, intent dispatch), `models.py` (model catalog and download), and `window.py` (window control, export) from the 488-LOC `system.py` monolith. `system.py` retains health/GPU detection, audio import, and key capture (~180 LOC).
+- **Decorator-based handler registration** (ISS-105) — Added `@handles(IntentType)` decorator and `CommandBus.register_all()`. All handler modules self-declare their intent bindings. Coordinator's `_register_handlers()` reduced from 17 manual `bus.register()` calls + 16 intent imports to 5 `register_all()` calls. Adding a new intent now touches 2 files instead of 4.
+
+### Closed
+- **ISS-101 — Split usage_stats.py** — Closed with no changes. The premise ("14 unused keys computed every refresh") is outdated: InsightManager now consumes ~30 of 35 keys. The uncomputed 5 are trivial dict insertions. No performance benefit to splitting.
+
+---
+
 ## v6.2.1 — Inline Trivial CRUD Intents
 
 **Date:** 2026-03-19
