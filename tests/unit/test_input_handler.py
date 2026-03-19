@@ -239,35 +239,23 @@ class TestParseKeyCombination:
     @pytest.fixture()
     def parser(self, tmp_path):
         """Get parse_key_combination without starting a full listener."""
-        from unittest.mock import patch
-
         from src.core.settings import init_settings, reset_for_tests
 
         reset_for_tests()
         init_settings(config_path=tmp_path / "config" / "settings.json")
 
-        with (
-            patch("src.input_handler.listener.PluginLoader") as mock_pl,
-            patch.object(
-                __import__("src.input_handler.listener", fromlist=["KeyListener"]).KeyListener,
-                "initialize_backends",
-            ),
-        ):
-            mock_pl.discover_plugins.return_value = None
-            mock_pl.get_available_backends.return_value = []
+        from src.input_handler.listener import KeyListener
 
-            from src.input_handler.listener import KeyListener
+        listener = KeyListener.__new__(KeyListener)
+        listener.backends = []
+        listener.active_backend = None
+        listener.key_chord = None
+        listener.callbacks = {"on_activate": [], "on_deactivate": []}
+        listener.capture_mode = False
+        listener.capture_callback = None
 
-            listener = KeyListener.__new__(KeyListener)
-            listener.backends = []
-            listener.active_backend = None
-            listener.key_chord = None
-            listener.callbacks = {"on_activate": [], "on_deactivate": []}
-            listener.capture_mode = False
-            listener.capture_callback = None
-
-            yield listener.parse_key_combination
-            reset_for_tests()
+        yield listener.parse_key_combination
+        reset_for_tests()
 
     def test_single_key(self, parser):
         keys = parser("SPACE")
@@ -337,31 +325,23 @@ class TestKeyListenerCallbacks:
     @pytest.fixture()
     def listener(self, tmp_path):
         """A KeyListener with mocked backends for testing callbacks."""
-        from unittest.mock import patch
-
         from src.core.settings import init_settings, reset_for_tests
 
         reset_for_tests()
         init_settings(config_path=tmp_path / "config" / "settings.json")
 
-        with (
-            patch("src.input_handler.listener.PluginLoader") as mock_pl,
-        ):
-            mock_pl.discover_plugins.return_value = None
-            mock_pl.get_available_backends.return_value = []
+        from src.input_handler.listener import KeyListener
 
-            from src.input_handler.listener import KeyListener
+        listener = KeyListener.__new__(KeyListener)
+        listener.backends = []
+        listener.active_backend = None
+        listener.key_chord = KeyChord(keys={KeyCode.SPACE})
+        listener.callbacks = {"on_activate": [], "on_deactivate": []}
+        listener.capture_mode = False
+        listener.capture_callback = None
 
-            listener = KeyListener.__new__(KeyListener)
-            listener.backends = []
-            listener.active_backend = None
-            listener.key_chord = KeyChord(keys={KeyCode.SPACE})
-            listener.callbacks = {"on_activate": [], "on_deactivate": []}
-            listener.capture_mode = False
-            listener.capture_callback = None
-
-            yield listener
-            reset_for_tests()
+        yield listener
+        reset_for_tests()
 
     def test_add_callback(self, listener):
         calls = []
@@ -419,29 +399,23 @@ class TestCaptureMode:
 
     @pytest.fixture()
     def listener(self, tmp_path):
-        from unittest.mock import patch
-
         from src.core.settings import init_settings, reset_for_tests
 
         reset_for_tests()
         init_settings(config_path=tmp_path / "config" / "settings.json")
 
-        with patch("src.input_handler.listener.PluginLoader") as mock_pl:
-            mock_pl.discover_plugins.return_value = None
-            mock_pl.get_available_backends.return_value = []
+        from src.input_handler.listener import KeyListener
 
-            from src.input_handler.listener import KeyListener
+        listener = KeyListener.__new__(KeyListener)
+        listener.backends = []
+        listener.active_backend = None
+        listener.key_chord = KeyChord(keys={KeyCode.F5})
+        listener.callbacks = {"on_activate": [], "on_deactivate": []}
+        listener.capture_mode = False
+        listener.capture_callback = None
 
-            listener = KeyListener.__new__(KeyListener)
-            listener.backends = []
-            listener.active_backend = None
-            listener.key_chord = KeyChord(keys={KeyCode.F5})
-            listener.callbacks = {"on_activate": [], "on_deactivate": []}
-            listener.capture_mode = False
-            listener.capture_callback = None
-
-            yield listener
-            reset_for_tests()
+        yield listener
+        reset_for_tests()
 
     def test_enable_capture_mode(self, listener):
         captured = []

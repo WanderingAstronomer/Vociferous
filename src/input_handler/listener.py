@@ -3,7 +3,8 @@ import os
 import sys
 from collections.abc import Callable
 
-from src.core.plugins import PluginLoader
+from src.input_handler.backends.evdev import EvdevBackend
+from src.input_handler.backends.pynput import PynputBackend
 from src.core.settings import get_settings
 
 from .backends.base import InputBackend
@@ -11,6 +12,11 @@ from .chord import KeyChord
 from .types import InputEvent, KeyCode
 
 logger = logging.getLogger(__name__)
+
+_INPUT_BACKENDS: dict[str, type[InputBackend]] = {
+    "evdev": EvdevBackend,
+    "pynput": PynputBackend,
+}
 
 
 class KeyListener:
@@ -34,9 +40,7 @@ class KeyListener:
 
     def initialize_backends(self) -> None:
         """Initialize available input backends."""
-        PluginLoader.discover_plugins()
-        available_classes = PluginLoader.get_available_backends()
-        self.backends = [cls() for cls in available_classes]
+        self.backends = [cls() for cls in _INPUT_BACKENDS.values() if cls.is_available()]
 
     def select_backend_from_config(self) -> None:
         """Select the active backend based on configuration."""
@@ -46,10 +50,8 @@ class KeyListener:
             self.select_active_backend()
             return
 
-        # Try to find registered backend by name
-        backend_cls = PluginLoader.get_backend_by_name(preferred_backend)
+        backend_cls = _INPUT_BACKENDS.get(preferred_backend)
         if backend_cls and backend_cls.is_available():
-            # Find the instance in self.backends
             for instance in self.backends:
                 if isinstance(instance, backend_cls):
                     self.active_backend = instance

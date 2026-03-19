@@ -1,3 +1,1 @@
-from .loader import PluginLoader
-
-__all__ = ["PluginLoader"]
+# Plugin system removed (ISS-102). Backend selection is hardcoded in listener.py.
