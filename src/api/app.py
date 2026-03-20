@@ -39,7 +39,6 @@ from src.api.system import (
     start_key_capture,
     stop_key_capture,
 )
-from src.api.window import close_window, export_file, maximize_window, minimize_window
 from src.api.tags import assign_tags, create_tag, delete_tag, list_tags, update_tag
 from src.api.transcripts import (
     batch_delete_transcripts,
@@ -57,6 +56,7 @@ from src.api.transcripts import (
     retranscribe_transcript,
     search_transcripts,
 )
+from src.api.window import close_window, export_file, maximize_window, minimize_window
 from src.core.constants import APP_VERSION
 from src.core.resource_manager import ResourceManager
 

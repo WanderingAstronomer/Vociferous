@@ -45,5 +45,3 @@ class TitleHandlers:
         if not text.strip():
             return
         title_gen.schedule(intent.transcript_id, text)
-
-

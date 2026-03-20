@@ -50,7 +50,9 @@ def update_tag(tag_id: int, data: dict) -> Response:
         return Response(content={"error": "Not found"}, status_code=404)
     if existing.is_system:
         return Response(content={"error": "System tags cannot be modified"}, status_code=403)
-    tag = coordinator.db.update_tag(tag_id, **{k: v for k, v in data.items() if k in ("name", "color") and v is not None})
+    tag = coordinator.db.update_tag(
+        tag_id, **{k: v for k, v in data.items() if k in ("name", "color") and v is not None}
+    )
     if not tag:
         return Response(content={"error": "Update failed"}, status_code=500)
     coordinator.event_bus.emit("tag_updated", {"id": tag.id, "name": tag.name, "color": tag.color})
@@ -88,6 +90,9 @@ async def assign_tags(transcript_id: int, data: dict) -> Response:
     tags = coordinator.db.assign_tags(transcript_id, list(tag_ids))
     coordinator.event_bus.emit(
         "transcript_updated",
-        {"id": transcript_id, "tags": [{"id": t.id, "name": t.name, "color": t.color, "is_system": t.is_system} for t in tags]},
+        {
+            "id": transcript_id,
+            "tags": [{"id": t.id, "name": t.name, "color": t.color, "is_system": t.is_system} for t in tags],
+        },
     )
     return Response(content={"status": "assigned"})

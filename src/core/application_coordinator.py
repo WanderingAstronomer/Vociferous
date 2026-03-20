@@ -607,9 +607,7 @@ class ApplicationCoordinator:
                     return
             except OSError:
                 time.sleep(0.05)
-        logger.warning(
-            "API server did not become ready within %.1fs — opening window anyway", timeout
-        )
+        logger.warning("API server did not become ready within %.1fs — opening window anyway", timeout)
 
     def _open_window(self) -> None:
         """Open the main pywebview window. Blocks until closed."""

@@ -39,8 +39,8 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
     from litestar.config.cors import CORSConfig
 
     from src.api.app import ConnectionManager, _wire_event_bridge
-    from src.api.deps import set_coordinator
     from src.api.config import dispatch_intent, get_config, update_config
+    from src.api.deps import set_coordinator
     from src.api.models import download_model, list_models
     from src.api.system import health
     from src.api.transcripts import (

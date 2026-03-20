@@ -8,8 +8,8 @@ Verifies:
 - Handler receives correct intent data
 """
 
-from dataclasses import dataclass
 from abc import ABCMeta
+from dataclasses import dataclass
 
 import pytest
 

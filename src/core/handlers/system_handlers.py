@@ -56,4 +56,3 @@ class SystemHandlers:
     @handles(RestartEngineIntent)
     def handle_restart_engine(self, intent: Any) -> None:
         self._restart_engine()
-
