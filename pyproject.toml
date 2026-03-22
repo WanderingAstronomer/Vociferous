@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vociferous"
-version = "6.2.3"
+version = "6.3.0"
 description = "Cross-platform speech-to-text with offline transcription and SLM refinement"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -21,8 +21,6 @@ dependencies = [
     "ctranslate2>=4.5.0",
     "faster-whisper>=1.1.0",
     "tokenizers>=0.20.0",
-    # NVIDIA cuBLAS for GPU inference (Windows — not bundled with drivers)
-    "nvidia-cublas-cu12>=12.4.0; sys_platform == 'win32'",
     # Configuration
     "pydantic>=2.0",
     "pydantic-settings>=2.0",

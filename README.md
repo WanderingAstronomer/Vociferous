@@ -1,5 +1,9 @@
 <div align="center">
 
+## Vociferous v6.3.0
+
+**March 2026**
+
 <img src="assets/icons/vociferous_icon.png" alt="Vociferous" width="128" height="128"/>
 
 # Vociferous
@@ -136,7 +140,7 @@ Record. Transcribe. Refine. Copy. That's the core loop. The rest is infrastructu
 - Python 3.12+
 - Node.js 18+ and npm
 - System audio packages (`libportaudio2`, `xclip` on Linux)
-- **For GPU acceleration**: NVIDIA driver 550+ with CUDA toolkit (`nvcc`) in PATH
+- **For Windows GPU acceleration**: an NVIDIA driver is not enough by itself. You also need a usable CUDA 12 runtime for CTranslate2, either via a system CUDA Toolkit + cuDNN install or via manual Python runtime packages inside the app venv.
 
 ### Linux (Debian/Ubuntu)
 
@@ -201,7 +205,7 @@ The install script will:
 - Install all Python dependencies from `requirements.txt`
 - Build the Svelte frontend (`frontend/dist`)
 - Verify critical imports (ctranslate2, faster-whisper, pywebview, etc.)
-- Detect NVIDIA GPU availability
+- Detect NVIDIA GPU availability and probe whether CTranslate2 can actually use CUDA
 - Verify Microsoft Edge WebView2 Runtime
 - **Download AI models** (ASR ~780 MB, SLM ~5.8 GB, VAD ~2 MB) — interactive prompt
 - **Create Desktop and Start Menu shortcuts** with the Vociferous icon — interactive prompt
@@ -226,12 +230,18 @@ launch where you can download models via the UI.
 CPU inference works out of the box. For GPU acceleration with NVIDIA cards:
 
 1. Install the latest [NVIDIA Game Ready or Studio driver](https://www.nvidia.com/download/index.aspx)
-2. Install [CUDA Toolkit 12.x](https://developer.nvidia.com/cuda-downloads) — the driver alone is **not** enough
-3. Verify `cublas64_12.dll` is on PATH (typically `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x\bin`)
-4. Verify with: `nvidia-smi` (should show your GPU) and `nvcc --version` (should show CUDA version)
+2. Install a usable CUDA 12 runtime yourself. Vociferous does **not** assume it can do this reliably for you on Windows. Use one of these paths:
+  - Recommended system install: [CUDA Toolkit 12.x](https://developer.nvidia.com/cuda-downloads) plus [cuDNN 9](https://developer.nvidia.com/cudnn-downloads)
+  - Python-only runtime inside the venv:
 
-The installer detects GPU availability automatically. If you install CUDA after the initial setup,
-just restart the app — no reinstall needed.
+```powershell
+.\.venv\Scripts\python.exe -m pip install nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12 nvidia-cublas-cu12 nvidia-cudnn-cu12
+```
+
+3. Verify CUDA DLLs such as `cublas64_12.dll` and `cudnn64_9.dll` are discoverable, either from the Python environment's `site-packages\nvidia\*\bin` directories or from a CUDA Toolkit install such as `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x\bin`
+4. Verify with: `nvidia-smi` (should show your GPU). If you installed the full CUDA Toolkit, `nvcc --version` should also report CUDA 12.x
+
+The Windows installer now distinguishes between "NVIDIA driver detected" and "CTranslate2 can actually use CUDA." If it sees a driver but the CUDA runtime is still unusable, it will tell you exactly that and prompt before continuing with CPU fallback.
 
 #### Uninstall
 
@@ -278,7 +288,13 @@ docker compose --profile gpu up
 If a 30-second clip takes 2 minutes even with an RTX card, you're on CPU-only wheels.
 
 **Windows**: Verify CUDA Toolkit is installed (`nvcc --version` in a terminal). The Game Ready
-driver alone doesn't provide `cublas64_12.dll`. Install [CUDA Toolkit 12.x](https://developer.nvidia.com/cuda-downloads).
+driver alone doesn't make CTranslate2 GPU inference usable. Install [CUDA Toolkit 12.x](https://developer.nvidia.com/cuda-downloads) plus [cuDNN 9](https://developer.nvidia.com/cudnn-downloads), or install the Python runtime packages into the venv manually:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12 nvidia-cublas-cu12 nvidia-cudnn-cu12
+```
+
+If Vociferous reports "NVIDIA driver detected" but also says the CUDA runtime is unusable, that is not cosmetic. The app will run on CPU until that runtime gap is fixed.
 
 **Linux**:
 1. Ensure `nvcc` is in your `$PATH` before running `install.sh`

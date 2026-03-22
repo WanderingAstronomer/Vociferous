@@ -204,6 +204,14 @@ class RecordingSession:
                     )
                     return
 
+            # Pre-check: is a working microphone available?
+            from src.services.audio_service import AudioService
+
+            mic_ok, mic_err = AudioService.validate_microphone()
+            if not mic_ok:
+                self._emit("transcription_error", {"message": mic_err})
+                return
+
             self._is_recording = True
 
         self._recording_stop.clear()

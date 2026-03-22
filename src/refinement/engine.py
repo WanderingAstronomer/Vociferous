@@ -62,6 +62,8 @@ class RefinementEngine:
         import ctranslate2
         from tokenizers import Tokenizer
 
+        from src.core.cuda_runtime import detect_cuda_runtime
+
         model_path = Path(model_path)
         if not model_path.exists():
             raise FileNotFoundError(f"Model directory not found: {model_path}")
@@ -77,16 +79,20 @@ class RefinementEngine:
         if n_gpu_layers == 0:
             ct2_device = "cpu"
         else:
-            try:
-                ct2_device = "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
-            except Exception:
-                ct2_device = "cpu"
+            cuda_status = detect_cuda_runtime()
+            ct2_device = "cuda" if cuda_status.cuda_available else "cpu"
+            if ct2_device == "cpu" and cuda_status.driver_detected:
+                logger.warning(
+                    "SLM fell back to CPU even though an NVIDIA GPU was detected: %s",
+                    cuda_status.detail,
+                )
 
         # int8 on GPU requires explicit Tensor Core GEMM support; upgrade to float16
         # for CUDA to avoid silent hangs. int8 remains correct for CPU-only inference.
         if ct2_device == "cuda" and compute_type == "int8":
             compute_type = "float16"
-
+        elif ct2_device == "cpu" and compute_type in {"float16", "bfloat16"}:
+            compute_type = "float32"
 
         logger.info(
             "Loading CT2 Generator model from %s (device=%s, compute_type=%s)...", model_path, ct2_device, compute_type
@@ -267,6 +273,7 @@ class RefinementEngine:
         user_prompt: str,
         max_tokens: int = 150,
         temperature: float = 0.7,
+        use_thinking: bool = False,
     ) -> GenerationResult:
         """
         Generate text using a custom system and user prompt.
@@ -276,11 +283,12 @@ class RefinementEngine:
             user_prompt: The user input/query.
             max_tokens: Maximum new tokens to generate.
             temperature: Sampling temperature.
+            use_thinking: Allow model to reason in <think> blocks before output.
 
         Returns:
             GenerationResult with 'content' and 'reasoning'.
         """
-        messages = self.prompt_builder.build_custom_messages(system_prompt, user_prompt)
+        messages = self.prompt_builder.build_custom_messages(system_prompt, user_prompt, use_thinking=use_thinking)
 
         chatml_string = self._messages_to_chatml(messages)
         encoded = self.tokenizer.encode(chatml_string)
@@ -288,9 +296,15 @@ class RefinementEngine:
 
         effective_temp = max(temperature, 0.01)
 
+        # When thinking is enabled, add a separate thinking budget so reasoning
+        # doesn't cannibalize the output token allowance.
+        total_tokens = max_tokens
+        if use_thinking:
+            total_tokens += self.THINKING_BUDGET_TOKENS
+
         results = self.generator.generate_batch(
             [prompt_tokens],
-            max_length=max_tokens,
+            max_length=total_tokens,
             beam_size=1,
             sampling_temperature=effective_temp,
             sampling_topk=50 if temperature > 0 else 1,

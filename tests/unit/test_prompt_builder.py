@@ -115,10 +115,16 @@ class TestBuildCustomMessages:
         msgs = pb.build_custom_messages("Custom system.", "Custom user.")
         assert msgs[0]["content"] == "Custom system."
 
-    def test_user_prompt_has_no_think(self) -> None:
+    def test_user_prompt_has_no_think_by_default(self) -> None:
         pb = _make_builder()
         msgs = pb.build_custom_messages("sys", "Generate insight.")
         assert "/no_think" in msgs[1]["content"]
+        assert "Generate insight." in msgs[1]["content"]
+
+    def test_no_think_absent_when_thinking_enabled(self) -> None:
+        pb = _make_builder()
+        msgs = pb.build_custom_messages("sys", "Generate insight.", use_thinking=True)
+        assert "/no_think" not in msgs[1]["content"]
         assert "Generate insight." in msgs[1]["content"]
 
 

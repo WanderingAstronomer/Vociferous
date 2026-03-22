@@ -274,6 +274,7 @@ class InsightManager:
                 user_prompt="Generate the analytics insight based on the provided statistics.",
                 max_tokens=250,
                 temperature=0.7,
+                use_thinking=True,
             )
 
             if result and result.strip():

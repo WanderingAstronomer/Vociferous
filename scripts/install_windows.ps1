@@ -13,6 +13,45 @@ Write-Host ""
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectDir = Split-Path -Parent $ScriptDir
 
+function Get-CudaRuntimeStatus {
+    param([string]$PythonExe, [string]$ProjectRoot)
+
+    $probe = @'
+import json
+import sys
+
+sys.path.insert(0, r"__PROJECT_ROOT__")
+
+from src.main import _register_nvidia_dll_dirs
+from src.core.cuda_runtime import detect_cuda_runtime
+
+if sys.platform == "win32":
+    _register_nvidia_dll_dirs()
+
+status = detect_cuda_runtime()
+print(
+    json.dumps(
+        {
+            "driver_detected": status.driver_detected,
+            "cuda_available": status.cuda_available,
+            "cuda_device_count": status.cuda_device_count,
+            "gpu_name": status.gpu_name,
+            "detail": status.detail,
+        }
+    )
+)
+'@
+
+    $probe = $probe.Replace("__PROJECT_ROOT__", $ProjectRoot.Replace("\", "\\"))
+    $json = & $PythonExe -c $probe 2>$null
+    if (-not $json) { return $null }
+    try {
+        return $json | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
 # --- Check Python ---
 # Windows Python detection is notoriously tricky. The Microsoft Store installs
 # "app execution alias" stubs (WindowsApps\python.exe) that shadow real Python
@@ -326,7 +365,35 @@ if ($nvidiaSmi) {
         $gpuInfo = & nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>$null
         if ($gpuInfo) {
             Write-Host "[OK] NVIDIA GPU detected: $gpuInfo" -ForegroundColor Green
-            Write-Host "  CUDA acceleration will be available for inference"
+            $cudaStatus = Get-CudaRuntimeStatus -PythonExe $VenvPython -ProjectRoot $ProjectDir
+            if ($cudaStatus -and $cudaStatus.cuda_available) {
+                Write-Host "  CTranslate2 CUDA runtime is usable ($($cudaStatus.cuda_device_count) device(s))" -ForegroundColor Green
+            } else {
+                Write-Host "[WARN] NVIDIA driver detected, but CUDA inference is NOT ready." -ForegroundColor Yellow
+                if ($cudaStatus) {
+                    Write-Host "  Probe detail: $($cudaStatus.detail)"
+                } else {
+                    Write-Host "  Probe detail: CUDA runtime probe did not return usable results."
+                }
+                Write-Host ""
+                Write-Host "  To enable GPU inference on Windows, install ONE of these paths:" -ForegroundColor White
+                Write-Host "  1. Recommended: CUDA Toolkit 12.x plus cuDNN 9"
+                Write-Host "     CUDA:  https://developer.nvidia.com/cuda-downloads"
+                Write-Host "     cuDNN: https://developer.nvidia.com/cudnn-downloads"
+                Write-Host "  2. Python-only runtime inside the venv:"
+                Write-Host "     .\.venv\Scripts\python.exe -m pip install nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12 nvidia-cublas-cu12 nvidia-cudnn-cu12"
+                Write-Host ""
+                $openCudaDocs = Read-Host "Open the CUDA and cuDNN download pages now? (Y/n)"
+                if ($openCudaDocs -notmatch "^(?i:n|no)$") {
+                    Start-Process "https://developer.nvidia.com/cuda-downloads"
+                    Start-Sleep -Milliseconds 250
+                    Start-Process "https://developer.nvidia.com/cudnn-downloads"
+                }
+                Write-Host ""
+                Write-Host "  Vociferous will run on CPU until this is fixed." -ForegroundColor Yellow
+                $continueGpu = Read-Host "Continue installation with CPU fallback? (Y/n)"
+                if ($continueGpu -match "^(?i:n|no)$") { exit 1 }
+            }
         }
     } catch {
         Write-Host "[INFO] nvidia-smi found but query failed" -ForegroundColor Yellow

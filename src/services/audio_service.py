@@ -11,6 +11,7 @@ recording loop, and compute cheap RMS for the level meter.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from queue import Empty, Queue
 from typing import TYPE_CHECKING, Callable
 
@@ -26,6 +27,19 @@ if TYPE_CHECKING:
     from src.services.audio_spool import AudioSpoolWriter
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class MicrophoneStatus:
+    """Snapshot of the default input device and its capabilities."""
+
+    available: bool = False
+    device_name: str = ""
+    host_api: str = ""
+    input_channels: int = 0
+    default_sample_rate: float = 0.0
+    supports_16k: bool = False
+    detail: str = ""
 
 
 class AudioService:
@@ -55,43 +69,109 @@ class AudioService:
         self.sample_rate = 16000
 
     # ------------------------------------------------------------------
-    # Microphone validation
+    # Microphone detection & validation
     # ------------------------------------------------------------------
 
     @staticmethod
-    def validate_microphone() -> tuple[bool, str]:
-        """
-        Validate that a working microphone is available.
+    def detect_microphone() -> MicrophoneStatus:
+        """Probe the default input device and return a rich status snapshot.
 
-        Returns:
-            tuple[bool, str]: (is_valid, error_message)
+        This never raises — all failures are captured in the returned
+        ``MicrophoneStatus.detail`` field.
         """
         try:
             devices = sd.query_devices()
             if not devices:
-                return False, "No audio devices detected"
+                return MicrophoneStatus(detail="No audio devices detected by PortAudio")
 
-            # Check for input devices
             input_devices = [d for d in devices if d.get("max_input_channels", 0) > 0]
             if not input_devices:
-                return (
-                    False,
-                    "No microphone detected. Please connect a microphone and try again.",
-                )
+                return MicrophoneStatus(detail="No input devices found (only output devices present)")
 
-            # Try to get default input device
             try:
                 default_input = sd.query_devices(kind="input")
-                if default_input is None:
-                    return False, "No default microphone configured"
-            except Exception as e:
-                return False, f"Cannot access microphone: {e}"
+            except Exception as exc:
+                return MicrophoneStatus(detail=f"Cannot query default input device: {exc}")
 
-            return True, ""
+            if default_input is None:
+                return MicrophoneStatus(detail="No default input device configured")
 
-        except Exception as e:
-            logger.error(f"Microphone validation failed: {e}")
-            return False, f"Audio system error: {e}"
+            # Extract device properties
+            device_name = default_input.get("name", "Unknown")
+            input_channels = int(default_input.get("max_input_channels", 0))
+            default_sr = float(default_input.get("default_samplerate", 0))
+
+            # Resolve host API name
+            host_api = ""
+            try:
+                host_api_idx = default_input.get("hostapi", -1)
+                if host_api_idx >= 0:
+                    api_info = sd.query_hostapis(host_api_idx)
+                    host_api = api_info.get("name", "")
+            except Exception:
+                pass
+
+            # Verify the device can actually open a 16 kHz mono stream
+            supports_16k = False
+            try:
+                sd.check_input_settings(
+                    samplerate=16000,
+                    channels=1,
+                    dtype="int16",
+                )
+                supports_16k = True
+            except Exception:
+                pass
+
+            if input_channels == 0:
+                detail = f"{device_name}: reports 0 input channels"
+                return MicrophoneStatus(
+                    available=False,
+                    device_name=device_name,
+                    host_api=host_api,
+                    input_channels=input_channels,
+                    default_sample_rate=default_sr,
+                    supports_16k=supports_16k,
+                    detail=detail,
+                )
+
+            detail = device_name
+            if host_api:
+                detail += f" ({host_api})"
+
+            return MicrophoneStatus(
+                available=True,
+                device_name=device_name,
+                host_api=host_api,
+                input_channels=input_channels,
+                default_sample_rate=default_sr,
+                supports_16k=supports_16k,
+                detail=detail,
+            )
+
+        except Exception as exc:
+            logger.error("Microphone detection failed: %s", exc)
+            return MicrophoneStatus(detail=f"Audio system error: {exc}")
+
+    @staticmethod
+    def validate_microphone() -> tuple[bool, str]:
+        """Validate that a working microphone is available.
+
+        Returns:
+            tuple[bool, str]: (is_valid, error_message)
+        """
+        status = AudioService.detect_microphone()
+        if not status.available:
+            msg = status.detail or "No microphone detected"
+            if "no input" in msg.lower() or "no audio" in msg.lower():
+                return False, "No microphone detected. Please connect a microphone and try again."
+            return False, msg
+        if not status.supports_16k:
+            return (
+                False,
+                f"Microphone '{status.device_name}' does not support 16 kHz mono recording",
+            )
+        return True, ""
 
     # ------------------------------------------------------------------
     # Recording

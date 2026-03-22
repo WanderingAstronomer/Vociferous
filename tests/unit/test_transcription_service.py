@@ -1,12 +1,22 @@
 """Tests for transcription service post-processing and transcribe()."""
 
+import sys
+import types
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
+from src.core.cuda_runtime import CudaRuntimeStatus
+from src.core.exceptions import EngineError
 from src.core.settings import ModelSettings, get_settings
-from src.services.transcription_service import _merge_segment_texts, post_process_transcription, transcribe
+from src.services.transcription_service import (
+    _merge_segment_texts,
+    create_local_model,
+    post_process_transcription,
+    transcribe,
+)
 
 
 class TestPostProcessTranscription:
@@ -197,3 +207,92 @@ class TestTranscribeKwargs:
         defaults = ModelSettings()
         prompt = defaults.initial_prompt
         assert len(prompt) > 20, "Prompt should be set for CTranslate2 quality"
+
+
+class TestCreateLocalModelRuntimeResolution:
+    """Verify device/compute resolution matches actual CUDA runtime availability."""
+
+    @staticmethod
+    def _settings_with(fresh_settings, *, device: str, compute_type: str):
+        return fresh_settings.model_copy(
+            update={
+                "model": fresh_settings.model.model_copy(
+                    update={
+                        "device": device,
+                        "compute_type": compute_type,
+                    }
+                )
+            }
+        )
+
+    @staticmethod
+    def _capture_whisper_ctor():
+        captured: dict[str, object] = {}
+
+        class DummyWhisperModel:
+            def __init__(self, *args, **kwargs):
+                captured["args"] = args
+                captured["kwargs"] = kwargs
+
+        return captured, DummyWhisperModel
+
+    def test_auto_cpu_fallback_converts_float16_to_float32(self, fresh_settings):
+        settings = self._settings_with(fresh_settings, device="auto", compute_type="float16")
+        captured, dummy_model = self._capture_whisper_ctor()
+
+        with (
+            patch("src.services.transcription_service._resolve_model_path", return_value=Path("/tmp/fake-model")),
+            patch(
+                "src.services.transcription_service.detect_cuda_runtime",
+                return_value=CudaRuntimeStatus(
+                    driver_detected=True,
+                    cuda_available=False,
+                    detail="CTranslate2 detected 0 CUDA devices; NVIDIA driver is present but the CUDA runtime is not usable",
+                ),
+            ),
+            patch.dict(sys.modules, {"faster_whisper": types.SimpleNamespace(WhisperModel=dummy_model)}),
+        ):
+            create_local_model(settings)
+
+        assert captured["kwargs"]["device"] == "cpu"
+        assert captured["kwargs"]["compute_type"] == "float32"
+
+    def test_auto_cuda_upgrades_int8_to_float16(self, fresh_settings):
+        settings = self._settings_with(fresh_settings, device="auto", compute_type="int8")
+        captured, dummy_model = self._capture_whisper_ctor()
+
+        with (
+            patch("src.services.transcription_service._resolve_model_path", return_value=Path("/tmp/fake-model")),
+            patch(
+                "src.services.transcription_service.detect_cuda_runtime",
+                return_value=CudaRuntimeStatus(
+                    driver_detected=True,
+                    cuda_available=True,
+                    cuda_device_count=1,
+                    detail="CTranslate2 detected 1 CUDA device(s)",
+                ),
+            ),
+            patch.dict(sys.modules, {"faster_whisper": types.SimpleNamespace(WhisperModel=dummy_model)}),
+        ):
+            create_local_model(settings)
+
+        assert captured["kwargs"]["device"] == "cuda"
+        assert captured["kwargs"]["compute_type"] == "float16"
+
+    def test_explicit_gpu_raises_clear_error_when_cuda_unusable(self, fresh_settings):
+        settings = self._settings_with(fresh_settings, device="gpu", compute_type="float16")
+
+        with (
+            patch("src.services.transcription_service._resolve_model_path", return_value=Path("/tmp/fake-model")),
+            patch(
+                "src.services.transcription_service.detect_cuda_runtime",
+                return_value=CudaRuntimeStatus(
+                    driver_detected=True,
+                    cuda_available=False,
+                    detail="CTranslate2 CUDA probe failed: missing cudnn64_9.dll",
+                ),
+            ),
+            patch.dict(sys.modules, {"faster_whisper": types.SimpleNamespace(WhisperModel=object)}),
+        ):
+            with pytest.raises(EngineError, match="CUDA is not usable: CTranslate2 CUDA probe failed"):
+                create_local_model(settings)

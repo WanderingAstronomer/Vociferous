@@ -216,15 +216,32 @@ class SLMRuntime:
             )
         return result.content
 
+    # Maximum seconds to wait for the inference lock before giving up.
+    # Prevents low-priority tasks (title gen) from blocking behind long
+    # thinking-mode refinements.
+    _CUSTOM_LOCK_TIMEOUT = 5.0
+
     def generate_custom_sync(
         self,
         system_prompt: str,
         user_prompt: str,
         max_tokens: int = 150,
         temperature: float = 0.7,
+        use_thinking: bool = False,
     ) -> str:
-        """Synchronous freeform generation — blocks until complete. Returns generated text."""
-        with self._lock:
+        """Synchronous freeform generation — blocks until complete. Returns generated text.
+
+        Uses a short lock timeout so callers (title gen, insight gen) don't
+        block for minutes behind a long thinking-mode refinement.
+        """
+        acquired = self._lock.acquire(timeout=self._CUSTOM_LOCK_TIMEOUT)
+        if not acquired:
+            logger.warning(
+                "generate_custom_sync: could not acquire lock within %.1fs (SLM busy with refinement)",
+                self._CUSTOM_LOCK_TIMEOUT,
+            )
+            return ""
+        try:
             if not self._engine:
                 raise RuntimeError("Engine not loaded.")
             result = self._engine.generate_custom(
@@ -232,7 +249,10 @@ class SLMRuntime:
                 user_prompt=user_prompt,
                 max_tokens=max_tokens,
                 temperature=temperature,
+                use_thinking=use_thinking,
             )
+        finally:
+            self._lock.release()
         return result.content
 
     def _inference_task(self, text: str, level: int, instructions: str = "") -> None:

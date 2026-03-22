@@ -12,10 +12,12 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from litestar.testing import TestClient
 
+from src.core.cuda_runtime import CudaRuntimeStatus
 from tests.conftest import EventCollector
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
@@ -115,6 +117,32 @@ class TestHealthEndpoint:
 
         resp = client.get("/api/health")
         assert resp.json()["transcripts"] == 3  # 2 added + 1 seeded
+
+    def test_health_reports_driver_without_cuda_runtime(self, api):
+        client, _, _ = api
+        with patch(
+            "src.api.system.detect_cuda_runtime",
+            return_value=CudaRuntimeStatus(
+                driver_detected=True,
+                cuda_available=False,
+                cuda_device_count=0,
+                gpu_name="GeForce RTX 3080",
+                detail="CTranslate2 detected 0 CUDA devices; NVIDIA driver is present but the CUDA runtime is not usable",
+                vram_total_mb=10240,
+                vram_used_mb=512,
+                vram_free_mb=9728,
+            ),
+        ):
+            from src.api.system import _detect_gpu_status
+
+            _detect_gpu_status.cache_clear()
+            resp = client.get("/api/health")
+            body = resp.json()
+            assert body["gpu"]["driver_detected"] is True
+            assert body["gpu"]["cuda_available"] is False
+            assert body["gpu"]["cuda_device_count"] == 0
+            assert body["gpu"]["gpu_name"] == "GeForce RTX 3080"
+            assert "runtime is not usable" in body["gpu"]["detail"]
 
 
 # ── Transcript CRUD ──────────────────────────────────────────────────────

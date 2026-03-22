@@ -21,6 +21,8 @@ from litestar.params import Body
 
 from src.api.deps import get_coordinator
 from src.core.constants import APP_VERSION
+from src.core.cuda_runtime import detect_cuda_runtime
+from src.services.audio_service import AudioService
 
 logger = logging.getLogger(__name__)
 
@@ -36,39 +38,18 @@ def _detect_gpu_status() -> dict:
     _detect_gpu_status.cache_clear() to reset (e.g. in tests or after
     engine restart).
     """
+    status = detect_cuda_runtime()
     gpu: dict = {
-        "cuda_available": False,
-        "detail": "",
+        "cuda_available": status.cuda_available,
+        "driver_detected": status.driver_detected,
+        "cuda_device_count": status.cuda_device_count,
+        "detail": status.detail,
+        "gpu_name": status.gpu_name,
         "slm_gpu_layers": -1,
-        "vram_total_mb": 0,
-        "vram_used_mb": 0,
-        "vram_free_mb": 0,
+        "vram_total_mb": status.vram_total_mb,
+        "vram_used_mb": status.vram_used_mb,
+        "vram_free_mb": status.vram_free_mb,
     }
-    try:
-        import subprocess
-
-        result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=name,memory.total,memory.used,memory.free", "--format=csv,noheader,nounits"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            gpu["cuda_available"] = True
-            parts = [p.strip() for p in result.stdout.strip().split("\n")[0].split(",")]
-            gpu["detail"] = parts[0] if len(parts) > 0 else "unknown"
-            try:
-                gpu["vram_total_mb"] = int(parts[1]) if len(parts) > 1 else 0
-                gpu["vram_used_mb"] = int(parts[2]) if len(parts) > 2 else 0
-                gpu["vram_free_mb"] = int(parts[3]) if len(parts) > 3 else 0
-            except (ValueError, IndexError):
-                pass  # VRAM parsing failed — leave at 0
-        else:
-            gpu["detail"] = "nvidia-smi failed or no GPU found"
-    except FileNotFoundError:
-        gpu["detail"] = "nvidia-smi not found — no NVIDIA driver"
-    except Exception as e:
-        gpu["detail"] = str(e)
 
     # SLM GPU layer configuration from settings
     try:
@@ -94,6 +75,20 @@ def prewarm_health_cache() -> None:
     threading.Thread(target=_detect_gpu_status, daemon=True, name="gpu-prewarm").start()
 
 
+def _detect_mic_status() -> dict:
+    """Probe the default input device. Not cached — device can change at any time."""
+    status = AudioService.detect_microphone()
+    return {
+        "available": status.available,
+        "device_name": status.device_name,
+        "host_api": status.host_api,
+        "input_channels": status.input_channels,
+        "default_sample_rate": status.default_sample_rate,
+        "supports_16k": status.supports_16k,
+        "detail": status.detail,
+    }
+
+
 @get("/api/health", sync_to_thread=True)
 def health() -> dict:
     coordinator = get_coordinator()
@@ -103,6 +98,7 @@ def health() -> dict:
         "transcripts": coordinator.get_transcript_count(),
         "recording_active": coordinator.is_recording_active(),
         "gpu": _detect_gpu_status(),
+        "mic": _detect_mic_status(),
     }
 
 

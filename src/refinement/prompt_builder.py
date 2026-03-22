@@ -136,11 +136,13 @@ Text:
         self,
         system_prompt: str,
         user_prompt: str,
+        use_thinking: bool = False,
     ) -> list[dict[str, str]]:
         """Build ChatML messages for freeform generation (insight, MOTD, etc.)."""
+        think_directive = "" if use_thinking else "/no_think\n\n"
         return [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"/no_think\n\n{user_prompt}"},
+            {"role": "user", "content": f"{think_directive}{user_prompt}"},
         ]
 
     # ── Public: ChatML serialisation ────────────────────────────────────────

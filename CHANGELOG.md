@@ -1,5 +1,30 @@
 # Vociferous Changelog
 
+## v6.3.0 — GPU/CUDA Runtime Detection & Audio Hardware Diagnostics
+
+**Date:** 2026-03-22
+**Status:** Minor Release
+
+### Added
+- **Rich microphone diagnostics** — New `AudioService.detect_microphone()` returns detailed `MicrophoneStatus` snapshot: device name, host API, channel count, default sample rate, 16 kHz support flag, and human-readable detail string. Never raises; all failures captured in `.detail` field. Enables precise troubleshooting of no-audio scenarios.
+- **CUDA runtime availability detection** — New `src/core/cuda_runtime.py` module probes whether CTranslate2 can actually use NVIDIA GPU acceleration (distinct from "driver installed"). Checks for required CUDA 12+ DLLs (`cublas64_12`, `cudnn64_9`, etc.) in both system PATH and per-venv `site-packages\nvidia\*\bin` directories. Discriminates between "NVIDIA driver present" and "CUDA runtime usable."
+- **Windows-specific CUDA path help** — Installation script and diagnostics now explain the critical Windows-only reality: NVIDIA driver alone does **not** provide CUDA runtime. Package both system CUDA Toolkit install paths **and** `pip install nvidia-cuda-runtime-cu12 ...` venv-local fallback.
+- **Enhanced audio service testing** — `test_audio_service.py` expanded with 186+ lines of unit tests covering `detect_microphone()` scenarios, PortAudio device enumeration failures, channel count edge cases, and sample rate support validation.
+
+### Changed
+- **Windows GPU detection in installer scripts** — `install_windows.ps1` now distinguishes between "NVIDIA driver detected" and "CTranslate2 can use CUDA," prompting user with specific guidance for runtime setup before proceeding.
+- **Audio validation now uses detection** — `AudioService.validate_microphone()` refactored to call `detect_microphone()` internally, reducing duplication and improving consistency. Still returns legacy `tuple[bool, str]` for backward compat.
+- **Frontend GPU/audio status display** — `MaintenanceCard.svelte` and `SettingsView.svelte` now show richer device diagnostics: microphone name, supported sample rates, host API, and distinct CUDA availability reporting.
+- **API system diagnostics enrichment** — `src/api/system.py` expanded with detailed GPU and audio hardware status reporting. Health endpoint now returns CUDA availability, driver version, and microphone capabilities.
+- **Comprehensive integration test coverage** — `test_api_routes.py` expanded with 28+ lines covering GPU detection, audio diagnostics, and health reporting edge cases.
+
+### Fixed
+- **Microphone timeout edge case** — Tests now cover scenarios where PortAudio device queries hang or return partial data.
+- **CUDA library availability** — Properly handles missing CUDA on CPU-only systems without raising unhandled exceptions.
+- **Windows terminal encoding in installer** — Install script output now handles UTF-8 properly on Windows terminals.
+
+---
+
 ## v6.2.3 — Fix InsightManager today_words Timezone Mismatch
 
 **Date:** 2026-03-19

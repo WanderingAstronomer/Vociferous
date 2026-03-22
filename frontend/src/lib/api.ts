@@ -227,11 +227,24 @@ export function getModels(): Promise<{ asr: Record<string, ModelInfo>; slm: Reco
 
 export interface GpuInfo {
     cuda_available: boolean;
+    driver_detected: boolean;
+    cuda_device_count: number;
+    gpu_name: string;
     detail: string;
     slm_gpu_layers: number;
     vram_total_mb: number;
     vram_used_mb: number;
     vram_free_mb: number;
+}
+
+export interface MicInfo {
+    available: boolean;
+    device_name: string;
+    host_api: string;
+    input_channels: number;
+    default_sample_rate: number;
+    supports_16k: boolean;
+    detail: string;
 }
 
 export interface HealthInfo {
@@ -240,6 +253,7 @@ export interface HealthInfo {
     transcripts: number;
     recording_active?: boolean;
     gpu?: GpuInfo;
+    mic?: MicInfo;
 }
 
 export function getHealth(): Promise<HealthInfo> {

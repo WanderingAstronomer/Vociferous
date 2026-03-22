@@ -30,7 +30,7 @@
 
 {#if text}
     <p
-        class="text-[var(--text-base)] text-[var(--text-secondary)] italic mb-0 leading-[var(--leading-normal)] opacity-85 max-w-prose px-[var(--space-4)] [overflow-wrap:anywhere] whitespace-pre-line {className}"
+        class="text-[var(--text-base)] text-[var(--text-secondary)] italic mb-0 leading-[var(--leading-normal)] opacity-85 max-w-[var(--content-max-width)] px-[var(--space-4)] [overflow-wrap:anywhere] whitespace-pre-line {className}"
     >
         {text}
     </p>

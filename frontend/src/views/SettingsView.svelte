@@ -10,7 +10,7 @@
     import { toast } from "../lib/toast.svelte";
     import { ws } from "../lib/ws";
     import { onMount, onDestroy } from "svelte";
-    import { Save, Undo2, Loader2, Cpu, Mic, Sliders, Eye, RotateCcw, Check, BarChart3, Sparkles } from "lucide-svelte";
+    import { Save, Undo2, Loader2, Cpu, Mic, Sliders, Eye, RotateCcw, Check, BarChart3, Sparkles, TriangleAlert } from "lucide-svelte";
     import CustomSelect from "../lib/components/CustomSelect.svelte";
     import KeyBindCapture from "../lib/components/KeyBindCapture.svelte";
     import MaintenanceCard from "../lib/components/MaintenanceCard.svelte";
@@ -47,7 +47,23 @@
         status: string;
         version: string;
         transcripts: number;
-        gpu?: { cuda_available?: boolean; detail?: string; slm_gpu_layers?: number };
+        gpu?: {
+            cuda_available?: boolean;
+            driver_detected?: boolean;
+            cuda_device_count?: number;
+            gpu_name?: string;
+            detail?: string;
+            slm_gpu_layers?: number;
+        };
+        mic?: {
+            available?: boolean;
+            device_name?: string;
+            host_api?: string;
+            input_channels?: number;
+            default_sample_rate?: number;
+            supports_16k?: boolean;
+            detail?: string;
+        };
     } = $state({
         status: "unknown",
         version: "",
@@ -68,6 +84,7 @@
     /* ===== Derived ===== */
 
     let isDirty = $derived(JSON.stringify(config) !== originalConfig);
+    let showGpuRuntimeWarning = $derived(Boolean(health.gpu?.driver_detected && !health.gpu?.cuda_available));
 
     /* ===== Lifecycle ===== */
 
@@ -102,6 +119,10 @@
         unsubEngineStatus = ws.on("engine_status", (data: EngineStatusData) => {
             if (data?.asr === "ready") {
                 showMessage("Engine restarted — ASR ready", "success");
+                // Refresh health after engine restart (mic/GPU state may have changed)
+                getHealth()
+                    .then((h) => (health = h))
+                    .catch(() => {});
             } else if (data?.asr === "unavailable") {
                 showMessage("Engine restart: ASR model unavailable", "error");
             }
@@ -127,6 +148,15 @@
     onDestroy(() => {
         unsubDownload?.();
         unsubEngineStatus?.();
+    });
+
+    // Re-fetch health when switching to the Maintenance tab so mic status stays current
+    $effect(() => {
+        if (activeTab === "maintenance") {
+            getHealth()
+                .then((h) => (health = h))
+                .catch(() => {});
+        }
     });
 
     /* ===== Actions ===== */
@@ -245,6 +275,30 @@
                 class="w-full max-w-5xl mx-auto py-[var(--space-5)] px-[var(--space-5)] pb-[var(--space-7)]"
                 role="tabpanel"
             >
+                {#if showGpuRuntimeWarning}
+                    <div class="mb-[var(--space-4)] rounded-[var(--radius-lg)] border border-[var(--color-warning)]/40 bg-[color:rgba(255,165,0,0.08)] px-[var(--space-4)] py-[var(--space-3)]">
+                        <div class="flex items-start gap-[var(--space-2)]">
+                            <TriangleAlert size={18} class="mt-[2px] shrink-0 text-[var(--color-warning)]" />
+                            <div class="min-w-0">
+                                <div class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)]">
+                                    NVIDIA driver detected, but CUDA inference is not ready.
+                                </div>
+                                <div class="mt-[var(--space-1)] text-[var(--text-sm)] text-[var(--text-secondary)] leading-[var(--leading-normal)]">
+                                    {health.gpu?.gpu_name || "Detected GPU"} is visible to the driver, but CTranslate2 cannot use CUDA yet. Vociferous will fall back to CPU until you install a usable CUDA 12 runtime.
+                                </div>
+                                {#if health.gpu?.detail}
+                                    <div class="mt-[var(--space-1)] text-[var(--text-xs)] text-[var(--text-tertiary)] break-words">
+                                        Probe detail: {health.gpu.detail}
+                                    </div>
+                                {/if}
+                                <div class="mt-[var(--space-2)] text-[var(--text-xs)] text-[var(--text-secondary)] leading-[var(--leading-normal)]">
+                                    Recommended: install CUDA Toolkit 12.x plus cuDNN 9 on Windows. Alternative: install `nvidia-cuda-runtime-cu12`, `nvidia-cuda-nvrtc-cu12`, `nvidia-cublas-cu12`, and `nvidia-cudnn-cu12` into the app venv manually.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {/if}
+
                 {#if activeTab === "analytics"}
                     <div class="flex flex-col gap-[var(--space-3)]">
                         <div

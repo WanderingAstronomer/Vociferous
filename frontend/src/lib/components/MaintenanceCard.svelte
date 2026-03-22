@@ -16,7 +16,22 @@
         config: Record<string, any>;
         models: { asr: Record<string, any>; slm: Record<string, any> };
         health: {
-            gpu?: { cuda_available?: boolean; detail?: string };
+            gpu?: {
+                cuda_available?: boolean;
+                driver_detected?: boolean;
+                cuda_device_count?: number;
+                gpu_name?: string;
+                detail?: string;
+            };
+            mic?: {
+                available?: boolean;
+                device_name?: string;
+                host_api?: string;
+                input_channels?: number;
+                default_sample_rate?: number;
+                supports_16k?: boolean;
+                detail?: string;
+            };
         };
         getSafe: (obj: any, path: string, fallback?: any) => any;
         showMessage: (msg: string, type: "success" | "error") => void;
@@ -49,16 +64,17 @@
     );
 
     let asrModelName = $derived(
-        (models.asr[getSafe(config, "model.model", "")] as any)?.name ??
-            (getSafe(config, "model.model", "") || "—"),
+        (models.asr[getSafe(config, "model.model", "")] as any)?.name ?? (getSafe(config, "model.model", "") || "—"),
     );
 
     let slmModelName = $derived(
         !slmEnabled
             ? "Disabled"
             : ((models.slm[getSafe(config, "refinement.model_id", "")] as any)?.name ??
-              (getSafe(config, "refinement.model_id", "") || "—")),
+                  (getSafe(config, "refinement.model_id", "") || "—")),
     );
+
+    let gpuRuntimeMismatch = $derived(Boolean(health.gpu?.driver_detected) && !health.gpu?.cuda_available);
 
     /* ===== Actions ===== */
 
@@ -146,6 +162,55 @@
             {/if}
         </div>
     </div>
+
+    {#if gpuRuntimeMismatch}
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] gap-x-[var(--space-4)]">
+            <span class="text-[var(--text-sm)] text-[var(--text-primary)]">GPU Warning</span>
+            <div
+                class="rounded-[var(--radius-md)] border border-amber-500/40 bg-amber-500/10 px-[var(--space-3)] py-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-secondary)]"
+            >
+                NVIDIA driver detected{#if health.gpu?.gpu_name}
+                    for {health.gpu.gpu_name}{/if}, but CTranslate2 cannot use CUDA yet. Install CUDA 12 plus cuDNN 9,
+                or install the Python runtime packages nvidia-cuda-runtime-cu12, nvidia-cuda-nvrtc-cu12,
+                nvidia-cublas-cu12, and nvidia-cudnn-cu12 into the venv, then restart the engine.
+            </div>
+        </div>
+    {/if}
+
+    <!-- Microphone Status -->
+    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+        <div
+            class="text-[var(--text-sm)] text-[var(--text-primary)]"
+            data-tip="Default input device detected by PortAudio."
+        >
+            Microphone
+        </div>
+        <div
+            class="gpu-status-badge"
+            class:gpu-available={health.mic?.available}
+            class:gpu-unavailable={!health.mic?.available}
+        >
+            {#if health.mic?.available}
+                <CheckCircle size={14} />
+                <span>{health.mic.detail || health.mic.device_name || "Available"}</span>
+            {:else}
+                <AlertCircle size={14} />
+                <span>{health.mic?.detail || "No microphone detected"}</span>
+            {/if}
+        </div>
+    </div>
+
+    {#if health.mic?.available && !health.mic?.supports_16k}
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] gap-x-[var(--space-4)]">
+            <span class="text-[var(--text-sm)] text-[var(--text-primary)]">Mic Warning</span>
+            <div
+                class="rounded-[var(--radius-md)] border border-amber-500/40 bg-amber-500/10 px-[var(--space-3)] py-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-secondary)]"
+            >
+                '{health.mic.device_name}' may not support 16 kHz mono recording. Transcription could fail
+                or produce poor results. Try selecting a different default input device in your OS audio settings.
+            </div>
+        </div>
+    {/if}
 
     <!-- ASR info -->
     <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
