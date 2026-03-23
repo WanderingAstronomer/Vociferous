@@ -61,7 +61,7 @@ Recommended benchmark buckets:
 
 **Goal:** Stop guessing.
 
-### Work
+#### Benchmarking tasks
 
 1. Extend the existing `scripts/refinement_probe.py` workflow into a repeatable CPU benchmark routine.
 2. Capture:
@@ -75,11 +75,11 @@ Recommended benchmark buckets:
    - model ID
 3. Run the same sample set across `n_threads = 1, 2, 4, 8, 12, 16` on representative CPUs.
 
-### Gate
+#### Success gate
 
 Do not change defaults until the benchmark shows where latency actually bends or plateaus.
 
-### Why this comes first
+#### Why this comes first
 
 Because "optimize" without numbers is how people end up building an expensive shrine to the wrong bottleneck.
 
