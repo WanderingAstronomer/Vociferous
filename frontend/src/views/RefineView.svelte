@@ -1,12 +1,14 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import {
+        clearDefaultRefinementPrompt,
+        commitRefinement,
+        getConfig,
+        getTags,
         getTranscript,
         getTranscripts,
-        getTags,
-        getConfig,
+        setDefaultRefinementPrompt,
         refineTranscript,
-        commitRefinement,
         cancelBulkRefinement,
         type Transcript,
         type Tag,
@@ -64,6 +66,12 @@
     let savedPrompts: Transcript[] = $state([]);
     let selectedPromptId: string = $state("");
     let defaultPromptId: number | null = $state(null);
+    let defaultPromptLabel = $derived.by(() => {
+        if (defaultPromptId === null) return "";
+        const prompt = savedPrompts.find((entry) => entry.id === defaultPromptId);
+        if (!prompt) return `Prompt #${defaultPromptId}`;
+        return prompt.display_name?.trim() || `Prompt #${prompt.id}`;
+    });
 
     /* ── Bulk Refinement Tracking ── */
     let bulkRefineActive = $state(false);
@@ -98,6 +106,8 @@
                 const fresh = savedPrompts.find((p) => p.id === id);
                 if (fresh) {
                     customInstructions = fresh.text || fresh.normalized_text || fresh.raw_text || "";
+                } else {
+                    selectedPromptId = "";
                 }
             }
         } catch (e) {
@@ -119,6 +129,28 @@
         const id = Number(selectedPromptId);
         if (!id) return;
         nav.navigateToEdit(id, { view: "refine", transcriptId: selectedId ?? null });
+    }
+
+    async function handleSetDefaultPrompt() {
+        const id = Number(selectedPromptId);
+        if (!id) return;
+        try {
+            await setDefaultRefinementPrompt(id);
+            defaultPromptId = id;
+            toast.success("Default refinement prompt updated");
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Failed to set default refinement prompt");
+        }
+    }
+
+    async function handleClearDefaultPrompt() {
+        try {
+            await clearDefaultRefinementPrompt();
+            defaultPromptId = null;
+            toast.success("Default refinement prompt cleared");
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Failed to clear default refinement prompt");
+        }
     }
 
     async function selectTranscript(id: number) {
@@ -242,6 +274,7 @@
     let unsubBulkProgress: (() => void) | undefined;
     let unsubBulkComplete: (() => void) | undefined;
     let unsubBulkError: (() => void) | undefined;
+    let unsubConfigUpdated: (() => void) | undefined;
     let unsubTranscriptUpdated: (() => void) | undefined;
 
     onMount(async () => {
@@ -312,6 +345,15 @@
             bulkRefineActive = false;
         });
 
+        unsubConfigUpdated = ws.on("config_updated", (data) => {
+            const refinement = data.refinement as Record<string, unknown> | undefined;
+            const nextDefault =
+                typeof refinement?.default_prompt_transcript_id === "number"
+                    ? refinement.default_prompt_transcript_id
+                    : null;
+            defaultPromptId = nextDefault;
+        });
+
         // Reload the saved-prompts list whenever a prompt transcript is edited
         // or whenever a transcript is tagged/untagged as a Prompt.
         unsubTranscriptUpdated = ws.on("transcript_updated", (data) => {
@@ -329,6 +371,7 @@
         unsubBulkProgress?.();
         unsubBulkComplete?.();
         unsubBulkError?.();
+        unsubConfigUpdated?.();
         unsubTranscriptUpdated?.();
         stopRefineTimer();
     });
@@ -663,6 +706,29 @@
                 <p class="m-0 text-[var(--text-xs)] text-[var(--text-tertiary)] text-center">
                     Default behavior fixes grammar and punctuation with minimal wording changes.
                 </p>
+                <div class="flex items-center justify-between gap-[var(--space-2)] flex-wrap">
+                    <p class="m-0 text-[var(--text-xs)] text-[var(--text-tertiary)]">
+                        {#if defaultPromptId !== null}
+                            Default prompt: <span class="text-[var(--text-secondary)]">{defaultPromptLabel}</span>. It
+                            is applied automatically whenever this box is empty.
+                        {:else}
+                            No default saved prompt is configured. Set one if you want refinement to always fall back to
+                            it.
+                        {/if}
+                    </p>
+                    <div class="flex items-center gap-[var(--space-2)]">
+                        {#if selectedPromptId && Number(selectedPromptId) !== defaultPromptId}
+                            <StyledButton size="sm" variant="neutral" onclick={handleSetDefaultPrompt}>
+                                Set Selected As Default
+                            </StyledButton>
+                        {/if}
+                        {#if defaultPromptId !== null}
+                            <StyledButton size="sm" variant="ghost" onclick={handleClearDefaultPrompt}>
+                                Clear Default
+                            </StyledButton>
+                        {/if}
+                    </div>
+                </div>
                 {#if savedPrompts.length > 0}
                     <div class="flex items-center gap-[var(--space-2)]">
                         <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] shrink-0">Saved Prompts</span>
@@ -670,7 +736,10 @@
                             <CustomSelect
                                 options={savedPrompts.map((p) => ({
                                     value: String(p.id),
-                                    label: p.display_name || `Prompt #${p.id}`,
+                                    label:
+                                        p.id === defaultPromptId
+                                            ? `${p.display_name || `Prompt #${p.id}`} (default)`
+                                            : p.display_name || `Prompt #${p.id}`,
                                 }))}
                                 value={selectedPromptId}
                                 onchange={handlePromptSelect}

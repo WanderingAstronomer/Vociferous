@@ -9,7 +9,9 @@ from __future__ import annotations
 import logging
 
 from litestar import Response, delete, get, post
+from litestar.exceptions import HTTPException
 
+from src.api.config import clear_default_refinement_prompt_if_matches
 from src.api.deps import get_coordinator
 
 logger = logging.getLogger(__name__)
@@ -27,7 +29,19 @@ def list_transcripts(
     coordinator = get_coordinator()
     if coordinator.db is None:
         return {"items": [], "total": 0}
-    parsed_tag_ids = [int(tag_id) for tag_id in tag_ids.split(",") if tag_id.strip()] if tag_ids else None
+
+    if limit < 0:
+        raise HTTPException(status_code=400, detail="limit must be >= 0")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be >= 0")
+
+    parsed_tag_ids: list[int] | None = None
+    if tag_ids:
+        try:
+            parsed_tag_ids = [int(tag_id.strip()) for tag_id in tag_ids.split(",") if tag_id.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="tag_ids must be a comma-separated list of integers")
+
     transcripts, total = coordinator.db.recent(
         limit=limit,
         offset=offset,
@@ -69,6 +83,7 @@ async def delete_transcript(transcript_id: int) -> Response:
 
     deleted = await asyncio.to_thread(coordinator.db.delete_transcript, transcript_id)
     if deleted:
+        clear_default_refinement_prompt_if_matches(coordinator, transcript_id)
         coordinator.event_bus.emit("transcript_deleted", {"id": transcript_id})
     return Response(content={"deleted": bool(deleted)})
 
@@ -87,7 +102,15 @@ async def batch_delete_transcripts(data: dict) -> Response:
     coordinator = get_coordinator()
     if coordinator.db is None:
         return Response(content={"error": "Database not available"}, status_code=503)
+
+    default_prompt_id = coordinator.settings.refinement.default_prompt_transcript_id
+    default_prompt = None
+    if default_prompt_id in ids:
+        default_prompt = await asyncio.to_thread(coordinator.db.get_transcript, default_prompt_id)
+
     count = await asyncio.to_thread(coordinator.db.batch_delete_transcripts, ids)
+    if count and default_prompt_id in ids and (default_prompt is None or not default_prompt.is_protected):
+        clear_default_refinement_prompt_if_matches(coordinator, default_prompt_id)
     coordinator.event_bus.emit("transcripts_batch_deleted", {"ids": ids, "count": count})
     return Response(content={"deleted": count})
 
@@ -101,7 +124,14 @@ async def clear_all_transcripts() -> Response:
     if coordinator.db is None:
         return Response(content={"error": "Database not available"}, status_code=503)
 
+    default_prompt_id = coordinator.settings.refinement.default_prompt_transcript_id
+    default_prompt = None
+    if default_prompt_id is not None:
+        default_prompt = await asyncio.to_thread(coordinator.db.get_transcript, default_prompt_id)
+
     deleted = await asyncio.to_thread(coordinator.db.clear_all_transcripts)
+    if deleted and default_prompt_id is not None and (default_prompt is None or not default_prompt.is_protected):
+        clear_default_refinement_prompt_if_matches(coordinator, default_prompt_id)
     coordinator.event_bus.emit("transcripts_cleared", {"count": deleted})
     return Response(content={"deleted": deleted})
 
@@ -111,6 +141,12 @@ def search_transcripts(q: str, limit: int = 50, offset: int = 0) -> dict:
     coordinator = get_coordinator()
     if coordinator.db is None:
         return {"items": [], "total": 0, "offset": offset, "limit": limit}
+
+    if limit < 0:
+        raise HTTPException(status_code=400, detail="limit must be >= 0")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be >= 0")
+
     results = coordinator.db.search(q, limit=limit, offset=offset)
     total = coordinator.db.search_count(q)
     return {
@@ -134,6 +170,8 @@ async def batch_tag_toggle(data: dict) -> Response:
         return Response(content={"error": "'transcript_ids' must be a list of integers"}, status_code=400)
     if not isinstance(tag_id, int):
         return Response(content={"error": "'tag_id' must be an integer"}, status_code=400)
+    if not isinstance(add, bool):
+        return Response(content={"error": "'add' must be a boolean"}, status_code=400)
     if not transcript_ids:
         return Response(content={"toggled": 0})
 
@@ -149,7 +187,11 @@ async def batch_tag_toggle(data: dict) -> Response:
     if tag.is_system and tag.name in _AUTO_MANAGED:
         return Response(content={"error": "Auto-managed system tags cannot be toggled"}, status_code=403)
 
-    await asyncio.to_thread(coordinator.db.batch_toggle_tag, list(transcript_ids), tag_id, add=bool(add))
+    await asyncio.to_thread(coordinator.db.batch_toggle_tag, list(transcript_ids), tag_id, add=add)
+    if not add and tag.name == "Prompt":
+        default_prompt_id = coordinator.settings.refinement.default_prompt_transcript_id
+        if default_prompt_id in transcript_ids:
+            clear_default_refinement_prompt_if_matches(coordinator, default_prompt_id)
     return Response(content={"toggled": len(transcript_ids)})
 
 
@@ -252,14 +294,22 @@ async def retranscribe_transcript(transcript_id: int) -> Response:
 @post("/api/transcripts/{transcript_id:int}/rename")
 async def rename_transcript(transcript_id: int, data: dict) -> Response:
     """Rename a transcript (set display_name)."""
-    title = data.get("title", "").strip()
+    title_raw = data.get("title")
+    if not isinstance(title_raw, str):
+        return Response(content={"error": "Title must be a string"}, status_code=400)
+
+    title = title_raw.strip()
     if not title:
         return Response(content={"error": "Title is required"}, status_code=400)
 
     coordinator = get_coordinator()
     if coordinator.db is None:
         return Response(content={"error": "Database not available"}, status_code=503)
-    coordinator.db.update_display_name(transcript_id, title)
+
+    renamed = coordinator.db.update_display_name(transcript_id, title)
+    if not renamed:
+        return Response(content={"error": "Not found"}, status_code=404)
+
     coordinator.event_bus.emit("transcript_updated", {"id": transcript_id})
     return Response(content={"status": "renamed", "title": title})
 

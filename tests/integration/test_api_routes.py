@@ -35,16 +35,24 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
     from litestar.config.cors import CORSConfig
 
     from src.api.app import ConnectionManager, _handle_ws_message, _wire_event_bridge
-    from src.api.config import dispatch_intent, get_config, update_config
+    from src.api.config import (
+        clear_default_refinement_prompt,
+        dispatch_intent,
+        get_config,
+        set_default_refinement_prompt,
+        update_config,
+    )
     from src.api.deps import set_coordinator
     from src.api.models import download_model, list_models
     from src.api.system import health
     from src.api.transcripts import (
+        batch_tag_toggle,
         clear_all_transcripts,
         delete_transcript,
         get_transcript,
         list_transcripts,
         refine_transcript,
+        rename_transcript,
         search_transcripts,
     )
 
@@ -76,8 +84,12 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
             clear_all_transcripts,
             refine_transcript,
             search_transcripts,
+            batch_tag_toggle,
+            rename_transcript,
             get_config,
             update_config,
+            set_default_refinement_prompt,
+            clear_default_refinement_prompt,
             list_models,
             download_model,
             health,
@@ -179,6 +191,22 @@ class TestTranscriptRoutes:
         assert len(data["items"]) == 3
         assert data["total"] == 6  # 5 added + 1 seeded
 
+    def test_list_rejects_invalid_tag_ids(self, api):
+        client, _, _ = api
+
+        resp = client.get("/api/transcripts", params={"tag_ids": "1,abc,3"})
+        assert resp.status_code == 400
+        message = resp.json().get("error") or resp.json().get("detail", "")
+        assert "tag_ids" in message
+
+    def test_list_rejects_negative_offset(self, api):
+        client, _, _ = api
+
+        resp = client.get("/api/transcripts", params={"offset": -1})
+        assert resp.status_code == 400
+        message = resp.json().get("error") or resp.json().get("detail", "")
+        assert "offset" in message
+
     def test_get_transcript_by_id(self, api):
         client, coord, _ = api
         t = coord.db.add_transcript(raw_text="find me", duration_ms=500)
@@ -225,6 +253,20 @@ class TestTranscriptRoutes:
         assert data["deleted"] == 2  # only non-protected transcripts deleted
         assert coord.db.transcript_count() == 1  # protected prompt transcript survives
 
+    def test_delete_default_prompt_transcript_clears_setting(self, api):
+        client, coord, events = api
+        prompt_tag = next(tag for tag in coord.db.get_tags() if tag.name == "Prompt")
+        prompt = coord.db.add_transcript(raw_text="Always be concise.", duration_ms=100)
+        coord.db.assign_tags(prompt.id, [prompt_tag.id])
+        client.put("/api/config/refinement/default-prompt", json={"transcript_id": prompt.id})
+
+        resp = client.delete(f"/api/transcripts/{prompt.id}")
+
+        assert resp.status_code == 200
+        assert coord.settings.refinement.default_prompt_transcript_id is None
+        updated = events.of_type("config_updated")
+        assert updated[-1]["refinement"]["default_prompt_transcript_id"] is None
+
     def test_search_transcripts(self, api):
         client, coord, _ = api
         coord.db.add_transcript(raw_text="the quick brown fox", duration_ms=100)
@@ -246,6 +288,57 @@ class TestTranscriptRoutes:
         data = resp.json()
         assert data["items"] == []
         assert data["total"] == 0
+
+    def test_search_rejects_invalid_limit(self, api):
+        client, _, _ = api
+
+        resp = client.get("/api/transcripts/search", params={"q": "hello", "limit": -1})
+        assert resp.status_code == 400
+        message = resp.json().get("error") or resp.json().get("detail", "")
+        assert "limit" in message
+
+    def test_batch_tag_toggle_rejects_non_boolean_add(self, api):
+        client, coord, _ = api
+        t = coord.db.add_transcript(raw_text="tag me", duration_ms=100)
+        tag = coord.db.add_tag("sample")
+
+        resp = client.post(
+            "/api/transcripts/batch-tag-toggle",
+            json={"transcript_ids": [t.id], "tag_id": tag.id, "add": "false"},
+        )
+        assert resp.status_code == 400
+        assert "boolean" in resp.json()["error"]
+
+    def test_batch_tag_toggle_removing_prompt_from_default_clears_setting(self, api):
+        client, coord, events = api
+        prompt_tag = next(tag for tag in coord.db.get_tags() if tag.name == "Prompt")
+        prompt = coord.db.add_transcript(raw_text="Preserve domain terminology.", duration_ms=100)
+        coord.db.assign_tags(prompt.id, [prompt_tag.id])
+        client.put("/api/config/refinement/default-prompt", json={"transcript_id": prompt.id})
+
+        resp = client.post(
+            "/api/transcripts/batch-tag-toggle",
+            json={"transcript_ids": [prompt.id], "tag_id": prompt_tag.id, "add": False},
+        )
+
+        assert resp.status_code == 201
+        assert coord.settings.refinement.default_prompt_transcript_id is None
+        updated = events.of_type("config_updated")
+        assert updated[-1]["refinement"]["default_prompt_transcript_id"] is None
+
+    def test_rename_transcript_rejects_non_string_title(self, api):
+        client, coord, _ = api
+        t = coord.db.add_transcript(raw_text="rename me", duration_ms=100)
+
+        resp = client.post(f"/api/transcripts/{t.id}/rename", json={"title": 123})
+        assert resp.status_code == 400
+        assert "string" in resp.json()["error"].lower()
+
+    def test_rename_transcript_not_found(self, api):
+        client, _, _ = api
+
+        resp = client.post("/api/transcripts/99999/rename", json={"title": "New title"})
+        assert resp.status_code == 404
 
 
 # ── Generic Intent Dispatch ──────────────────────────────────────────────
@@ -296,6 +389,33 @@ class TestConfigRoutes:
 
         # Verify coordinator's settings reference updated
         assert coord.settings.recording.activation_key == "ctrl_left"
+
+    def test_set_default_refinement_prompt_emits_event(self, api):
+        client, coord, events = api
+        prompt_tag = next(tag for tag in coord.db.get_tags() if tag.name == "Prompt")
+        prompt = coord.db.add_transcript(raw_text="Fix grammar only.", duration_ms=100)
+        coord.db.assign_tags(prompt.id, [prompt_tag.id])
+
+        resp = client.put("/api/config/refinement/default-prompt", json={"transcript_id": prompt.id})
+
+        assert resp.status_code == 200
+        assert coord.settings.refinement.default_prompt_transcript_id == prompt.id
+        updated = events.of_type("config_updated")
+        assert updated[-1]["refinement"]["default_prompt_transcript_id"] == prompt.id
+
+    def test_clear_default_refinement_prompt_emits_event(self, api):
+        client, coord, events = api
+        prompt_tag = next(tag for tag in coord.db.get_tags() if tag.name == "Prompt")
+        prompt = coord.db.add_transcript(raw_text="Keep the tone neutral.", duration_ms=100)
+        coord.db.assign_tags(prompt.id, [prompt_tag.id])
+        client.put("/api/config/refinement/default-prompt", json={"transcript_id": prompt.id})
+
+        resp = client.delete("/api/config/refinement/default-prompt")
+
+        assert resp.status_code == 200
+        assert coord.settings.refinement.default_prompt_transcript_id is None
+        updated = events.of_type("config_updated")
+        assert updated[-1]["refinement"]["default_prompt_transcript_id"] is None
 
 
 # ── Refinement via API ────────────────────────────────────────────────────

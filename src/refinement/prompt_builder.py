@@ -19,64 +19,39 @@ class PromptBuilder:
 
     # ── Analytics insight template (unified) ────────────────────────────────
 
-    ANALYTICS_TEMPLATE: str = """\
-You are embedded in a local AI-powered speech-to-text desktop application. \
-The user dictates speech into text on their own machine with full privacy.
-
-Below are the user's usage statistics. Study all of them, then write TWO short \
-paragraphs as described in the instructions at the end.
-
-Today's session:
-- Transcriptions today: {today_count}
-- Words today: {today_words}
-- Days active this week: {days_active_this_week}
-
-All-time overview:
-- Total transcriptions: {count}
-- Total words captured: {total_words}
-- Total recording time: {recorded_time}
-- Total speech time (VAD): {speech_time}
-- Total silence time: {silence_time}
-- Estimated time saved vs typing: {time_saved}
-- Average recording length: {avg_length}
-- Average speaking pace: {avg_pace} wpm
-- Current daily streak: {current_streak} days
-- Longest daily streak: {longest_streak} days
-
-Verbatim speech quality (raw transcription output):
-- Vocabulary diversity: {verbatim_vocab_pct}
-- Filler words detected: {verbatim_fillers} ({verbatim_filler_density} of words)
-- Top fillers: {top_fillers}
-- Average Flesch-Kincaid grade: {verbatim_fk_grade}
-- Average sentence length: {verbatim_avg_sentence_len} words
-
-{refinement_section}\
-Processing performance:
-- Transcription speed: {transcription_speed}x realtime ({transcripts_with_transcription_time} samples)
-- Refinement throughput: {refinement_wpm} wpm ({transcripts_with_refinement_time} samples)
-- Refinement time saved vs manual editing: {refinement_time_saved}
-
-Instructions — write exactly TWO short paragraphs, separated by a blank line:
-
-PARAGRAPH 1 — Daily: Pick 2–3 of the most interesting statistics from today's \
-session (or this week if today is sparse). React to them with specific numbers. \
-Think a sharp colleague glancing at your dashboard — direct, a little wry.
-
-PARAGRAPH 2 — Long-term: Pick 2–3 of the most meaningful cumulative or trend \
-statistics. Highlight concrete improvements or patterns. If refinement data is \
-available, the measurable difference between verbatim and refined quality is \
-always worth mentioning.
+    ANALYTICS_SYSTEM_PROMPT: str = """\
+You write short analytics summaries for a speech-to-text dashboard.
 
 Rules:
-- Be warm, specific, and subtly witty. Write as a confident peer, not a cheerleader.
-- Reference concrete numbers in both paragraphs.
-- Do NOT begin any sentence with "You" or "Your".
-- No exclamation marks. No app name. No preamble or meta-talk.
-- Do NOT describe what the app does. Do not use bullet points.
-- If today's data is zero, fold daily observations into the long-term paragraph \
-and write only ONE paragraph instead.
+- Use ONLY the facts and numbers provided by the user message.
+- The daily and long-term highlights are already selected for you.
+- Do not swap in different metrics or invent extra comparisons.
+- Never invent, estimate, recompute, or paraphrase a number into a different value.
+- If a fact is missing or weak, omit it.
+- Output plain text only.
+- Write one or two short paragraphs, with at most four sentences total.
+- No bullets, no headings, no preamble, no meta-talk.
+- No exclamation marks.
+- Do NOT begin any sentence with \"You\" or \"Your\".
+- Keep the tone direct, warm, and slightly wry."""
 
-Output only the paragraphs. Nothing else."""
+    ANALYTICS_TEMPLATE: str = """\
+Write the dashboard summary using only the curated highlights below.
+
+Daily highlights:
+{daily_highlights}
+
+Long-term highlights:
+{long_term_highlights}
+
+Required structure:
+- Paragraph 1 uses only Daily highlights.
+- Paragraph 2 uses only Long-term highlights.
+- If Daily highlights is "- none", write one paragraph using only Long-term highlights.
+- Keep every number exactly as written.
+- Do not introduce any new metrics, comparisons, or conclusions beyond the highlights.
+
+Output only the paragraph text."""
 
     def __init__(
         self,

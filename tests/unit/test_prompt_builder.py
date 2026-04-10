@@ -152,66 +152,25 @@ class TestMessagesToChatml:
 
 
 class TestTemplates:
+    def test_analytics_system_prompt_is_constrained(self) -> None:
+        assert "Use ONLY the facts and numbers provided by the user message." in PromptBuilder.ANALYTICS_SYSTEM_PROMPT
+        assert "already selected" in PromptBuilder.ANALYTICS_SYSTEM_PROMPT
+        assert "Never invent, estimate, recompute" in PromptBuilder.ANALYTICS_SYSTEM_PROMPT
+
     def test_analytics_template_has_placeholders(self) -> None:
-        for key in [
-            "count",
-            "total_words",
-            "recorded_time",
-            "speech_time",
-            "silence_time",
-            "time_saved",
-            "avg_length",
-            "avg_pace",
-            "current_streak",
-            "longest_streak",
-            "verbatim_vocab_pct",
-            "verbatim_fillers",
-            "verbatim_filler_density",
-            "verbatim_fk_grade",
-            "verbatim_avg_sentence_len",
-            "top_fillers",
-            "refinement_section",
-            "transcription_speed",
-            "refinement_wpm",
-            "today_count",
-            "today_words",
-            "days_active_this_week",
-        ]:
+        for key in ["daily_highlights", "long_term_highlights"]:
             assert f"{{{key}}}" in PromptBuilder.ANALYTICS_TEMPLATE
 
     def test_analytics_template_can_format(self) -> None:
         """Ensure the unified template formats without error given valid data."""
         result = PromptBuilder.ANALYTICS_TEMPLATE.format_map(
             {
-                "count": 10,
-                "total_words": "1,234",
-                "recorded_time": "5m",
-                "speech_time": "4m",
-                "silence_time": "1m",
-                "time_saved": "2m",
-                "avg_length": "30s",
-                "avg_pace": 150,
-                "current_streak": 3,
-                "longest_streak": 7,
-                "verbatim_vocab_pct": "25%",
-                "verbatim_fillers": 5,
-                "verbatim_filler_density": "3.2%",
-                "verbatim_fk_grade": 6.5,
-                "verbatim_avg_sentence_len": 12.3,
-                "top_fillers": '"um" (3), "uh" (2)',
-                "refinement_section": "",
-                "refined_count": 0,
-                "transcription_speed": 5.0,
-                "transcripts_with_transcription_time": 8,
-                "refinement_wpm": 0,
-                "transcripts_with_refinement_time": 0,
-                "refinement_time_saved": "0s",
-                "today_count": 2,
-                "today_words": "150",
-                "days_active_this_week": 4,
+                "daily_highlights": "- Words today: 150.\n- Transcriptions today: 2.",
+                "long_term_highlights": "- Total words captured: 1,234 across 10 transcriptions.\n- Estimated time saved vs typing: 2m.",
             }
         )
-        assert "10" in result
+        assert "150" in result
         assert "1,234" in result
-        assert "PARAGRAPH 1" in result
-        assert "PARAGRAPH 2" in result
+        assert "Daily highlights:" in result
+        assert "Long-term highlights:" in result
+        assert "Required structure:" in result

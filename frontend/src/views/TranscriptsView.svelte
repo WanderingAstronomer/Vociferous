@@ -1,5 +1,7 @@
 <script lang="ts">
     import {
+        clearDefaultRefinementPrompt,
+        setDefaultRefinementPrompt,
         getTranscripts,
         getConfig,
         updateConfig,
@@ -111,6 +113,7 @@
     let spotCheckRemaining: number[] | null = $state(null);
     const SPOT_CHECK_SIZE = 10;
     const DEFAULT_REFINEMENT_LEVEL = 2;
+    let defaultPromptId: number | null = $state(null);
 
     /* ===== Multi-Selection ===== */
 
@@ -152,6 +155,8 @@
     let selectedEntry = $derived(
         selection.count === 1 ? (filteredEntries.find((e) => e.id === selection.ids[0]) ?? null) : null,
     );
+    let selectedEntryIsPrompt = $derived(selectedEntry?.tags.some((tag) => tag.name === "Prompt") ?? false);
+    let selectedEntryIsDefaultPrompt = $derived(selectedEntry?.id === defaultPromptId);
 
     /* ===== Formatting ===== */
 
@@ -402,6 +407,27 @@
         }
     }
 
+    async function handleSetSelectedAsDefaultPrompt() {
+        if (!selectedEntry) return;
+        try {
+            await setDefaultRefinementPrompt(selectedEntry.id);
+            defaultPromptId = selectedEntry.id;
+            toast.success("Default refinement prompt updated");
+        } catch (e: any) {
+            toast.error(`Failed to set default prompt: ${e.message}`);
+        }
+    }
+
+    async function handleClearDefaultPrompt() {
+        try {
+            await clearDefaultRefinementPrompt();
+            defaultPromptId = null;
+            toast.success("Default refinement prompt cleared");
+        } catch (e: any) {
+            toast.error(`Failed to clear default prompt: ${e.message}`);
+        }
+    }
+
     /* ===== Tag Filter ===== */
 
     function toggleTagFilter(tagId: number) {
@@ -611,8 +637,13 @@
         getConfig()
             .then((cfg) => {
                 const userCfg = cfg?.user as Record<string, unknown> | undefined;
+                const refinementCfg = cfg?.refinement as Record<string, unknown> | undefined;
                 const savedSize = Number(userCfg?.page_size);
                 if ([25, 50, 100].includes(savedSize)) pageSize = savedSize;
+                defaultPromptId =
+                    typeof refinementCfg?.default_prompt_transcript_id === "number"
+                        ? refinementCfg.default_prompt_transcript_id
+                        : null;
             })
             .catch(() => {})
             .finally(() => {
@@ -675,6 +706,13 @@
             ws.on("tag_deleted", () => {
                 loadTags();
                 loadTranscripts();
+            }),
+            ws.on("config_updated", (data) => {
+                const refinement = data.refinement as Record<string, unknown> | undefined;
+                defaultPromptId =
+                    typeof refinement?.default_prompt_transcript_id === "number"
+                        ? refinement.default_prompt_transcript_id
+                        : null;
             }),
         ];
 
@@ -898,6 +936,14 @@
 
                             <!-- Bottom row: tags + metadata -->
                             <div class="flex items-center gap-2 flex-wrap pt-1.5 mt-0.5">
+                                {#if entry.id === defaultPromptId}
+                                    <span
+                                        class="inline-flex items-center gap-1 h-5 px-1.5 rounded-full text-[10px] font-medium bg-[color-mix(in_srgb,var(--accent)_18%,transparent)] text-[var(--text-primary)]"
+                                    >
+                                        <Check size={9} class="shrink-0" />
+                                        Default Prompt
+                                    </span>
+                                {/if}
                                 {#each entry.tags as tag (tag.id)}
                                     <span
                                         class="inline-flex items-center gap-1 h-5 px-1.5 rounded-full text-[10px] font-medium"
@@ -1017,6 +1063,17 @@
                             <RefreshCw size={13} /> Re-transcribe
                         </StyledButton>
                     {/if}
+                    {#if selectedEntryIsPrompt}
+                        {#if selectedEntryIsDefaultPrompt}
+                            <StyledButton size="sm" variant="ghost" onclick={handleClearDefaultPrompt}>
+                                <X size={13} /> Clear Default Prompt
+                            </StyledButton>
+                        {:else}
+                            <StyledButton size="sm" variant="neutral" onclick={handleSetSelectedAsDefaultPrompt}>
+                                <Check size={13} /> Set Default Prompt
+                            </StyledButton>
+                        {/if}
+                    {/if}
                 {/if}
 
                 <StyledButton size="sm" variant="secondary" onclick={openTagAssign}>
@@ -1096,7 +1153,10 @@
     <div
         class="fixed min-w-[260px] bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-lg shadow-[0_12px_28px_rgba(0,0,0,0.45)] py-1 z-[200] -translate-y-full"
         style="left: {exportBtnEl
-            ? Math.min(exportBtnEl.getBoundingClientRect().left / getZoomFactor(), window.innerWidth / getZoomFactor() - 280)
+            ? Math.min(
+                  exportBtnEl.getBoundingClientRect().left / getZoomFactor(),
+                  window.innerWidth / getZoomFactor() - 280,
+              )
             : 0}px; top: {exportBtnEl ? exportBtnEl.getBoundingClientRect().top / getZoomFactor() - 8 : 0}px"
         role="menu"
         tabindex="-1"

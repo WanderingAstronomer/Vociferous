@@ -10,6 +10,7 @@ import logging
 
 from litestar import Response, delete, get, post, put
 
+from src.api.config import clear_default_refinement_prompt_if_matches
 from src.api.deps import get_coordinator
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,9 @@ async def assign_tags(transcript_id: int, data: dict) -> Response:
     if coordinator.db is None:
         return Response(content={"error": "Database not available"}, status_code=503)
     tags = coordinator.db.assign_tags(transcript_id, list(tag_ids))
+    default_prompt_id = coordinator.settings.refinement.default_prompt_transcript_id
+    if default_prompt_id == transcript_id and not any(tag.name == "Prompt" for tag in tags):
+        clear_default_refinement_prompt_if_matches(coordinator, transcript_id)
     coordinator.event_bus.emit(
         "transcript_updated",
         {

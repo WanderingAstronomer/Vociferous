@@ -110,13 +110,26 @@ class DisplaySettings(BaseModel):
     render_markdown_in_editor: bool = False
 
 
+def _auto_cpu_threads() -> int:
+    """Pick a sensible CPU thread count for SLM inference.
+
+    Heuristic: logical_cores // 3, clamped [2, 10].  On a typical desktop
+    with SMT this lands near physical_cores × 2/3, leaving headroom for
+    the UI thread, audio pipeline, and ASR without starving the SLM.
+    Benchmark reference (Ryzen 9 7900X 12c/24t, Qwen3-4B int8):
+      1t → 2.4 tok/s, 4t → 6.4, 8t → 8.4, 12t → 8.8
+    """
+    logical = os.cpu_count() or 4
+    return min(max(2, logical // 3), 10)
+
+
 class RefinementSettings(BaseModel):
     """SLM refinement configuration."""
 
     enabled: bool = True
     model_id: str = "qwen4b"
     n_gpu_layers: int = -1  # -1 = full GPU (CT2 device="cuda"), 0 = CPU only
-    n_threads: int = 4  # CPU thread count (only used when device=CPU)
+    n_threads: int = Field(default_factory=_auto_cpu_threads)  # CPU threads (CPU mode only)
     use_thinking: bool = False  # Allow model to reason in <think> blocks before output
     temperature: float = 0.3
     top_p: float = 0.9

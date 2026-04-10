@@ -10,6 +10,8 @@
     import { onMount, onDestroy } from "svelte";
     import { nav } from "../lib/navigation.svelte";
     import {
+        clearDefaultRefinementPrompt,
+        getConfig,
         getTranscript,
         getTags,
         createTag,
@@ -19,6 +21,7 @@
         dispatchIntent,
         renameTranscript,
         retranscribeTranscript,
+        setDefaultRefinementPrompt,
         type Transcript,
         type Tag,
     } from "../lib/api";
@@ -31,7 +34,6 @@
     import ActionBar from "../lib/components/ActionBar.svelte";
     import ToggleSwitch from "../lib/components/ToggleSwitch.svelte";
     import MarkdownBody from "../lib/components/MarkdownBody.svelte";
-    import { getConfig } from "../lib/api";
     import { ArrowLeft, Check, X, Hammer, RotateCcw, Pencil, Copy, RefreshCw } from "lucide-svelte";
 
     /* ===== State ===== */
@@ -47,6 +49,7 @@
     let editingTitle = $state(false);
     let titleDraft = $state("");
     let showMarkdownPreview = $state(false);
+    let defaultPromptId: number | null = $state(null);
 
     /* ===== Derived ===== */
 
@@ -63,6 +66,8 @@
     });
     let assignedTagIds = $derived(new Set(transcript?.tags.map((t) => t.id) ?? []));
     let isRefined = $derived(transcript?.tags.some((t) => t.is_system && t.name === "Refined") ?? false);
+    let isPromptTranscript = $derived(transcript?.tags.some((t) => t.name === "Prompt") ?? false);
+    let isDefaultPrompt = $derived(transcript?.id === defaultPromptId);
 
     /* ===== Helpers ===== */
 
@@ -234,6 +239,27 @@
         }
     }
 
+    async function handleSetDefaultPrompt() {
+        if (!transcript?.id) return;
+        try {
+            await setDefaultRefinementPrompt(transcript.id);
+            defaultPromptId = transcript.id;
+            toast.success("Default refinement prompt updated");
+        } catch (e: any) {
+            toast.error(`Failed to set default prompt: ${e.message}`);
+        }
+    }
+
+    async function handleClearDefaultPrompt() {
+        try {
+            await clearDefaultRefinementPrompt();
+            defaultPromptId = null;
+            toast.success("Default refinement prompt cleared");
+        } catch (e: any) {
+            toast.error(`Failed to clear default prompt: ${e.message}`);
+        }
+    }
+
     /* ===== Keyboard ===== */
 
     function handleKeydown(e: KeyboardEvent) {
@@ -255,7 +281,12 @@
         try {
             const cfg = await getConfig();
             const display = cfg.display as Record<string, unknown> | undefined;
+            const refinement = cfg.refinement as Record<string, unknown> | undefined;
             showMarkdownPreview = Boolean(display?.render_markdown_in_editor);
+            defaultPromptId =
+                typeof refinement?.default_prompt_transcript_id === "number"
+                    ? refinement.default_prompt_transcript_id
+                    : null;
         } catch {
             /* fall back to default false */
         }
@@ -282,6 +313,13 @@
                 if (transcript?.id && data.id === transcript.id) {
                     transcript = await getTranscript(transcript.id);
                 }
+            }),
+            ws.on("config_updated", async (data) => {
+                const refinement = data.refinement as Record<string, unknown> | undefined;
+                defaultPromptId =
+                    typeof refinement?.default_prompt_transcript_id === "number"
+                        ? refinement.default_prompt_transcript_id
+                        : null;
             }),
         ];
     });
@@ -420,6 +458,29 @@
                 onmenuchange={(open) => (tagMenuOpen = open)}
             />
         </div>
+        {#if isPromptTranscript}
+            <div class="shrink-0 px-5 py-2 border-b border-[var(--shell-border)] bg-[var(--surface-secondary)]">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-[13px] text-[var(--text-secondary)]">
+                        {#if isDefaultPrompt}
+                            This prompt is the default refinement prompt.
+                        {:else}
+                            This transcript is tagged Prompt and can be used as the default refinement prompt.
+                        {/if}
+                    </span>
+                    <div class="flex-1"></div>
+                    {#if isDefaultPrompt}
+                        <StyledButton size="sm" variant="ghost" onclick={handleClearDefaultPrompt}>
+                            <X size={13} /> Clear Default
+                        </StyledButton>
+                    {:else}
+                        <StyledButton size="sm" variant="neutral" onclick={handleSetDefaultPrompt}>
+                            <Check size={13} /> Set As Default Prompt
+                        </StyledButton>
+                    {/if}
+                </div>
+            </div>
+        {/if}
     {/if}
 
     <!-- ── Editor ── -->
@@ -449,7 +510,8 @@
     <!-- ── Footer ── -->
     <ActionBar>
         <StyledButton size="sm" variant={isDirty ? "destructive" : "secondary"} onclick={discard}>
-            <X size={13} /> {isDirty ? "Discard" : "Close"}
+            <X size={13} />
+            {isDirty ? "Discard" : "Close"}
         </StyledButton>
 
         <StyledButton

@@ -1541,7 +1541,7 @@ wheels = [
 
 [[package]]
 name = "vociferous"
-version = "5.13.0"
+version = "6.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "ctranslate2" },

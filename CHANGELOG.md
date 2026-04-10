@@ -1,5 +1,27 @@
 # Vociferous Changelog
 
+## v6.4.0 — Default Prompt Persistence, SLM Stall Hardening & CPU Optimization
+
+**Date:** 2026-04-10
+**Status:** Minor Release
+
+### Added
+- **Default refinement prompt** — New `PUT /api/config/refinement/default-prompt` and `DELETE /api/config/refinement/default-prompt` endpoints persist a chosen "Prompt"-tagged transcript as the default input for refinement. When the refinement box is left empty, this prompt is applied automatically. Set/clear controls appear in `RefineView`, `TranscriptsView`, and `EditView`. `TranscriptsView` shows a "Default Prompt" badge on the matching list entry. All three views subscribe to `config_updated` WebSocket events to stay in sync without a page reload.
+- **Auto-clear default prompt on removal** — Deleting the default-prompt transcript (single, batch, or clear-all) and removing its "Prompt" tag both automatically zero out `default_prompt_transcript_id` in settings. No stale reference survives.
+- **SLM lock timeout** — `SLMRuntime._REFINE_LOCK_TIMEOUT = 60.0` s. `refine_text_sync` now calls `lock.acquire(timeout=…)` instead of blocking forever. On timeout it raises `TimeoutError`, restores the previous state, and releases the lock via `finally`.
+- **Refinement stall handlers** — `handle_refine` and `handle_bulk_refine` catch `TimeoutError` from the SLM runtime. Single refine emits `refinement_error` ("Refinement engine is busy. Please retry in a moment.") and falls back to raw clipboard paste. Bulk refine increments the failure count and continues to the next transcript rather than crashing the whole batch.
+- **CPU thread auto-scaling** — `RefinementSettings.n_threads` defaults are now computed at import time via `_auto_cpu_threads()`: `min(max(2, os.cpu_count() // 3), 10)`. Replaces the hardcoded `4`. Benchmark data shows roughly 45 % latency reduction on 12-core systems.
+- **Refinement skip gate** — New `src/refinement/skip_check.py` module. `should_skip_refinement(text)` short-circuits refinement for empty, too-short (<15 chars / <4 words), filler-only, and low-signal inputs (weighted 5-signal scorer; threshold = 0.15). `score_refinement_need` weighs filler density (0.30), punctuation (0.25), capitalisation (0.20), sentence structure (0.15), word repetition (0.10). Gate is applied in `RefinementEngine.refine()` after the empty check. 34 new unit tests in `tests/unit/test_skip_check.py`.
+- **Benchmark tooling** — `scripts/refinement_benchmark.py` harness + `scripts/benchmark_corpus.json` (12 samples: 5 short, 4 medium, 3 long) for measuring per-sample and aggregate refinement latency.
+
+### Changed
+- **Analytics SLM prompt hardened against hallucination** — `prompt_builder.py` splits the old monolithic `ANALYTICS_TEMPLATE` into `ANALYTICS_SYSTEM_PROMPT` + `ANALYTICS_TEMPLATE`. System prompt now explicitly forbids inventing numbers, enforces "use ONLY the facts provided", and caps output at 1-2 short paragraphs / 4 sentences max. `InsightManager` adds `_build_daily_highlights()` and `_build_long_term_highlights()` to pre-curate the exact facts passed to the SLM — raw stats are never dumped into the prompt. Template receives `{daily_highlights}` and `{long_term_highlights}` formatted bullet blocks instead of free-form stat substitutions.
+- **`list_transcripts` input validation** — Negative `limit`/`offset` values and non-integer `tag_ids` now return HTTP 400 instead of crashing or silently mis-querying the database.
+- **SLM state set before lock acquisition** — `SLMRuntime.refine_text_sync` sets `self.state = SLMState.INFERRING` before attempting `lock.acquire()`. This prevents a race where a low-priority job could read `IDLE` and attempt a concurrent call while the lock is already held.
+- **`RefineView` WebSocket config sync** — Subscribes to `config_updated` to refresh `defaultPromptId` at runtime without requiring a page reload. Clears `selectedPromptId` when a prompt refresh finds it has been deleted.
+
+---
+
 ## v6.3.0 — GPU/CUDA Runtime Detection & Audio Hardware Diagnostics
 
 **Date:** 2026-03-22

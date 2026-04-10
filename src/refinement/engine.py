@@ -137,7 +137,8 @@ class RefinementEngine:
         base_count = max(1, input_token_count)
         output_budget = base_count + max(self.MIN_PADDING_TOKENS, int(base_count * self.SCALING_FACTOR))
         thinking_budget = self.THINKING_BUDGET_TOKENS if use_thinking else 0
-        return min(self.HARD_MAX_OUTPUT_TOKENS, output_budget + thinking_budget)
+        total_budget = output_budget + thinking_budget
+        return min(self.HARD_MAX_OUTPUT_TOKENS, total_budget)
 
     def _parse_output(self, text: str) -> GenerationResult:
         """Separate <think>...</think> blocks and strip prompt artifacts from model output."""
@@ -218,6 +219,14 @@ class RefinementEngine:
             GenerationResult containing refined text and optional reasoning.
         """
         if not text or not text.strip():
+            return GenerationResult(content=text)
+
+        # Phase 1C: skip trivially short or filler-only text.
+        from src.refinement.skip_check import should_skip_refinement
+
+        skip_reason = should_skip_refinement(text)
+        if skip_reason:
+            logger.debug("Skipping refinement (%s): %r", skip_reason, text[:80])
             return GenerationResult(content=text)
 
         messages = self._format_prompt(text, user_instructions, use_thinking=use_thinking)

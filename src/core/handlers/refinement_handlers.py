@@ -201,6 +201,16 @@ class RefinementHandlers:
                     from src.core.handlers.recording_handlers import _copy_to_system_clipboard
 
                     _copy_to_system_clipboard(refined)
+            except TimeoutError:
+                logger.warning("Refinement timed out waiting for SLM lock for transcript %d", intent.transcript_id)
+                self._emit(
+                    "refinement_error",
+                    {
+                        "transcript_id": intent.transcript_id,
+                        "message": "Refinement engine is busy. Please retry in a moment.",
+                    },
+                )
+                self._fallback_raw_clipboard(intent.transcript_id)
             except Exception as e:
                 logger.exception("Refinement failed for transcript %d", intent.transcript_id)
                 self._emit(
@@ -357,6 +367,20 @@ class RefinementHandlers:
                             instructions=resolved_instructions,
                         )
                         refine_elapsed_ms = int((time.monotonic() - refine_start) * 1000)
+                    except TimeoutError:
+                        logger.warning("Bulk refine: timed out waiting for SLM lock for transcript %d", tid)
+                        failed += 1
+                        self._emit(
+                            "bulk_refinement_progress",
+                            {
+                                "completed": completed,
+                                "failed": failed,
+                                "total": total,
+                                "current_transcript_id": tid,
+                                "error": "Refinement engine is busy. Skipping this transcript.",
+                            },
+                        )
+                        continue
                     except Exception as e:
                         logger.exception("Bulk refine: inference failed for transcript %d", tid)
                         failed += 1

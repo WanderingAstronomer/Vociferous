@@ -119,6 +119,7 @@ class SLMRuntime:
                 if not will_use_cpu:
                     try:
                         import ctranslate2
+
                         will_use_cpu = ctranslate2.get_cuda_device_count() == 0
                     except Exception:
                         will_use_cpu = True
@@ -201,7 +202,21 @@ class SLMRuntime:
 
     def refine_text_sync(self, text: str, level: int = 1, instructions: str = "") -> str:
         """Synchronous refinement — blocks until complete. Returns refined text."""
-        with self._lock:
+        if not self._engine:
+            raise RuntimeError("Engine not loaded.")
+
+        previous_state = self.state
+
+        # Mark busy before lock acquisition so low-priority background jobs
+        # do not race and starve user-triggered refinement.
+        self.state = SLMState.INFERRING
+
+        acquired = self._lock.acquire(timeout=self._REFINE_LOCK_TIMEOUT)
+        if not acquired:
+            self.state = previous_state
+            raise TimeoutError(f"Timed out waiting for SLM lock after {self._REFINE_LOCK_TIMEOUT:.0f}s")
+
+        try:
             if not self._engine:
                 raise RuntimeError("Engine not loaded.")
             params = self._sampling_params_for_level(level)
@@ -214,12 +229,17 @@ class SLMRuntime:
                 repetition_penalty=float(params["repetition_penalty"]),
                 use_thinking=bool(params["use_thinking"]),
             )
+        finally:
+            self._lock.release()
+            self.state = previous_state
         return result.content
 
     # Maximum seconds to wait for the inference lock before giving up.
     # Prevents low-priority tasks (title gen) from blocking behind long
     # thinking-mode refinements.
     _CUSTOM_LOCK_TIMEOUT = 5.0
+    # Maximum seconds refinement will wait for the shared SLM lock.
+    _REFINE_LOCK_TIMEOUT = 60.0
 
     def generate_custom_sync(
         self,

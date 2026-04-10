@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.core.insight_manager import InsightManager
-
+from src.refinement.prompt_builder import PromptBuilder
 
 # ── Inline Cache ──────────────────────────────────────────────────────────
 
@@ -47,9 +47,7 @@ class TestInsightManagerThresholds:
 
     def test_no_regeneration_within_same_bracket(self, tmp_path: Path) -> None:
         """After generating at 600 words, 800 words (same 500-bracket) should not regenerate."""
-        manager, emit = _make_manager_with_emit(
-            tmp_path, "Insight.", today_words=600, thresholds=(500, 1000)
-        )
+        manager, emit = _make_manager_with_emit(tmp_path, "Insight.", today_words=600, thresholds=(500, 1000))
         manager._generate_task()
         emit.reset_mock()
 
@@ -59,9 +57,7 @@ class TestInsightManagerThresholds:
 
     def test_regeneration_on_threshold_crossing(self, tmp_path: Path) -> None:
         """After generating at 600 words, 1100 words (crossed 1000) should regenerate."""
-        manager, emit = _make_manager_with_emit(
-            tmp_path, "Insight.", today_words=600, thresholds=(500, 1000)
-        )
+        manager, emit = _make_manager_with_emit(tmp_path, "Insight.", today_words=600, thresholds=(500, 1000))
         manager._generate_task()
         emit.reset_mock()
 
@@ -69,18 +65,14 @@ class TestInsightManagerThresholds:
 
     def test_multi_threshold_skip_counts_as_one(self, tmp_path: Path) -> None:
         """Jumping from 0 to 6000 words crosses multiple thresholds but should_regenerate is just True."""
-        manager, _ = _make_manager_with_emit(
-            tmp_path, "Insight.", today_words=0, thresholds=(500, 1000, 2500, 5000)
-        )
+        manager, _ = _make_manager_with_emit(tmp_path, "Insight.", today_words=0, thresholds=(500, 1000, 2500, 5000))
         # Cache exists but at bracket 0
         manager._save_cache("old", 0)
         assert manager._should_regenerate(6000) is True
 
     def test_below_all_thresholds_no_regeneration(self, tmp_path: Path) -> None:
         """If today_words hasn't reached the first threshold, skip."""
-        manager, _ = _make_manager_with_emit(
-            tmp_path, "Insight.", today_words=100, thresholds=(500, 1000)
-        )
+        manager, _ = _make_manager_with_emit(tmp_path, "Insight.", today_words=100, thresholds=(500, 1000))
         # Generate once (first time always fires since cache is empty)
         manager._generate_task()
         # Now 200 words — still below first threshold
@@ -102,7 +94,7 @@ class TestInsightManagerLeakGuard:
     def test_leaked_prompt_fragment_is_rejected(self, tmp_path: Path) -> None:
         manager, emit = _make_manager_with_emit(
             tmp_path,
-            "You are embedded in a local AI-powered speech-to-text application.",
+            "Write the dashboard summary using only the facts below.",
         )
         manager._generate_task()
         emit.assert_not_called()
@@ -126,6 +118,30 @@ class TestInsightManagerLeakGuard:
         manager, emit = _make_manager_with_emit(tmp_path, "")
         manager._generate_task()
         emit.assert_not_called()
+
+
+class TestInsightManagerPromptContract:
+    def test_generation_uses_compact_system_prompt_and_fact_user_prompt(self, tmp_path: Path) -> None:
+        manager, _ = _make_manager_with_emit(tmp_path, "Tight summary.")
+
+        manager._generate_task()
+
+        kwargs = manager._slm_provider().generate_custom_sync.call_args.kwargs
+        assert kwargs["system_prompt"] == PromptBuilder.ANALYTICS_SYSTEM_PROMPT
+        assert "Daily highlights:" in kwargs["user_prompt"]
+        assert "Long-term highlights:" in kwargs["user_prompt"]
+        assert "- Words today: 500." in kwargs["user_prompt"]
+        assert "- Total words captured: 1,000 across 10 transcriptions." in kwargs["user_prompt"]
+        assert kwargs["temperature"] == 0.4
+        assert kwargs["use_thinking"] is False
+
+    def test_zero_today_words_marks_daily_highlights_none(self, tmp_path: Path) -> None:
+        manager, _ = _make_manager_with_emit(tmp_path, "Long-term only.", today_words=0)
+
+        manager._generate_task()
+
+        kwargs = manager._slm_provider().generate_custom_sync.call_args.kwargs
+        assert "Daily highlights:\n- none" in kwargs["user_prompt"]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -181,6 +197,7 @@ def _make_manager_with_emit(
     mock_slm.generate_custom_sync.return_value = slm_result
 
     import src.services.slm_types as slm_types
+
     mock_slm.state = slm_types.SLMState.READY
 
     emit = MagicMock()

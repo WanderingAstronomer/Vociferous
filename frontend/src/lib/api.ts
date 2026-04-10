@@ -206,6 +206,21 @@ export function updateConfig(updates: Record<string, unknown>): Promise<Record<s
     });
 }
 
+export function setDefaultRefinementPrompt(
+    transcriptId: number,
+): Promise<{ status: string; default_prompt_transcript_id: number }> {
+    return request("/config/refinement/default-prompt", {
+        method: "PUT",
+        body: JSON.stringify({ transcript_id: transcriptId }),
+    });
+}
+
+export function clearDefaultRefinementPrompt(): Promise<{ status: string; default_prompt_transcript_id: null }> {
+    return request("/config/refinement/default-prompt", {
+        method: "DELETE",
+    });
+}
+
 // --- Models ---
 
 export interface ModelInfo {

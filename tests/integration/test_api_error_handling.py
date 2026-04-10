@@ -39,7 +39,13 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
     from litestar.config.cors import CORSConfig
 
     from src.api.app import ConnectionManager, _wire_event_bridge
-    from src.api.config import dispatch_intent, get_config, update_config
+    from src.api.config import (
+        clear_default_refinement_prompt,
+        dispatch_intent,
+        get_config,
+        set_default_refinement_prompt,
+        update_config,
+    )
     from src.api.deps import set_coordinator
     from src.api.models import download_model, list_models
     from src.api.system import health
@@ -65,6 +71,8 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
             search_transcripts,
             get_config,
             update_config,
+            set_default_refinement_prompt,
+            clear_default_refinement_prompt,
             list_models,
             download_model,
             health,
@@ -234,6 +242,23 @@ class TestConfigErrors:
         assert "model" in body
         assert "recording" in body
         assert "refinement" in body
+
+    def test_set_default_prompt_requires_integer_transcript_id(self, api):
+        client, _, _ = api
+
+        resp = client.put("/api/config/refinement/default-prompt", json={})
+
+        assert resp.status_code == 400
+        assert "transcript_id" in resp.json()["error"]
+
+    def test_set_default_prompt_rejects_non_prompt_transcript(self, api):
+        client, coord, _ = api
+        transcript = coord.db.add_transcript(raw_text="Normal transcript.", duration_ms=100)
+
+        resp = client.put("/api/config/refinement/default-prompt", json={"transcript_id": transcript.id})
+
+        assert resp.status_code == 400
+        assert "tagged 'Prompt'" in resp.json()["error"]
 
 
 # ── Model Download Error Paths ────────────────────────────────────────────

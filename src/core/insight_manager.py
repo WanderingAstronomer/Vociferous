@@ -126,8 +126,11 @@ class InsightManager:
 
             today_words = stats.get("today_words", 0)
             if not self._should_regenerate(today_words):
-                logger.debug("Insight: no threshold crossed (today_words=%d, last=%d), skipping",
-                             today_words, self._last_generated_today_words)
+                logger.debug(
+                    "Insight: no threshold crossed (today_words=%d, last=%d), skipping",
+                    today_words,
+                    self._last_generated_today_words,
+                )
                 return
 
             self._generating = True
@@ -174,6 +177,109 @@ class InsightManager:
         remaining_minutes = minutes % 60
         return f"{hours}h {remaining_minutes}m" if remaining_minutes else f"{hours}h"
 
+    @staticmethod
+    def _fmt_float(value: Any, decimals: int = 1) -> str:
+        """Format numeric values consistently for prompt highlights."""
+        try:
+            return f"{float(value):.{decimals}f}"
+        except (TypeError, ValueError):
+            return f"{0.0:.{decimals}f}"
+
+    @staticmethod
+    def _highlight_block(lines: list[str]) -> str:
+        """Render curated highlight lines for the analytics prompt."""
+        if not lines:
+            return "- none"
+        return "\n".join(f"- {line}" for line in lines)
+
+    def _build_daily_highlights(self, stats: dict[str, Any]) -> list[str]:
+        """Pick the exact daily facts the SLM is allowed to mention."""
+        today_words = int(stats.get("today_words", 0) or 0)
+        if today_words <= 0:
+            return []
+
+        highlights = [f"Words today: {today_words:,}."]
+
+        today_count = int(stats.get("today_count", 0) or 0)
+        if today_count > 0:
+            highlights.append(f"Transcriptions today: {today_count}.")
+
+        days_active_this_week = int(stats.get("days_active_this_week", 0) or 0)
+        if days_active_this_week > 0:
+            highlights.append(f"Active days this week: {days_active_this_week}.")
+
+        current_streak = int(stats.get("current_streak", 0) or 0)
+        if current_streak > 0 and len(highlights) < 3:
+            highlights.append(f"Current streak: {current_streak} days.")
+
+        return highlights[:3]
+
+    def _build_refinement_impact_highlight(self, stats: dict[str, Any]) -> str | None:
+        """Build one exact refinement-impact fact instead of asking the SLM to infer one."""
+        refined_count = int(stats.get("refined_count", 0) or 0)
+        if refined_count <= 0:
+            return None
+
+        raw_fillers = int(stats.get("verbatim_filler_count", 0) or 0)
+        refined_fillers = int(stats.get("refined_filler_count", 0) or 0)
+        raw_density = float(stats.get("verbatim_filler_density", 0) or 0)
+        refined_density = float(stats.get("refined_filler_density", 0) or 0)
+        raw_fk = float(stats.get("verbatim_avg_fk_grade", 0) or 0)
+        refined_fk = float(stats.get("refined_avg_fk_grade", 0) or 0)
+
+        details: list[str] = [f"Refinement sample: {refined_count} transcripts"]
+        if raw_fillers or refined_fillers:
+            details.append(
+                "fillers "
+                f"{refined_fillers} ({refined_density:.1%}) after refinement vs "
+                f"{raw_fillers} ({raw_density:.1%}) raw"
+            )
+        if raw_fk or refined_fk:
+            details.append(f"FK grade {self._fmt_float(refined_fk)} after refinement vs {self._fmt_float(raw_fk)} raw")
+        return "; ".join(details) + "."
+
+    def _build_long_term_highlights(self, stats: dict[str, Any]) -> list[str]:
+        """Pick the exact long-term facts the SLM is allowed to mention."""
+        total_words = int(stats.get("total_words", 0) or 0)
+        total_count = int(stats.get("count", 0) or 0)
+        highlights = [f"Total words captured: {total_words:,} across {total_count} transcriptions."]
+
+        time_saved_seconds = float(stats.get("time_saved_seconds", 0) or 0)
+        if time_saved_seconds > 0:
+            highlights.append(f"Estimated time saved vs typing: {self._fmt_duration(time_saved_seconds)}.")
+
+        refinement_impact = self._build_refinement_impact_highlight(stats)
+        if refinement_impact:
+            highlights.append(refinement_impact)
+
+        avg_wpm = int(stats.get("avg_wpm", 0) or 0)
+        if avg_wpm > 0 and len(highlights) < 3:
+            highlights.append(f"Average speaking pace: {avg_wpm} wpm.")
+
+        current_streak = int(stats.get("current_streak", 0) or 0)
+        longest_streak = int(stats.get("longest_streak", 0) or 0)
+        if len(highlights) < 3 and (current_streak > 0 or longest_streak > 0):
+            if current_streak > 0 and longest_streak > 0:
+                highlights.append(f"Streaks: current {current_streak} days, longest {longest_streak} days.")
+            elif longest_streak > 0:
+                highlights.append(f"Longest streak: {longest_streak} days.")
+            else:
+                highlights.append(f"Current streak: {current_streak} days.")
+
+        avg_transcription_speed = float(stats.get("avg_transcription_speed_x", 0) or 0)
+        timed_transcripts = int(stats.get("transcripts_with_transcription_time", 0) or 0)
+        if len(highlights) < 3 and avg_transcription_speed > 0 and timed_transcripts > 0:
+            highlights.append(
+                f"Transcription speed: {self._fmt_float(avg_transcription_speed)}x realtime across {timed_transcripts} samples."
+            )
+
+        avg_refinement_wpm = int(stats.get("avg_refinement_wpm", 0) or 0)
+        refinement_samples = int(stats.get("transcripts_with_refinement_time", 0) or 0)
+        if len(highlights) < 3 and avg_refinement_wpm > 0 and refinement_samples > 0:
+            highlights.append(f"Refinement throughput: {avg_refinement_wpm} wpm across {refinement_samples} samples.")
+
+        return highlights[:3]
+
     def _save_cache(self, text: str, today_words: int) -> None:
         """Update cache in memory and on disk."""
         self._cache = {
@@ -194,66 +300,10 @@ class InsightManager:
                 logger.info("Insight: not enough data for meaningful insight, skipping")
                 return
 
-            total_words = stats.get("total_words", 0)
             today_words = stats.get("today_words", 0)
-
-            # Build the refinement comparison section if data exists
-            refined_count = stats.get("refined_count", 0)
-            if refined_count > 0:
-                refinement_section = (
-                    f"Refined text quality (after AI refinement — {refined_count} transcripts):\n"
-                    f"- Vocabulary diversity: {stats.get('refined_vocab_ratio', 0):.0%}\n"
-                    f"- Filler words remaining: {stats.get('refined_filler_count', 0)} "
-                    f"({stats.get('refined_filler_density', 0):.1%} of words)\n"
-                    f"- Average Flesch-Kincaid grade: {stats.get('refined_avg_fk_grade', 0)}\n"
-                    f"- Average sentence length: {stats.get('refined_avg_sentence_length', 0)} words\n"
-                    f"- Fillers removed by refinement: "
-                    f"{stats.get('verbatim_filler_count', 0) - stats.get('refined_filler_count', 0)}\n\n"
-                )
-            else:
-                refinement_section = ""
-
-            # Format top fillers for display
-            filler_breakdown = stats.get("filler_breakdown", {})
-            if filler_breakdown:
-                top_items = sorted(filler_breakdown.items(), key=lambda x: x[1], reverse=True)[:5]
-                top_fillers_str = ", ".join(f'"{w}" ({n})' for w, n in top_items)
-            else:
-                top_fillers_str = "none detected"
-
-            # Full format dict — every stat available to the template.
             fmt = {
-                # Session-level
-                "today_count": stats.get("today_count", 0),
-                "today_words": f"{today_words:,}",
-                "days_active_this_week": stats.get("days_active_this_week", 0),
-                # All-time overview
-                "count": stats.get("count", 0),
-                "total_words": f"{total_words:,}",
-                "recorded_time": self._fmt_duration(stats.get("recorded_seconds", 0)),
-                "speech_time": self._fmt_duration(stats.get("total_speech_seconds", 0)),
-                "silence_time": self._fmt_duration(stats.get("total_silence_seconds", 0)),
-                "time_saved": self._fmt_duration(stats.get("time_saved_seconds", 0)),
-                "avg_length": self._fmt_duration(stats.get("avg_seconds", 0)),
-                "avg_pace": stats.get("avg_wpm", 0),
-                "current_streak": stats.get("current_streak", 0),
-                "longest_streak": stats.get("longest_streak", 0),
-                # Verbatim pipeline
-                "verbatim_vocab_pct": f"{stats.get('verbatim_vocab_ratio', 0):.0%}",
-                "verbatim_fillers": stats.get("verbatim_filler_count", 0),
-                "verbatim_filler_density": f"{stats.get('verbatim_filler_density', 0):.1%}",
-                "verbatim_fk_grade": stats.get("verbatim_avg_fk_grade", 0),
-                "verbatim_avg_sentence_len": stats.get("verbatim_avg_sentence_length", 0),
-                "top_fillers": top_fillers_str,
-                # Refinement section (pre-built block or empty string)
-                "refinement_section": refinement_section,
-                "refined_count": refined_count,
-                # Processing performance
-                "transcription_speed": stats.get("avg_transcription_speed_x", 0),
-                "transcripts_with_transcription_time": stats.get("transcripts_with_transcription_time", 0),
-                "refinement_wpm": stats.get("avg_refinement_wpm", 0),
-                "transcripts_with_refinement_time": stats.get("transcripts_with_refinement_time", 0),
-                "refinement_time_saved": self._fmt_duration(stats.get("refinement_time_saved_seconds", 0)),
+                "daily_highlights": self._highlight_block(self._build_daily_highlights(stats)),
+                "long_term_highlights": self._highlight_block(self._build_long_term_highlights(stats)),
             }
             prompt = self._prompt_template.format_map(fmt)
 
@@ -270,11 +320,11 @@ class InsightManager:
 
             logger.info("Insight: running SLM inference...")
             result = slm.generate_custom_sync(
-                system_prompt=prompt,
-                user_prompt="Generate the analytics insight based on the provided statistics.",
-                max_tokens=250,
-                temperature=0.7,
-                use_thinking=True,
+                system_prompt=PromptBuilder.ANALYTICS_SYSTEM_PROMPT,
+                user_prompt=prompt,
+                max_tokens=220,
+                temperature=0.4,
+                use_thinking=False,
             )
 
             if result and result.strip():
@@ -284,6 +334,9 @@ class InsightManager:
                     "speech-to-text application",
                     "speech-to-text desktop application",
                     "usage statistics",
+                    "Write the dashboard summary using only the facts below",
+                    "Required structure:",
+                    "Quote numbers exactly as written above",
                     "Do NOT begin with",
                     "Do not use bullet points",
                     "Write exactly TWO",

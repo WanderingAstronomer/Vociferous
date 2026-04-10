@@ -23,11 +23,13 @@ from litestar.response import Response
 from litestar.static_files import StaticFilesConfig
 
 from src.api.config import (
+    clear_default_refinement_prompt,
     dispatch_intent,
     get_config,
     get_insight,
     get_motd,
     restart_engine,
+    set_default_refinement_prompt,
     update_config,
 )
 from src.api.deps import set_coordinator
@@ -285,6 +287,8 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             # System
             get_config,
             update_config,
+            set_default_refinement_prompt,
+            clear_default_refinement_prompt,
             list_models,
             download_model,
             restart_engine,
