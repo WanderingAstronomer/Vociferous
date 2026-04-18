@@ -562,7 +562,7 @@
                         </div>
                     </div>
                 {:else if activeTab === "maintenance"}
-                    <MaintenanceCard {config} {models} {health} {getSafe} {showMessage} />
+                    <MaintenanceCard {config} {models} {health} {getSafe} {setSafe} {showMessage} />
                 {:else if activeTab === "refinement"}
                     <RefinementCard
                         {config}

@@ -5,7 +5,7 @@
      * Flat layout matching other Settings tabs. No bordered cards.
      */
 
-    import { getTranscripts, clearAllTranscripts, exportFile, restartEngine } from "../api";
+    import { getTranscripts, clearAllTranscripts, exportFile, openLogDirectory, restartEngine } from "../api";
     import { buildExportPayload, type ExportFormat } from "../exportUtils";
     import { CheckCircle, AlertCircle } from "lucide-svelte";
     import ToggleSwitch from "./ToggleSwitch.svelte";
@@ -34,10 +34,11 @@
             };
         };
         getSafe: (obj: any, path: string, fallback?: any) => any;
+        setSafe: (path: string, value: any) => void;
         showMessage: (msg: string, type: "success" | "error") => void;
     }
 
-    let { config, models, health, getSafe, showMessage }: Props = $props();
+    let { config, models, health, getSafe, setSafe, showMessage }: Props = $props();
 
     /* ===== Export state ===== */
 
@@ -137,6 +138,19 @@
             showMessage(e.message || "Engine restart failed", "error");
         }
     }
+
+    async function handleOpenLogDirectory() {
+        try {
+            const result = await openLogDirectory();
+            if (result.status !== "opened") {
+                showMessage(result.error || `Could not open log directory: ${result.path}`, "error");
+                return;
+            }
+            showMessage(`Opened log directory: ${result.path}`, "success");
+        } catch (e: any) {
+            showMessage(e.message || "Could not open log directory", "error");
+        }
+    }
 </script>
 
 <div class="flex flex-col gap-[var(--space-3)]">
@@ -206,8 +220,8 @@
             <div
                 class="rounded-[var(--radius-md)] border border-amber-500/40 bg-amber-500/10 px-[var(--space-3)] py-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-secondary)]"
             >
-                '{health.mic.device_name}' may not support 16 kHz mono recording. Transcription could fail
-                or produce poor results. Try selecting a different default input device in your OS audio settings.
+                '{health.mic.device_name}' may not support 16 kHz mono recording. Transcription could fail or produce
+                poor results. Try selecting a different default input device in your OS audio settings.
             </div>
         </div>
     {/if}
@@ -242,6 +256,40 @@
         </span>
         <div>
             <StyledButton variant="secondary" onclick={handleRestartEngine}>Restart Engine</StyledButton>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+        <label
+            class="text-[var(--text-sm)] text-[var(--text-primary)]"
+            for="setting-console-log-level"
+            data-tip="Controls terminal log verbosity for local troubleshooting. On-disk log files always capture full DEBUG detail."
+            >Console Log Verbosity</label
+        >
+        <div class="w-full max-w-[460px]">
+            <CustomSelect
+                id="setting-console-log-level"
+                options={[
+                    { value: "DEBUG", label: "Debug" },
+                    { value: "INFO", label: "Info" },
+                    { value: "WARNING", label: "Warning" },
+                    { value: "ERROR", label: "Error" },
+                ]}
+                value={getSafe(config, "logging.level", "INFO")}
+                onchange={(v: string) => setSafe("logging.level", v)}
+            />
+        </div>
+    </div>
+
+    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+        <span
+            class="text-[var(--text-sm)] text-[var(--text-primary)]"
+            data-tip="Open the persistent Vociferous log directory so support logs are easy to inspect or share."
+        >
+            Log Files
+        </span>
+        <div>
+            <StyledButton variant="secondary" onclick={handleOpenLogDirectory}>Open Log Directory</StyledButton>
         </div>
     </div>
 

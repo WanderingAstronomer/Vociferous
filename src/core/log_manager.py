@@ -99,11 +99,11 @@ class LogManager:
             from src.core.settings import get_settings
 
             settings = get_settings()
-            log_level = getattr(logging, settings.logging.level.upper(), logging.INFO)
+            console_level = getattr(logging, settings.logging.level.upper(), logging.INFO)
             enable_console = settings.logging.console_echo
             structured = settings.logging.structured_output
         except (RuntimeError, ImportError, ConfigError):
-            log_level = logging.INFO
+            console_level = logging.INFO
             enable_console = True
             structured = False
 
@@ -125,7 +125,7 @@ class LogManager:
                 backupCount=BACKUP_COUNT,
                 encoding="utf-8",
             )
-            file_handler.setLevel(log_level)
+            file_handler.setLevel(logging.DEBUG)
             file_handler.setFormatter(formatter)
             root_logger.addHandler(file_handler)
         except Exception as e:
@@ -135,7 +135,7 @@ class LogManager:
         # Console handler
         if enable_console:
             console_handler = logging.StreamHandler(sys.stderr)
-            console_handler.setLevel(log_level)
+            console_handler.setLevel(console_level)
             console_handler.setFormatter(formatter)
             root_logger.addHandler(console_handler)
 
@@ -151,7 +151,11 @@ class LogManager:
         ):
             logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
-        logger.info("LogManager initialized. Level: %s, Structured: %s", log_level, structured)
+        logger.info(
+            "LogManager initialized. Console level: %s, file level: DEBUG, Structured: %s",
+            console_level,
+            structured,
+        )
         logger.info("Log file: %s", LOG_FILE)
 
     def set_console_level(self, level: int) -> None:

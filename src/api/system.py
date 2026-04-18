@@ -11,6 +11,8 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -22,9 +24,21 @@ from litestar.params import Body
 from src.api.deps import get_coordinator
 from src.core.constants import APP_VERSION
 from src.core.cuda_runtime import detect_cuda_runtime
+from src.core.resource_manager import ResourceManager
 from src.services.audio_service import AudioService
 
 logger = logging.getLogger(__name__)
+
+
+def _open_directory(path: Path) -> None:
+    """Open a directory in the platform file manager."""
+    if sys.platform == "win32":
+        os.startfile(path)  # type: ignore[attr-defined]
+        return
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", str(path)])
+        return
+    subprocess.Popen(["xdg-open", str(path)])
 
 
 # --- Health ---
@@ -202,3 +216,15 @@ async def stop_key_capture() -> Response:
     if coordinator.input_listener:
         coordinator.input_listener.disable_capture_mode()
     return Response(content={"status": "stopped"})
+
+
+@post("/api/logs/open-dir", sync_to_thread=True)
+def open_log_directory() -> dict:
+    """Open the persistent log directory in the system file manager."""
+    log_dir = ResourceManager.get_user_log_dir()
+    try:
+        _open_directory(log_dir)
+    except Exception as e:
+        logger.exception("Failed to open log directory %s", log_dir)
+        return {"status": "error", "path": str(log_dir), "error": str(e)}
+    return {"status": "opened", "path": str(log_dir)}

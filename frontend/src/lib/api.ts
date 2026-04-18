@@ -301,6 +301,10 @@ export function restartEngine(): Promise<{ status: string }> {
     return request("/engine/restart", { method: "POST" });
 }
 
+export function openLogDirectory(): Promise<{ status: string; path: string; error?: string }> {
+    return request("/logs/open-dir", { method: "POST" });
+}
+
 export function downloadModel(modelType: "asr" | "slm", modelId: string): Promise<{ status: string; model_id: string }> {
     return request("/models/download", {
         method: "POST",

@@ -37,11 +37,19 @@ class SystemHandlers:
 
     @handles(UpdateConfigIntent)
     def handle_update_config(self, intent: Any) -> None:
+        from src.core.log_manager import LogManager
         from src.core.settings import update_settings
 
         new_settings = update_settings(**intent.settings)
         self._on_settings_updated(new_settings)
         self._emit("config_updated", new_settings.model_dump())
+
+        if "logging" in intent.settings:
+            try:
+                LogManager().configure_logging()
+                logger.info("Logging configuration reloaded")
+            except Exception:
+                logger.exception("Failed to reload logging configuration")
 
         # Reload activation keys if the input handler is running
         input_listener = self._input_listener_provider()
