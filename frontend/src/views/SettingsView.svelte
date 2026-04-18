@@ -385,6 +385,71 @@
                         >
                             <label
                                 class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                for="setting-max-recording-minutes"
+                                data-tip="Safety cap for a single recording session. Prevents runaway recordings from chewing through disk and time forever."
+                                >Max Recording Length (minutes)</label
+                            >
+                            <div class="flex items-center gap-[var(--space-1)]">
+                                <button
+                                    type="button"
+                                    class="flex items-center justify-center w-9 h-9 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] text-[var(--accent)] cursor-pointer transition-colors duration-150 hover:bg-[var(--hover-overlay-blue)] disabled:opacity-40 disabled:cursor-not-allowed"
+                                    aria-label="Decrease max recording length"
+                                    disabled={getSafe(config, "recording.max_recording_minutes", 60) <= 1}
+                                    onclick={() => {
+                                        const cur = getSafe(config, "recording.max_recording_minutes", 60);
+                                        if (cur > 1) setSafe("recording.max_recording_minutes", Math.max(1, cur - 5));
+                                    }}
+                                >
+                                    <svg width="14" height="14" viewBox="0 0 14 14"
+                                        ><path
+                                            d="M3 7h8"
+                                            stroke="currentColor"
+                                            stroke-width="1.5"
+                                            stroke-linecap="round"
+                                        /></svg
+                                    >
+                                </button>
+                                <input
+                                    id="setting-max-recording-minutes"
+                                    type="number"
+                                    min="1"
+                                    max="1440"
+                                    step="5"
+                                    class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    value={getSafe(config, "recording.max_recording_minutes", 60)}
+                                    oninput={(e) => {
+                                        const v = parseFloat((e.target as HTMLInputElement).value);
+                                        if (!isNaN(v) && v >= 1 && v <= 1440)
+                                            setSafe("recording.max_recording_minutes", v);
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    class="flex items-center justify-center w-9 h-9 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] text-[var(--accent)] cursor-pointer transition-colors duration-150 hover:bg-[var(--hover-overlay-blue)] disabled:opacity-40 disabled:cursor-not-allowed"
+                                    aria-label="Increase max recording length"
+                                    disabled={getSafe(config, "recording.max_recording_minutes", 60) >= 1440}
+                                    onclick={() => {
+                                        const cur = getSafe(config, "recording.max_recording_minutes", 60);
+                                        if (cur < 1440)
+                                            setSafe("recording.max_recording_minutes", Math.min(1440, cur + 5));
+                                    }}
+                                >
+                                    <svg width="14" height="14" viewBox="0 0 14 14"
+                                        ><path
+                                            d="M7 3v8M3 7h8"
+                                            stroke="currentColor"
+                                            stroke-width="1.5"
+                                            stroke-linecap="round"
+                                        /></svg
+                                    >
+                                </button>
+                            </div>
+                        </div>
+                        <div
+                            class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
+                        >
+                            <label
+                                class="text-[var(--text-sm)] text-[var(--text-primary)]"
                                 for="setting-audiocache"
                                 data-tip="Keep recorded audio on disk for crash recovery. Oldest recordings are pruned when the limit is exceeded. Set to 0 to disable."
                                 >Audio Cache (minutes)</label
