@@ -3,9 +3,9 @@ import os
 import sys
 from collections.abc import Callable
 
+from src.core.settings import get_settings
 from src.input_handler.backends.evdev import EvdevBackend
 from src.input_handler.backends.pynput import PynputBackend
-from src.core.settings import get_settings
 
 from .backends.base import InputBackend
 from .chord import KeyChord
@@ -44,7 +44,7 @@ class KeyListener:
 
     def select_backend_from_config(self) -> None:
         """Select the active backend based on configuration."""
-        preferred_backend = get_settings().recording.input_backend
+        preferred_backend = get_settings().recording.hotkey_backend
 
         if preferred_backend == "auto":
             self.select_active_backend()

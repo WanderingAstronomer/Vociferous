@@ -200,7 +200,7 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 #### 3. Clone and Install
 
 ```powershell
-git clone https://github.com/your-username/Vociferous.git
+git clone https://github.com/wanderingastronomer/Vociferous.git
 cd Vociferous
 .\scripts\install_windows.ps1
 ```

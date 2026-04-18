@@ -10,7 +10,20 @@
     import { toast } from "../lib/toast.svelte";
     import { ws } from "../lib/ws";
     import { onMount, onDestroy } from "svelte";
-    import { Save, Undo2, Loader2, Cpu, Mic, Sliders, Eye, RotateCcw, Check, BarChart3, Sparkles, TriangleAlert } from "lucide-svelte";
+    import {
+        Save,
+        Undo2,
+        Loader2,
+        Cpu,
+        Mic,
+        Sliders,
+        Eye,
+        RotateCcw,
+        Check,
+        BarChart3,
+        Sparkles,
+        TriangleAlert,
+    } from "lucide-svelte";
     import CustomSelect from "../lib/components/CustomSelect.svelte";
     import KeyBindCapture from "../lib/components/KeyBindCapture.svelte";
     import MaintenanceCard from "../lib/components/MaintenanceCard.svelte";
@@ -250,7 +263,14 @@
              width reference for mx-auto. When a scrollbar appears it affects both equally,
              eliminating the centering offset that occurs when the tab bar is outside the scroll container. -->
         <!-- svelte-ignore a11y_mouse_events_have_key_events -->
-        <div class="flex-1 overflow-y-auto" onmouseover={handleTipOver} onmouseleave={() => (hoveredTip = "")} onfocusin={handleTipOver} onfocusout={() => (hoveredTip = "")}>
+        <div
+            class="flex-1 overflow-y-auto"
+            role="presentation"
+            onmouseover={handleTipOver}
+            onmouseleave={() => (hoveredTip = "")}
+            onfocusin={handleTipOver}
+            onfocusout={() => (hoveredTip = "")}
+        >
             <div class="sticky top-0 z-10 border-b border-[var(--shell-border)] bg-[var(--surface-primary)]">
                 <div class="w-full max-w-5xl mx-auto px-[var(--space-5)] flex gap-0" role="tablist">
                     {#each tabs as tab (tab.id)}
@@ -276,23 +296,36 @@
                 role="tabpanel"
             >
                 {#if showGpuRuntimeWarning}
-                    <div class="mb-[var(--space-4)] rounded-[var(--radius-lg)] border border-[var(--color-warning)]/40 bg-[color:rgba(255,165,0,0.08)] px-[var(--space-4)] py-[var(--space-3)]">
+                    <div
+                        class="mb-[var(--space-4)] rounded-[var(--radius-lg)] border border-[var(--color-warning)]/40 bg-[color:rgba(255,165,0,0.08)] px-[var(--space-4)] py-[var(--space-3)]"
+                    >
                         <div class="flex items-start gap-[var(--space-2)]">
                             <TriangleAlert size={18} class="mt-[2px] shrink-0 text-[var(--color-warning)]" />
                             <div class="min-w-0">
-                                <div class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)]">
+                                <div
+                                    class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-primary)]"
+                                >
                                     NVIDIA driver detected, but CUDA inference is not ready.
                                 </div>
-                                <div class="mt-[var(--space-1)] text-[var(--text-sm)] text-[var(--text-secondary)] leading-[var(--leading-normal)]">
-                                    {health.gpu?.gpu_name || "Detected GPU"} is visible to the driver, but CTranslate2 cannot use CUDA yet. Vociferous will fall back to CPU until you install a usable CUDA 12 runtime.
+                                <div
+                                    class="mt-[var(--space-1)] text-[var(--text-sm)] text-[var(--text-secondary)] leading-[var(--leading-normal)]"
+                                >
+                                    {health.gpu?.gpu_name || "Detected GPU"} is visible to the driver, but CTranslate2 cannot
+                                    use CUDA yet. Vociferous will fall back to CPU until you install a usable CUDA 12 runtime.
                                 </div>
                                 {#if health.gpu?.detail}
-                                    <div class="mt-[var(--space-1)] text-[var(--text-xs)] text-[var(--text-tertiary)] break-words">
+                                    <div
+                                        class="mt-[var(--space-1)] text-[var(--text-xs)] text-[var(--text-tertiary)] break-words"
+                                    >
                                         Probe detail: {health.gpu.detail}
                                     </div>
                                 {/if}
-                                <div class="mt-[var(--space-2)] text-[var(--text-xs)] text-[var(--text-secondary)] leading-[var(--leading-normal)]">
-                                    Recommended: install CUDA Toolkit 12.x plus cuDNN 9 on Windows. Alternative: install `nvidia-cuda-runtime-cu12`, `nvidia-cuda-nvrtc-cu12`, `nvidia-cublas-cu12`, and `nvidia-cudnn-cu12` into the app venv manually.
+                                <div
+                                    class="mt-[var(--space-2)] text-[var(--text-xs)] text-[var(--text-secondary)] leading-[var(--leading-normal)]"
+                                >
+                                    Recommended: install CUDA Toolkit 12.x plus cuDNN 9 on Windows. Alternative: install
+                                    `nvidia-cuda-runtime-cu12`, `nvidia-cuda-nvrtc-cu12`, `nvidia-cublas-cu12`, and
+                                    `nvidia-cudnn-cu12` into the app venv manually.
                                 </div>
                             </div>
                         </div>

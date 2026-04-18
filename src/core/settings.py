@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings
 
 from src.core.exceptions import ConfigError
@@ -61,7 +61,7 @@ class RecordingSettings(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     activation_key: str = "alt_right"
-    input_backend: str = "auto"
+    hotkey_backend: str = Field(default="auto", validation_alias=AliasChoices("hotkey_backend", "input_backend"))
     recording_mode: str = "press_to_toggle"
     sample_rate: int = 16000
     min_duration_ms: int = 100

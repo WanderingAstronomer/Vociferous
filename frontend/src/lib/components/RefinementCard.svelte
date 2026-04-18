@@ -89,7 +89,7 @@
                 <label
                     class="text-[var(--text-sm)] text-[var(--text-primary)]"
                     for="setting-refthreads"
-                    data-tip="CPU threads for refinement inference. Higher values use more cores but may improve speed. Default: 4."
+                    data-tip="CPU threads for refinement inference. Higher values use more cores but may improve speed. Default: automatic logical cores divided by 3, clamped between 2 and 10."
                     >Refinement Threads</label
                 >
                 <input
@@ -167,7 +167,8 @@
             <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--text-secondary)] py-1">
                 <Info size={14} class="shrink-0 mt-px" />
                 <span class="leading-[var(--leading-normal)]"
-                    >Only the 4B model (int8) supports CPU inference. The 8B and 14B are AWQ-quantized and require a GPU.</span
+                    >Only the 4B model (int8) supports CPU inference. The 8B and 14B are AWQ-quantized and require a
+                    GPU.</span
                 >
             </div>
         {/if}

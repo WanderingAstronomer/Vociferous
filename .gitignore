@@ -3,19 +3,19 @@
 # =========================
 
 __pycache__/
-*.py[cod]
 *$py.class
+*.py[cod]
 
-# Pytest cache
+# =========================
+# Python Tooling Caches
+# =========================
+
+.mypy_cache/
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
-
-# Mypy
-.mypy_cache/
-
-# Ruff cache
-.ruff_cache/
+tests/__pycache__/
 
 # =========================
 # Virtual Environments
@@ -23,17 +23,17 @@ htmlcov/
 
 .serena/
 .venv/
-venv/
 ENV/
 env/
+venv/
 
 # =========================
 # Editor / IDE Noise
 # =========================
 
 .github/copilot-instructions.md
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
 *~
@@ -43,8 +43,8 @@ env/
 # =========================
 
 .DS_Store
-Thumbs.db
 desktop.ini
+Thumbs.db
 
 # =========================
 # Application Runtime State
@@ -58,46 +58,38 @@ src/config.yaml
 .env.local
 .env*.local
 
+# Logs
+*.log
+
 # SQLite databases / runtime data (if introduced later)
 *.db
 *.sqlite
 *.sqlite3
 
-# Logs
-*.log
-
 # =========================
 # Build / Distribution
 # =========================
 
-node_modules/
+__pypackages__/
+*.spec
+*.tsbuildinfo
 build/
 dist/
-*.tsbuildinfo
-*.spec
-
-# PyInstaller / frozen app artifacts
-__pypackages__/
+node_modules/
 
 # =========================
 # Docs: Generated or Non-Source Material
 # =========================
 
-/.agent_resources/
-
-# =========================
-# Tests: Generated Artifacts
-# =========================
-
-tests/__pycache__/
+agent_resources/
 
 # =========================
 # Optional: Debug Dumps / Profiles
 # =========================
 
 *.prof
-*.trace
 *.stackdump
+*.trace
 
 # =========================
 # Dev Tools / Experimentation Directory
