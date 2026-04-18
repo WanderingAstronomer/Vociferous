@@ -60,13 +60,12 @@ class TranscriptHandlers:
         """Append a new recording segment to an existing transcript."""
         db = self._db_provider()
         if db:
-            db.append_to_transcript(
+            root_id = db.append_to_transcript(
                 intent.transcript_id,
-                intent.raw_text,
-                intent.duration_ms,
-                intent.speech_duration_ms,
+                intent.source_transcript_id,
             )
-            self._emit("transcript_updated", {"id": intent.transcript_id})
+            if root_id is not None:
+                self._emit("transcript_updated", {"id": root_id})
 
     @handles(SetAnalyticsInclusionIntent)
     def handle_set_analytics_inclusion(self, intent: Any) -> None:

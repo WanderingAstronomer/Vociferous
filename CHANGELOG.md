@@ -1,5 +1,19 @@
 # Vociferous Changelog
 
+## v6.4.1 — Non-Destructive Transcript Append
+
+**Date:** 2026-04-17
+**Status:** Hotfix
+**Issues:** ISS-131
+
+### Fixed
+- **Non-destructive append semantics** — Appending one recording into another no longer deletes the source transcript row. The append intent now passes `source_transcript_id`, the database preserves the source row as a compound child using lightweight `compound_root_id` and `compound_order` metadata, and the visible root transcript is updated as the aggregate text/duration record.
+- **Default query correctness with preserved segments** — Transcript list, search, count, and analytics paths now hide compound child rows by default so preserving append segments does not inflate visible history, transcript totals, health counts, or usage statistics.
+- **Frontend append cleanup bug** — The Transcribe view no longer deletes the just-recorded transcript after append, which was the whole damn problem in the first place.
+
+### Added
+- **Regression coverage for preserved append segments** — New unit and integration tests verify source rows survive append, hidden compound children do not double-count analytics, and default API list/health totals stay stable.
+
 ## v6.4.0 — Default Prompt Persistence, SLM Stall Hardening & CPU Optimization
 
 **Date:** 2026-04-10

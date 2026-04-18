@@ -332,14 +332,11 @@
                     appendTargetId = null;
                     appendTargetTitle = "";
                     try {
+                        if (!data.id) throw new Error("Missing source transcript ID for append");
                         await dispatchIntent("append_to_transcript", {
                             transcript_id: targetId,
-                            raw_text: data.text,
-                            duration_ms: data.duration_ms ?? 0,
-                            speech_duration_ms: data.speech_duration_ms ?? 0,
+                            source_transcript_id: data.id,
                         });
-                        /* Clean up the temporary transcript the ASR pipeline created */
-                        if (data.id) await apiDeleteTranscript(data.id);
                         toast.success("Recording appended");
 
                         /* Auto-refine the combined transcript if enabled */
@@ -580,7 +577,7 @@
         const targetTitle = prevTranscript.display_name?.trim() || `Transcript #${prevTranscript.id}`;
         const confirmed = await toast.confirm({
             title: "Append to previous recording?",
-            message: `This will append the current recording to "${targetTitle}". The current standalone entry will be removed.`,
+            message: `This will append the current recording to "${targetTitle}" while preserving segment history.`,
             confirmLabel: "Append",
             cancelLabel: "Keep separate",
         });
@@ -590,11 +587,8 @@
         try {
             await dispatchIntent("append_to_transcript", {
                 transcript_id: targetId,
-                raw_text: transcriptText,
-                duration_ms: durationMs,
-                speech_duration_ms: speechDurationMs,
+                source_transcript_id: currentId,
             });
-            await apiDeleteTranscript(currentId);
             toast.success("Appended to previous recording");
 
             /* Auto-refine the combined transcript if enabled */

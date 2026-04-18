@@ -332,6 +332,24 @@ def _v10_processing_timing(conn: sqlite3.Connection) -> None:
     logger.info("v10 migration: transcription_time_ms + refinement_time_ms columns added")
 
 
+def _v11_compound_membership(conn: sqlite3.Connection) -> None:
+    """v11 — Add lightweight compound membership metadata to transcripts."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(transcripts)").fetchall()}
+    if "compound_root_id" not in cols:
+        conn.execute(
+            "ALTER TABLE transcripts ADD COLUMN compound_root_id INTEGER REFERENCES transcripts(id) ON DELETE CASCADE"
+        )
+    if "compound_order" not in cols:
+        conn.execute("ALTER TABLE transcripts ADD COLUMN compound_order INTEGER")
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_transcripts_compound_root ON transcripts(compound_root_id)")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_transcripts_compound_member_order ON transcripts(compound_root_id, compound_order)"
+    )
+
+    logger.info("v11 migration: compound membership columns ensured on transcripts")
+
+
 #: Ordered list of (human-readable description, migration function) pairs.
 #: Append here to add future migrations; do not edit existing entries.
 MIGRATIONS: list[tuple[str, object]] = [
@@ -345,6 +363,7 @@ MIGRATIONS: list[tuple[str, object]] = [
     ("v8 audio cache flag — has_audio_cached column on transcripts", _v8_audio_cache_flag),
     ("v9 prompt system — Prompt tag + is_protected column + default system prompt transcript", _v9_prompt_system),
     ("v10 processing timing — transcription_time_ms + refinement_time_ms columns", _v10_processing_timing),
+    ("v11 compound membership — preserve non-destructive append members", _v11_compound_membership),
 ]
 
 

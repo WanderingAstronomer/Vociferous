@@ -53,6 +53,8 @@ class Transcript:
     include_in_analytics: bool = True
     has_audio_cached: bool = False
     is_protected: bool = False
+    compound_root_id: int | None = None
+    compound_order: int | None = None
     # Populated by joins, not stored in transcripts table
     tags: list[Tag] = field(default_factory=list)
 
@@ -79,10 +81,15 @@ CREATE TABLE IF NOT EXISTS transcripts (
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
     include_in_analytics INTEGER NOT NULL DEFAULT 1,
     has_audio_cached INTEGER NOT NULL DEFAULT 0,
-    is_protected INTEGER NOT NULL DEFAULT 0
+    is_protected INTEGER NOT NULL DEFAULT 0,
+    compound_root_id INTEGER REFERENCES transcripts(id) ON DELETE CASCADE,
+    compound_order INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_transcripts_timestamp ON transcripts(timestamp);
+CREATE INDEX IF NOT EXISTS idx_transcripts_compound_root ON transcripts(compound_root_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transcripts_compound_member_order
+    ON transcripts(compound_root_id, compound_order);
 
 CREATE TABLE IF NOT EXISTS tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -231,6 +238,15 @@ class TranscriptDB:
         rows: list = self._conn.execute(rows_sql, rows_params).fetchall()
         return total, rows
 
+    @staticmethod
+    def _append_text(existing: str, incoming: str) -> str:
+        """Append incoming text with a blank-line separator when both sides exist."""
+        if not existing:
+            return incoming
+        if not incoming:
+            return existing
+        return existing + "\n\n" + incoming
+
     def recent(
         self,
         limit: int = 50,
@@ -239,6 +255,7 @@ class TranscriptDB:
         sort_dir: str = "desc",
         tag_ids: list[int] | None = None,
         tag_mode: str = "any",
+        include_compound_children: bool = False,
     ) -> tuple[list[Transcript], int]:
         """Get transcripts with pagination and sorting.
 
@@ -262,7 +279,8 @@ class TranscriptDB:
             if tag_ids:
                 placeholders = ",".join("?" * len(tag_ids))
                 if tag_mode == "all":
-                    where = f"""WHERE t.id IN (
+                    visibility = "" if include_compound_children else "t.compound_root_id IS NULL AND "
+                    where = f"""WHERE {visibility}t.id IN (
                                SELECT transcript_id FROM transcript_tags
                                WHERE tag_id IN ({placeholders})
                                GROUP BY transcript_id
@@ -275,8 +293,10 @@ class TranscriptDB:
                         (*tag_ids, len(tag_ids), limit, offset),
                     )
                 else:
+                    visibility = "" if include_compound_children else "AND t.compound_root_id IS NULL"
                     where = f"""INNER JOIN transcript_tags tt ON t.id = tt.transcript_id
-                           WHERE tt.tag_id IN ({placeholders})"""
+                           WHERE tt.tag_id IN ({placeholders})
+                             {visibility}"""
                     total, rows = self._paginate(
                         f"SELECT COUNT(DISTINCT t.id) FROM transcripts t {where}",
                         f"SELECT DISTINCT t.* FROM transcripts t {where} {order_clause} LIMIT ? OFFSET ?",
@@ -284,16 +304,24 @@ class TranscriptDB:
                         (*tag_ids, limit, offset),
                     )
             else:
+                visibility_where = "" if include_compound_children else "WHERE t.compound_root_id IS NULL "
                 total, rows = self._paginate(
-                    "SELECT COUNT(*) FROM transcripts",
-                    f"SELECT t.* FROM transcripts t {order_clause} LIMIT ? OFFSET ?",
+                    f"SELECT COUNT(*) FROM transcripts t {visibility_where}",
+                    f"SELECT t.* FROM transcripts t {visibility_where}{order_clause} LIMIT ? OFFSET ?",
                     rows_params=(limit, offset),
                 )
             transcripts = [self._row_to_transcript(r) for r in rows]
             self._enrich_transcripts_with_tags(transcripts)
         return transcripts, total
 
-    def search(self, query: str, limit: int = 50, offset: int = 0) -> list[Transcript]:
+    def search(
+        self,
+        query: str,
+        limit: int = 50,
+        offset: int = 0,
+        *,
+        include_compound_children: bool = False,
+    ) -> list[Transcript]:
         """Full-text search across transcript text using FTS5.
 
         An empty *query* returns the most-recent transcripts (same as
@@ -302,17 +330,19 @@ class TranscriptDB:
         "Python programming".
         """
         if not query.strip():
-            items, _ = self.recent(limit=limit, offset=offset)
+            items, _ = self.recent(limit=limit, offset=offset, include_compound_children=include_compound_children)
             return items
         tokens = query.split()
         # Wrap each token as an FTS5 phrase with prefix wildcard.
         # Inner double-quotes are escaped by doubling them per FTS5 syntax.
         fts_terms = " ".join(f'"{token.replace(chr(34), chr(34) * 2)}"*' for token in tokens)
         with self._write_lock:
+            visibility = "" if include_compound_children else "AND t.compound_root_id IS NULL"
             rows = self._conn.execute(
-                """SELECT t.*
+                f"""SELECT t.*
                    FROM transcripts t
                    WHERE t.id IN (SELECT rowid FROM transcripts_fts WHERE transcripts_fts MATCH ?)
+                   {visibility}
                    ORDER BY t.created_at DESC LIMIT ? OFFSET ?""",
                 (fts_terms, limit, offset),
             ).fetchall()
@@ -320,26 +350,33 @@ class TranscriptDB:
             self._enrich_transcripts_with_tags(transcripts)
         return transcripts
 
-    def search_count(self, query: str) -> int:
+    def search_count(self, query: str, *, include_compound_children: bool = False) -> int:
         """Return the total number of transcripts matching *query* (for pagination)."""
         if not query.strip():
-            with self._write_lock:
-                row = self._conn.execute("SELECT COUNT(*) FROM transcripts").fetchone()
-            return row[0] if row else 0
+            return self.transcript_count(include_compound_children=include_compound_children)
         tokens = query.split()
         fts_terms = " ".join(f'"{t.replace(chr(34), chr(34) * 2)}"*' for t in tokens)
         with self._write_lock:
-            row = self._conn.execute(
-                "SELECT COUNT(*) FROM transcripts_fts WHERE transcripts_fts MATCH ?",
-                (fts_terms,),
-            ).fetchone()
+            if include_compound_children:
+                row = self._conn.execute(
+                    "SELECT COUNT(*) FROM transcripts_fts WHERE transcripts_fts MATCH ?",
+                    (fts_terms,),
+                ).fetchone()
+            else:
+                row = self._conn.execute(
+                    """SELECT COUNT(*)
+                       FROM transcripts t
+                       WHERE t.compound_root_id IS NULL
+                         AND t.id IN (SELECT rowid FROM transcripts_fts WHERE transcripts_fts MATCH ?)""",
+                    (fts_terms,),
+                ).fetchone()
         return row[0] if row else 0
 
     def delete_transcript(self, transcript_id: int) -> bool:
         """Delete a transcript (tag junction rows CASCADE). Refuses to delete protected transcripts."""
         with self._write_lock:
             cur = self._conn.execute(
-                "DELETE FROM transcripts WHERE id = ? AND is_protected = 0",
+                "DELETE FROM transcripts WHERE id = ? AND is_protected = 0 AND compound_root_id IS NULL",
                 (transcript_id,),
             )
             self._conn.commit()
@@ -352,7 +389,7 @@ class TranscriptDB:
         placeholders = ",".join("?" * len(transcript_ids))
         with self._write_lock:
             cur = self._conn.execute(
-                f"DELETE FROM transcripts WHERE id IN ({placeholders}) AND is_protected = 0",
+                f"DELETE FROM transcripts WHERE id IN ({placeholders}) AND is_protected = 0 AND compound_root_id IS NULL",
                 transcript_ids,
             )
             self._conn.commit()
@@ -659,42 +696,91 @@ class TranscriptDB:
             include_in_analytics=bool(row["include_in_analytics"]),
             has_audio_cached=bool(row["has_audio_cached"]),
             is_protected=bool(row["is_protected"]),
+            compound_root_id=row["compound_root_id"],
+            compound_order=row["compound_order"],
         )
 
     def append_to_transcript(
         self,
         transcript_id: int,
-        raw_text: str,
-        duration_ms: int,
-        speech_duration_ms: int,
-    ) -> None:
-        """Append new recording text to an existing transcript and update totals.
-
-        Appends *raw_text* (preceded by a newline) to both raw_text and — if
-        normalized_text is non-empty — to normalized_text as well.  Duration
-        and speech_duration are summed.  The 'Compound' system tag is applied
-        after the update.
-        """
+        source_transcript_id: int,
+    ) -> int | None:
+        """Attach a source transcript to a compound rooted at *transcript_id*."""
         with self._write_lock:
-            row = self._conn.execute(
-                "SELECT raw_text, normalized_text FROM transcripts WHERE id = ?",
+            target_row = self._conn.execute(
+                "SELECT * FROM transcripts WHERE id = ?",
                 (transcript_id,),
             ).fetchone()
-            if row is None:
-                return
-            new_raw = row["raw_text"] + "\n\n" + raw_text
-            current_norm: str = row["normalized_text"] or ""
-            new_norm = (current_norm + "\n\n" + raw_text) if current_norm else ""
+            source_row = self._conn.execute(
+                "SELECT * FROM transcripts WHERE id = ?",
+                (source_transcript_id,),
+            ).fetchone()
+            if target_row is None or source_row is None:
+                return None
+
+            root_id = target_row["compound_root_id"] or target_row["id"]
+            if source_row["id"] == root_id:
+                return root_id
+            if source_row["compound_root_id"] == root_id:
+                return root_id
+            if source_row["compound_root_id"] is not None:
+                logger.warning(
+                    "Refusing to append compound child transcript %s into root %s",
+                    source_transcript_id,
+                    root_id,
+                )
+                return root_id
+
+            root_row = target_row
+            if target_row["id"] != root_id:
+                root_row = self._conn.execute(
+                    "SELECT * FROM transcripts WHERE id = ?",
+                    (root_id,),
+                ).fetchone()
+                if root_row is None:
+                    return None
+
+            descendants = self._conn.execute(
+                "SELECT id, compound_order FROM transcripts WHERE compound_root_id = ? ORDER BY compound_order",
+                (source_transcript_id,),
+            ).fetchall()
+            next_order_row = self._conn.execute(
+                "SELECT COALESCE(MAX(compound_order), 0) AS max_order FROM transcripts WHERE compound_root_id = ?",
+                (root_id,),
+            ).fetchone()
+            next_order = int(next_order_row["max_order"] or 0) + 1
+
+            source_display_text = source_row["normalized_text"] or source_row["raw_text"] or ""
+            new_raw = self._append_text(root_row["raw_text"] or "", source_row["raw_text"] or "")
+            current_norm: str = root_row["normalized_text"] or ""
+            new_norm = self._append_text(current_norm, source_display_text) if current_norm else ""
             self._conn.execute(
                 """UPDATE transcripts
                    SET raw_text = ?, normalized_text = ?,
                        duration_ms = duration_ms + ?,
                        speech_duration_ms = speech_duration_ms + ?
                    WHERE id = ?""",
-                (new_raw, new_norm, duration_ms, speech_duration_ms, transcript_id),
+                (
+                    new_raw,
+                    new_norm,
+                    int(source_row["duration_ms"] or 0),
+                    int(source_row["speech_duration_ms"] or 0),
+                    root_id,
+                ),
             )
+
+            self._conn.execute(
+                "UPDATE transcripts SET compound_root_id = ?, compound_order = ? WHERE id = ?",
+                (root_id, next_order, source_transcript_id),
+            )
+            for child in descendants:
+                self._conn.execute(
+                    "UPDATE transcripts SET compound_root_id = ?, compound_order = ? WHERE id = ?",
+                    (root_id, next_order + int(child["compound_order"] or 0), child["id"]),
+                )
             self._conn.commit()
-        self.add_system_tag_to_transcript(transcript_id, "Compound")
+        self.add_system_tag_to_transcript(root_id, "Compound")
+        return root_id
 
     def set_analytics_inclusion(self, transcript_id: int, include: bool) -> None:
         """Set the include_in_analytics flag for a transcript."""
@@ -721,7 +807,10 @@ class TranscriptDB:
         self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         shutil.copy2(self._path, dest)
 
-    def transcript_count(self) -> int:
+    def transcript_count(self, *, include_compound_children: bool = False) -> int:
         with self._write_lock:
-            row = self._conn.execute("SELECT COUNT(*) FROM transcripts").fetchone()
+            if include_compound_children:
+                row = self._conn.execute("SELECT COUNT(*) FROM transcripts").fetchone()
+            else:
+                row = self._conn.execute("SELECT COUNT(*) FROM transcripts WHERE compound_root_id IS NULL").fetchone()
         return row[0] if row else 0

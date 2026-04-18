@@ -191,6 +191,34 @@ class TestTranscriptRoutes:
         assert len(data["items"]) == 3
         assert data["total"] == 6  # 5 added + 1 seeded
 
+    def test_append_intent_preserves_source_but_keeps_default_list_count_stable(self, api):
+        client, coord, _ = api
+        root = coord.db.add_transcript(raw_text="Root text", duration_ms=1000)
+        source = coord.db.add_transcript(raw_text="Source text", duration_ms=500)
+
+        resp = client.post(
+            "/api/intents",
+            json={
+                "type": "append_to_transcript",
+                "transcript_id": root.id,
+                "source_transcript_id": source.id,
+            },
+        )
+
+        assert resp.status_code == 201
+        assert resp.json()["dispatched"] is True
+
+        listing = client.get("/api/transcripts").json()
+        assert listing["total"] == 2  # seeded prompt + visible root
+        assert source.id not in {item["id"] for item in listing["items"]}
+
+        source_detail = client.get(f"/api/transcripts/{source.id}")
+        assert source_detail.status_code == 200
+        assert source_detail.json()["raw_text"] == "Source text"
+
+        health = client.get("/api/health").json()
+        assert health["transcripts"] == 2
+
     def test_list_rejects_invalid_tag_ids(self, api):
         client, _, _ = api
 

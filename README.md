@@ -1,8 +1,8 @@
 <div align="center">
 
-## Vociferous v6.4.0
+## Vociferous v6.4.1
 
-**March 2026**
+**April 2026**
 
 <img src="assets/icons/vociferous_icon.png" alt="Vociferous" width="128" height="128"/>
 

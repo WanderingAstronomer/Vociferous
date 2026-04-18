@@ -92,6 +92,17 @@ class TestCoreStats:
         stats = compute_usage_stats(db)
         assert stats["recorded_seconds"] == pytest.approx(60.0, rel=0.01)
 
+    def test_hidden_compound_children_do_not_double_count_analytics(self, db):
+        root = db.add_transcript(raw_text="alpha beta", duration_ms=4000)
+        source = db.add_transcript(raw_text="gamma delta epsilon", duration_ms=6000)
+
+        db.append_to_transcript(root.id, source.id)
+
+        stats = compute_usage_stats(db)
+        assert stats["count"] == 1
+        assert stats["total_words"] == 5
+        assert stats["recorded_seconds"] == 10.0
+
 
 # ---------------------------------------------------------------------------
 # Filler word detection

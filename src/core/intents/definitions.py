@@ -134,9 +134,7 @@ class AppendToTranscriptIntent(InteractionIntent):
     """Append a new recording segment's text to an existing transcript."""
 
     transcript_id: int = 0
-    raw_text: str = ""
-    duration_ms: int = 0
-    speech_duration_ms: int = 0
+    source_transcript_id: int = 0
     source: IntentSource = IntentSource.API
 
 
