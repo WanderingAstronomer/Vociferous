@@ -184,6 +184,7 @@
 
     /* ===== Recent sessions (idle panel) ===== */
     let recentSessions = $state<Transcript[]>([]);
+    let recentSessionCount = $state(0);
 
     // Recording timer
     let recordingElapsedMs = $state(0);
@@ -205,7 +206,10 @@
 
     function loadRecentSessions() {
         getTranscripts({ limit: 500 })
-            .then((r) => (recentSessions = r.items))
+            .then((r) => {
+                recentSessionCount = r.total;
+                recentSessions = r.items;
+            })
             .catch(() => {});
     }
 
@@ -245,7 +249,7 @@
         const totalSpeechMs = recentSessions.reduce((s, t) => s + (t.speech_duration_ms ?? 0), 0);
         const avgWpm =
             totalSpeechMs > 0 ? Math.round(wordsPerSession.reduce((a, b) => a + b, 0) / (totalSpeechMs / 60000)) : 0;
-        return { todayWords, avgWpm, count: recentSessions.length };
+        return { todayWords, avgWpm, count: recentSessionCount };
     });
 
     function formatTranscriptTimestamp(iso: string): string {
