@@ -177,7 +177,8 @@ Mandatory behavior:
 1. Keep `workboard.md` short. It is for status, area, priority, and GitHub number visibility.
 2. Put detailed investigation, acceptance criteria, code references, and historical notes in the issue dossier files under `agent_resources/issues/`.
 3. Update the `Last updated` header line on every `workboard.md` edit.
-4. Do not recreate the old hidden `.agent_resources/` layout.
+4. Remove resolved or done issues from `workboard.md` once their dossier is updated; completed work belongs in the issue dossier and index, not on the active Kanban board.
+5. Do not recreate the old hidden `.agent_resources/` layout.
 
 ### 8.8 Multi-Agent Coordination
 
