@@ -157,29 +157,31 @@ AI agents MUST NOT:
 
 ### 8.6 Agent Artifacts & Context Management
 
-Agents are explicitly authorized to use `.vscode/agent_resources/agent_reports` for creating artifacts, summaries, and scripts.
+Agents are explicitly authorized to use `agent_resources/reports` and `agent_resources/scripts` for creating artifacts, summaries, and helper tooling.
 * **Summaries**: Create summary documents to avoid reading full files repeatedly.
 * **Ad Hoc Scripts**: Store scripts for data analysis/verification here.
 * **Persistent Context**: Use this meant to store "ring information".
 
-### 8.7 AI Workboard (`.agent_resources/workboard.md`)
+### 8.7 AI Workboard (`agent_resources/openwork/workboard.md`)
 
-The repository uses a **single consolidated workboard file** for AI continuity. All tracking lives in one place — no splitting issues across multiple files.
+The repository now uses a **Kanban-only workboard** plus per-issue dossier files.
 
-Canonical file:
+Canonical files:
 
-* `.agent_resources/workboard.md` — everything: kanban status table, full issue prose with acceptance criteria, code-level TODOs, deferred items, resolved history.
+* `agent_resources/openwork/workboard.md` — kanban status table only.
+* `agent_resources/issues/ISS-xxx.md` — one dossier per issue number.
+* `agent_resources/issues/INDEX.md` — generated dossier index.
 
 Mandatory behavior:
 
-1. All open issues, backlog items, code TODOs, and resolved history go in `workboard.md`. Do not create separate files for these.
-2. When an issue closes, move it from the open section to the Resolved section and update the kanban table row to Done.
-3. Keep updates short and current. Update the `Last updated` header line on every edit.
-4. Do not recreate the old split-file structure (`open_issues.md`, `kanban_snapshot.md`, `refactoring_status.md`). Those files are gone intentionally.
+1. Keep `workboard.md` short. It is for status, area, priority, and GitHub number visibility.
+2. Put detailed investigation, acceptance criteria, code references, and historical notes in the issue dossier files under `agent_resources/issues/`.
+3. Update the `Last updated` header line on every `workboard.md` edit.
+4. Do not recreate the old hidden `.agent_resources/` layout.
 
 ### 8.8 Multi-Agent Coordination
 
-Multiple AI agents may operate concurrently in this repository. The `.agent_resources/` directory is **gitignored** and serves as the shared local coordination surface. All agents can read and write files there without polluting the commit history.
+Multiple AI agents may operate concurrently in this repository. The `agent_resources/` directory is **gitignored** and serves as the shared local coordination surface. All agents can read and write files there without polluting the commit history.
 
 #### 8.8.0 Agent Codename (Pick Once, Keep Forever)
 
@@ -196,12 +198,12 @@ Rules:
 1. Pick randomly. Don't always pick the first option — distribute across the list.
 2. Check `AGENT_LOCKS.md` for existing codenames. If yours is taken, pick another.
 3. Keep the same codename for the **entire session**. Do not change it mid-task.
-4. The codename appears only in `.agent_resources/` files. It never appears in commit messages, source code, or CHANGELOG entries.
+4. The codename appears only in `agent_resources/` files. It never appears in commit messages, source code, or CHANGELOG entries.
 5. When your work is committed and your lock section is removed, the codename is retired for that session.
 
-#### 8.8.1 Agent Lockfile (`.agent_resources/AGENT_LOCKS.md`)
+#### 8.8.1 Agent Presence + Lockfiles (`agent_resources/agents/ACTIVE_AGENTS.md`, `agent_resources/agents/AGENT_LOCKS.md`)
 
-Before starting implementation work, each agent **must** create or update `.agent_resources/AGENT_LOCKS.md` to declare the files it intends to modify. Before editing any source file, check the lockfile to see if another agent has claimed it.
+Before starting implementation work, each agent **must** add itself to `agent_resources/agents/ACTIVE_AGENTS.md` and then update `agent_resources/agents/AGENT_LOCKS.md` to declare the files it intends to modify. Before editing any source file, check the lockfile to see if another agent has claimed it.
 
 Format:
 
@@ -218,10 +220,10 @@ Format:
 
 Rules:
 
-1. **Check before you edit.** Read `AGENT_LOCKS.md` before modifying any file. If another agent has claimed it, do not touch it — find an alternative approach or wait.
+1. **Check before you edit.** Read `ACTIVE_AGENTS.md` for presence and `AGENT_LOCKS.md` for file claims before modifying any file. If another agent has claimed it, do not touch it — find an alternative approach or wait.
 2. **Declare before you start.** Add your section (using your codename) before writing any code. Update it if your scope changes (new files needed, files no longer needed).
 3. **Release when done.** Remove your section from the lockfile after your release commit lands.
-4. **Shared files require coordination.** `CHANGELOG.md`, `pyproject.toml`, `README.md`, and `.agent_resources/workboard.md` are shared release infrastructure — they cannot be exclusively locked. Instead, each agent edits only its own section (e.g., its own RESERVED block in CHANGELOG) and avoids rewriting the entire file.
+4. **Shared files require coordination.** `CHANGELOG.md`, `pyproject.toml`, `README.md`, and `agent_resources/openwork/workboard.md` are shared coordination infrastructure — they cannot be exclusively locked. Instead, each agent edits only the minimal required section and avoids broad rewrites.
 
 #### 8.8.2 Working Tree Discipline
 
@@ -248,6 +250,25 @@ git diff --name-only        # Final confirmation of changed files
 ```
 
 If you see unexpected files or commits, stop and reconcile before committing.
+
+#### 8.8.5 Post-Work Review (Mandatory After Major Work)
+
+After any major work item is implemented — especially multi-file features, architecture changes, data-model changes, or investigations that turned into code — the agent **must** perform a post-work review before declaring the issue done.
+
+The post-work review must capture four things while the context is still fresh:
+
+1. **Learnings** — What was discovered that future agents should know?
+2. **Corrected Assumptions** — What belief, premise, or issue framing turned out to be wrong or outdated?
+3. **Reusable Tactics** — What shortcut, script, verification pattern, or implementation approach worked especially well?
+4. **Follow-Up Risks** — What new caveat, limitation, or separate issue was uncovered?
+
+Mandatory behavior:
+
+1. Record the review in the local issue dossier before closing the issue.
+2. If the work changed process expectations, update the relevant workflow docs (`agent_resources/README.md`, `agent_resources/issues/ISSUE_TEMPLATE.md`, or this instructions file) in the same session.
+3. For data-model or persistence changes, explicitly audit downstream list/search/count/analytics consumers before claiming the issue is complete.
+4. If a file changed externally during the task, re-read it before the next edit rather than patching stale context blindly.
+5. Distinguish between **issue resolved** and **all related follow-up work eliminated**. If the main issue is done but new work was discovered, close the original issue and spin out or document the follow-up explicitly instead of letting it rot as tribal knowledge.
 
 ---
 
