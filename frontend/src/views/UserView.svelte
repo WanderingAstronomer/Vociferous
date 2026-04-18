@@ -428,7 +428,7 @@
             {:else}
                 <!-- ═══ Header ═══ -->
                 <div class="flex flex-col items-center gap-[var(--space-2)]">
-                    <h2 class="text-2xl font-[var(--weight-emphasis)] text-[var(--accent)] text-center m-0">
+                    <h2 class="text-3xl font-[var(--weight-emphasis)] text-[var(--accent)] text-center m-0">
                         {titleText}
                     </h2>
                     <div class="w-12 h-[2px] rounded-full bg-[var(--accent)]"></div>
