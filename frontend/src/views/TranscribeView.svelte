@@ -951,7 +951,7 @@
 
     <!-- Action bar (below panel) -->
     {#if viewState !== "idle" && viewState !== "transcribing" && viewState !== "recording"}
-        <div class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] shrink-0">
+        <div class="flex flex-wrap items-center gap-[var(--space-1)] py-[var(--space-1)] shrink-0">
             {#if viewState === "editing"}
                 <StyledButton variant="ghost" size="sm" onclick={discardEdits}>
                     <Undo2 size={14} /> Discard
