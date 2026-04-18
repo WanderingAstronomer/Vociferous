@@ -175,6 +175,7 @@ class RefinementHandlers:
                     text,
                     level=intent.level,
                     instructions=resolved_instructions,
+                    allow_skip=False,
                 )
 
                 elapsed = round(time.monotonic() - start_time, 1)

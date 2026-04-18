@@ -200,7 +200,7 @@ class SLMRuntime:
         )
         t.start()
 
-    def refine_text_sync(self, text: str, level: int = 1, instructions: str = "") -> str:
+    def refine_text_sync(self, text: str, level: int = 1, instructions: str = "", allow_skip: bool = True) -> str:
         """Synchronous refinement — blocks until complete. Returns refined text."""
         if not self._engine:
             raise RuntimeError("Engine not loaded.")
@@ -228,6 +228,7 @@ class SLMRuntime:
                 top_k=int(params["top_k"]),
                 repetition_penalty=float(params["repetition_penalty"]),
                 use_thinking=bool(params["use_thinking"]),
+                allow_skip=allow_skip,
             )
         finally:
             self._lock.release()

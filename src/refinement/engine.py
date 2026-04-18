@@ -203,6 +203,7 @@ class RefinementEngine:
         top_k: int = 20,
         repetition_penalty: float = 1.0,
         use_thinking: bool = False,
+        allow_skip: bool = True,
     ) -> GenerationResult:
         """
         Refine the input text using the loaded model.
@@ -224,10 +225,11 @@ class RefinementEngine:
         # Phase 1C: skip trivially short or filler-only text.
         from src.refinement.skip_check import should_skip_refinement
 
-        skip_reason = should_skip_refinement(text)
-        if skip_reason:
-            logger.debug("Skipping refinement (%s): %r", skip_reason, text[:80])
-            return GenerationResult(content=text)
+        if allow_skip:
+            skip_reason = should_skip_refinement(text)
+            if skip_reason:
+                logger.debug("Skipping refinement (%s): %r", skip_reason, text[:80])
+                return GenerationResult(content=text)
 
         messages = self._format_prompt(text, user_instructions, use_thinking=use_thinking)
 

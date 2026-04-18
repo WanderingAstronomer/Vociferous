@@ -310,3 +310,48 @@ class TestRefineGuard:
         # text="" is falsy, should short-circuit
         result = engine.refine("")
         assert isinstance(result, GenerationResult)
+
+    def test_skip_gate_applies_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        engine = _make_engine()
+
+        monkeypatch.setattr("src.refinement.skip_check.should_skip_refinement", lambda text: "short_text")
+
+        result = engine.refine("ok")
+
+        assert result.content == "ok"
+
+    def test_skip_gate_can_be_bypassed_for_explicit_requests(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        engine = _make_engine()
+
+        monkeypatch.setattr("src.refinement.skip_check.should_skip_refinement", lambda text: "short_text")
+        engine._format_prompt = lambda text, user_instructions="", use_thinking=False: [  # type: ignore[method-assign]
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": user_instructions or text},
+        ]
+        engine._messages_to_chatml = lambda messages: "chatml"  # type: ignore[method-assign]
+
+        class _Encoded:
+            tokens = ["a", "b"]
+
+        class _Tokenizer:
+            def encode(self, value: str) -> _Encoded:
+                assert value == "chatml"
+                return _Encoded()
+
+            def decode(self, ids: list[int]) -> str:
+                return "Refined output"
+
+        class _Result:
+            sequences_ids = [[1, 2, 3]]
+
+        class _Generator:
+            def generate_batch(self, prompts: list[list[str]], **kwargs: object) -> list[_Result]:
+                assert prompts == [["a", "b"]]
+                return [_Result()]
+
+        engine.tokenizer = _Tokenizer()
+        engine.generator = _Generator()
+
+        result = engine.refine("ok", user_instructions="Fix this anyway.", allow_skip=False)
+
+        assert result.content == "Refined output"
