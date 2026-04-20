@@ -87,9 +87,6 @@ CREATE TABLE IF NOT EXISTS transcripts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_transcripts_timestamp ON transcripts(timestamp);
-CREATE INDEX IF NOT EXISTS idx_transcripts_compound_root ON transcripts(compound_root_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_transcripts_compound_member_order
-    ON transcripts(compound_root_id, compound_order);
 
 CREATE TABLE IF NOT EXISTS tags (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

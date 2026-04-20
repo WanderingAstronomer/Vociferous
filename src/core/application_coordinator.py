@@ -89,6 +89,7 @@ class ApplicationCoordinator:
         8. Open pywebview window (blocks until closed)
         """
         from src.core.constants import APP_VERSION
+        from src.core.log_manager import log_support_diagnostics_snapshot
 
         logger.info("Starting Vociferous %s...", APP_VERSION)
 
@@ -97,6 +98,7 @@ class ApplicationCoordinator:
 
         self.db = TranscriptDB()
         logger.info("Database initialized (%d transcripts)", self.db.transcript_count())
+        log_support_diagnostics_snapshot(self.settings, transcript_count=self.db.transcript_count())
 
         # 2. Recording session (created here; ASR model loaded after SLM init).
         from src.core.handlers.recording_handlers import RecordingSession
@@ -341,6 +343,12 @@ class ApplicationCoordinator:
                 from src.core.settings import get_settings
 
                 self.settings = get_settings()
+                from src.core.log_manager import log_support_diagnostics_snapshot
+
+                log_support_diagnostics_snapshot(
+                    self.settings,
+                    transcript_count=self.db.transcript_count() if self.db is not None else None,
+                )
 
                 # Reload models
                 if self.recording_session is not None:

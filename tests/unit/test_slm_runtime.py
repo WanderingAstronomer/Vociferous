@@ -7,6 +7,7 @@ No real model loading — all heavy I/O is mocked.
 
 from __future__ import annotations
 
+import logging
 import threading
 from unittest.mock import MagicMock, patch
 
@@ -290,6 +291,45 @@ class TestGenerateCustomSync:
         runtime._engine = None
         with pytest.raises(RuntimeError, match="Engine not loaded"):
             runtime.generate_custom_sync("system", "prompt")
+
+
+class TestTimingLogs:
+    def test_refine_text_sync_logs_timing_context(self, runtime, caplog):
+        caplog.set_level(logging.INFO, logger="src.services.slm_runtime")
+        mock_engine = MagicMock()
+        mock_engine.refine.return_value = MagicMock(content="polished text")
+        runtime._engine = mock_engine
+        runtime._runtime_summary = {
+            "model_id": "qwen4b",
+            "resolved_device": "cpu",
+            "gpu_layers": 0,
+            "cpu_threads": 4,
+            "use_thinking": False,
+        }
+
+        with patch("src.services.slm_runtime.time.perf_counter", side_effect=[0.0, 2.5]):
+            runtime.refine_text_sync("rough text for testing", level=1)
+
+        assert "SLM refinement completed in 2.50s" in caplog.text
+        assert "model=qwen4b" in caplog.text
+
+    def test_slow_generate_custom_logs_warning(self, runtime, caplog):
+        mock_engine = MagicMock()
+        mock_engine.generate_custom.return_value = MagicMock(content="generated")
+        runtime._engine = mock_engine
+        runtime._runtime_summary = {
+            "model_id": "qwen4b",
+            "resolved_device": "cpu",
+            "gpu_layers": 0,
+            "cpu_threads": 4,
+            "use_thinking": False,
+        }
+
+        with patch("src.services.slm_runtime.time.perf_counter", side_effect=[0.0, 20.0]):
+            runtime.generate_custom_sync("system", "user prompt words here")
+
+        assert "Slow SLM custom-generation detected" in caplog.text
+        assert "elapsed=20.00s" in caplog.text
 
 
 # ── change_model ──────────────────────────────────────────────────────────

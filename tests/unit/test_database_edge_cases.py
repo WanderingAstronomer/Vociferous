@@ -122,6 +122,54 @@ class TestWALMode:
         assert fk == 1
 
 
+class TestLegacySchemaBootstrap:
+    def test_pre_v11_database_bootstraps_and_migrates(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "legacy_v10.db"
+
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript(
+            """
+            CREATE TABLE transcripts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT UNIQUE NOT NULL,
+                raw_text TEXT NOT NULL,
+                normalized_text TEXT NOT NULL,
+                display_name TEXT,
+                duration_ms INTEGER DEFAULT 0,
+                speech_duration_ms INTEGER DEFAULT 0,
+                transcription_time_ms INTEGER DEFAULT 0,
+                refinement_time_ms INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+                include_in_analytics INTEGER NOT NULL DEFAULT 1,
+                has_audio_cached INTEGER NOT NULL DEFAULT 0,
+                is_protected INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE INDEX idx_transcripts_timestamp ON transcripts(timestamp);
+
+            CREATE TABLE schema_version (
+                version INTEGER NOT NULL
+            );
+
+            INSERT INTO schema_version (version) VALUES (10);
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        db = TranscriptDB(db_path=db_path)
+
+        cols = {row["name"] for row in db._conn.execute("PRAGMA table_info(transcripts)").fetchall()}
+        index_names = {row[1] for row in db._conn.execute("PRAGMA index_list('transcripts')").fetchall()}
+
+        assert "compound_root_id" in cols
+        assert "compound_order" in cols
+        assert "idx_transcripts_compound_root" in index_names
+        assert "idx_transcripts_compound_member_order" in index_names
+
+        db.close()
+
+
 class TestConcurrentReads:
     """Multiple threads can read simultaneously under WAL."""
 

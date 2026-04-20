@@ -1,5 +1,24 @@
 # Vociferous Changelog
 
+## v6.4.2 — Diagnostics Snapshot, Analytics Contract Cleanup & Legacy DB Bootstrap Fix
+
+**Date:** 2026-04-19
+**Status:** Hotfix / Supportability
+**Issues:** ISS-118, ISS-133
+
+### Fixed
+- **Legacy database startup crash** — Existing user databases created before compound transcript membership landed could fail at startup with `sqlite3.OperationalError: no such column: compound_root_id`. The bootstrap SQL was trying to create compound-column indexes before the v11 migration had a chance to add those columns. Compound indexes now stay in the migration path where they belong, so older databases migrate cleanly instead of faceplanting during initialization.
+- **Usage stats timing math** — `avg_transcription_speed_x` and `avg_refinement_wpm` no longer mix timed and untimed transcript populations, which had been inflating throughput numbers whenever older rows lacked timing metadata.
+- **Usage stats duration fallback** — Missing `duration_ms` is now estimated per transcript instead of only as a whole-dataset fallback, which prevents undercounted recording time and overstated `time_saved_seconds` on mixed historical datasets.
+
+### Added
+- **Startup support diagnostics snapshot** — Persistent logs now capture a one-shot runtime snapshot at startup and settings reload with app version, platform, Python version, CPU details, CUDA status, configured ASR/SLM settings, and resolved runtime/device choices.
+- **Richer ASR / SLM timing diagnostics** — Slow transcription and refinement runs now log wall time, realtime multiplier or inference duration, model/runtime settings, and device context so support investigations do not start from a pile of useless shrugging.
+- **Regression coverage for legacy DB bootstrap** — Added a database regression test that recreates a pre-v11 database file and verifies startup/bootstrap now migrates it without crashing.
+
+### Changed
+- **Backend analytics contract simplified** — `compute_usage_stats()` is now the single backend analytics contract and returns only the fact set the live backend consumer actually uses. The dead compatibility baggage is gone.
+
 ## v6.4.1 — Non-Destructive Transcript Append
 
 **Date:** 2026-04-17

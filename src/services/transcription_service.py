@@ -17,7 +17,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from src.core.constants import AudioConfig
-from src.core.cuda_runtime import detect_cuda_runtime
+from src.core.cuda_runtime import CudaRuntimeStatus, detect_cuda_runtime
 from src.core.exceptions import EngineError
 from src.core.model_registry import ASR_MODELS, get_asr_model
 from src.core.resource_manager import ResourceManager
@@ -27,6 +27,43 @@ if TYPE_CHECKING:
     from src.services.audio_pipeline import AudioPipeline
 
 logger = logging.getLogger(__name__)
+
+
+def describe_asr_runtime(
+    settings: VociferousSettings,
+    *,
+    cuda_status: CudaRuntimeStatus | None = None,
+) -> dict[str, object]:
+    """Return the resolved ASR runtime choices for support diagnostics."""
+    status = cuda_status or detect_cuda_runtime()
+    device_pref = (settings.model.device or "auto").strip().lower()
+
+    if device_pref == "gpu":
+        resolved_device = "cuda" if status.cuda_available else "unavailable"
+    elif device_pref == "cpu":
+        resolved_device = "cpu"
+    else:
+        resolved_device = "cuda" if status.cuda_available else "cpu"
+
+    raw_compute_type = settings.model.compute_type
+    if resolved_device == "cuda" and raw_compute_type == "int8":
+        resolved_compute_type = "float16"
+    elif resolved_device == "cpu" and raw_compute_type in {"float16", "bfloat16"}:
+        resolved_compute_type = "float32"
+    else:
+        resolved_compute_type = raw_compute_type
+
+    return {
+        "model_id": settings.model.model,
+        "language": settings.model.language,
+        "device_preference": device_pref,
+        "resolved_device": resolved_device,
+        "cpu_threads": settings.model.n_threads,
+        "compute_type_requested": raw_compute_type,
+        "compute_type_resolved": resolved_compute_type,
+        "initial_prompt_enabled": bool(settings.model.initial_prompt),
+        "cuda_detail": status.detail,
+    }
 
 
 def _resolve_model_path(settings: VociferousSettings) -> Path:
@@ -61,19 +98,20 @@ def create_local_model(settings: VociferousSettings):
     from faster_whisper import WhisperModel
 
     model_dir = _resolve_model_path(settings)
-    n_threads = settings.model.n_threads
-    device_pref = (settings.model.device or "auto").strip().lower()
     cuda_status = detect_cuda_runtime()
+    runtime_summary = describe_asr_runtime(settings, cuda_status=cuda_status)
 
     # Resolve the requested device against what CTranslate2 can actually use.
-    if device_pref == "gpu":
-        if not cuda_status.cuda_available:
+    if runtime_summary["resolved_device"] == "unavailable":
+        if runtime_summary["device_preference"] == "gpu":
             raise EngineError(f"GPU inference requested, but CUDA is not usable: {cuda_status.detail}")
-        fw_device = "cuda"
-    elif device_pref == "cpu":
-        fw_device = "cpu"
-    else:
-        fw_device = "cuda" if cuda_status.cuda_available else "cpu"
+        raise EngineError(f"ASR runtime is not usable: {cuda_status.detail}")
+
+    fw_device = str(runtime_summary["resolved_device"])
+    n_threads = int(runtime_summary["cpu_threads"])
+    compute_type = str(runtime_summary["compute_type_resolved"])
+
+    if runtime_summary["device_preference"] == "auto":
         if fw_device == "cpu":
             if cuda_status.driver_detected:
                 logger.warning(
@@ -83,25 +121,21 @@ def create_local_model(settings: VociferousSettings):
             else:
                 logger.info("ASR auto device resolved to CPU: %s", cuda_status.detail)
 
-    # int8 on GPU requires explicit Tensor Core GEMM support and can hang silently
-    # without it. float16 on CPU is also bogus, so normalize that to float32.
-    raw_compute_type = settings.model.compute_type
-    if fw_device == "cuda" and raw_compute_type == "int8":
-        compute_type = "float16"
-    elif fw_device == "cpu" and raw_compute_type in {"float16", "bfloat16"}:
-        compute_type = "float32"
+    raw_compute_type = str(runtime_summary["compute_type_requested"])
+    if fw_device == "cpu" and compute_type != raw_compute_type:
         logger.warning(
-            "ASR compute_type %s is not supported on CPU; using float32 instead.",
+            "ASR compute_type %s is not supported on CPU; using %s instead.",
             raw_compute_type,
+            compute_type,
         )
-    else:
-        compute_type = raw_compute_type
 
     logger.info(
-        "Loading faster-whisper model from %s (cpu_threads=%d, device_pref=%s, resolved_device=%s, compute_type=%s, cuda_detail=%s)...",
+        "Loading faster-whisper model from %s (model_id=%s, language=%s, cpu_threads=%d, device_pref=%s, resolved_device=%s, compute_type=%s, cuda_detail=%s)...",
         model_dir,
+        runtime_summary["model_id"],
+        runtime_summary["language"],
         n_threads,
-        device_pref,
+        runtime_summary["device_preference"],
         fw_device,
         compute_type,
         cuda_status.detail,
@@ -122,6 +156,11 @@ def create_local_model(settings: VociferousSettings):
 
     elapsed = time.perf_counter() - start
     logger.info("Whisper model loaded in %.2fs", elapsed)
+
+    try:
+        setattr(model, "_vociferous_runtime_summary", runtime_summary)
+    except Exception:
+        logger.debug("Could not attach runtime summary to Whisper model", exc_info=True)
 
     return model
 
@@ -169,6 +208,7 @@ def transcribe(
 
     try:
         audio_float: NDArray[np.float32] = clean_audio
+        runtime_summary = getattr(local_model, "_vociferous_runtime_summary", None)
 
         start = time.perf_counter()
         estimated_audio_seconds = len(audio_data) / AudioConfig.DEFAULT_SAMPLE_RATE
@@ -211,12 +251,28 @@ def transcribe(
 
         elapsed = time.perf_counter() - start
         transcription_time_ms = int(elapsed * 1000)
+        realtime_multiplier = estimated_audio_seconds / elapsed if elapsed > 0 else 0.0
         logger.info(
-            "Transcription completed in %.2fs (%d segments, speech=%dms)",
+            "Transcription completed in %.2fs (audio=%.2fs, realtime=%.2fx, segments=%d, speech=%dms)",
             elapsed,
+            estimated_audio_seconds,
+            realtime_multiplier,
             len(segment_texts),
             speech_duration_ms,
         )
+
+        if estimated_audio_seconds >= 5.0 and realtime_multiplier <= 1.0:
+            logger.warning(
+                "Slow ASR run detected (audio=%.2fs, wall=%.2fs, realtime=%.2fx, model=%s, resolved_device=%s, compute_type=%s, cpu_threads=%s, language=%s)",
+                estimated_audio_seconds,
+                elapsed,
+                realtime_multiplier,
+                (runtime_summary or {}).get("model_id", settings.model.model),
+                (runtime_summary or {}).get("resolved_device", settings.model.device),
+                (runtime_summary or {}).get("compute_type_resolved", settings.model.compute_type),
+                (runtime_summary or {}).get("cpu_threads", settings.model.n_threads),
+                (runtime_summary or {}).get("language", language),
+            )
 
         return post_process_transcription(transcription, settings), speech_duration_ms, transcription_time_ms
 

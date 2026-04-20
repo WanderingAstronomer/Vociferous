@@ -8,11 +8,19 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import platform
 import sys
 from logging.handlers import RotatingFileHandler
+from typing import TYPE_CHECKING, Any
 
+from src.core.constants import APP_VERSION
+from src.core.cuda_runtime import detect_cuda_runtime
 from src.core.exceptions import ConfigError
 from src.core.resource_manager import ResourceManager
+
+if TYPE_CHECKING:
+    from src.core.settings import VociferousSettings
 
 # Log file configuration
 LOG_DIR = ResourceManager.get_user_log_dir()
@@ -23,6 +31,87 @@ BACKUP_COUNT = 3  # Keep 3 rotated log files
 
 # Module-level logger
 logger = logging.getLogger(__name__)
+
+
+def _detect_cpu_details() -> dict[str, Any]:
+    """Return best-effort CPU details without hard depending on psutil."""
+    processor = platform.processor() or platform.uname().processor or ""
+
+    if not processor and platform.system() == "Linux":
+        try:
+            with open("/proc/cpuinfo", encoding="utf-8") as cpuinfo:
+                for line in cpuinfo:
+                    if line.lower().startswith("model name"):
+                        processor = line.split(":", 1)[1].strip()
+                        break
+        except OSError:
+            pass
+
+    details: dict[str, Any] = {
+        "model": processor or platform.machine(),
+        "machine": platform.machine(),
+        "logical_cores": os.cpu_count() or 0,
+    }
+
+    try:
+        import psutil
+
+        physical = psutil.cpu_count(logical=False)
+        if physical is not None:
+            details["physical_cores"] = physical
+    except Exception:
+        pass
+
+    return details
+
+
+def build_support_diagnostics_snapshot(
+    settings: "VociferousSettings",
+    *,
+    transcript_count: int | None = None,
+) -> dict[str, Any]:
+    """Collect a support-safe startup snapshot for persistent logs."""
+    from src.services.slm_runtime import describe_slm_runtime
+    from src.services.transcription_service import describe_asr_runtime
+
+    cuda_status = detect_cuda_runtime()
+    snapshot: dict[str, Any] = {
+        "app": {
+            "version": APP_VERSION,
+            "log_file": str(LOG_FILE),
+            "log_dir": str(LOG_DIR),
+        },
+        "platform": {
+            "system": platform.system(),
+            "release": platform.release(),
+            "machine": platform.machine(),
+        },
+        "python": {
+            "version": platform.python_version(),
+            "implementation": platform.python_implementation(),
+        },
+        "cpu": _detect_cpu_details(),
+        "gpu": {
+            "driver_detected": cuda_status.driver_detected,
+            "cuda_available": cuda_status.cuda_available,
+            "cuda_device_count": cuda_status.cuda_device_count,
+            "gpu_name": cuda_status.gpu_name,
+            "vram_total_mb": cuda_status.vram_total_mb,
+            "vram_free_mb": cuda_status.vram_free_mb,
+            "detail": cuda_status.detail,
+        },
+        "asr": describe_asr_runtime(settings, cuda_status=cuda_status),
+        "slm": describe_slm_runtime(settings, cuda_status=cuda_status),
+    }
+    if transcript_count is not None:
+        snapshot["transcripts"] = {"count": transcript_count}
+    return snapshot
+
+
+def log_support_diagnostics_snapshot(settings: "VociferousSettings", *, transcript_count: int | None = None) -> None:
+    """Emit a one-shot diagnostics snapshot to the persistent log."""
+    snapshot = build_support_diagnostics_snapshot(settings, transcript_count=transcript_count)
+    logger.info("Support diagnostics snapshot", extra={"context": snapshot})
 
 
 class AgentFriendlyFormatter(logging.Formatter):

@@ -296,3 +296,41 @@ class TestCreateLocalModelRuntimeResolution:
         ):
             with pytest.raises(EngineError, match="CUDA is not usable: CTranslate2 CUDA probe failed"):
                 create_local_model(settings)
+
+
+class TestTranscriptionTimingLogs:
+    @staticmethod
+    def _make_fake_model(text: str = "Hello world.") -> MagicMock:
+        seg = MagicMock()
+        seg.text = text
+        seg.start = 0.0
+        seg.end = 1.0
+        info = MagicMock()
+        model = MagicMock()
+        model.transcribe.return_value = (iter([seg]), info)
+        model._vociferous_runtime_summary = {
+            "model_id": "large-v3-turbo-int8",
+            "resolved_device": "cpu",
+            "compute_type_resolved": "float32",
+            "cpu_threads": 4,
+            "language": "en",
+        }
+        return model
+
+    @staticmethod
+    def _make_fake_pipeline() -> MagicMock:
+        pipeline = MagicMock()
+        pipeline.process.side_effect = lambda audio, **kw: audio.astype(np.float32)
+        return pipeline
+
+    def test_slow_asr_run_logs_warning_context(self, fresh_settings, caplog):
+        model = self._make_fake_model()
+        pipeline = self._make_fake_pipeline()
+        audio = np.zeros(16_000 * 8, dtype=np.int16)
+
+        with patch("src.services.transcription_service.time.perf_counter", side_effect=[0.0, 10.0]):
+            transcribe(audio, fresh_settings, local_model=model, audio_pipeline=pipeline)
+
+        assert "Slow ASR run detected" in caplog.text
+        assert "realtime=0.80x" in caplog.text
+        assert "resolved_device=cpu" in caplog.text

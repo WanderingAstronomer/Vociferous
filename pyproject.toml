@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vociferous"
-version = "6.4.1"
+dynamic = ["version"]
 description = "Cross-platform speech-to-text with offline transcription and SLM refinement"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -61,6 +61,9 @@ dev = [
 
 [project.scripts]
 vociferous = "src.main:main"
+
+[tool.hatch.version]
+path = "src/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]

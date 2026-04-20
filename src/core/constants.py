@@ -4,38 +4,9 @@ Core Application Constants.
 Configuration values for audio, timing, and system limits that do not depend on UI.
 """
 
-import importlib.metadata
-import logging
-import tomllib
 from dataclasses import dataclass
-from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
-
-def _resolve_app_version() -> str:
-    """Resolve app version, preferring pyproject.toml as the source of truth."""
-    try:
-        root = Path(__file__).resolve().parents[2]
-        pyproject_path = root / "pyproject.toml"
-        if pyproject_path.is_file():
-            with pyproject_path.open("rb") as f:
-                data = tomllib.load(f)
-            version = data.get("project", {}).get("version")
-            if isinstance(version, str) and version.strip():
-                return version.strip()
-    except Exception:
-        logger.exception("Failed to read version from pyproject.toml")
-
-    try:
-        return importlib.metadata.version("vociferous")
-    except Exception:
-        logger.exception("Failed to read version from package metadata")
-
-    return "unknown"
-
-
-APP_VERSION = _resolve_app_version()
+from src._version import __version__ as APP_VERSION
 
 
 @dataclass(frozen=True, slots=True)
