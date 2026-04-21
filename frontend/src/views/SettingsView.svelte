@@ -312,6 +312,8 @@
                                 >
                                     {health.gpu?.gpu_name || "Detected GPU"} is visible to the driver, but CTranslate2 cannot
                                     use CUDA yet. Vociferous will fall back to CPU until you install a usable CUDA 12 runtime.
+                                    CTranslate2 currently ships against CUDA 12 only — a CUDA 13 toolchain will not work with
+                                    this build.
                                 </div>
                                 {#if health.gpu?.detail}
                                     <div

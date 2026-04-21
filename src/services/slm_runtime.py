@@ -79,7 +79,7 @@ class SLMRuntime:
         self._lock = threading.Lock()
         self._runtime_summary: dict[str, object] | None = None
 
-        # Callbacks (replace PyQt signals)
+        # Lifecycle callbacks invoked from the SLM worker thread.
         self._on_state_changed = on_state_changed
         self._on_error = on_error
         self._on_text_ready = on_text_ready

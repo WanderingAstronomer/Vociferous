@@ -11,32 +11,13 @@ from datetime import datetime
 from typing import TYPE_CHECKING, TypedDict
 
 from src.core.text_analysis import compute_text_metrics
+from src.core.text_analysis import count_fillers as _count_fillers
 
 if TYPE_CHECKING:
     from src.database.db import TranscriptDB
 
 _SPEAKING_WPM = 150
 _TYPING_WPM = 40
-
-_FILLER_SINGLE: frozenset[str] = frozenset(
-    {
-        "um",
-        "uh",
-        "uhm",
-        "umm",
-        "er",
-        "err",
-        "like",
-        "basically",
-        "literally",
-        "actually",
-        "so",
-        "well",
-        "right",
-        "okay",
-    }
-)
-_FILLER_MULTI: tuple[str, ...] = ("you know", "i mean", "kind of", "sort of")
 
 
 class InsightStats(TypedDict):
@@ -62,29 +43,6 @@ class InsightStats(TypedDict):
     today_count: int
     today_words: int
     days_active_this_week: int
-
-
-def _count_fillers(text: str) -> int:
-    """Count filler words/phrases in a text string."""
-    if not text:
-        return 0
-    lower = text.lower()
-    count = 0
-
-    # Multi-word fillers
-    for phrase in _FILLER_MULTI:
-        idx = 0
-        while (idx := lower.find(phrase, idx)) != -1:
-            count += 1
-            idx += len(phrase)
-
-    # Single-word fillers
-    for w in lower.split():
-        cleaned = w.strip(".,!?;:'\"()[]{}").lower()
-        if cleaned and cleaned in _FILLER_SINGLE:
-            count += 1
-
-    return count
 
 
 def _estimate_speech_seconds(word_count: int) -> float:

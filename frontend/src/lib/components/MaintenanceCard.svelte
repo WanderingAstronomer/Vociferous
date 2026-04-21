@@ -186,7 +186,8 @@
                 NVIDIA driver detected{#if health.gpu?.gpu_name}
                     for {health.gpu.gpu_name}{/if}, but CTranslate2 cannot use CUDA yet. Install CUDA 12 plus cuDNN 9,
                 or install the Python runtime packages nvidia-cuda-runtime-cu12, nvidia-cuda-nvrtc-cu12,
-                nvidia-cublas-cu12, and nvidia-cudnn-cu12 into the venv, then restart the engine.
+                nvidia-cublas-cu12, and nvidia-cudnn-cu12 into the venv, then restart the engine. CUDA 13 toolchains are
+                not supported by this CTranslate2 build.
             </div>
         </div>
     {/if}

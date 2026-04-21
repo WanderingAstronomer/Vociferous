@@ -67,6 +67,10 @@ class RecordingSettings(BaseModel):
     min_duration_ms: int = 100
     max_recording_minutes: float = 60.0
     audio_cache_minutes: float = 60.0
+    # ISS-130: VAD sensitivity preset. "normal" keeps the default Silero
+    # thresholds; "whisper" lowers them and shortens minimum speech windows
+    # so whispered or low-energy speech survives the pipeline.
+    vad_sensitivity: str = "normal"
 
 
 class UserSettings(BaseModel):

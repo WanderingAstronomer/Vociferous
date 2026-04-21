@@ -90,6 +90,35 @@ class TestRMSNormalize:
 
 
 # ======================================================================
+# Sensitivity Presets (ISS-130)
+# ======================================================================
+
+
+class TestSensitivityPresets:
+    """Whisper-mode VAD lowers thresholds and shortens minimum speech windows."""
+
+    def test_normal_preset_keeps_class_defaults(self):
+        pipe = AudioPipeline(sensitivity="normal")
+        # Instance attrs should not shadow class constants.
+        assert "_SPEECH_THRESHOLD" not in pipe.__dict__
+        assert pipe._SPEECH_THRESHOLD == AudioPipeline._SPEECH_THRESHOLD
+        assert pipe.sensitivity == "normal"
+
+    def test_whisper_preset_lowers_thresholds(self):
+        pipe = AudioPipeline(sensitivity="whisper")
+        assert pipe._SPEECH_THRESHOLD < AudioPipeline._SPEECH_THRESHOLD
+        assert pipe._SPEECH_EXIT_THRESHOLD < AudioPipeline._SPEECH_EXIT_THRESHOLD
+        assert pipe._MIN_SPEECH_CHUNKS < AudioPipeline._MIN_SPEECH_CHUNKS
+        assert pipe._PRE_SPEECH_PAD_CHUNKS > AudioPipeline._PRE_SPEECH_PAD_CHUNKS
+        assert pipe.sensitivity == "whisper"
+
+    def test_unknown_preset_falls_back_to_normal(self):
+        pipe = AudioPipeline(sensitivity="ludicrous")
+        assert pipe.sensitivity == "normal"
+        assert pipe._SPEECH_THRESHOLD == AudioPipeline._SPEECH_THRESHOLD
+
+
+# ======================================================================
 # Stage 3: Highpass filter
 # ======================================================================
 

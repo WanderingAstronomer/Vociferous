@@ -146,3 +146,53 @@ def compute_text_metrics(text: str) -> dict:
         "syllables_per_word": round(total_syllables / word_count, 2) if word_count else 0.0,
     }
 
+
+# ---------------------------------------------------------------------------
+# Filler word detection (single source of truth — ISS-108)
+# ---------------------------------------------------------------------------
+#
+# The frontend mirrors these constants in `frontend/src/lib/textAnalysis.ts`.
+# Drift between the two is guarded by a contract test in
+# `tests/contracts/test_text_analysis_parity.py`. If you change either side,
+# the test will fail until both are updated.
+
+FILLER_SINGLE: frozenset[str] = frozenset(
+    {
+        "um",
+        "uh",
+        "uhm",
+        "umm",
+        "er",
+        "err",
+        "like",
+        "basically",
+        "literally",
+        "actually",
+        "so",
+        "well",
+        "right",
+        "okay",
+    }
+)
+FILLER_MULTI: tuple[str, ...] = ("you know", "i mean", "kind of", "sort of")
+
+
+def count_fillers(text: str) -> int:
+    """Count filler words and multi-word filler phrases in a text string."""
+    if not text:
+        return 0
+    lower = text.lower()
+    count = 0
+
+    for phrase in FILLER_MULTI:
+        idx = 0
+        while (idx := lower.find(phrase, idx)) != -1:
+            count += 1
+            idx += len(phrase)
+
+    for w in lower.split():
+        cleaned = w.strip(".,!?;:'\"()[]{}").lower()
+        if cleaned and cleaned in FILLER_SINGLE:
+            count += 1
+
+    return count

@@ -236,7 +236,7 @@ launch where you can download models via the UI.
 CPU inference works out of the box. For GPU acceleration with NVIDIA cards:
 
 1. Install the latest [NVIDIA Game Ready or Studio driver](https://www.nvidia.com/download/index.aspx)
-2. Install a usable CUDA 12 runtime yourself. Vociferous does **not** assume it can do this reliably for you on Windows. Use one of these paths:
+2. Install a usable CUDA 12 runtime yourself. Vociferous does **not** assume it can do this reliably for you on Windows. CTranslate2 currently ships against CUDA 12 — do not install CUDA 13, it is not yet supported by this build. Use one of these paths:
   - Recommended system install: [CUDA Toolkit 12.x](https://developer.nvidia.com/cuda-downloads) plus [cuDNN 9](https://developer.nvidia.com/cudnn-downloads)
   - Python-only runtime inside the venv:
 

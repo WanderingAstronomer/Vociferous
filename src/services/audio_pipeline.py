@@ -63,9 +63,32 @@ class AudioPipeline:
     # ── Inter-segment silence ──
     _INTER_SEGMENT_SILENCE_MS: int = 300  # silence insert between split segments
 
-    def __init__(self, sample_rate: int = 16000) -> None:
+    # Sensitivity presets (ISS-130). The class constants above are the
+    # "normal" defaults; "whisper" lowers thresholds and shortens minimum
+    # speech windows so quiet speech and soft consonant attacks survive VAD.
+    _SENSITIVITY_PRESETS: dict[str, dict[str, float]] = {
+        "normal": {},
+        "whisper": {
+            "_SPEECH_THRESHOLD": 0.30,
+            "_SPEECH_EXIT_THRESHOLD": 0.20,
+            "_MIN_SPEECH_CHUNKS": 4,
+            "_PRE_SPEECH_PAD_CHUNKS": 10,
+        },
+    }
+
+    def __init__(self, sample_rate: int = 16000, sensitivity: str = "normal") -> None:
         self.sample_rate = sample_rate
         self._session: Any = None  # onnxruntime.InferenceSession (deferred import)
+
+        # Apply sensitivity preset by shadowing class constants with
+        # instance attributes. Unknown presets fall back to "normal" silently
+        # because misconfigured sensitivity should not crash the recorder.
+        preset = self._SENSITIVITY_PRESETS.get(sensitivity, {})
+        if not preset and sensitivity != "normal":
+            logger.warning("Unknown VAD sensitivity preset %r; falling back to 'normal'", sensitivity)
+        self.sensitivity = sensitivity if preset or sensitivity == "normal" else "normal"
+        for attr, value in preset.items():
+            setattr(self, attr, value)
 
         # Pre-compute highpass filter coefficient
         rc = 1.0 / (2.0 * np.pi * self._HIGHPASS_CUTOFF)
@@ -168,9 +191,7 @@ class AudioPipeline:
     # Pipeline stages
     # ------------------------------------------------------------------
 
-    def _rms_normalize(
-        self, audio: NDArray[np.float32], current_rms: float | None = None
-    ) -> NDArray[np.float32]:
+    def _rms_normalize(self, audio: NDArray[np.float32], current_rms: float | None = None) -> NDArray[np.float32]:
         """Scale audio to a consistent RMS level.
 
         Ensures quiet mic recordings and loud recordings enter downstream

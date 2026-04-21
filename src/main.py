@@ -1,8 +1,8 @@
 """
-Vociferous v4.0 — Main Entry Point.
+Vociferous — Main Entry Point.
 
-Starts Litestar API server + pywebview native window.
-Replaces PyQt6 QApplication bootstrap.
+Starts the Litestar API server in a background thread and the pywebview native
+window on the main thread.
 """
 
 import faulthandler

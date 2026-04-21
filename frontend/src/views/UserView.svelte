@@ -4,7 +4,8 @@
     import { toast } from "../lib/toast.svelte";
     import { ws } from "../lib/ws";
     import { formatCount } from "../lib/formatters";
-    import { computeTextMetrics, fleschKincaidGrade, countFillers, countFillersByWord } from "../lib/textAnalysis";
+    import * as metrics from "../lib/userViewMetrics";
+    import { DEFAULT_TYPING_WPM } from "../lib/userViewMetrics";
     import StatCard from "../lib/components/StatCard.svelte";
     import ActivityHeatmap from "../lib/components/ActivityHeatmap.svelte";
     import AnalyticsParagraph from "../lib/components/AnalyticsParagraph.svelte";
@@ -35,8 +36,6 @@
     } from "lucide-svelte";
 
     /* ── Constants ── */
-    const SPEAKING_SPEED_WPM = 150;
-    const DEFAULT_TYPING_WPM = 40;
     const TRANSCRIPT_EXPORT_LIMIT = 10000;
 
     /* ── Tabs ── */
@@ -56,238 +55,61 @@
     let healthInfo: { version: string; transcripts: number } | null = $state(null);
 
     /* ── Derived Metrics ── */
-    function safeText(e: { text: string }): string {
-        return e.text || "";
-    }
-
     let hasData = $derived(entries.length > 0);
     let count = $derived(entries.length);
-    let totalWords = $derived(entries.reduce((s, e) => s + safeText(e).split(/\s+/).filter(Boolean).length, 0));
-
-    let recordedSeconds = $derived.by(() => {
-        const dur = entries.reduce((s, e) => s + (e.duration_ms || 0), 0) / 1000;
-        if (dur > 0) return dur;
-        if (totalWords > 0) return (totalWords / SPEAKING_SPEED_WPM) * 60;
-        return 0;
-    });
-
-    let typingSeconds = $derived((totalWords / typingWpm) * 60);
-    let timeSavedSeconds = $derived(Math.max(0, typingSeconds - recordedSeconds));
+    let totalWords = $derived(metrics.totalWords(entries));
+    let recordedSeconds = $derived(metrics.recordedSeconds(entries, totalWords));
+    let typingSeconds = $derived(metrics.typingSeconds(totalWords, typingWpm));
+    let timeSavedSeconds = $derived(metrics.timeSavedSeconds(totalWords, typingWpm, recordedSeconds));
     let avgSeconds = $derived(count > 0 ? recordedSeconds / count : 0);
 
     /* ── Speech time & WPM (using VAD speech_duration_ms) ── */
-    let totalSpeechSeconds = $derived.by(() => {
-        let total = 0;
-        for (const e of entries) {
-            if (e.speech_duration_ms > 0) {
-                total += e.speech_duration_ms / 1000;
-            } else if (e.duration_ms > 0) {
-                const words = safeText(e).split(/\s+/).filter(Boolean).length;
-                total += Math.min((words / SPEAKING_SPEED_WPM) * 60, e.duration_ms / 1000);
-            }
-        }
-        return total;
-    });
-
-    let avgWpm = $derived(totalSpeechSeconds > 0 ? Math.round((totalWords / totalSpeechSeconds) * 60) : 0);
-
-    let totalSilence = $derived.by(() => {
-        let total = 0;
-        for (const e of entries) {
-            if (e.duration_ms && e.duration_ms > 0) {
-                const dur = e.duration_ms / 1000;
-                const speech = (e.speech_duration_ms || 0) / 1000;
-                total += Math.max(0, dur - speech);
-            }
-        }
-        return total;
-    });
-
-    let avgSilence = $derived.by(() => {
-        let total = 0;
-        let withDuration = 0;
-        for (const e of entries) {
-            if (e.duration_ms && e.duration_ms > 0) {
-                const dur = e.duration_ms / 1000;
-                const speech = (e.speech_duration_ms || 0) / 1000;
-                total += Math.max(0, dur - speech);
-                withDuration++;
-            }
-        }
-        return withDuration > 0 ? total / withDuration : 0;
-    });
-
-    let fillerCount = $derived.by(() => {
-        let total = 0;
-        for (const e of entries) {
-            total += countFillers(safeText(e));
-        }
-        return total;
-    });
+    let totalSpeechSeconds = $derived(metrics.totalSpeechSeconds(entries));
+    let avgWpm = $derived(metrics.avgWpm(totalWords, totalSpeechSeconds));
+    let totalSilence = $derived(metrics.totalSilenceSeconds(entries));
+    let avgSilence = $derived(metrics.avgSilenceSeconds(entries));
+    let fillerCount = $derived(metrics.fillerCount(entries));
 
     /* ── Filler breakdown (top 5 per-word counts) ── */
-    let fillerBreakdown = $derived.by(() => {
-        const agg: Record<string, number> = {};
-        for (const e of entries) {
-            for (const [word, wc] of Object.entries(countFillersByWord(safeText(e)))) {
-                agg[word] = (agg[word] || 0) + wc;
-            }
-        }
-        return Object.entries(agg)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 5);
-    });
-
+    let fillerBreakdown = $derived(metrics.fillerBreakdown(entries));
     let fillerBreakdownMax = $derived(fillerBreakdown.length > 0 ? fillerBreakdown[0][1] : 0);
 
     /* ── Vocabulary diversity ── */
-    let vocabRatio = $derived.by(() => {
-        const allWords: string[] = [];
-        for (const e of entries) {
-            for (const w of safeText(e).toLowerCase().split(/\s+/)) {
-                const c = w.replace(/^[.,!?;:'"()\[\]{}]+|[.,!?;:'"()\[\]{}]+$/g, "");
-                if (c) allWords.push(c);
-            }
-        }
-        if (allWords.length === 0) return 0;
-        return new Set(allWords).size / allWords.length;
-    });
+    let vocabRatio = $derived(metrics.vocabularyRatio(entries));
 
     /* ── Streaks (consecutive active days) ── */
-    let streaks = $derived.by(() => {
-        const dates = new Set<number>();
-        for (const e of entries) {
-            try {
-                const d = new Date(e.created_at);
-                if (!isNaN(d.getTime())) {
-                    // Days since epoch (UTC)
-                    dates.add(Math.floor(d.getTime() / 86400000));
-                }
-            } catch {
-                /* skip */
-            }
-        }
-
-        let current = 0;
-        let longest = 0;
-
-        if (dates.size > 0) {
-            const today = Math.floor(Date.now() / 86400000);
-            let d = today;
-            while (dates.has(d)) {
-                current++;
-                d--;
-            }
-
-            const sorted = [...dates].sort((a, b) => a - b);
-            let run = 1;
-            for (let i = 1; i < sorted.length; i++) {
-                if (sorted[i] === sorted[i - 1] + 1) {
-                    run++;
-                } else {
-                    longest = Math.max(longest, run);
-                    run = 1;
-                }
-            }
-            longest = Math.max(longest, run);
-        }
-
-        return { current, longest };
-    });
+    let streaks = $derived(metrics.streaks(entries));
 
     /* ── Verbatim vs Refined Metrics ── */
-    let refinedEntries = $derived(entries.filter((e) => e.normalized_text && e.normalized_text !== e.raw_text));
+    let refinedEntries = $derived(metrics.refinedEntries(entries));
     let refinedCount = $derived(refinedEntries.length);
     let hasRefinements = $derived(refinedCount > 0);
 
     /* Filler count across ALL transcripts (for Speech Quality section) */
-    let verbatimFillerCount = $derived.by(() => {
-        let total = 0;
-        for (const e of entries) {
-            total += countFillers(e.raw_text || "");
-        }
-        return total;
-    });
+    let verbatimFillerCount = $derived(metrics.verbatimFillerCount(entries));
 
     /* Refinement Impact — compare the SAME transcripts before/after */
-    let rawFillersInRefined = $derived.by(() => {
-        let total = 0;
-        for (const e of refinedEntries) {
-            total += countFillers(e.raw_text || "");
-        }
-        return total;
-    });
-
-    let refinedFillerCount = $derived.by(() => {
-        let total = 0;
-        for (const e of refinedEntries) {
-            total += countFillers(e.normalized_text || "");
-        }
-        return total;
-    });
-
+    let rawFillersInRefined = $derived(metrics.rawFillersInRefined(refinedEntries));
+    let refinedFillerCount = $derived(metrics.refinedFillerCount(refinedEntries));
     let fillersRemoved = $derived(rawFillersInRefined - refinedFillerCount);
 
     /* FK Grade — overall verbatim average (all transcripts) */
-    let verbatimAvgFkGrade = $derived.by(() => {
-        const grades = entries.map((e) => fleschKincaidGrade(e.raw_text || "")).filter((g) => g > 0);
-        if (!grades.length) return 0;
-        return Math.round((grades.reduce((s, g) => s + g, 0) / grades.length) * 10) / 10;
-    });
+    let verbatimAvgFkGrade = $derived(metrics.verbatimAvgFkGrade(entries));
 
     /* FK Grade — refined average (refined transcripts' normalized text) */
-    let refinedAvgFkGrade = $derived.by(() => {
-        const grades = refinedEntries.map((e) => fleschKincaidGrade(e.normalized_text || "")).filter((g) => g > 0);
-        if (!grades.length) return 0;
-        return Math.round((grades.reduce((s, g) => s + g, 0) / grades.length) * 10) / 10;
-    });
+    let refinedAvgFkGrade = $derived(metrics.refinedAvgFkGrade(refinedEntries));
 
     /* FK delta — compare same population: raw vs refined for refined transcripts only */
-    let verbatimFkForRefined = $derived.by(() => {
-        const grades = refinedEntries.map((e) => fleschKincaidGrade(e.raw_text || "")).filter((g) => g > 0);
-        if (!grades.length) return 0;
-        return Math.round((grades.reduce((s, g) => s + g, 0) / grades.length) * 10) / 10;
-    });
-
+    let verbatimFkForRefined = $derived(metrics.verbatimFkForRefined(refinedEntries));
     let fkGradeDelta = $derived(hasRefinements ? Math.round((refinedAvgFkGrade - verbatimFkForRefined) * 10) / 10 : 0);
 
     /* ── Processing Performance (transcription + refinement timing) ── */
-    let totalTranscriptionTime = $derived.by(() => {
-        let total = 0;
-        for (const e of entries) total += e.transcription_time_ms || 0;
-        return total / 1000; // seconds
-    });
-
-    let totalRefinementTime = $derived.by(() => {
-        let total = 0;
-        for (const e of entries) total += e.refinement_time_ms || 0;
-        return total / 1000; // seconds
-    });
-
+    let totalTranscriptionTime = $derived(metrics.totalTranscriptionSeconds(entries));
+    let totalRefinementTime = $derived(metrics.totalRefinementSeconds(entries));
     let hasTimingData = $derived(totalTranscriptionTime > 0 || totalRefinementTime > 0);
-
-    let avgTranscriptionSpeedX = $derived(
-        totalTranscriptionTime > 0 && recordedSeconds > 0
-            ? Math.round((recordedSeconds / totalTranscriptionTime) * 10) / 10
-            : 0,
-    );
-
-    let avgRefinementWpm = $derived.by(() => {
-        if (totalRefinementTime <= 0) return 0;
-        const refinedWords = refinedEntries.reduce((s, e) => s + safeText(e).split(/\s+/).filter(Boolean).length, 0);
-        return Math.round(refinedWords / (totalRefinementTime / 60));
-    });
-
-    /* Refinement time saved: manual editing time minus actual SLM time.
-       Manual editing speed ≈ typing_wpm / 2 (reading + restructuring). */
-    let refinementTimeSaved = $derived.by(() => {
-        if (!hasRefinements) return 0;
-        const refinedWords = refinedEntries.reduce((s, e) => s + safeText(e).split(/\s+/).filter(Boolean).length, 0);
-        if (refinedWords === 0) return 0;
-        const manualEditWpm = Math.max(1, typingWpm / 2);
-        const manualSeconds = (refinedWords / manualEditWpm) * 60;
-        return Math.max(0, manualSeconds - totalRefinementTime);
-    });
+    let avgTranscriptionSpeedX = $derived(metrics.avgTranscriptionSpeedX(recordedSeconds, totalTranscriptionTime));
+    let avgRefinementWpm = $derived(metrics.avgRefinementWpm(refinedEntries, totalRefinementTime));
+    let refinementTimeSaved = $derived(metrics.refinementTimeSaved(refinedEntries, typingWpm, totalRefinementTime));
 
     let titleText = $derived(userName.trim() ? `${userName.trim()}'s Vociferous Journey` : "Your Vociferous Journey");
 

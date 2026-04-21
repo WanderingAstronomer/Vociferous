@@ -146,7 +146,8 @@ class RecordingSession:
             from src.services.audio_pipeline import AudioPipeline
 
             if self._audio_pipeline is None:
-                self._audio_pipeline = AudioPipeline()
+                settings = self._settings_provider()
+                self._audio_pipeline = AudioPipeline(sensitivity=settings.recording.vad_sensitivity)
             self._audio_pipeline._load_vad_model()
             logger.info("Silero VAD model preloaded")
         except Exception:
@@ -348,7 +349,7 @@ class RecordingSession:
                 if self._audio_pipeline is None:
                     from src.services.audio_pipeline import AudioPipeline
 
-                    self._audio_pipeline = AudioPipeline()
+                    self._audio_pipeline = AudioPipeline(sensitivity=settings.recording.vad_sensitivity)
 
                 text, speech_duration_ms, _transcription_time_ms = transcribe(
                     int16_audio,
@@ -460,7 +461,7 @@ class RecordingSession:
             if self._audio_pipeline is None:
                 from src.services.audio_pipeline import AudioPipeline
 
-                self._audio_pipeline = AudioPipeline()
+                self._audio_pipeline = AudioPipeline(sensitivity=settings.recording.vad_sensitivity)
 
             text, speech_duration_ms, transcription_time_ms = transcribe(
                 audio_data,
@@ -502,9 +503,13 @@ class RecordingSession:
             )
 
             # Schedule analytics insight generation if a threshold has been crossed.
+            # Pass the new transcript's word count so InsightManager can apply
+            # the explicit per-transcript minimum (ISS-119) instead of relying on
+            # ambiguous aggregate-side effects.
             insight_manager = self._insight_manager_provider()
             if insight_manager is not None:
-                insight_manager.maybe_schedule()
+                new_words = len(text.split())
+                insight_manager.maybe_schedule(new_transcript_words=new_words)
 
             # Schedule SLM-based auto-titling for the new transcript.
             # Skip initial title when auto-refine is enabled — refinement

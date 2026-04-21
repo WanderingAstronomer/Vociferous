@@ -36,10 +36,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Minimum word count for a meaningful transcript to trigger threshold check.
+# Per ISS-119: enforced explicitly at scheduling time so trivially short
+# transcripts cannot drag insight regeneration around.
 _MIN_TRANSCRIPT_WORDS = 100
 
 # Default daily word-count thresholds at which insight regeneration fires.
 _DEFAULT_THRESHOLDS: tuple[int, ...] = (500, 1000, 2500, 5000, 10_000)
+
+# Per ISS-122: between bracket crossings the cache can still go stale when
+# users keep talking. These two constants form a growth-and-time freshness
+# rule that runs in addition to bracket crossings.
+_FRESHNESS_GROWTH_WORDS = 250
+_FRESHNESS_MIN_INTERVAL_S = 120.0
 
 
 class InsightManager:
@@ -91,17 +99,29 @@ class InsightManager:
         """Return whatever is in the cache right now, or empty string."""
         return self._cache.get("text", "")
 
-    def maybe_schedule(self) -> None:
+    def maybe_schedule(self, new_transcript_words: int | None = None) -> None:
         """
         Called after every transcription_complete and when SLM becomes idle.
         Checks whether a threshold has been crossed and, if so, starts a
         background thread to regenerate.
 
         Conditions to proceed:
-        1. today_words has crossed a threshold since last generation.
-        2. SLM runtime is loaded and READY.
-        3. No generation is already in flight.
+        1. If `new_transcript_words` is given, it must be >= _MIN_TRANSCRIPT_WORDS.
+           This is the explicit per-transcript gate (ISS-119) that prevents a
+           burst of trivially short transcripts from poking the SLM.
+        2. today_words has crossed a threshold OR the freshness growth rule
+           has tripped since last generation (ISS-122).
+        3. SLM runtime is loaded and READY.
+        4. No generation is already in flight.
         """
+        if new_transcript_words is not None and new_transcript_words < _MIN_TRANSCRIPT_WORDS:
+            logger.debug(
+                "Insight: skipping schedule, transcript word count %d below minimum %d",
+                new_transcript_words,
+                _MIN_TRANSCRIPT_WORDS,
+            )
+            return
+
         with self._lock:
             if self._generating:
                 logger.debug("Insight: generation already in flight, skipping")
@@ -142,7 +162,8 @@ class InsightManager:
     # ── Internal ─────────────────────────────────────────────────────────────
 
     def _should_regenerate(self, today_words: int) -> bool:
-        """Return True if today_words has crossed a threshold since last generation."""
+        """Return True if today_words has crossed a threshold or the
+        growth-and-time freshness rule (ISS-122) has tripped since last generation."""
         # No cache at all → always generate.
         if not self._cache.get("text"):
             return True
@@ -163,7 +184,20 @@ class InsightManager:
             else:
                 break
 
-        return current_bracket > last_bracket
+        if current_bracket > last_bracket:
+            return True
+
+        # Growth-and-time freshness rule: between bracket crossings the
+        # cached insight can lag obvious activity. Refresh once enough new
+        # words have accumulated AND enough wall time has passed since the
+        # last generation. The time gate keeps this from spamming.
+        growth = today_words - self._last_generated_today_words
+        if growth >= _FRESHNESS_GROWTH_WORDS:
+            generated_at = float(self._cache.get("generated_at", 0.0) or 0.0)
+            if generated_at <= 0.0 or (time.time() - generated_at) >= _FRESHNESS_MIN_INTERVAL_S:
+                return True
+
+        return False
 
     @staticmethod
     def _fmt_duration(seconds: float) -> str:

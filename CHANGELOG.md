@@ -1,5 +1,23 @@
 # Vociferous Changelog
 
+## v6.5.0 — VAD Sensitivity, Insight Freshness, Metrics Extraction & Text Analysis Unification
+
+**Date:** 2026-04-20
+**Status:** Feature / Refactor
+**Issues:** ISS-108, ISS-116, ISS-119, ISS-120, ISS-122, ISS-126, ISS-130
+
+### Added
+- **VAD sensitivity preset** (ISS-130) — New `recording.vad_sensitivity` setting (`"normal"` | `"whisper"`). The `"whisper"` preset lowers speech detection threshold (0.30), exit threshold (0.20), and minimum speech chunk count (4) while widening pre-speech padding (10 chunks), improving pickup of low-energy and whispered speech. Wired through all three `AudioPipeline` construction sites.
+- **Per-transcript insight gate** (ISS-119) — `InsightManager.maybe_schedule()` now accepts `new_transcript_words` and hard-skips regeneration for transcripts under 100 words. Previously the constant `_MIN_TRANSCRIPT_WORDS = 100` was defined but never enforced.
+- **Growth-based insight freshness** (ISS-122) — `_should_regenerate()` gains a second trigger path: if the transcript has grown by ≥ 250 words (`_FRESHNESS_GROWTH_WORDS`) AND the cached insight is older than 120 s (`_FRESHNESS_MIN_INTERVAL_S`), a regen fires regardless of bracket position. Prevents stale analytics paragraphs during long continuous-recording sessions.
+- **`userViewMetrics.ts` utility module** (ISS-116) — New `frontend/src/lib/userViewMetrics.ts` (~230 lines) of pure, testable functions covering: total words / recorded seconds / typing seconds / time saved / speech & silence stats / average WPM / filler counts & breakdown / vocabulary ratio / streaks / refined-entry counts / FK grade variants / transcription & refinement speed metrics. `UserView.svelte` replaced ~200 lines of inline `$derived` / `$derived.by` blocks with single-line `metrics.*` calls.
+- **Filler word contract test** (ISS-108) — `tests/contracts/test_text_analysis_parity.py` parses `frontend/src/lib/textAnalysis.ts` and asserts the `FILLER_SINGLE` set and `FILLER_MULTI` array match `src/core/text_analysis.py` exactly. Drift now breaks CI before it breaks users.
+
+### Changed
+- **Filler logic consolidated to `text_analysis.py`** (ISS-108) — `FILLER_SINGLE`, `FILLER_MULTI`, and `count_fillers()` moved from `usage_stats.py` into `src/core/text_analysis.py` (the canonical text analysis module). `usage_stats.py` imports from there. Eliminates the second independent filler implementation that had no parity guarantee.
+- **CUDA 13 explicitly unsupported** (ISS-120) — Settings view, Maintenance card, and README now state clearly: "CUDA 13 is not supported by this CTranslate2 build. CUDA 12 is required." Replaces the previous silence that left users with no actionable information.
+- **PyQt6 / Qt6 residue removed** (ISS-126) — Two stale references to the old PyQt6 stack stripped from live source: `src/main.py` module docstring and a comment in `src/services/slm_runtime.py`. Historical `CHANGELOG.md` entries preserved.
+
 ## v6.4.2 — Diagnostics Snapshot, Analytics Contract Cleanup & Legacy DB Bootstrap Fix
 
 **Date:** 2026-04-19
