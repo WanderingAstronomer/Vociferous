@@ -69,12 +69,8 @@ class TestModelRegistry:
         assert m.quant == "int8"
 
     # --- Catalog-wide checks ---
-
-    def test_asr_catalog_not_empty(self):
-        assert len(ASR_MODELS) > 0
-
-    def test_slm_catalog_not_empty(self):
-        assert len(SLM_MODELS) > 0
+    # (test_asr_catalog_not_empty / test_slm_catalog_not_empty deleted in v6.5.1 —
+    # subsumed by test_*_model_ids_match_keys + the default-model canaries above.)
 
     def test_asr_model_ids_match_keys(self):
         for key, model in ASR_MODELS.items():
@@ -112,19 +108,20 @@ class TestModelRegistry:
             assert model.model_file == "model.bin", model.model_file
 
     def test_get_asr_model_found(self):
-        key = next(iter(ASR_MODELS))
-        result = get_asr_model(key)
+        # Use a hardcoded id matching the default-model canary above.
+        # Avoids the circular `next(iter(ASR_MODELS))` lookup.
+        result = get_asr_model("large-v3-turbo-int8")
         assert result is not None
-        assert result.id == key
+        assert result.id == "large-v3-turbo-int8"
 
     def test_get_asr_model_missing(self):
         assert get_asr_model("nonexistent-model") is None
 
     def test_get_slm_model_found(self):
-        key = next(iter(SLM_MODELS))
-        result = get_slm_model(key)
+        # Hardcoded id matching the default SLM canary.
+        result = get_slm_model("qwen4b")
         assert result is not None
-        assert result.id == key
+        assert result.id == "qwen4b"
 
     def test_get_slm_model_missing(self):
         assert get_slm_model("nonexistent-model") is None
@@ -158,10 +155,9 @@ class TestModelRegistry:
         slm_repos = [m.repo for m in SLM_MODELS.values()]
         assert len(slm_repos) == len(set(slm_repos)), "Duplicate SLM repos"
 
-    def test_no_duplicate_repos_per_asr(self):
-        """All ASR models currently come from the same repo — sanity check."""
-        repos = {m.repo for m in ASR_MODELS.values()}
-        assert len(repos) >= 1  # at least one repo
+    # test_no_duplicate_repos_per_asr deleted in v6.5.1 — `len >= 1` was a
+    # vacuous assertion (any non-empty catalog passes) and the docstring lied
+    # about checking duplicates.
 
     def test_size_ordering_within_asr(self):
         """Models should be listed from smallest to largest."""
@@ -331,33 +327,30 @@ class TestDownloadModelFile:
 class TestIntegrityVerification:
     """_compute_sha256, _verify_integrity, and download_model_file with hashes."""
 
-    def test_compute_sha256_known_content(self, tmp_path: Path):
-        """Hash of known content must match pre-computed value."""
-        import hashlib
+    # SHA-256 literals below are the canonical RFC values for the given inputs.
+    # Hardcoding them prevents the previous `hashlib(x) == hashlib(x)` tautology
+    # where the expected value was computed with the very function under test.
+    _SHA256_HELLO_WORLD = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+    _SHA256_EMPTY = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    _SHA256_GOOD_DATA = "341b120cdb1ba34f931a32029be2c1a5e2a73bd75e44bbe1a3c820ce73edbb84"
 
-        content = b"hello world"
-        expected = hashlib.sha256(content).hexdigest()
+    def test_compute_sha256_known_content(self, tmp_path: Path):
+        """Hash of `b\"hello world\"` must match the canonical SHA-256."""
         f = tmp_path / "test.bin"
-        f.write_bytes(content)
-        assert _compute_sha256(f) == expected
+        f.write_bytes(b"hello world")
+        assert _compute_sha256(f) == self._SHA256_HELLO_WORLD
 
     def test_compute_sha256_empty_file(self, tmp_path: Path):
         """Empty file has the well-known SHA-256 of empty bytes."""
-        import hashlib
-
         f = tmp_path / "empty.bin"
         f.write_bytes(b"")
-        assert _compute_sha256(f) == hashlib.sha256(b"").hexdigest()
+        assert _compute_sha256(f) == self._SHA256_EMPTY
 
     def test_verify_integrity_pass(self, tmp_path: Path):
-        """No exception when hash matches."""
-        import hashlib
-
-        content = b"good data"
-        expected = hashlib.sha256(content).hexdigest()
+        """No exception when hash matches a hardcoded literal."""
         f = tmp_path / "ok.bin"
-        f.write_bytes(content)
-        _verify_integrity(f, expected)  # should not raise
+        f.write_bytes(b"good data")
+        _verify_integrity(f, self._SHA256_GOOD_DATA)  # should not raise
         assert f.exists()  # file preserved
 
     def test_verify_integrity_mismatch_deletes_and_raises(self, tmp_path: Path):
@@ -373,12 +366,10 @@ class TestIntegrityVerification:
     @patch("huggingface_hub.hf_hub_download")
     def test_download_with_matching_hash(self, mock_hf: MagicMock, tmp_path: Path):
         """Full pipeline: download + verification passes when hash matches."""
-        import hashlib
-
-        content = b"model weights here"
-        expected_hash = hashlib.sha256(content).hexdigest()
+        # Hardcoded literal for b"model weights here" — see class-level note.
+        expected_hash = "188bf0b27d12c6cb2341d62e5b791ed2f984e0533971e5ed91a26b1f2145effb"
         model_path = tmp_path / "model.bin"
-        model_path.write_bytes(content)
+        model_path.write_bytes(b"model weights here")
         mock_hf.return_value = str(model_path)
 
         result = download_model_file(
@@ -614,8 +605,8 @@ class TestRequirements:
             with pytest.raises(RuntimeError, match="Missing runtime dependencies"):
                 verify_environment_integrity()
 
-    def test_required_dependencies_list_not_empty(self):
-        assert len(REQUIRED_DEPENDENCIES) > 0
+    # test_required_dependencies_list_not_empty deleted in v6.5.1 —
+    # subsumed by the next test which names sentinel deps explicitly.
 
     def test_required_dependencies_contains_core_packages(self):
         """Sanity check: key runtime deps are in the list."""

@@ -289,6 +289,8 @@ class TestExtractSpeech:
 
         A prob of 0.40 is below the entry threshold (0.45) but above the
         exit threshold (0.35), so once in speech state it stays in speech.
+        Verifies that the dip-region samples are included in the output
+        rather than being trimmed away as a non-speech run.
         """
         pipe = AudioPipeline()
         n_chunks = 30
@@ -297,8 +299,13 @@ class TestExtractSpeech:
         probs = [0.9] * 10 + [0.40] * 5 + [0.9] * 10 + [0.1] * 5
         result = pipe._extract_speech(audio, probs)
         assert result is not None
-        # Should get ONE segment (hysteresis keeps it together)
-        # The 0.40 dip doesn't break it because it's above exit threshold
+        # Speech-active span runs chunks 0..24 inclusive (25 chunks). The
+        # output must contain at least that span (no inter-segment silence
+        # insert) plus pre/post padding rolls. If hysteresis failed and the
+        # dip ended the segment, we'd see two shorter segments separated by
+        # a 300ms silence insert (~4800 samples) instead of one contiguous run.
+        min_expected_samples = 25 * 512  # the speech-active region alone
+        assert len(result) >= min_expected_samples
 
     def test_hysteresis_allows_exit_below_exit_threshold(self):
         """Prob below exit threshold (0.35) DOES end the speech segment."""

@@ -1,5 +1,82 @@
 # Vociferous Changelog
 
+## v6.5.1 — Test Suite Quality Audit (MRP Framework)
+
+**Date:** 2026-04-20
+**Status:** Test-only patch (no runtime behavior changes)
+**Issues:** #111
+
+Systematic audit of all 645 tests in `tests/` against the MRP framework
+(High Value | Redundant | Fragile | Passive | Ghost Coverage | Tautological).
+Removes tests that were tautological self-checks or duplicates of stronger
+coverage elsewhere, and strengthens "ghost coverage" tests whose comments
+promised assertions the bodies never made. Net change: 645 → 640 tests, all
+passing, with each remaining test now anchored to a real behavioral contract.
+
+### Removed (tautological / duplicate)
+- `test_provisioning.py::test_asr_catalog_not_empty`,
+  `test_slm_catalog_not_empty`,
+  `test_required_dependencies_list_not_empty`,
+  `test_no_duplicate_repos_per_asr` — passive `len > 0` / `len >= 1` checks
+  with no real invariant; subsumed by `test_*_model_ids_match_keys` and the
+  default-model canaries.
+- `test_handlers.py::test_is_recording_property`,
+  `test_thread_property`,
+  `test_unload_asr_model_when_none_is_noop` — pure attribute-getter tautologies
+  (`assert obj.x == obj._x`).
+- `test_refinement_engine.py::test_task_directive_in_user_content`,
+  `test_user_instruction_overrides_default_task`,
+  `test_none_like_empty` — exact duplicates of `test_default_task_present`,
+  `test_user_instructions_replace_default`, and `test_empty_string_returns_empty`.
+- `test_skip_check.py::test_three_words_long_enough_chars_still_skipped` —
+  duplicate of the second assertion in `test_too_few_words`.
+- `test_settings.py::test_save_creates_backup` — covered more thoroughly by
+  `test_settings_resilience.py::TestAtomicWrite`.
+- `test_api_error_handling.py::test_get_config_returns_all_sections` — exact
+  duplicate of `test_api_routes.py::TestConfigRoutes::test_get_config`.
+
+### Fixed (tautological assertions / hardcoded SHA-256 literals)
+- `test_provisioning.py::test_compute_sha256_known_content`,
+  `test_compute_sha256_empty_file`,
+  `test_verify_integrity_pass`,
+  `test_download_with_matching_hash` — replaced
+  `assert _compute_sha256(x) == hashlib.sha256(x).hexdigest()` (which
+  validated the function under test against itself) with hardcoded RFC
+  SHA-256 literals for `b""`, `b"hello world"`, `b"good data"`, and
+  `b"model weights here"`.
+- `test_provisioning.py::test_get_asr_model_found`,
+  `test_get_slm_model_found` — replaced `next(iter(catalog))` with hardcoded
+  ids (`"large-v3-turbo-int8"`, `"qwen4b"`) so deletion of those keys would
+  surface as a deliberate test failure rather than silent reshuffling.
+
+### Strengthened (ghost coverage → real assertions)
+- `test_handlers.py::test_retitle_no_title_generator_is_noop` and
+  `test_retitle_no_db_is_noop` — now assert
+  `mock_gen.schedule.assert_not_called()` and `events == []` instead of
+  bare "should not crash" comments.
+- `test_handlers.py::test_retitle_prefers_normalized_text` — the docstring
+  promised `normalized_text` is preferred over `raw_text`, but the body only
+  asserted `mock_gen.schedule.assert_called_once()`. Now uses
+  `assert_called_once_with(t.id, "better version")` so the wrong text path
+  fails the test.
+- `test_handlers.py::test_handle_begin_while_already_recording_is_noop` —
+  now also asserts `audio_service.start_capture.assert_not_called()` and
+  `audio_service.record_audio.assert_not_called()`, proving the no-op
+  doesn't leak into the audio service.
+- `test_audio_pipeline.py::test_hysteresis_prevents_mid_word_cutoff` —
+  added a length lower-bound assertion so the test fails when the dip
+  prematurely ends the speech segment.
+- `test_application_lifecycle.py::test_cleanup_closes_db` — replaced
+  "no real assertion needed" comment with `pytest.raises(Exception)`
+  against `db._conn.execute(...)` to prove the underlying sqlite
+  connection was actually closed.
+
+### Renamed (misleading test names)
+- `test_handlers.py::test_handle_toggle_begins_when_idle` →
+  `test_handle_toggle_idle_no_audio_service_is_noop`. The original name
+  promised behavior the body did not exercise (no audio service was wired,
+  so nothing actually "began").
+
 ## v6.5.0 — VAD Sensitivity, Insight Freshness, Metrics Extraction & Text Analysis Unification
 
 **Date:** 2026-04-20

@@ -39,10 +39,8 @@ class TestShouldSkipRefinement:
         # 3 words, 24 chars — passes char check, fails word check
         assert should_skip_refinement("absolutely wonderful day") == "too_few_words"
 
-    def test_three_words_long_enough_chars_still_skipped(self) -> None:
-        # 3 words, over 15 chars — should skip (too few words)
-        result = should_skip_refinement("extraordinarily long word")
-        assert result == "too_few_words"
+    # test_three_words_long_enough_chars_still_skipped deleted in v6.5.1 —
+    # exact duplicate of the second assertion in test_too_few_words above.
 
     def test_filler_only_single(self) -> None:
         # Must pass char+word thresholds first; use enough filler words

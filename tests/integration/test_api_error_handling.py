@@ -234,14 +234,8 @@ class TestConfigErrors:
         # Settings model uses extra="ignore" — unknown keys are silently dropped
         assert resp.status_code == 200
 
-    def test_get_config_returns_all_sections(self, api):
-        """GET /api/config must include model, recording, refinement."""
-        client, _, _ = api
-        resp = client.get("/api/config")
-        body = resp.json()
-        assert "model" in body
-        assert "recording" in body
-        assert "refinement" in body
+    # test_get_config_returns_all_sections deleted in v6.5.1 — exact duplicate
+    # of TestConfigRoutes.test_get_config in test_api_routes.py.
 
     def test_set_default_prompt_requires_integer_transcript_id(self, api):
         client, _, _ = api

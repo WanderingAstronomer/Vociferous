@@ -87,13 +87,19 @@ class TestTitleHandlersRetitle:
         handler = self._make_handler(db=db, title_gen=None, events_list=events)
 
         intent = SimpleNamespace(transcript_id=t.id)
-        handler.handle_retitle(intent)  # should not crash
+        handler.handle_retitle(intent)
+        # No events emitted when no generator is wired.
+        assert events == []
 
     def test_retitle_no_db_is_noop(self, events):
-        handler = self._make_handler(db=None, title_gen=MagicMock(), events_list=events)
+        mock_gen = MagicMock()
+        handler = self._make_handler(db=None, title_gen=mock_gen, events_list=events)
 
         intent = SimpleNamespace(transcript_id=1)
         handler.handle_retitle(intent)
+        # No DB → no scheduling, no events.
+        mock_gen.schedule.assert_not_called()
+        assert events == []
 
     def test_retitle_nonexistent_transcript_is_noop(self, db, events):
         mock_gen = MagicMock()
@@ -125,8 +131,8 @@ class TestTitleHandlersRetitle:
         intent = SimpleNamespace(transcript_id=t.id)
         handler.handle_retitle(intent)
 
-        # Should call with whatever text the DB resolved
-        mock_gen.schedule.assert_called_once()
+        # The normalized text — not the raw text — must be passed to schedule().
+        mock_gen.schedule.assert_called_once_with(t.id, "better version")
 
 
 # ===========================================================================
@@ -562,11 +568,14 @@ class TestRecordingSessionLifecycle:
 
         assert not session._recording_stop.is_set()
 
-    def test_handle_toggle_begins_when_idle(self, events):
+    def test_handle_toggle_idle_no_audio_service_is_noop(self, events):
+        """Toggle from idle with no audio service: dispatches BeginRecording but it
+        no-ops because there's nothing to record from. Renamed in v6.5.1 from
+        the misleading test_handle_toggle_begins_when_idle."""
         session = self._make_session(events_list=events, audio_service=None)
         session.handle_toggle(SimpleNamespace())
-        # No audio service → begin is noop, but it tried
         assert session._is_recording is False
+        assert _events_of(events, "recording_started") == []
 
     def test_handle_toggle_stops_when_recording(self, events):
         session = self._make_session(events_list=events)
@@ -582,22 +591,18 @@ class TestRecordingSessionLifecycle:
         assert len(_events_of(events, "recording_started")) == 0
 
     def test_handle_begin_while_already_recording_is_noop(self, events):
-        session = self._make_session(events_list=events, audio_service=MagicMock())
+        mock_audio = MagicMock()
+        session = self._make_session(events_list=events, audio_service=mock_audio)
         session._is_recording = True
 
         session.handle_begin(SimpleNamespace())
-        # Should not have emitted anything new
+        # Should not have emitted anything new and audio service must not be touched.
         assert len(_events_of(events, "recording_started")) == 0
+        mock_audio.start_capture.assert_not_called()
+        mock_audio.record_audio.assert_not_called()
 
-    def test_is_recording_property(self, events):
-        session = self._make_session(events_list=events)
-        assert session.is_recording is False
-        session._is_recording = True
-        assert session.is_recording is True
-
-    def test_thread_property(self, events):
-        session = self._make_session(events_list=events)
-        assert session.thread is None
+    # test_is_recording_property and test_thread_property deleted in v6.5.1 —
+    # both were pure attribute-getter tautologies.
 
     def test_load_asr_model_success_emits_ready(self, events, tmp_path):
         session = self._make_session(events_list=events)
@@ -628,7 +633,5 @@ class TestRecordingSessionLifecycle:
         session.unload_asr_model()
         assert session._asr_model is None
 
-    def test_unload_asr_model_when_none_is_noop(self, events):
-        session = self._make_session(events_list=events)
-        session.unload_asr_model()  # should not crash
-        assert session._asr_model is None
+    # test_unload_asr_model_when_none_is_noop deleted in v6.5.1 — it asserted
+    # `None is None` after unloading from None. Pure tautology.

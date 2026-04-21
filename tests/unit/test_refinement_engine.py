@@ -195,11 +195,8 @@ class TestFormatPrompt:
         assert "Rules:" not in system
         assert "Output ONLY" not in system
 
-    def test_task_directive_in_user_content(self) -> None:
-        engine = _make_engine()
-        messages = engine._format_prompt("text")
-        user = messages[1]["content"]
-        assert "Fix all grammar" in user
+    # test_task_directive_in_user_content deleted in v6.5.1 — subsumed by
+    # test_default_task_present which already asserts the same substring.
 
     def test_input_text_in_user_content(self) -> None:
         engine = _make_engine()
@@ -229,17 +226,8 @@ class TestFormatPrompt:
         user = messages[1]["content"]
         assert "/no_think" not in user
 
-    def test_user_instruction_overrides_default_task(self) -> None:
-        """Custom instructions should replace the default task line."""
-        engine = _make_engine()
-        messages = engine._format_prompt("text")
-        base_user = messages[1]["content"]
-        assert "Fix all grammar" in base_user
-
-        messages = engine._format_prompt("text", user_instructions="Make formal.")
-        user = messages[1]["content"]
-        assert "Make formal." in user
-        assert "Fix all grammar" not in user
+    # test_user_instruction_overrides_default_task deleted in v6.5.1 —
+    # exact duplicate of test_user_instructions_replace_default above.
 
 
 # ── Dynamic Token Calculation ─────────────────────────────────────────────
@@ -305,11 +293,8 @@ class TestRefineGuard:
         result = engine.refine("   \n\t  ")
         assert result.content == "   \n\t  "
 
-    def test_none_like_empty(self) -> None:
-        engine = _make_engine()
-        # text="" is falsy, should short-circuit
-        result = engine.refine("")
-        assert isinstance(result, GenerationResult)
+    # test_none_like_empty deleted in v6.5.1 — same input as
+    # test_empty_string_returns_empty with a weaker `isinstance` assertion.
 
     def test_skip_gate_applies_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         engine = _make_engine()

@@ -206,10 +206,12 @@ class TestShutdownLifecycle:
     def test_cleanup_closes_db(self, coordinator):
         """cleanup() must close the database connection."""
         assert coordinator.db is not None
+        db_ref = coordinator.db
         coordinator.cleanup()
-        # After cleanup, db.close() was called — verify by checking
-        # the internal connection is closed (no-op on second close)
-        # The coordinator fixture would double-close, but that's safe
+        # The underlying sqlite connection must be unusable after cleanup.
+        # sqlite3 raises ProgrammingError on operations against a closed conn.
+        with pytest.raises(Exception):  # noqa: BLE001 - sqlite3.ProgrammingError on closed conn
+            db_ref._conn.execute("SELECT 1").fetchone()
 
     def test_cleanup_clears_event_bus(self, coordinator, event_collector):
         """cleanup() must clear all EventBus subscriptions."""

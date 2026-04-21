@@ -90,14 +90,10 @@ class TestModuleAPI:
         loaded = json.loads(config_file.read_text())
         assert loaded["model"]["model"] == "large-v3-turbo-int8"
 
-    def test_save_creates_backup(self, tmp_path: Path):
-        config_file = tmp_path / "settings.json"
-        init_settings(config_path=config_file)
-        save_settings()
-
-        # Write again — should create .bak
-        save_settings()
-        assert (tmp_path / "settings.json.bak").exists()
+    # test_save_creates_backup deleted in v6.5.1 — covered more thoroughly by
+    # TestAtomicWrite.test_backup_created_on_second_save and
+    # TestAtomicWrite.test_backup_content_matches_previous_save in
+    # test_settings_resilience.py.
 
 
 class TestUpdate:
