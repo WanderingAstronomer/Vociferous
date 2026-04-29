@@ -54,6 +54,16 @@ dev = [
     "mypy>=1.0.0",
 ]
 
+[project.optional-dependencies]
+cuda = [
+    # Optional Linux GPU runtime.
+    # These wheels supply libcudart/libcublas/libcudnn under site-packages/nvidia.
+    "nvidia-cublas-cu12>=12.0; sys_platform == 'linux'",
+    "nvidia-cuda-runtime-cu12>=12.0; sys_platform == 'linux'",
+    "nvidia-cuda-nvrtc-cu12>=12.0; sys_platform == 'linux'",
+    "nvidia-cudnn-cu12>=9.0; sys_platform == 'linux'",
+]
+
 [project.urls]
 "Homepage" = "https://github.com/WanderingAstronomer/Vociferous"
 "Changelog" = "https://github.com/WanderingAstronomer/Vociferous/blob/main/CHANGELOG.md"

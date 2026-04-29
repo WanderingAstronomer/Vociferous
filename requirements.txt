@@ -218,7 +218,9 @@ tqdm==4.67.3
     #   huggingface-hub
     #   vociferous
 typer==0.24.1
-    # via huggingface-hub
+    # via
+    #   huggingface-hub
+    #   vociferous
 typing-extensions==4.15.0
     # via
     #   anyio

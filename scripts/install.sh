@@ -90,10 +90,6 @@ echo "=========================================="
 # Install dependencies via uv (CTranslate2/faster-whisper ship pre-built wheels with CUDA support)
 cd "$PROJECT_DIR"
 uv sync
-
-if [[ "$OSTYPE" == "linux-gnu"* ]] && command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
-    echo "✓ NVIDIA GPU detected — CUDA acceleration available via CTranslate2"
-fi
 echo "✓ Dependencies installed"
 
 # Use venv Python explicitly for verification
@@ -129,6 +125,80 @@ if [ "$DEPS_OK" = false ]; then
     echo ""
     echo "Then try again: bash scripts/install.sh"
     exit 1
+fi
+
+if [[ "$OSTYPE" == "linux-gnu"* ]] && command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
+    echo ""
+    echo "=========================================="
+    echo "Verifying CUDA runtime"
+    echo "=========================================="
+
+    CUDA_STATUS_OUTPUT=$("$VENV_PYTHON" - <<'PY'
+from src.core.cuda_runtime import detect_cuda_runtime
+
+status = detect_cuda_runtime()
+print(f"driver_detected={'1' if status.driver_detected else '0'}")
+print(f"cuda_available={'1' if status.cuda_available else '0'}")
+print(f"cuda_device_count={status.cuda_device_count}")
+print(f"detail={status.detail}")
+PY
+)
+
+    CUDA_DRIVER_DETECTED=$(printf '%s\n' "$CUDA_STATUS_OUTPUT" | sed -n 's/^driver_detected=//p')
+    CUDA_AVAILABLE=$(printf '%s\n' "$CUDA_STATUS_OUTPUT" | sed -n 's/^cuda_available=//p')
+    CUDA_DEVICE_COUNT=$(printf '%s\n' "$CUDA_STATUS_OUTPUT" | sed -n 's/^cuda_device_count=//p')
+    CUDA_DETAIL=$(printf '%s\n' "$CUDA_STATUS_OUTPUT" | sed -n 's/^detail=//p')
+
+    if [[ "$CUDA_AVAILABLE" == "1" ]]; then
+        echo "✓ CUDA runtime ready (${CUDA_DEVICE_COUNT} device(s))"
+    elif [[ "$CUDA_DRIVER_DETECTED" == "1" ]]; then
+        echo "⚠ NVIDIA GPU detected, but the CUDA runtime is not usable in this venv."
+        echo "  $CUDA_DETAIL"
+        echo ""
+        echo "Vociferous runs fine on CPU."
+        echo "If you want GPU acceleration, install the optional vendored CUDA runtime wheels now."
+
+        INSTALL_CUDA_CHOICE="${VOCIFEROUS_INSTALL_CUDA:-auto}"
+        if [[ "$INSTALL_CUDA_CHOICE" == "auto" ]]; then
+            if [ -t 0 ]; then
+                read -r -p "Install optional CUDA runtime packages for this Linux venv? [y/N] " INSTALL_CUDA_CHOICE
+                INSTALL_CUDA_CHOICE="${INSTALL_CUDA_CHOICE:-n}"
+            else
+                INSTALL_CUDA_CHOICE="n"
+                echo "Non-interactive terminal detected. Skipping optional CUDA runtime install."
+                echo "Set VOCIFEROUS_INSTALL_CUDA=yes to install it automatically."
+            fi
+        fi
+
+        if [[ "$INSTALL_CUDA_CHOICE" =~ ^[Yy]([Ee][Ss])?$ ]]; then
+            echo "Installing optional CUDA runtime packages..."
+            uv sync --extra cuda
+
+            CUDA_STATUS_OUTPUT=$("$VENV_PYTHON" - <<'PY'
+from src.core.cuda_runtime import detect_cuda_runtime
+
+status = detect_cuda_runtime()
+print(f"cuda_available={'1' if status.cuda_available else '0'}")
+print(f"cuda_device_count={status.cuda_device_count}")
+print(f"detail={status.detail}")
+PY
+)
+
+            CUDA_AVAILABLE=$(printf '%s\n' "$CUDA_STATUS_OUTPUT" | sed -n 's/^cuda_available=//p')
+            CUDA_DEVICE_COUNT=$(printf '%s\n' "$CUDA_STATUS_OUTPUT" | sed -n 's/^cuda_device_count=//p')
+            CUDA_DETAIL=$(printf '%s\n' "$CUDA_STATUS_OUTPUT" | sed -n 's/^detail=//p')
+
+            if [[ "$CUDA_AVAILABLE" == "1" ]]; then
+                echo "✓ CUDA runtime ready (${CUDA_DEVICE_COUNT} device(s))"
+            else
+                echo "⚠ Optional CUDA packages installed, but the runtime is still not usable."
+                echo "  $CUDA_DETAIL"
+                echo "  Vociferous will fall back to CPU until this is fixed."
+            fi
+        else
+            echo "Skipping optional CUDA runtime install. Vociferous will use CPU mode."
+        fi
+    fi
 fi
 
 # Build frontend if not already built and npm is available
