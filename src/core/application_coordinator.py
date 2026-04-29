@@ -8,13 +8,28 @@ Starts Litestar API server and pywebview window.
 from __future__ import annotations
 
 import logging
-import os
-import platform
 import threading
 from typing import TYPE_CHECKING, Any
 
 from src.core.command_bus import CommandBus
 from src.core.event_bus import EventBus
+from src.core.runtime import (
+    cleanup_coordinator,
+    do_cleanup,
+    init_audio_service,
+    init_input_handler,
+    init_insight_manager,
+    init_recording_session,
+    init_slm_runtime,
+    init_title_generator,
+    open_window,
+    shutdown_coordinator,
+    start_api_server,
+    wait_for_server,
+)
+from src.core.runtime import (
+    restart_engine as restart_engine_runtime,
+)
 from src.core.settings import VociferousSettings
 from src.core.window_controller import WindowController
 
@@ -101,29 +116,7 @@ class ApplicationCoordinator:
         log_support_diagnostics_snapshot(self.settings, transcript_count=self.db.transcript_count())
 
         # 2. Recording session (created here; ASR model loaded after SLM init).
-        from src.core.handlers.recording_handlers import RecordingSession
-
-        self.recording_session = RecordingSession(
-            audio_service_provider=lambda: self.audio_service,
-            settings_provider=lambda: self.settings,
-            db_provider=lambda: self.db,
-            event_bus_emit=self.event_bus.emit,
-            shutdown_event=self._shutdown_event,
-            insight_manager_provider=lambda: self.insight_manager,
-            title_generator_provider=lambda: self.title_generator,
-        )
-
-        # 2b. Audio cache manager (WAV cache + orphan spool detection).
-        from src.services.audio_cache import AudioCacheManager
-
-        audio_cache = AudioCacheManager(sample_rate=self.settings.recording.sample_rate)
-        self.recording_session.audio_cache = audio_cache
-        orphans = audio_cache.cleanup_stale_spools()
-        if orphans:
-            logger.warning(
-                "%d orphaned audio spool(s) found from prior crash — see log above for paths",
-                len(orphans),
-            )
+        init_recording_session(self)
 
         # 3. SLM runtime (CTranslate2 Generator).
         self._init_slm_runtime()
@@ -164,153 +157,29 @@ class ApplicationCoordinator:
 
     def shutdown(self, *, stop_server: bool = True, close_windows: bool = True) -> None:
         """Signal services to stop. Safe to call multiple times."""
-        with self._shutdown_lock:
-            if self._shutdown_started:
-                return
-            self._shutdown_started = True
-
-        logger.info("Shutdown requested...")
-        self._shutdown_event.set()
-
-        # Cancel any in-progress recording so the recording loop
-        # treats this as a cancellation (not a normal stop).
-        if self.recording_session is not None:
-            self.recording_session.cancel_for_shutdown()
-
-        # Always signal the uvicorn server to exit — even when called from
-        # the window-closing callback (stop_server=False only means we skip
-        # waiting for it here; cleanup() handles the join).
-        if self._uvicorn_server:
-            self._uvicorn_server.should_exit = True
-
-        if close_windows:
-            self.window.destroy_for_shutdown()
+        shutdown_coordinator(self, stop_server=stop_server, close_windows=close_windows)
 
     def cleanup(self) -> None:
         """Release resources after event loop exits."""
-        # Watchdog: if cleanup takes more than 8 seconds, force-exit the process.
-        # Desktop apps must not hang on shutdown — daemon threads are fine to orphan.
-        import os
-
-        def _force_exit() -> None:
-            logger.warning("Cleanup watchdog triggered — forcing exit.")
-            os._exit(0)
-
-        watchdog = threading.Timer(8.0, _force_exit)
-        watchdog.daemon = True
-        watchdog.start()
-
-        try:
-            self._do_cleanup()
-        finally:
-            watchdog.cancel()
+        cleanup_coordinator(self)
 
     def _do_cleanup(self) -> None:
         """Actual cleanup logic, guarded by watchdog timeout."""
-        # Wait for the recording thread to finish before tearing down
-        # resources it may still be using (ASR model, database).
-        rec_thread = self.recording_session.thread if self.recording_session is not None else None
-        if rec_thread is not None and rec_thread.is_alive():
-            logger.debug("Waiting for recording thread to finish...")
-            rec_thread.join(timeout=5)
-            if rec_thread.is_alive():
-                logger.warning("Recording thread did not finish within timeout")
-
-        if self.input_listener:
-            try:
-                self.input_listener.stop()
-            except Exception:
-                logger.exception("Input listener cleanup failed")
-
-        if self.slm_runtime:
-            try:
-                self.slm_runtime.shutdown()
-            except Exception:
-                logger.exception("SLM runtime cleanup failed")
-
-        if self.recording_session is not None:
-            self.recording_session.shutdown_models()
-
-        if self.db:
-            try:
-                self.db.close()
-            except Exception:
-                logger.exception("Database cleanup failed")
-
-        # Ensure uvicorn server thread finishes
-        if self._uvicorn_server:
-            self._uvicorn_server.should_exit = True
-        if self._server_thread and self._server_thread.is_alive():
-            self._server_thread.join(timeout=5)
-
-        self.event_bus.clear()
-        logger.info("Cleanup complete.")
+        do_cleanup(self)
 
     # --- Service Initialization ---
 
     def _init_slm_runtime(self) -> None:
         """Initialize the SLM refinement runtime if enabled."""
-        try:
-            from src.services.slm_runtime import SLMRuntime
-
-            def on_slm_state(state):
-                self.event_bus.emit("engine_status", {"slm": state.value})
-                # When SLM becomes idle, opportunistically try insight generation.
-                # This fires both on startup (LOADING→READY) and after any inference job finishes.
-                from src.services.slm_types import SLMState as _SLMState
-
-                if state == _SLMState.READY and self.insight_manager is not None:
-                    self.insight_manager.maybe_schedule()
-
-            def on_slm_error(msg):
-                self.event_bus.emit("refinement_error", {"message": msg})
-
-            def on_slm_text(text):
-                pass  # Async path unused; refinement uses refine_text_sync via RefinementHandlers
-
-            self.slm_runtime = SLMRuntime(
-                settings_provider=lambda: self.settings,
-                on_state_changed=on_slm_state,
-                on_error=on_slm_error,
-                on_text_ready=on_slm_text,
-            )
-
-            if self.settings.refinement.enabled:
-                self.slm_runtime.enable()
-
-        except Exception:
-            logger.exception("SLM runtime failed to initialize (non-fatal)")
+        init_slm_runtime(self)
 
     def _init_insight_manager(self) -> None:
         """Initialize the unified InsightManager for analytics paragraphs (UserView + TranscribeView)."""
-        try:
-            from src.core.insight_manager import InsightManager
-            from src.core.usage_stats import compute_usage_stats
-
-            self.insight_manager = InsightManager(
-                slm_runtime_provider=lambda: self.slm_runtime,
-                event_emitter=self.event_bus.emit,
-                stats_provider=lambda: (
-                    compute_usage_stats(self.db, typing_wpm=self.settings.user.typing_wpm) if self.db else {}
-                ),
-            )
-            logger.info("InsightManager initialized (unified)")
-        except Exception:
-            logger.exception("InsightManager failed to initialize (non-fatal)")
+        init_insight_manager(self)
 
     def _init_title_generator(self) -> None:
         """Initialize the TitleGenerator for auto-naming transcripts via SLM."""
-        try:
-            from src.core.title_generator import TitleGenerator
-
-            self.title_generator = TitleGenerator(
-                slm_runtime_provider=lambda: self.slm_runtime,
-                db_provider=lambda: self.db,
-                event_emitter=self.event_bus.emit,
-            )
-            logger.info("TitleGenerator initialized")
-        except Exception:
-            logger.exception("TitleGenerator failed to initialize (non-fatal)")
+        init_title_generator(self)
 
     def restart_engine(self) -> None:
         """Tear down and reload ASR + SLM models on a background thread.
@@ -318,123 +187,15 @@ class ApplicationCoordinator:
         Called when the user clicks "Restart Engine" in settings, typically
         after changing model selection or GPU/CPU preference.
         """
-        if not self._restart_lock.acquire(blocking=False):
-            logger.warning("Engine restart already in progress — ignoring duplicate request.")
-            return
-
-        def _do_restart() -> None:
-            try:
-                logger.info("Engine restart requested — tearing down models...")
-                self.event_bus.emit("engine_status", {"asr": "restarting", "slm": "restarting"})
-
-                # Tear down ASR
-                if self.recording_session is not None:
-                    self.recording_session.unload_asr_model()
-
-                # Tear down SLM
-                if self.slm_runtime:
-                    try:
-                        self.slm_runtime.disable()
-                        self.slm_runtime = None
-                    except Exception:
-                        logger.exception("SLM teardown failed during restart")
-
-                # Reload settings in case model/device changed
-                from src.core.settings import get_settings
-
-                self.settings = get_settings()
-                from src.core.log_manager import log_support_diagnostics_snapshot
-
-                log_support_diagnostics_snapshot(
-                    self.settings,
-                    transcript_count=self.db.transcript_count() if self.db is not None else None,
-                )
-
-                # Reload models
-                if self.recording_session is not None:
-                    self.recording_session.load_asr_model()
-                self._init_slm_runtime()
-
-                # Notify the API layer that the engine has been restarted so it
-                # can clear any caches that depend on engine state (e.g. GPU status).
-                # Using the event bus here keeps the core layer free of any
-                # dependency on the API layer.
-                self.event_bus.emit("engine_restarted", {})
-
-                logger.info("Engine restart complete.")
-            finally:
-                self._restart_lock.release()
-
-        t = threading.Thread(target=_do_restart, name="engine-restart", daemon=True)
-        t.start()
+        restart_engine_runtime(self)
 
     def _init_audio_service(self) -> None:
         """Initialize the audio capture service with EventBus callbacks."""
-        try:
-            from src.services.audio_service import AudioService
-
-            def on_level(level: float) -> None:
-                self.event_bus.emit("audio_level", {"level": level})
-
-            self.audio_service = AudioService(
-                settings_provider=lambda: self.settings,
-                on_level_update=on_level,
-            )
-            logger.info("Audio service ready")
-        except Exception:
-            logger.exception("Audio service failed to initialize (non-fatal)")
+        init_audio_service(self)
 
     def _init_input_handler(self) -> None:
         """Initialize the global hotkey listener."""
-        try:
-            from src.input_handler import create_listener
-
-            self.input_listener = create_listener(
-                callback=self._on_hotkey,
-                deactivate_callback=self._on_hotkey_release,
-                on_degradation=lambda msg: self.event_bus.emit(
-                    "engine_status",
-                    {"component": "input", "status": "degraded", "message": msg},
-                ),
-            )
-            if self.input_listener.active_backend is None:
-                logger.warning(
-                    "Input handler started but no backend available — "
-                    "hotkey will not work. On Linux, ensure your user is "
-                    "in the 'input' group: sudo usermod -aG input $USER"
-                )
-                self.event_bus.emit(
-                    "engine_status",
-                    {
-                        "component": "input",
-                        "status": "unavailable",
-                        "message": "No input backend available. Hotkey disabled.",
-                    },
-                )
-            else:
-                backend_name = type(self.input_listener.active_backend).__name__
-                logger.info("Input handler ready (backend: %s)", backend_name)
-                if backend_name == "PynputBackend" and (
-                    os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
-                    or bool(os.environ.get("WAYLAND_DISPLAY"))
-                ):
-                    logger.warning(
-                        "Input backend is pynput under Wayland; hotkey capture may be "
-                        "degraded for native Wayland windows."
-                    )
-                    self.event_bus.emit(
-                        "engine_status",
-                        {
-                            "component": "input",
-                            "status": "degraded",
-                            "message": (
-                                "Pynput under Wayland may not capture hotkeys. "
-                                "Prefer evdev backend with input-group permissions."
-                            ),
-                        },
-                    )
-        except Exception:
-            logger.exception("Input handler failed to initialize (non-fatal)")
+        init_input_handler(self)
 
     # --- Intent Handlers ---
 
@@ -510,161 +271,15 @@ class ApplicationCoordinator:
 
     def _start_api_server(self) -> None:
         """Start the Litestar API server in a background thread."""
-
-        def _detect_port_conflict(port: int) -> tuple[bool, str]:
-            """Detect if another process is using our port.
-
-            Returns (conflict_detected, error_message).
-            """
-            try:
-                import psutil
-            except ImportError:
-                # Without psutil, we can't provide helpful diagnostics
-                return False, ""
-
-            try:
-                current_pid = psutil.Process().pid
-                for conn in psutil.net_connections(kind="inet"):
-                    if conn.laddr.port == port and conn.status == "LISTEN":
-                        try:
-                            proc = psutil.Process(conn.pid)
-                            if proc.pid == current_pid:
-                                # This process already owns it (shouldn't happen, but skip)
-                                continue
-
-                            cmdline = " ".join(proc.cmdline())
-                            username = proc.username()
-
-                            # Provide actionable error message
-                            msg = (
-                                f"Port {port} is already in use by PID {conn.pid} ({username}).\n"
-                                f"Command: {cmdline}\n\n"
-                                f"To fix:\n"
-                                f"  1. Kill the process: kill {conn.pid}\n"
-                                f"  2. If unresponsive: kill -9 {conn.pid}\n"
-                                f"  3. Or check with: ss -tlnp | grep {port}"
-                            )
-                            return True, msg
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            continue
-            except Exception:
-                logger.debug("Port conflict detection failed", exc_info=True)
-
-            return False, ""
-
-        def run_server():
-            import socket as socket_mod
-
-            import uvicorn
-
-            from src.api.app import create_app
-
-            # Check for port conflicts and provide helpful error
-            conflict, conflict_msg = _detect_port_conflict(18900)
-            if conflict:
-                logger.error(conflict_msg)
-                return
-
-            app = create_app(self)
-
-            # Pre-create socket with SO_REUSEADDR so the kernel lets us rebind
-            # immediately after an unclean shutdown (socket stuck in TIME_WAIT).
-            # This is the standard production-server approach.
-            sock = socket_mod.socket(socket_mod.AF_INET, socket_mod.SOCK_STREAM)
-            sock.setsockopt(socket_mod.SOL_SOCKET, socket_mod.SO_REUSEADDR, 1)
-            try:
-                sock.bind(("127.0.0.1", 18900))
-            except OSError as exc:
-                logger.error(
-                    "Cannot bind port 18900 — another process owns it. "
-                    "Kill the existing Vociferous instance manually: %s",
-                    exc,
-                )
-                sock.close()
-                return
-
-            try:
-                config = uvicorn.Config(app, log_level="warning", log_config=None)
-                server = uvicorn.Server(config)
-                self._uvicorn_server = server
-                # Pass our pre-bound socket; uvicorn skips its own bind.
-                server.run(sockets=[sock])
-            except Exception:
-                logger.exception("API server failed")
-            finally:
-                # Belt-and-suspenders: close if uvicorn didn't already.
-                try:
-                    sock.close()
-                except OSError:
-                    pass
-
-        self._server_thread = threading.Thread(target=run_server, daemon=True, name="api-server")
-        self._server_thread.start()
-        logger.info("API server starting on http://127.0.0.1:18900")
+        start_api_server(self)
 
     def _wait_for_server(self, host: str = "127.0.0.1", port: int = 18900, timeout: float = 15.0) -> None:
         """Block until the API server is accepting TCP connections or timeout expires."""
-        import socket
-        import time
-
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            try:
-                with socket.create_connection((host, port), timeout=0.1):
-                    logger.info("API server ready (http://%s:%d)", host, port)
-                    return
-            except OSError:
-                time.sleep(0.05)
-        logger.warning("API server did not become ready within %.1fs — opening window anyway", timeout)
+        wait_for_server(host=host, port=port, timeout=timeout)
 
     def _open_window(self) -> None:
         """Open the main pywebview window. Blocks until closed."""
-        try:
-            import webview
-
-            if platform.system() == "Linux":
-                try:
-                    from gi.repository import GLib
-
-                    GLib.set_prgname("vociferous")
-                    GLib.set_application_name("Vociferous")
-                except Exception:
-                    logger.debug("Could not set GTK app identity", exc_info=True)
-
-            from src.core.resource_manager import ResourceManager
-
-            # Resolve app icon path
-            icon_path = ResourceManager.get_icon_path("vociferous_icon")
-
-            def on_closing() -> bool:
-                """Called when main window is closing. Trigger graceful shutdown."""
-                logger.info("Main window closing, initiating shutdown...")
-                self.shutdown(stop_server=True, close_windows=False)
-                return True  # Allow main window to close naturally
-
-            self._main_window = webview.create_window(
-                title="Vociferous",
-                url="http://127.0.0.1:18900",
-                width=1200,
-                height=800,
-                min_size=(800, 600),
-                background_color="#1e1e1e",
-            )
-            self.window.set_window(self._main_window)
-            self._main_window.events.closing += on_closing
-            self._main_window.events.maximized += self.window.on_maximized
-            self._main_window.events.restored += self.window.on_restored
-
-            webview.start(debug=False, icon=icon_path)
-        except Exception:
-            logger.exception("pywebview failed to start")
-            # Fail fast to avoid leaving background services alive without UI.
-            self.shutdown()
-            raise RuntimeError("pywebview failed to start")
-        finally:
-            # Ensure shutdown is called even if webview exits unexpectedly
-            if not self._shutdown_event.is_set():
-                self.shutdown(stop_server=False, close_windows=False)
+        open_window(self)
 
     # --- Window control (delegated to WindowController) ---
 

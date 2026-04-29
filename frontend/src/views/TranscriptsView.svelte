@@ -29,7 +29,6 @@
     import { SelectionManager } from "../lib/selection.svelte";
     import { onMount } from "svelte";
     import {
-        Search,
         X,
         Loader2,
         FileText,
@@ -39,9 +38,6 @@
         Tag as TagIcon,
         Check,
         Copy,
-        ChevronLeft,
-        ChevronRight,
-        ArrowUpDown,
         Minus,
         Hammer,
         Mic,
@@ -49,12 +45,10 @@
         Download,
     } from "lucide-svelte";
     import StyledButton from "../lib/components/StyledButton.svelte";
-    import EmptyState from "../lib/components/EmptyState.svelte";
     import { getZoomFactor } from "../lib/zoom";
-    import TagBar from "../lib/components/TagBar.svelte";
-    import ActionBar from "../lib/components/ActionBar.svelte";
-    import MarkdownBody from "../lib/components/MarkdownBody.svelte";
-    import { formatDuration, wordCount, formatRelativeDate } from "../lib/formatters";
+    import TranscriptsHeader from "../lib/components/transcripts/TranscriptsHeader.svelte";
+    import TranscriptsListPane from "../lib/components/transcripts/TranscriptsListPane.svelte";
+    import TranscriptsSelectionBar from "../lib/components/transcripts/TranscriptsSelectionBar.svelte";
 
     /* ===== State ===== */
 
@@ -158,34 +152,10 @@
     let selectedEntryIsPrompt = $derived(selectedEntry?.tags.some((tag) => tag.name === "Prompt") ?? false);
     let selectedEntryIsDefaultPrompt = $derived(selectedEntry?.id === defaultPromptId);
 
-    /* ===== Formatting ===== */
-
     function getDisplayText(entry: Transcript): string {
         return entry.normalized_text || entry.raw_text || "";
     }
 
-    function getTitle(entry: Transcript): string {
-        if (entry.display_name?.trim()) return entry.display_name.trim();
-        return `Transcript #${entry.id}`;
-    }
-
-    function truncate(text: string, max = 240): string {
-        if (text.length <= max) return text;
-        const cut = text.lastIndexOf(" ", max);
-        return (cut > 0 ? text.slice(0, cut) : text.slice(0, max)) + "…";
-    }
-
-    function highlight(text: string, q: string): string {
-        if (!q) return escapeHtml(text);
-        const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        return escapeHtml(text).replace(new RegExp(`(${escaped})`, "gi"), '<mark class="search-hl">$1</mark>');
-    }
-
-    function escapeHtml(text: string): string {
-        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    }
-
-    /** Default tag color when none is set. */
     function tagColor(tag: Tag): string {
         return tag.color ?? "var(--accent)";
     }
@@ -271,6 +241,21 @@
             return;
         }
         debounceTimer = setTimeout(() => doSearch(), 250);
+    }
+
+    function handleSearchQueryChange(value: string) {
+        searchQuery = value;
+        handleSearchInput();
+    }
+
+    function clearSearchQuery() {
+        searchQuery = "";
+        searchResults = [];
+        searchTotal = 0;
+    }
+
+    function handleExportAnchorChange(element: HTMLElement | undefined) {
+        exportBtnEl = element;
     }
 
     /* ===== Card Click ===== */
@@ -729,376 +714,85 @@
 
 <div class="flex flex-col h-full overflow-hidden bg-[var(--surface-primary)]">
     <div class="w-full h-full mx-auto lg:max-w-[80%] flex flex-col overflow-hidden">
-        <!-- === Header: Search + Actions === -->
-        <div class="shrink-0 px-4 pt-3 pb-2 flex flex-col gap-2 border-b border-[var(--shell-border)]">
-            <!-- Row 1: Search bar -->
-            <div class="relative">
-                <input
-                    type="text"
-                    class="w-full h-9 bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-lg text-[var(--text-primary)] text-sm pl-3 pr-8 outline-none transition-colors duration-150 focus:border-[var(--accent)] placeholder:text-[var(--text-tertiary)]"
-                    placeholder="Search transcripts…"
-                    bind:value={searchQuery}
-                    oninput={handleSearchInput}
-                />
-                {#if searchQuery}
-                    <button
-                        class="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] bg-transparent border-none cursor-pointer p-0 flex items-center justify-center rounded transition-colors"
-                        onclick={() => {
-                            searchQuery = "";
-                            searchResults = [];
-                            searchTotal = 0;
-                        }}
-                        title="Clear search"
-                    >
-                        <X size={13} />
-                    </button>
-                {:else}
-                    <Search
-                        size={14}
-                        class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)] pointer-events-none"
-                    />
-                {/if}
-            </div>
+        <TranscriptsHeader
+            {searchQuery}
+            {searching}
+            {searchTotal}
+            filteredCount={filteredEntries.length}
+            {isSearching}
+            {allTags}
+            {activeTagIds}
+            {tagFilterMode}
+            {sortBy}
+            {sortDir}
+            sortOptions={SORT_OPTIONS}
+            {currentPage}
+            {totalPages}
+            {pageSize}
+            pageSizes={PAGE_SIZES}
+            onSearchChange={handleSearchQueryChange}
+            onClearSearch={clearSearchQuery}
+            onToggleTagFilter={toggleTagFilter}
+            onCreateTag={handleCreateTag}
+            onDeleteTag={handleDeleteTag}
+            onTagColorChange={handleTagColorChange}
+            onCycleFilterMode={cycleFilterMode}
+            onClearTagFilters={clearTagFilters}
+            onSetSort={setSort}
+            onGoToPage={goToPage}
+            onSetPageSize={setPageSize}
+        />
 
-            <!-- Row 2: Tag filter chips -->
-            <TagBar
-                tags={allTags}
-                activeIds={activeTagIds}
-                ontoggle={toggleTagFilter}
-                oncreate={handleCreateTag}
-                ondelete={handleDeleteTag}
-                oncolorchange={handleTagColorChange}
-            >
-                {#if activeTagIds.size > 0}
-                    <button
-                        class="h-6 px-2 rounded-full text-xs font-semibold border border-[var(--accent-muted)] bg-transparent text-[var(--accent)] cursor-pointer transition-colors hover:bg-[var(--hover-overlay)]"
-                        onclick={cycleFilterMode}
-                        title="Toggle between matching ANY or ALL selected tags"
-                    >
-                        {tagFilterMode === "any" ? "ANY" : "ALL"}
-                    </button>
-                    <button
-                        class="h-6 px-1.5 rounded-full text-xs text-[var(--text-tertiary)] bg-transparent border-none cursor-pointer hover:text-[var(--text-primary)] transition-colors"
-                        onclick={clearTagFilters}
-                    >
-                        Clear
-                    </button>
-                {/if}
-            </TagBar>
-        </div>
+        <TranscriptsListPane
+            entries={filteredEntries}
+            {loading}
+            {error}
+            {isSearching}
+            {searchQuery}
+            {activeTagIds}
+            {selection}
+            {defaultPromptId}
+            {hasMore}
+            {searching}
+            remainingSearchCount={searchTotal - searchResults.length}
+            {displayTotal}
+            onCardClick={handleCardClick}
+            onCardDoubleClick={handleCardDblClick}
+            onLoadMore={loadMore}
+        />
 
-        <!-- === Controls row: sort (left) + pagination (center) + per-page (right) === -->
-        <div class="shrink-0 px-4 py-1.5 flex items-center gap-3 text-[13px] text-[var(--text-tertiary)]">
-            <!-- Sort control (left, browse mode only) -->
-            {#if !isSearching}
-                <div class="flex items-center gap-1 shrink-0">
-                    <ArrowUpDown size={12} class="text-[var(--text-tertiary)]" />
-                    {#each SORT_OPTIONS as opt (opt.value)}
-                        <button
-                            class="h-6 px-1.5 rounded text-[11px] border-none cursor-pointer transition-colors"
-                            class:bg-[var(--hover-overlay)]={sortBy === opt.value}
-                            class:text-[var(--text-primary)]={sortBy === opt.value}
-                            class:font-semibold={sortBy === opt.value}
-                            class:bg-transparent={sortBy !== opt.value}
-                            class:text-[var(--text-tertiary)]={sortBy !== opt.value}
-                            class:hover:text-[var(--text-secondary)]={sortBy !== opt.value}
-                            onclick={() => setSort(opt.value)}
-                            title="Sort by {opt.label}{sortBy === opt.value
-                                ? sortDir === 'asc'
-                                    ? ' (ascending)'
-                                    : ' (descending)'
-                                : ''}"
-                        >
-                            {opt.label}{sortBy === opt.value ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
-                        </button>
-                    {/each}
-                </div>
-            {:else}
-                <!-- Search result count (left in search mode) -->
-                <span class="shrink-0">
-                    {#if !searching}
-                        {#if searchTotal > filteredEntries.length}
-                            Showing {filteredEntries.length} of {searchTotal} results for "{searchQuery}"
-                        {:else}
-                            {filteredEntries.length} result{filteredEntries.length !== 1 ? "s" : ""} for "{searchQuery}"
-                        {/if}
-                    {/if}
-                </span>
-            {/if}
-
-            <div class="flex-1"></div>
-
-            <!-- Page navigation (center, browse mode only) -->
-            {#if !isSearching && totalPages > 1}
-                <div class="flex items-center gap-2 shrink-0">
-                    <button
-                        class="flex items-center gap-1 h-6 px-2 rounded text-[var(--text-secondary)] bg-transparent border border-[var(--shell-border)] cursor-pointer transition-colors text-[11px] hover:bg-[var(--hover-overlay)] disabled:opacity-30 disabled:cursor-default"
-                        onclick={() => goToPage(currentPage - 1)}
-                        disabled={currentPage <= 1}
-                    >
-                        <ChevronLeft size={12} /> Prev
-                    </button>
-                    <span class="text-[var(--text-tertiary)] tabular-nums text-[11px]">
-                        {currentPage} / {totalPages}
-                    </span>
-                    <button
-                        class="flex items-center gap-1 h-6 px-2 rounded text-[var(--text-secondary)] bg-transparent border border-[var(--shell-border)] cursor-pointer transition-colors text-[11px] hover:bg-[var(--hover-overlay)] disabled:opacity-30 disabled:cursor-default"
-                        onclick={() => goToPage(currentPage + 1)}
-                        disabled={currentPage >= totalPages}
-                    >
-                        Next <ChevronRight size={12} />
-                    </button>
-                </div>
-            {/if}
-
-            <div class="flex-1"></div>
-
-            <!-- Per-page selector (right, browse mode only) -->
-            {#if !isSearching}
-                <div class="flex items-center gap-0.5 shrink-0">
-                    {#each PAGE_SIZES as size (size)}
-                        <button
-                            class="h-6 px-1.5 rounded text-[11px] border-none cursor-pointer transition-colors"
-                            class:bg-[var(--hover-overlay)]={pageSize === size}
-                            class:text-[var(--text-primary)]={pageSize === size}
-                            class:font-semibold={pageSize === size}
-                            class:bg-transparent={pageSize !== size}
-                            class:text-[var(--text-tertiary)]={pageSize !== size}
-                            class:hover:text-[var(--text-secondary)]={pageSize !== size}
-                            onclick={() => setPageSize(size)}
-                        >
-                            {size}
-                        </button>
-                    {/each}
-                    <span class="text-[10px] text-[var(--text-tertiary)] ml-0.5">/ page</span>
-                </div>
-            {/if}
-        </div>
-
-        <!-- === Card List === -->
-        <div class="flex-1 overflow-y-auto px-4 pb-2" style="scrollbar-gutter: stable">
-            {#if loading}
-                <EmptyState icon={Loader2} message="Loading…" height="fixed" spinning />
-            {:else if error}
-                <EmptyState message={error} height="fixed" />
-            {:else if filteredEntries.length === 0}
-                <EmptyState icon={FileText} height="fixed">
-                    <span>
-                        {#if isSearching}
-                            No results for "{searchQuery}"
-                        {:else if activeTagIds.size > 0}
-                            No transcripts match selected tags
-                        {:else}
-                            No transcripts yet
-                        {/if}
-                    </span>
-                </EmptyState>
-            {:else}
-                <div class="flex flex-col gap-1.5 pt-1">
-                    {#each filteredEntries as entry (entry.id)}
-                        <button
-                            class="w-full text-left p-3 rounded-lg border cursor-pointer transition-all duration-150 group/card"
-                            class:bg-[var(--hover-overlay-blue)]={selection.isSelected(entry.id)}
-                            class:border-[var(--accent)]={selection.isSelected(entry.id)}
-                            class:bg-[var(--surface-secondary)]={!selection.isSelected(entry.id)}
-                            class:border-[var(--shell-border)]={!selection.isSelected(entry.id)}
-                            class:hover:border-[var(--accent-muted)]={!selection.isSelected(entry.id)}
-                            class:hover:bg-[var(--hover-overlay)]={!selection.isSelected(entry.id)}
-                            onclick={(e) => handleCardClick(entry.id, e)}
-                            ondblclick={() => handleCardDblClick(entry.id)}
-                        >
-                            <!-- Title row -->
-                            <div class="flex items-start justify-between gap-2 mb-1">
-                                <h3
-                                    class="text-[18px] font-semibold text-[var(--text-primary)] leading-snug m-0 truncate flex-1"
-                                >
-                                    {getTitle(entry)}
-                                </h3>
-                                <span class="text-[12px] text-[var(--text-tertiary)] font-mono shrink-0 pt-0.5">
-                                    {formatRelativeDate(entry.created_at)}
-                                </span>
-                            </div>
-
-                            <!-- Text preview -->
-                            {#if isSearching}
-                                <p
-                                    class="text-[15px] text-[var(--text-secondary)] leading-relaxed m-0 mb-2 line-clamp-2"
-                                >
-                                    {@html highlight(truncate(getDisplayText(entry)), searchQuery)}
-                                </p>
-                            {:else}
-                                <div
-                                    class="text-[15px] text-[var(--text-secondary)] leading-relaxed mb-2 max-h-[3.25em] overflow-hidden"
-                                >
-                                    <MarkdownBody text={getDisplayText(entry)} className="[&>*:first-child]:mt-0" />
-                                </div>
-                            {/if}
-
-                            <!-- Bottom row: tags + metadata -->
-                            <div class="flex items-center gap-2 flex-wrap pt-1.5 mt-0.5">
-                                {#if entry.id === defaultPromptId}
-                                    <span
-                                        class="inline-flex items-center gap-1 h-5 px-1.5 rounded-full text-[10px] font-medium bg-[color-mix(in_srgb,var(--accent)_18%,transparent)] text-[var(--text-primary)]"
-                                    >
-                                        <Check size={9} class="shrink-0" />
-                                        Default Prompt
-                                    </span>
-                                {/if}
-                                {#each entry.tags as tag (tag.id)}
-                                    <span
-                                        class="inline-flex items-center gap-1 h-5 px-1.5 rounded-full text-[10px] font-medium"
-                                        style="background: color-mix(in srgb, {tagColor(
-                                            tag,
-                                        )} 25%, transparent); color: var(--text-primary);"
-                                    >
-                                        {#if tag.is_system}
-                                            <Hammer size={9} class="shrink-0" />
-                                        {:else}
-                                            <span class="w-1.5 h-1.5 rounded-full" style="background: {tagColor(tag)}"
-                                            ></span>
-                                        {/if}
-                                        {tag.name}
-                                    </span>
-                                {/each}
-
-                                <div class="flex-1"></div>
-
-                                <span class="text-[11px] text-[var(--text-tertiary)] font-mono">
-                                    {formatDuration(entry.duration_ms)}
-                                </span>
-                                <span class="text-[11px] text-[var(--text-tertiary)] font-mono">
-                                    {wordCount(getDisplayText(entry)).toLocaleString()} words
-                                </span>
-                            </div>
-                        </button>
-                    {/each}
-                </div>
-
-                {#if isSearching && hasMore}
-                    <div class="flex justify-center py-3">
-                        <StyledButton size="sm" variant="secondary" onclick={loadMore} disabled={searching}>
-                            {#if searching}<Loader2 size={14} class="animate-spin" /> Loading…{:else}Load More ({searchTotal -
-                                    searchResults.length} remaining){/if}
-                        </StyledButton>
-                    </div>
-                {/if}
-
-                <!-- Total count (bottom center) -->
-                {#if !loading}
-                    <div class="flex items-center justify-center gap-2 py-3 text-[13px]">
-                        <span class="text-[var(--accent)] font-semibold tabular-nums">
-                            {displayTotal} transcript{displayTotal !== 1 ? "s" : ""}
-                            {#if activeTagIds.size > 0}
-                                <span class="text-[var(--accent)]/70">(filtered)</span>
-                            {/if}
-                        </span>
-                        {#if selection.hasSelection}
-                            <span class="text-[var(--accent)] font-semibold">· {selection.count} selected</span>
-                        {/if}
-                    </div>
-                {/if}
-            {/if}
-        </div>
-
-        <!-- === Bottom Action Bar === -->
-        {#if bulkRefineActive}
-            <ActionBar gap="gap-3">
-                <Loader2 size={14} class="animate-spin text-[var(--accent)] shrink-0" />
-                <span class="text-sm text-[var(--text-secondary)]">
-                    Refining {bulkRefineCompleted} of {bulkRefineTotal}…
-                    {#if bulkRefineFailed > 0}
-                        <span class="text-[var(--text-warning)]">({bulkRefineFailed} failed)</span>
-                    {/if}
-                </span>
-                <div class="flex-1 h-1.5 rounded-full bg-[var(--shell-border)] overflow-hidden">
-                    <div
-                        class="h-full rounded-full bg-[var(--accent)] transition-all duration-300"
-                        style="width: {bulkRefineTotal > 0
-                            ? ((bulkRefineCompleted + bulkRefineFailed) / bulkRefineTotal) * 100
-                            : 0}%"
-                    ></div>
-                </div>
-                <StyledButton size="sm" variant="secondary" onclick={handleCancelBulkRefine}>
-                    <X size={13} /> Cancel
-                </StyledButton>
-            </ActionBar>
-        {:else if selection.hasSelection}
-            <ActionBar>
-                <StyledButton size="sm" variant="destructive" onclick={handleDelete}>
-                    <Trash2 size={13} />
-                    {selection.isMulti ? `Delete ${selection.count}` : "Delete"}
-                </StyledButton>
-
-                <div class="flex-1"></div>
-
-                {#if selection.count === 1}
-                    <StyledButton
-                        size="sm"
-                        variant="secondary"
-                        onclick={continueRecording}
-                        title="Continue recording — append to this transcript"
-                    >
-                        <Mic size={13} /> Continue
-                    </StyledButton>
-                    <StyledButton size="sm" variant="secondary" onclick={editSelected}>
-                        <Pencil size={13} /> Edit
-                    </StyledButton>
-                    <StyledButton size="sm" variant="secondary" onclick={copySelectedText}>
-                        {#if copied}<Check size={13} /> Copied{:else}<Copy size={13} /> Copy{/if}
-                    </StyledButton>
-                    {#if selectedEntry?.has_audio_cached}
-                        <StyledButton
-                            size="sm"
-                            variant="secondary"
-                            onclick={async () => {
-                                if (!selectedEntry) return;
-                                try {
-                                    await retranscribeTranscript(selectedEntry.id);
-                                    toast.info("Re-transcription queued");
-                                } catch {
-                                    toast.error("Failed to queue re-transcription");
-                                }
-                            }}
-                        >
-                            <RefreshCw size={13} /> Re-transcribe
-                        </StyledButton>
-                    {/if}
-                    {#if selectedEntryIsPrompt}
-                        {#if selectedEntryIsDefaultPrompt}
-                            <StyledButton size="sm" variant="ghost" onclick={handleClearDefaultPrompt}>
-                                <X size={13} /> Clear Default Prompt
-                            </StyledButton>
-                        {:else}
-                            <StyledButton size="sm" variant="neutral" onclick={handleSetSelectedAsDefaultPrompt}>
-                                <Check size={13} /> Set Default Prompt
-                            </StyledButton>
-                        {/if}
-                    {/if}
-                {/if}
-
-                <StyledButton size="sm" variant="secondary" onclick={openTagAssign}>
-                    <TagIcon size={13} /> Tag
-                </StyledButton>
-
-                <div class="relative" bind:this={exportBtnEl}>
-                    <StyledButton
-                        size="sm"
-                        variant="secondary"
-                        onclick={toggleExportPopover}
-                        disabled={exporting}
-                        title="Export selected transcripts"
-                    >
-                        <Download size={13} />
-                        {exporting ? "Exporting…" : selection.isMulti ? `Export ${selection.count}` : "Export"}
-                    </StyledButton>
-                </div>
-
-                <StyledButton size="sm" variant="primary" onclick={handleBulkRefine}>
-                    <Sparkles size={13} />
-                    {selection.isMulti ? `Refine ${selection.count}` : "Refine"}
-                </StyledButton>
-            </ActionBar>
-        {/if}
+        <TranscriptsSelectionBar
+            {bulkRefineActive}
+            {bulkRefineCompleted}
+            {bulkRefineFailed}
+            {bulkRefineTotal}
+            {selection}
+            {copied}
+            {exporting}
+            {selectedEntry}
+            {selectedEntryIsPrompt}
+            {selectedEntryIsDefaultPrompt}
+            onCancelBulkRefine={handleCancelBulkRefine}
+            onDelete={handleDelete}
+            onContinueRecording={continueRecording}
+            onEditSelected={editSelected}
+            onCopySelectedText={copySelectedText}
+            onRetranscribeSelected={async () => {
+                if (!selectedEntry) return;
+                try {
+                    await retranscribeTranscript(selectedEntry.id);
+                    toast.info("Re-transcription queued");
+                } catch {
+                    toast.error("Failed to queue re-transcription");
+                }
+            }}
+            onClearDefaultPrompt={handleClearDefaultPrompt}
+            onSetSelectedAsDefaultPrompt={handleSetSelectedAsDefaultPrompt}
+            onOpenTagAssign={openTagAssign}
+            onToggleExportPopover={toggleExportPopover}
+            onBulkRefine={handleBulkRefine}
+            onExportAnchorChange={handleExportAnchorChange}
+        />
     </div>
 </div>
 
