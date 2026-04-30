@@ -660,11 +660,6 @@
         nav.navigateToAppendMode(transcriptId);
         toast.info("Continue mode active — next recording will be appended");
     }
-
-    function returnToDashboard() {
-        resetTranscriptWorkspace();
-        viewState = "idle";
-    }
 </script>
 
 <div class="flex flex-col h-full overflow-hidden p-[var(--space-4)] gap-[var(--minor-gap)]">
@@ -870,7 +865,6 @@
         onAppendToPrevious={appendToPrevious}
         onQueueContinueMode={queueContinueMode}
         onGoToRefine={goToRefine}
-        onReturnToDashboard={returnToDashboard}
         onStartNewRecording={startNewRecording}
     />
 </div>

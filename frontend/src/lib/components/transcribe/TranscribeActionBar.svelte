@@ -2,7 +2,6 @@
     import {
         Check,
         Copy,
-        Home,
         Mic,
         Pencil,
         PlusCircle,
@@ -13,6 +12,7 @@
         Undo2,
     } from "lucide-svelte";
 
+    import ActionBar from "../ActionBar.svelte";
     import StyledButton from "../StyledButton.svelte";
 
     type WorkspaceState = "idle" | "recording" | "transcribing" | "ready" | "viewing" | "editing";
@@ -33,7 +33,6 @@
         onAppendToPrevious: () => void;
         onQueueContinueMode: () => void;
         onGoToRefine: () => void;
-        onReturnToDashboard: () => void;
         onStartNewRecording: () => void;
     }
 
@@ -53,14 +52,13 @@
         onAppendToPrevious,
         onQueueContinueMode,
         onGoToRefine,
-        onReturnToDashboard,
         onStartNewRecording,
     }: Props = $props();
 </script>
 
 {#if viewState !== "idle" && viewState !== "transcribing" && viewState !== "recording"}
-    <div class="flex flex-wrap items-center gap-[var(--space-1)] py-[var(--space-1)] shrink-0">
-        {#if viewState === "editing"}
+    {#if viewState === "editing"}
+        <div class="flex flex-wrap items-center gap-[var(--space-1)] py-[var(--space-1)] shrink-0">
             <StyledButton variant="ghost" size="sm" onclick={onDiscardEdits}>
                 <Undo2 size={14} /> Discard
             </StyledButton>
@@ -68,11 +66,13 @@
             <StyledButton variant="primary" size="sm" onclick={onCommitEdits}>
                 <Save size={14} /> Save
             </StyledButton>
-        {:else}
+        </div>
+    {:else}
+        <ActionBar>
             <StyledButton variant="destructive" size="sm" onclick={onDeleteTranscript}>
                 <Trash2 size={14} /> Delete
             </StyledButton>
-            <StyledButton variant="ghost" size="sm" onclick={onEnterEditMode}>
+            <StyledButton variant="secondary" size="sm" onclick={onEnterEditMode}>
                 <Pencil size={14} /> Edit
             </StyledButton>
             <StyledButton variant="secondary" size="sm" onclick={onCopyToClipboard}>
@@ -84,7 +84,7 @@
             </StyledButton>
 
             {#if hasAudioCached}
-                <StyledButton variant="ghost" size="sm" onclick={onRetranscribe}>
+                <StyledButton variant="secondary" size="sm" onclick={onRetranscribe}>
                     <RefreshCw size={14} /> Re-transcribe
                 </StyledButton>
             {/if}
@@ -92,26 +92,23 @@
             <div class="flex-1"></div>
 
             {#if viewState === "ready" && hasPreviousTranscript}
-                <StyledButton variant="ghost" size="sm" onclick={onAppendToPrevious}>
+                <StyledButton variant="secondary" size="sm" onclick={onAppendToPrevious}>
                     <PlusCircle size={14} /> Append to Previous
                 </StyledButton>
             {/if}
             {#if viewState === "ready" || viewState === "viewing"}
-                <StyledButton variant="ghost" size="sm" onclick={onQueueContinueMode}>
+                <StyledButton variant="secondary" size="sm" onclick={onQueueContinueMode}>
                     <Mic size={14} /> Continue
                 </StyledButton>
             {/if}
             {#if refinementEnabled}
-                <StyledButton variant="ghost" size="sm" onclick={onGoToRefine} disabled={transcriptId == null}>
+                <StyledButton variant="primary" size="sm" onclick={onGoToRefine} disabled={transcriptId == null}>
                     <Sparkles size={14} /> Refine
                 </StyledButton>
             {/if}
-            <StyledButton variant="ghost" size="sm" onclick={onReturnToDashboard}>
-                <Home size={14} /> Dashboard
-            </StyledButton>
-            <StyledButton variant="primary" size="sm" onclick={onStartNewRecording}>
+            <StyledButton variant="secondary" size="sm" onclick={onStartNewRecording}>
                 <Mic size={14} /> New Recording
             </StyledButton>
-        {/if}
-    </div>
+        </ActionBar>
+    {/if}
 {/if}
