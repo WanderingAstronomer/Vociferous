@@ -1,16 +1,5 @@
 <script lang="ts">
-    import {
-        Check,
-        Copy,
-        Mic,
-        Pencil,
-        PlusCircle,
-        RefreshCw,
-        Save,
-        Sparkles,
-        Trash2,
-        Undo2,
-    } from "lucide-svelte";
+    import { Check, Copy, Mic, Pencil, PlusCircle, RefreshCw, Save, Sparkles, Trash2, Undo2 } from "lucide-svelte";
 
     import ActionBar from "../ActionBar.svelte";
     import StyledButton from "../StyledButton.svelte";
