@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from src.core.command_bus import handles
+from src.core.engine_status import normalize_engine_error
 from src.core.intents.definitions import (
     BeginRecordingIntent,
     CancelRecordingIntent,
@@ -149,8 +150,6 @@ class RecordingSession:
             self.last_asr_error = None
             self._emit("engine_status", {"asr": "ready"})
         except Exception as e:
-            from src.core.engine_status import normalize_engine_error
-
             logger.exception("ASR model failed to load (will retry on first transcription)")
             self.last_asr_error = normalize_engine_error(e)
             self._emit("engine_status", {"asr": "unavailable"})

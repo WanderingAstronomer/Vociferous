@@ -322,6 +322,7 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             Exception: _server_error_handler,
         },
         openapi_config=OpenAPIConfig(title="Vociferous API", version=APP_VERSION),
+        logging_config=None,
         debug=False,
     )
 
