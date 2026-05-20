@@ -152,6 +152,10 @@ def test_detect_cuda_runtime_registers_vendored_windows_cuda_dirs(monkeypatch, t
     assert status.cuda_available is True
     assert status.cuda_device_count == 1
     assert "Registered vendored CUDA DLL dirs" in status.detail
+    assert "cublas/bin" in status.detail
+    assert "cuda_runtime/bin" in status.detail
+    assert "cudnn/bin" in status.detail
+    assert "bin, bin, bin" not in status.detail
     assert dll_loads == ["cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll", "cudnn64_9.dll"]
     assert registered_dirs == [
         str((nvidia_root / "cublas" / "bin").resolve()),

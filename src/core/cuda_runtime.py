@@ -148,11 +148,11 @@ def _get_vendored_windows_cuda_dirs() -> list[Path]:
 def _describe_windows_cuda_dir(path: Path) -> str:
     parts = [part.lower() for part in path.parts]
     if len(parts) >= 2 and parts[-2:] == ["library", "bin"]:
-        return "Library/bin"
+        return f"{path.parts[-3]}/Library/bin"
     if len(parts) >= 2 and parts[-2:] == ["bin", "x86_64"]:
-        return "bin/x86_64"
+        return f"{path.parts[-3]}/bin/x86_64"
     if path.name.lower() == "bin":
-        return "bin"
+        return f"{path.parts[-2]}/bin"
     return path.name
 
 
