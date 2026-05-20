@@ -35,6 +35,8 @@ from src.api.config import (
 from src.api.deps import set_coordinator
 from src.api.models import download_model, list_models
 from src.api.system import (
+    cleanup_engine,
+    engine_status,
     health,
     import_audio_file,
     prewarm_health_cache,
@@ -297,6 +299,8 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             export_file,
             import_audio_file,
             health,
+            engine_status,
+            cleanup_engine,
             minimize_window,
             maximize_window,
             close_window,

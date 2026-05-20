@@ -152,7 +152,9 @@ def create_local_model(settings: VociferousSettings):
             local_files_only=True,
         )
     except Exception as e:
-        raise EngineError(f"Failed to load faster-whisper model: {e}") from e
+        from src.core.engine_status import normalize_engine_error
+
+        raise EngineError(normalize_engine_error(e, model_name=str(runtime_summary["model_id"]))) from e
 
     elapsed = time.perf_counter() - start
     logger.info("Whisper model loaded in %.2fs", elapsed)
@@ -277,7 +279,9 @@ def transcribe(
         return post_process_transcription(transcription, settings), speech_duration_ms, transcription_time_ms
 
     except Exception as e:
-        raise EngineError(f"Transcription failed: {e}") from e
+        from src.core.engine_status import normalize_engine_error
+
+        raise EngineError(normalize_engine_error(e, model_name=settings.model.model)) from e
 
 
 def _collapse_repeated_phrases(text: str, min_phrase_words: int = 3, max_phrase_words: int = 30) -> str:

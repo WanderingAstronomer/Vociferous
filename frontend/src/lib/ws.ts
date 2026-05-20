@@ -28,7 +28,6 @@ class WSClient {
         try {
             this.ws = new WebSocket(url);
             this.ws.onopen = () => {
-                console.log("[ws] connected");
                 this.reconnectDelay = 1000;
             };
             this.ws.onmessage = (event) => {
@@ -65,7 +64,6 @@ class WSClient {
                 }
             };
             this.ws.onclose = () => {
-                console.log("[ws] disconnected, reconnecting...");
                 this.scheduleReconnect();
             };
             this.ws.onerror = () => {

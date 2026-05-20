@@ -78,6 +78,7 @@ class SLMRuntime:
         self._engine: Optional[RefinementEngine] = None
         self._lock = threading.Lock()
         self._runtime_summary: dict[str, object] | None = None
+        self.last_error: str | None = None
 
         # Lifecycle callbacks invoked from the SLM worker thread.
         self._on_state_changed = on_state_changed
@@ -94,6 +95,9 @@ class SLMRuntime:
             self._state = new_state
             if self._on_state_changed:
                 self._on_state_changed(new_state)
+
+    def get_runtime_summary(self) -> dict[str, object] | None:
+        return dict(self._runtime_summary) if self._runtime_summary else None
 
     def enable(self) -> None:
         """Enable the SLM runtime. Starts async model loading."""
@@ -188,6 +192,7 @@ class SLMRuntime:
             )
 
             self._runtime_summary = runtime_summary
+            self.last_error = None
             logger.info(
                 "SLM loaded in %.2fs (model_id=%s, resolved_device=%s)",
                 time.perf_counter() - start,
@@ -198,9 +203,12 @@ class SLMRuntime:
             self.state = SLMState.READY
 
         except Exception as e:
+            from src.core.engine_status import normalize_engine_error
+
             logger.error("Failed to load SLM: %s", e)
+            self.last_error = normalize_engine_error(e)
             if self._on_error:
-                self._on_error(str(e))
+                self._on_error(self.last_error)
             self.state = SLMState.ERROR
 
     def _unload_model(self) -> None:
@@ -391,9 +399,12 @@ class SLMRuntime:
 
             self.state = SLMState.READY
         except Exception as e:
+            from src.core.engine_status import normalize_engine_error
+
             logger.error("Inference failed: %s", e)
+            self.last_error = normalize_engine_error(e)
             if self._on_error:
-                self._on_error(f"Inference failed: {e}")
+                self._on_error(f"Inference failed: {self.last_error} Raw cause: {e}")
             self.state = SLMState.READY
 
     def change_model(self, model_id: str) -> None:

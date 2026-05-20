@@ -350,6 +350,92 @@ def _v11_compound_membership(conn: sqlite3.Connection) -> None:
     logger.info("v11 migration: compound membership columns ensured on transcripts")
 
 
+def _transcripts_timestamp_has_unique_constraint(conn: sqlite3.Connection) -> bool:
+    for row in conn.execute("PRAGMA index_list(transcripts)").fetchall():
+        index_name = row[1]
+        is_unique = bool(row[2])
+        if not is_unique:
+            continue
+        columns = [info[2] for info in conn.execute(f"PRAGMA index_info({index_name})").fetchall()]
+        if columns == ["timestamp"]:
+            return True
+    return False
+
+
+def _v12_timestamp_not_unique(conn: sqlite3.Connection) -> None:
+    """v12 ΓÇö Rebuild transcripts so timestamp is indexed but not unique."""
+    if not _transcripts_timestamp_has_unique_constraint(conn):
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_transcripts_timestamp ON transcripts(timestamp)")
+        logger.info("v12 migration: transcript timestamp already non-unique")
+        return
+
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.executescript(
+        """
+        DROP TRIGGER IF EXISTS transcripts_ai;
+        DROP TRIGGER IF EXISTS transcripts_ad;
+        DROP TRIGGER IF EXISTS transcripts_au;
+
+        ALTER TABLE transcripts RENAME TO transcripts_old;
+
+        CREATE TABLE transcripts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            raw_text TEXT NOT NULL,
+            normalized_text TEXT NOT NULL,
+            display_name TEXT,
+            duration_ms INTEGER DEFAULT 0,
+            speech_duration_ms INTEGER DEFAULT 0,
+            transcription_time_ms INTEGER DEFAULT 0,
+            refinement_time_ms INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+            include_in_analytics INTEGER NOT NULL DEFAULT 1,
+            has_audio_cached INTEGER NOT NULL DEFAULT 0,
+            is_protected INTEGER NOT NULL DEFAULT 0,
+            compound_root_id INTEGER REFERENCES transcripts(id) ON DELETE CASCADE,
+            compound_order INTEGER
+        );
+
+        INSERT INTO transcripts (
+            id, timestamp, raw_text, normalized_text, display_name,
+            duration_ms, speech_duration_ms, transcription_time_ms, refinement_time_ms,
+            created_at, include_in_analytics, has_audio_cached, is_protected,
+            compound_root_id, compound_order
+        )
+        SELECT
+            id, timestamp, raw_text, normalized_text, display_name,
+            duration_ms, speech_duration_ms, transcription_time_ms, refinement_time_ms,
+            created_at, include_in_analytics, has_audio_cached, is_protected,
+            compound_root_id, compound_order
+        FROM transcripts_old;
+
+        DROP TABLE transcripts_old;
+
+        CREATE INDEX IF NOT EXISTS idx_transcripts_timestamp ON transcripts(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_transcripts_compound_root ON transcripts(compound_root_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_transcripts_compound_member_order
+            ON transcripts(compound_root_id, compound_order);
+
+        CREATE TRIGGER IF NOT EXISTS transcripts_ai AFTER INSERT ON transcripts BEGIN
+            INSERT INTO transcripts_fts(rowid, raw_text, normalized_text)
+            VALUES (new.id, new.raw_text, new.normalized_text);
+        END;
+        CREATE TRIGGER IF NOT EXISTS transcripts_ad AFTER DELETE ON transcripts BEGIN
+            INSERT INTO transcripts_fts(transcripts_fts, rowid, raw_text, normalized_text)
+            VALUES ('delete', old.id, old.raw_text, old.normalized_text);
+        END;
+        CREATE TRIGGER IF NOT EXISTS transcripts_au AFTER UPDATE ON transcripts BEGIN
+            INSERT INTO transcripts_fts(transcripts_fts, rowid, raw_text, normalized_text)
+            VALUES ('delete', old.id, old.raw_text, old.normalized_text);
+            INSERT INTO transcripts_fts(rowid, raw_text, normalized_text)
+            VALUES (new.id, new.raw_text, new.normalized_text);
+        END;
+        """
+    )
+    conn.execute("PRAGMA foreign_keys=ON")
+    logger.info("v12 migration: transcript timestamp uniqueness removed")
+
+
 #: Ordered list of (human-readable description, migration function) pairs.
 #: Append here to add future migrations; do not edit existing entries.
 MIGRATIONS: list[tuple[str, object]] = [

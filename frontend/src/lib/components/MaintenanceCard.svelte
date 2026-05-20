@@ -5,7 +5,15 @@
      * Flat layout matching other Settings tabs. No bordered cards.
      */
 
-    import { getTranscripts, clearAllTranscripts, exportFile, openLogDirectory, restartEngine } from "../api";
+    import {
+        getTranscripts,
+        clearAllTranscripts,
+        exportFile,
+        openLogDirectory,
+        restartEngine,
+        cleanupEngine,
+    } from "../api";
+    import type { EngineStatusInfo } from "../api";
     import { buildExportPayload, type ExportFormat } from "../exportUtils";
     import { CheckCircle, AlertCircle } from "lucide-svelte";
     import ToggleSwitch from "./ToggleSwitch.svelte";
@@ -33,12 +41,13 @@
                 detail?: string;
             };
         };
+        engineStatus: EngineStatusInfo | null;
         getSafe: (obj: any, path: string, fallback?: any) => any;
         setSafe: (path: string, value: any) => void;
         showMessage: (msg: string, type: "success" | "error") => void;
     }
 
-    let { config, models, health, getSafe, setSafe, showMessage }: Props = $props();
+    let { config, models, health, engineStatus, getSafe, setSafe, showMessage }: Props = $props();
 
     /* ===== Export state ===== */
 
@@ -49,6 +58,7 @@
 
     let clearingTranscripts = $state(false);
     let showClearTranscriptsConfirm = $state(false);
+    let cleaningEngine = $state(false);
 
     /* ===== Derived ===== */
 
@@ -76,6 +86,20 @@
     );
 
     let gpuRuntimeMismatch = $derived(Boolean(health.gpu?.driver_detected) && !health.gpu?.cuda_available);
+
+    let engineReady = $derived(engineStatus?.status === "ready" || engineStatus?.status === "degraded");
+
+    let engineStatusLabel = $derived(formatStatus(engineStatus?.status ?? "unknown"));
+
+    let activeProvider = $derived(engineStatus?.providers.find((provider) => provider.active));
+
+    let packageSummary = $derived(
+        engineStatus
+            ? Object.entries(engineStatus.packages)
+                  .map(([name, version]) => `${name} ${version ?? "missing"}`)
+                  .join(" ┬╖ ")
+            : "ΓÇö",
+    );
 
     /* ===== Actions ===== */
 
@@ -151,6 +175,30 @@
             showMessage(e.message || "Could not open log directory", "error");
         }
     }
+
+    async function handleCleanupEngine() {
+        cleaningEngine = true;
+        try {
+            const result = await cleanupEngine(false);
+            const count = result.removed.length;
+            if (result.errors.length > 0) {
+                showMessage(`Cleaned ${count} artifact${count !== 1 ? "s" : ""}; ${result.errors.length} failed`, "error");
+                return;
+            }
+            showMessage(`Cleaned ${count} stale artifact${count !== 1 ? "s" : ""}`, "success");
+        } catch (e: any) {
+            showMessage(e.message || "Engine cleanup failed", "error");
+        } finally {
+            cleaningEngine = false;
+        }
+    }
+
+    function formatStatus(value: string): string {
+        return value
+            .split("_")
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(" ");
+    }
 </script>
 
 <div class="flex flex-col gap-[var(--space-3)]">
@@ -176,6 +224,77 @@
             {/if}
         </div>
     </div>
+
+    <!-- Engine readiness -->
+    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+        <div class="text-[var(--text-sm)] text-[var(--text-primary)]" data-tip="Canonical ASR/refinement readiness reported by the engine.">
+            Engine Readiness
+        </div>
+        <div class="gpu-status-badge" class:gpu-available={engineReady} class:gpu-unavailable={!engineReady}>
+            {#if engineReady}
+                <CheckCircle size={14} />
+            {:else}
+                <AlertCircle size={14} />
+            {/if}
+            <span>{engineStatusLabel}</span>
+        </div>
+    </div>
+
+    {#if engineStatus}
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+            <span class="text-[var(--text-sm)] text-[var(--text-primary)]">ASR Runtime</span>
+            <div class="text-[var(--text-sm)] text-[var(--text-secondary)] leading-[var(--leading-normal)]">
+                {formatStatus(engineStatus.asr.state)} ┬╖ {engineStatus.asr.device ?? "ΓÇö"} ┬╖ {engineStatus.asr.detail}
+            </div>
+        </div>
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+            <span class="text-[var(--text-sm)] text-[var(--text-primary)]">Refinement Runtime</span>
+            <div class="text-[var(--text-sm)] text-[var(--text-secondary)] leading-[var(--leading-normal)]">
+                {formatStatus(engineStatus.slm.state)} ┬╖ {engineStatus.slm.device ?? "ΓÇö"} ┬╖ {engineStatus.slm.detail}
+            </div>
+        </div>
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+            <span class="text-[var(--text-sm)] text-[var(--text-primary)]">Provider</span>
+            <div class="text-[var(--text-sm)] text-[var(--text-secondary)] leading-[var(--leading-normal)]">
+                {activeProvider?.name ?? "ΓÇö"} ┬╖ {activeProvider?.kind ?? "ΓÇö"}
+            </div>
+        </div>
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+            <span class="text-[var(--text-sm)] text-[var(--text-primary)]">Hardware</span>
+            <div class="text-[var(--text-sm)] text-[var(--text-secondary)] leading-[var(--leading-normal)]">
+                {engineStatus.hardware.backend.toUpperCase()}{#if engineStatus.hardware.gpu_name}
+                    ┬╖ {engineStatus.hardware.gpu_name}{/if}{#if engineStatus.hardware.vram_total_mb}
+                    ┬╖ {Math.round(engineStatus.hardware.vram_free_mb)} MB free / {Math.round(engineStatus.hardware.vram_total_mb)} MB{/if}
+            </div>
+        </div>
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+            <span class="text-[var(--text-sm)] text-[var(--text-primary)]">Packages</span>
+            <div class="text-[var(--text-xs)] text-[var(--text-tertiary)] leading-[var(--leading-normal)] break-words">
+                {packageSummary}
+            </div>
+        </div>
+        {#if engineStatus.downloads.length > 0}
+            <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+                <span class="text-[var(--text-sm)] text-[var(--text-primary)]">Model Download</span>
+                <div class="flex flex-col gap-[var(--space-1)]">
+                    {#each engineStatus.downloads.slice(0, 3) as download (`${download.model_type}-${download.model_id}`)}
+                        <div class="text-[var(--text-sm)] text-[var(--text-secondary)] leading-[var(--leading-normal)]">
+                            {download.model_id}: {formatStatus(download.status)} ┬╖ {download.message}
+                        </div>
+                    {/each}
+                </div>
+            </div>
+        {/if}
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+            <span class="text-[var(--text-sm)] text-[var(--text-primary)]">Engine Artifacts</span>
+            <div class="flex flex-wrap items-center gap-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-secondary)]">
+                <span>{engineStatus.cleanup.import_temp_count} temp ┬╖ {engineStatus.cleanup.orphan_spool_count} spool</span>
+                <StyledButton variant="secondary" onclick={handleCleanupEngine} disabled={cleaningEngine}>
+                    {cleaningEngine ? "CleaningΓÇª" : "Clean Temp"}
+                </StyledButton>
+            </div>
+        </div>
+    {/if}
 
     {#if gpuRuntimeMismatch}
         <div class="grid grid-cols-[200px_minmax(0,1fr)] gap-x-[var(--space-4)]">

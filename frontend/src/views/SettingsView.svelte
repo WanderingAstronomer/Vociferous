@@ -6,7 +6,8 @@
      * independently; save bar pins to the bottom.
      */
 
-    import { getConfig, updateConfig, getModels, getHealth, downloadModel } from "../lib/api";
+    import { getConfig, updateConfig, getModels, getHealth, getEngineStatus, downloadModel } from "../lib/api";
+    import type { EngineStatusInfo } from "../lib/api";
     import { toast } from "../lib/toast.svelte";
     import { ws } from "../lib/ws";
     import { onMount, onDestroy } from "svelte";
@@ -82,6 +83,7 @@
         version: "",
         transcripts: 0,
     });
+    let engineStatus: EngineStatusInfo | null = $state(null);
     let loading = $state(true);
     let saving = $state(false);
     let message = $state("");
@@ -116,6 +118,9 @@
                 getModels()
                     .then((m) => (models = m))
                     .catch(() => {});
+                getEngineStatus()
+                    .then((s) => (engineStatus = s))
+                    .catch(() => {});
                 showMessage(`${data.model_id} downloaded`, "success");
             } else if (data.status === "error") {
                 const isSlm = Object.keys(models.slm).includes(data.model_id);
@@ -136,13 +141,19 @@
                 getHealth()
                     .then((h) => (health = h))
                     .catch(() => {});
+                getEngineStatus()
+                    .then((s) => (engineStatus = s))
+                    .catch(() => {});
             } else if (data?.asr === "unavailable") {
                 showMessage("Engine restart: ASR model unavailable", "error");
+                getEngineStatus()
+                    .then((s) => (engineStatus = s))
+                    .catch(() => {});
             }
         });
 
         try {
-            const [c, m, h] = await Promise.all([getConfig(), getModels(), getHealth()]);
+            const [c, m, h, s] = await Promise.all([getConfig(), getModels(), getHealth(), getEngineStatus()]);
             config = c;
             const validRecordingModes = ["press_to_toggle", "hold_to_record"];
             if (!validRecordingModes.includes(getSafe(config, "recording.recording_mode", ""))) {
@@ -151,6 +162,7 @@
             originalConfig = JSON.stringify(config);
             models = m;
             health = h;
+            engineStatus = s;
         } catch (e: any) {
             showMessage(`Failed to load: ${e.message}`, "error");
         } finally {
@@ -166,8 +178,11 @@
     // Re-fetch health when switching to the Maintenance tab so mic status stays current
     $effect(() => {
         if (activeTab === "maintenance") {
-            getHealth()
-                .then((h) => (health = h))
+            Promise.all([getHealth(), getEngineStatus()])
+                .then(([h, s]) => {
+                    health = h;
+                    engineStatus = s;
+                })
                 .catch(() => {});
         }
     });
@@ -597,7 +612,7 @@
                         </div>
                     </div>
                 {:else if activeTab === "maintenance"}
-                    <MaintenanceCard {config} {models} {health} {getSafe} {setSafe} {showMessage} />
+                    <MaintenanceCard {config} {models} {health} {engineStatus} {getSafe} {setSafe} {showMessage} />
                 {:else if activeTab === "refinement"}
                     <RefinementCard
                         {config}

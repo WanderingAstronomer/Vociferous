@@ -146,7 +146,7 @@ Record. Transcribe. Refine. Copy. That's the core loop. The rest is infrastructu
 - Python 3.12+
 - Node.js 18+ and npm
 - System audio packages (`libportaudio2`, `xclip` on Linux)
-- **For Windows GPU acceleration**: an NVIDIA driver is not enough by itself. You also need a usable CUDA 12 runtime for CTranslate2, either via a system CUDA Toolkit + cuDNN install or via manual Python runtime packages inside the app venv.
+- **For Windows GPU acceleration**: an NVIDIA driver is not enough by itself. You also need a usable CUDA 12 runtime for CTranslate2. The Windows installer can install the pinned Python CUDA runtime wheels into the app venv when it detects a driver but cannot load the CUDA DLL stack.
 
 ### Linux (Debian/Ubuntu)
 

@@ -106,6 +106,9 @@ class RecordingSession:
         self._recording_stop = threading.Event()
         self._recording_thread: threading.Thread | None = None
         self._asr_model: Any = None
+        self._asr_runtime_summary: dict[str, object] | None = None
+        self.last_asr_error: str | None = None
+        self.is_transcribing = False
         self._audio_pipeline: Any = None  # lazy AudioPipeline instance
         self._spool: AudioSpoolWriter | None = None
         self._audio_cache: AudioCacheManager | None = None
@@ -119,6 +122,13 @@ class RecordingSession:
     @property
     def is_recording(self) -> bool:
         return self._is_recording
+
+    @property
+    def is_asr_loaded(self) -> bool:
+        return self._asr_model is not None
+
+    def get_asr_runtime_summary(self) -> dict[str, object] | None:
+        return dict(self._asr_runtime_summary) if self._asr_runtime_summary else None
 
     @property
     def audio_cache(self) -> AudioCacheManager | None:
@@ -135,9 +145,14 @@ class RecordingSession:
             from src.services.transcription_service import create_local_model
 
             self._asr_model = create_local_model(settings)
+            self._asr_runtime_summary = getattr(self._asr_model, "_vociferous_runtime_summary", None)
+            self.last_asr_error = None
             self._emit("engine_status", {"asr": "ready"})
-        except Exception:
+        except Exception as e:
+            from src.core.engine_status import normalize_engine_error
+
             logger.exception("ASR model failed to load (will retry on first transcription)")
+            self.last_asr_error = normalize_engine_error(e)
             self._emit("engine_status", {"asr": "unavailable"})
 
     def load_vad_model(self) -> None:
@@ -160,6 +175,7 @@ class RecordingSession:
         if self._asr_model is not None:
             logger.info("Unloading ASR model...")
             self._asr_model = None
+            self._asr_runtime_summary = None
             gc.collect()
 
     def shutdown_models(self) -> None:
@@ -170,6 +186,7 @@ class RecordingSession:
         Just null the tracking flag; the OS reclaims everything on exit.
         """
         self._asr_model = None
+        self._asr_runtime_summary = None
 
     def cancel_for_shutdown(self) -> None:
         """Signal the recording loop to abort without transcribing."""
@@ -549,7 +566,10 @@ class RecordingSession:
         except Exception as e:
             logger.exception("Transcription failed")
             self._cleanup_spool(spool_path)
-            self._emit("transcription_error", {"message": str(e)})
+            self.last_asr_error = normalize_engine_error(e)
+            self._emit("transcription_error", {"message": self.last_asr_error})
+        finally:
+            self.is_transcribing = False
 
     @staticmethod
     def _cleanup_spool(spool_path: Path | None) -> None:

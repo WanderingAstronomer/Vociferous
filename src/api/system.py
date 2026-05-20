@@ -24,6 +24,7 @@ from litestar.params import Body
 from src.api.deps import get_coordinator
 from src.core.constants import APP_VERSION
 from src.core.cuda_runtime import detect_cuda_runtime
+from src.core.engine_status import build_engine_status, cleanup_engine_artifacts
 from src.core.resource_manager import ResourceManager
 from src.services.audio_service import AudioService
 
@@ -114,6 +115,20 @@ def health() -> dict:
         "gpu": _detect_gpu_status(),
         "mic": _detect_mic_status(),
     }
+
+
+@get("/api/engine/status", sync_to_thread=True)
+def engine_status() -> dict:
+    """Return the canonical engine readiness and capability contract."""
+    return build_engine_status(get_coordinator())
+
+
+@post("/api/engine/cleanup", sync_to_thread=True)
+def cleanup_engine(data: dict | None = None) -> dict:
+    """Clean stale temporary engine artifacts without deleting transcripts or models."""
+    payload = data or {}
+    delete_orphan_spools = bool(payload.get("delete_orphan_spools", False))
+    return cleanup_engine_artifacts(delete_orphan_spools=delete_orphan_spools)
 
 
 # --- Audio Import ---

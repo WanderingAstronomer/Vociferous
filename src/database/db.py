@@ -13,7 +13,7 @@ import logging
 import sqlite3
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from src.core.resource_manager import ResourceManager
@@ -70,7 +70,7 @@ class Transcript:
 _CREATE_SQL = """
 CREATE TABLE IF NOT EXISTS transcripts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp TEXT UNIQUE NOT NULL,
+    timestamp TEXT NOT NULL,
     raw_text TEXT NOT NULL,
     normalized_text TEXT NOT NULL,
     display_name TEXT,
@@ -134,6 +134,8 @@ class TranscriptDB:
         from src.database.migrations import run_migrations
 
         run_migrations(self._conn)
+        row = self._conn.execute("SELECT MAX(timestamp) FROM transcripts").fetchone()
+        self._last_timestamp = row[0] if row and row[0] else ""
 
     def close(self) -> None:
         self._conn.close()
@@ -152,9 +154,9 @@ class TranscriptDB:
         tag_ids: list[int] | None = None,
     ) -> Transcript:
         """Insert a new transcript. Returns the created transcript."""
-        ts = utc_now()
         norm = normalized_text if normalized_text is not None else raw_text
         with self._write_lock, self._conn:
+            ts = self._next_timestamp_locked()
             cur = self._conn.execute(
                 """INSERT INTO transcripts
                    (timestamp, raw_text, normalized_text, display_name,
@@ -196,6 +198,14 @@ class TranscriptDB:
             created_at=ts,
             tags=tags,
         )
+
+    def _next_timestamp_locked(self) -> str:
+        candidate = utc_now()
+        if candidate <= self._last_timestamp:
+            previous = datetime.fromisoformat(self._last_timestamp)
+            candidate = (previous + timedelta(microseconds=1)).isoformat()
+        self._last_timestamp = candidate
+        return candidate
 
     def get_transcript(self, transcript_id: int) -> Transcript | None:
         """Get a single transcript with its tags."""

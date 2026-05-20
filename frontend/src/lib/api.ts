@@ -275,6 +275,81 @@ export function getHealth(): Promise<HealthInfo> {
     return request("/health");
 }
 
+export interface EngineComponentStatus {
+    name: string;
+    state: string;
+    ready: boolean;
+    model_id: string | null;
+    model_name: string | null;
+    selected: boolean;
+    downloaded: boolean;
+    device: string | null;
+    detail: string;
+    error: string | null;
+    runtime: Record<string, unknown> | null;
+}
+
+export interface EngineProviderStatus {
+    id: string;
+    name: string;
+    kind: string;
+    enabled: boolean;
+    ready: boolean;
+    active: boolean;
+    supports_streaming: boolean;
+    supports_model_listing: boolean;
+    detail: string;
+}
+
+export interface EngineDownloadStatus {
+    model_type: string;
+    model_id: string;
+    status: string;
+    message: string;
+    started_at: number;
+    updated_at: number;
+    error: string | null;
+    age_seconds: number;
+    idle_seconds: number;
+}
+
+export interface EngineStatusInfo {
+    status: string;
+    asr: EngineComponentStatus;
+    slm: EngineComponentStatus;
+    providers: EngineProviderStatus[];
+    hardware: GpuInfo & { backend: string; vram_used_pct: number };
+    models: { asr: Record<string, ModelInfo>; slm: Record<string, ModelInfo> };
+    downloads: EngineDownloadStatus[];
+    packages: Record<string, string | null>;
+    cleanup: {
+        orphan_spool_count: number;
+        import_temp_count: number;
+    };
+    python: {
+        version: string;
+        executable: string;
+        platform: string;
+    };
+}
+
+export interface EngineCleanupResult {
+    removed: string[];
+    errors: string[];
+    orphan_spools_remaining: number;
+}
+
+export function getEngineStatus(): Promise<EngineStatusInfo> {
+    return request("/engine/status");
+}
+
+export function cleanupEngine(deleteOrphanSpools = false): Promise<EngineCleanupResult> {
+    return request("/engine/cleanup", {
+        method: "POST",
+        body: JSON.stringify({ delete_orphan_spools: deleteOrphanSpools }),
+    });
+}
+
 export function getInsight(): Promise<{ text: string }> {
     return request("/insight");
 }

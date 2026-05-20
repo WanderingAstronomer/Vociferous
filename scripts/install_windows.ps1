@@ -12,6 +12,38 @@ Write-Host ""
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ProjectDir = Split-Path -Parent $ScriptDir
+$Readiness = [ordered]@{
+    Python = $false
+    Venv = $false
+    Dependencies = $false
+    Frontend = $false
+    CriticalImports = $false
+    Cuda = $false
+    WebView2 = $false
+    Models = $false
+    Shortcuts = $false
+}
+
+function Write-Section {
+    param([string]$Title)
+
+    Write-Host ""
+    Write-Host "==========================================" -ForegroundColor Cyan
+    Write-Host $Title -ForegroundColor Cyan
+    Write-Host "==========================================" -ForegroundColor Cyan
+}
+
+function Invoke-CheckedCommand {
+    param(
+        [Parameter(Mandatory = $true)][scriptblock]$Command,
+        [Parameter(Mandatory = $true)][string]$FailureMessage
+    )
+
+    & $Command
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FailureMessage (exit code $LASTEXITCODE)"
+    }
+}
 
 function Get-CudaRuntimeStatus {
     param([string]$PythonExe, [string]$ProjectRoot)
@@ -43,13 +75,65 @@ print(
 '@
 
     $probe = $probe.Replace("__PROJECT_ROOT__", $ProjectRoot.Replace("\", "\\"))
-    $json = & $PythonExe -c $probe 2>$null
-    if (-not $json) { return $null }
+    $probeFile = Join-Path ([System.IO.Path]::GetTempPath()) ("vociferous-cuda-probe-" + [guid]::NewGuid().ToString("N") + ".py")
     try {
-        return $json | ConvertFrom-Json
-    } catch {
-        return $null
+        [System.IO.File]::WriteAllText($probeFile, $probe)
+        $json = & $PythonExe $probeFile 2>$null
+        if (-not $json) { return $null }
+        try {
+            return $json | ConvertFrom-Json
+        } catch {
+            return $null
+        }
+    } finally {
+        Remove-Item -LiteralPath $probeFile -Force -ErrorAction SilentlyContinue
     }
+}
+
+function Install-PinnedWindowsCudaRuntime {
+    param([string]$PythonExe, [string]$ProjectRoot)
+
+    $manifest = Join-Path $ProjectRoot "requirements-windows-cuda.txt"
+    if (-not (Test-Path $manifest)) {
+        Write-Host "[FAIL] Windows CUDA runtime manifest missing: $manifest" -ForegroundColor Red
+        return $false
+    }
+
+    Write-Host "Installing pinned Windows CUDA runtime wheels..." -ForegroundColor Cyan
+    Write-Host "  Manifest: requirements-windows-cuda.txt"
+    & $PythonExe -m pip install -r $manifest
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[FAIL] CUDA runtime wheel installation failed" -ForegroundColor Red
+        return $false
+    }
+
+    return $true
+}
+
+function Test-WebView2Runtime {
+    $webview2Keys = @(
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BEE-13A6279D3EBB}",
+        "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BEE-13A6279D3EBB}",
+        "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BEE-13A6279D3EBB}"
+    )
+
+    foreach ($webview2Key in $webview2Keys) {
+        if (Test-Path $webview2Key) { return $true }
+    }
+
+    $webview2Roots = @(
+        (Join-Path ${env:ProgramFiles(x86)} "Microsoft\EdgeWebView\Application"),
+        (Join-Path $env:ProgramFiles "Microsoft\EdgeWebView\Application"),
+        (Join-Path $env:LOCALAPPDATA "Microsoft\EdgeWebView\Application")
+    )
+
+    foreach ($root in $webview2Roots) {
+        if (-not (Test-Path $root)) { continue }
+        $runtime = Get-ChildItem -LiteralPath $root -Recurse -Filter "msedgewebview2.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($runtime) { return $true }
+    }
+
+    return $false
 }
 
 # --- Check Python ---
@@ -176,12 +260,10 @@ if (-not $PythonCmd) {
 $PythonVersion = (& $PythonCmd @($PythonArgs + "--version") 2>&1) -replace "Python ", ""
 $PythonDisplay = if ($PythonArgs.Count -gt 0) { "$PythonCmd $($PythonArgs -join ' ')" } else { $PythonCmd }
 Write-Host "[OK] Python $PythonVersion ($PythonDisplay)" -ForegroundColor Green
+$Readiness.Python = $true
 
 # --- Check for Visual C++ Build Tools (needed for some native deps) ---
-Write-Host ""
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "Checking build prerequisites"              -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
+Write-Section "Checking build prerequisites"
 
 $hasVCTools = $false
 $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -209,10 +291,7 @@ if ($hasVCTools) {
 }
 
 # --- Create virtual environment ---
-Write-Host ""
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "Creating virtual environment"              -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
+Write-Section "Creating virtual environment"
 
 $VenvDir = Join-Path $ProjectDir ".venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
@@ -234,46 +313,40 @@ if (Test-Path $VenvDir) {
 
 if (-not (Test-Path $VenvPython)) {
     Write-Host "Creating virtual environment..."
-    & $PythonCmd @($PythonArgs + "-m", "venv", $VenvDir)
+    Invoke-CheckedCommand -Command { & $PythonCmd @($PythonArgs + "-m", "venv", $VenvDir) } -FailureMessage "Virtual environment creation failed"
     Write-Host "[OK] Virtual environment created" -ForegroundColor Green
 } else {
     Write-Host "[OK] Virtual environment already exists" -ForegroundColor Green
 }
+$Readiness.Venv = $true
 
 # --- Upgrade build tools ---
-Write-Host ""
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "Upgrading build tools"                     -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
+Write-Section "Upgrading build tools"
 
-& $VenvPip install --upgrade pip setuptools wheel
+Invoke-CheckedCommand -Command { & $VenvPython -m pip install --upgrade pip setuptools wheel } -FailureMessage "Build tool upgrade failed"
 Write-Host "[OK] Build tools upgraded" -ForegroundColor Green
 
 # --- Install dependencies ---
-Write-Host ""
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "Installing dependencies"                   -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
+Write-Section "Installing dependencies"
 
 Push-Location $ProjectDir
 try {
-    & $VenvPip install -r requirements.txt
+    Invoke-CheckedCommand -Command { & $VenvPython -m pip install -r requirements.txt } -FailureMessage "Dependency installation failed"
     Write-Host "[OK] Dependencies installed" -ForegroundColor Green
+    $Readiness.Dependencies = $true
 } finally {
     Pop-Location
 }
 
 # --- Build frontend if needed ---
-Write-Host ""
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "Building frontend"                        -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
+Write-Section "Building frontend"
 
 $FrontendDir = Join-Path $ProjectDir "frontend"
 $FrontendDistDir = Join-Path $FrontendDir "dist"
 
 if (Test-Path $FrontendDistDir) {
     Write-Host "[OK] Frontend already built (frontend/dist exists)" -ForegroundColor Green
+    $Readiness.Frontend = $true
 } else {
     # Find npm - same approach as Python: check PATH first, then well-known locations
     $npmExe = $null
@@ -298,13 +371,11 @@ if (Test-Path $FrontendDistDir) {
     if ($npmExe) {
         Push-Location $FrontendDir
         try {
-            & $npmExe install --silent
-            if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
-
-            & $npxExe vite build
-            if ($LASTEXITCODE -ne 0) { throw "vite build failed" }
+            Invoke-CheckedCommand -Command { & $npmExe install --silent } -FailureMessage "npm install failed"
+            Invoke-CheckedCommand -Command { & $npxExe vite build } -FailureMessage "vite build failed"
 
             Write-Host "[OK] Frontend built" -ForegroundColor Green
+            $Readiness.Frontend = $true
         } finally {
             Pop-Location
         }
@@ -319,10 +390,7 @@ if (Test-Path $FrontendDistDir) {
 }
 
 # --- Verify critical dependencies ---
-Write-Host ""
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "Verifying critical dependencies"           -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
+Write-Section "Verifying critical dependencies"
 
 $DepsOk = $true
 $modules = @("ctranslate2", "faster_whisper", "tokenizers", "webview", "sounddevice", "pydantic", "litestar")
@@ -352,12 +420,10 @@ if (-not $DepsOk) {
     Write-Host "Then re-run this script."
     exit 1
 }
+$Readiness.CriticalImports = $true
 
 # --- GPU Detection ---
-Write-Host ""
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "GPU Detection"                             -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
+Write-Section "GPU Detection"
 
 $nvidiaSmi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
 if ($nvidiaSmi) {
@@ -368,6 +434,7 @@ if ($nvidiaSmi) {
             $cudaStatus = Get-CudaRuntimeStatus -PythonExe $VenvPython -ProjectRoot $ProjectDir
             if ($cudaStatus -and $cudaStatus.cuda_available) {
                 Write-Host "  CTranslate2 CUDA runtime is usable ($($cudaStatus.cuda_device_count) device(s))" -ForegroundColor Green
+                $Readiness.Cuda = $true
             } else {
                 Write-Host "[WARN] NVIDIA driver detected, but CUDA inference is NOT ready." -ForegroundColor Yellow
                 if ($cudaStatus) {
@@ -376,23 +443,30 @@ if ($nvidiaSmi) {
                     Write-Host "  Probe detail: CUDA runtime probe did not return usable results."
                 }
                 Write-Host ""
-                Write-Host "  To enable GPU inference on Windows, install ONE of these paths:" -ForegroundColor White
-                Write-Host "  1. Recommended: CUDA Toolkit 12.x plus cuDNN 9"
-                Write-Host "     CUDA:  https://developer.nvidia.com/cuda-downloads"
-                Write-Host "     cuDNN: https://developer.nvidia.com/cudnn-downloads"
-                Write-Host "  2. Python-only runtime inside the venv:"
-                Write-Host "     .\.venv\Scripts\python.exe -m pip install nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12 nvidia-cublas-cu12 nvidia-cudnn-cu12"
+                Write-Host "  Recommended fix: install pinned CUDA runtime wheels inside the app venv." -ForegroundColor White
+                Write-Host "  This avoids system-wide CUDA Toolkit changes."
                 Write-Host ""
-                $openCudaDocs = Read-Host "Open the CUDA and cuDNN download pages now? (Y/n)"
-                if ($openCudaDocs -notmatch "^(?i:n|no)$") {
-                    Start-Process "https://developer.nvidia.com/cuda-downloads"
-                    Start-Sleep -Milliseconds 250
-                    Start-Process "https://developer.nvidia.com/cudnn-downloads"
+                $installCudaRuntime = Read-Host "Install pinned Windows CUDA runtime now? (Y/n)"
+                if ($installCudaRuntime -notmatch "^(?i:n|no)$") {
+                    if (Install-PinnedWindowsCudaRuntime -PythonExe $VenvPython -ProjectRoot $ProjectDir) {
+                        $cudaStatus = Get-CudaRuntimeStatus -PythonExe $VenvPython -ProjectRoot $ProjectDir
+                        if ($cudaStatus -and $cudaStatus.cuda_available) {
+                            Write-Host "[OK] CUDA runtime verified after install ($($cudaStatus.cuda_device_count) device(s))" -ForegroundColor Green
+                            Write-Host "  Probe detail: $($cudaStatus.detail)"
+                            $Readiness.Cuda = $true
+                        } else {
+                            Write-Host "[WARN] CUDA runtime wheels installed, but CTranslate2 still cannot use CUDA." -ForegroundColor Yellow
+                            if ($cudaStatus) { Write-Host "  Probe detail: $($cudaStatus.detail)" }
+                        }
+                    }
                 }
-                Write-Host ""
-                Write-Host "  Vociferous will run on CPU until this is fixed." -ForegroundColor Yellow
-                $continueGpu = Read-Host "Continue installation with CPU fallback? (Y/n)"
-                if ($continueGpu -match "^(?i:n|no)$") { exit 1 }
+
+                if (-not $Readiness.Cuda) {
+                    Write-Host ""
+                    Write-Host "  Vociferous will run on CPU until this is fixed." -ForegroundColor Yellow
+                    $continueGpu = Read-Host "Continue installation with CPU fallback? (Y/n)"
+                    if ($continueGpu -match "^(?i:n|no)$") { exit 1 }
+                }
             }
         }
     } catch {
@@ -406,22 +480,11 @@ if ($nvidiaSmi) {
 
 # --- WebView2 Check ---
 Write-Host ""
-$webview2Keys = @(
-    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BEE-13A6279D3EBB}",
-    "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BEE-13A6279D3EBB}",
-    "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BEE-13A6279D3EBB}"
-)
-
-$hasWebView2 = $false
-foreach ($webview2Key in $webview2Keys) {
-    if (Test-Path $webview2Key) {
-        $hasWebView2 = $true
-        break
-    }
-}
+$hasWebView2 = Test-WebView2Runtime
 
 if ($hasWebView2) {
     Write-Host "[OK] Microsoft Edge WebView2 Runtime installed" -ForegroundColor Green
+    $Readiness.WebView2 = $true
 } else {
     Write-Host "[WARN] Microsoft Edge WebView2 Runtime not detected." -ForegroundColor Yellow
     Write-Host "  pywebview requires WebView2 on Windows."
@@ -429,10 +492,7 @@ if ($hasWebView2) {
 }
 
 # --- Model Provisioning ---
-Write-Host ""
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "Model Provisioning"                        -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
+Write-Section "Model Provisioning"
 
 $ProvisionScript = Join-Path $ProjectDir "scripts\provision_models.py"
 
@@ -457,44 +517,59 @@ if ($modelsMissing) {
     if ($doProvision -eq "" -or $doProvision -match "^(?i:y|yes)$") {
         Write-Host ""
         Write-Host "Downloading Silero VAD..." -ForegroundColor Cyan
-        & $VenvPython $ProvisionScript install silero_vad
+        Invoke-CheckedCommand -Command { & $VenvPython $ProvisionScript install silero_vad } -FailureMessage "Silero VAD provisioning failed"
 
         Write-Host ""
         Write-Host "Downloading ASR model (faster-whisper-large-v3-turbo-int8)..." -ForegroundColor Cyan
-        & $VenvPython $ProvisionScript install large-v3-turbo-int8
+        Invoke-CheckedCommand -Command { & $VenvPython $ProvisionScript install large-v3-turbo-int8 } -FailureMessage "ASR model provisioning failed"
 
         Write-Host ""
-        Write-Host "Downloading SLM model (Qwen3-8B-ct2-AWQ)..." -ForegroundColor Cyan
-        & $VenvPython $ProvisionScript install qwen4b
+        Write-Host "Downloading SLM model (Qwen3 4B CT2 INT8)..." -ForegroundColor Cyan
+        Invoke-CheckedCommand -Command { & $VenvPython $ProvisionScript install qwen4b } -FailureMessage "SLM model provisioning failed"
 
         Write-Host "[OK] Models downloaded" -ForegroundColor Green
+        $Readiness.Models = $true
     } else {
         Write-Host "Skipped. You can download models later from Settings in the app," -ForegroundColor Yellow
         Write-Host "or run:  .venv\Scripts\python.exe scripts\provision_models.py install <model_id>" -ForegroundColor Yellow
     }
 } else {
     Write-Host "[OK] All default models already present" -ForegroundColor Green
+    $Readiness.Models = $true
 }
 
 # --- Desktop Shortcut ---
-Write-Host ""
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "Desktop Shortcut"                          -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
+Write-Section "Desktop Shortcut"
 
 $ShortcutScript = Join-Path $ScriptDir "install_windows_shortcut.ps1"
 $doShortcut = Read-Host "Create Desktop and Start Menu shortcuts? (Y/n)"
 if ($doShortcut -eq "" -or $doShortcut -match "^(?i:y|yes)$") {
-    & powershell -ExecutionPolicy Bypass -File $ShortcutScript
+    Invoke-CheckedCommand -Command { & powershell -ExecutionPolicy Bypass -File $ShortcutScript } -FailureMessage "Shortcut installation failed"
+    $Readiness.Shortcuts = $true
 } else {
     Write-Host "Skipped. Run later:  .\scripts\install_windows_shortcut.ps1" -ForegroundColor Yellow
 }
 
+# --- Readiness Summary ---
+Write-Section "Readiness Summary"
+foreach ($item in $Readiness.GetEnumerator()) {
+    if ($item.Value) {
+        Write-Host ("[OK]   {0}" -f $item.Key) -ForegroundColor Green
+    } else {
+        Write-Host ("[WARN] {0}" -f $item.Key) -ForegroundColor Yellow
+    }
+}
+
+if (-not $Readiness.Models) {
+    Write-Host ""
+    Write-Host "Vociferous is launchable, but transcription/refinement will not be ready until models are provisioned." -ForegroundColor Yellow
+}
+if (-not $Readiness.Cuda) {
+    Write-Host "Vociferous is configured for CPU fallback unless CUDA readiness is fixed later." -ForegroundColor Yellow
+}
+
 # --- Done ---
-Write-Host ""
-Write-Host "==========================================" -ForegroundColor Cyan
-Write-Host "Installation complete!"                    -ForegroundColor Cyan
-Write-Host "==========================================" -ForegroundColor Cyan
+Write-Section "Installation complete!"
 Write-Host ""
 Write-Host "To run the application:"
 Write-Host "  cd $ProjectDir"

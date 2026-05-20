@@ -15,6 +15,14 @@ _LINUX_REQUIRED_CUDA_SONAMES = (
     "libcudnn.so.9",
 )
 _LINUX_LOADED_CUDA_LIBRARIES: dict[str, object] = {}
+_WINDOWS_REQUIRED_CUDA_DLLS = (
+    "cudart64_12.dll",
+    "cublas64_12.dll",
+    "cublasLt64_12.dll",
+    "cudnn64_9.dll",
+)
+_WINDOWS_DLL_DIRECTORY_HANDLES: list[object] = []
+_WINDOWS_REGISTERED_CUDA_DIRS: set[str] = set()
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +117,97 @@ def _probe_linux_cuda_runtime() -> tuple[list[str], list[str]]:
     return loaded, failures
 
 
+def _normalize_path_entry(path: str) -> str:
+    return os.path.normcase(os.path.normpath(path.strip().strip('"')))
+
+
+def _get_vendored_windows_cuda_dirs() -> list[Path]:
+    spec = importlib.util.find_spec("nvidia")
+    if spec is None or spec.submodule_search_locations is None:
+        return []
+
+    directories: list[Path] = []
+    seen: set[str] = set()
+    for nvidia_root in spec.submodule_search_locations:
+        base = Path(nvidia_root)
+        for pattern in ("*/bin", "*/bin/x86_64", "*/Library/bin"):
+            for candidate in sorted(base.glob(pattern)):
+                if not candidate.is_dir():
+                    continue
+
+                resolved = str(candidate.resolve())
+                if resolved in seen:
+                    continue
+
+                seen.add(resolved)
+                directories.append(candidate)
+
+    return directories
+
+
+def _describe_windows_cuda_dir(path: Path) -> str:
+    parts = [part.lower() for part in path.parts]
+    if len(parts) >= 2 and parts[-2:] == ["library", "bin"]:
+        return "Library/bin"
+    if len(parts) >= 2 and parts[-2:] == ["bin", "x86_64"]:
+        return "bin/x86_64"
+    if path.name.lower() == "bin":
+        return "bin"
+    return path.name
+
+
+def _register_windows_cuda_dirs() -> list[str]:
+    if sys.platform != "win32":
+        return []
+
+    registered: list[str] = []
+    existing_path_entries = {
+        _normalize_path_entry(entry)
+        for entry in os.environ.get("PATH", "").split(os.pathsep)
+        if entry.strip()
+    }
+    prepend_entries: list[str] = []
+
+    for candidate in _get_vendored_windows_cuda_dirs():
+        resolved = str(candidate.resolve())
+        if resolved not in _WINDOWS_REGISTERED_CUDA_DIRS:
+            try:
+                add_dll_directory = getattr(os, "add_dll_directory", None)
+                if add_dll_directory is not None:
+                    handle = add_dll_directory(resolved)
+                    _WINDOWS_DLL_DIRECTORY_HANDLES.append(handle)
+            except OSError:
+                pass
+            _WINDOWS_REGISTERED_CUDA_DIRS.add(resolved)
+
+        normalized = _normalize_path_entry(resolved)
+        if normalized not in existing_path_entries:
+            prepend_entries.append(resolved)
+            existing_path_entries.add(normalized)
+
+        registered.append(_describe_windows_cuda_dir(candidate))
+
+    if prepend_entries:
+        current_path = os.environ.get("PATH", "")
+        os.environ["PATH"] = os.pathsep.join(prepend_entries + ([current_path] if current_path else []))
+
+    return registered
+
+
+def _probe_windows_cuda_runtime() -> tuple[list[str], list[str]]:
+    registered_dirs = _register_windows_cuda_dirs()
+    loader = getattr(ctypes, "WinDLL", ctypes.CDLL)
+
+    failures: list[str] = []
+    for dll_name in _WINDOWS_REQUIRED_CUDA_DLLS:
+        try:
+            loader(dll_name)
+        except OSError as exc:
+            failures.append(f"{dll_name} is not loadable: {exc}")
+
+    return registered_dirs, failures
+
+
 def prepare_cuda_runtime() -> str:
     """Best-effort preload of vendored CUDA shared libraries on Linux."""
     if not sys.platform.startswith("linux"):
@@ -165,6 +264,29 @@ def detect_cuda_runtime() -> CudaRuntimeStatus:
     if sys.platform.startswith("linux"):
         bootstrap_detail = prepare_cuda_runtime()
         _, bootstrap_failures = _probe_linux_cuda_runtime()
+        if bootstrap_failures:
+            detail = "; ".join(bootstrap_failures)
+            if bootstrap_detail:
+                detail += f"; {bootstrap_detail}"
+            if driver_detected:
+                detail += "; NVIDIA driver is present but the CUDA runtime libraries are not usable"
+            else:
+                detail += f"; {driver_detail}"
+            return CudaRuntimeStatus(
+                driver_detected=driver_detected,
+                cuda_available=False,
+                cuda_device_count=0,
+                gpu_name=gpu_name,
+                vram_total_mb=vram_total_mb,
+                vram_used_mb=vram_used_mb,
+                vram_free_mb=vram_free_mb,
+                detail=detail,
+            )
+
+    if sys.platform == "win32":
+        registered_dirs, bootstrap_failures = _probe_windows_cuda_runtime()
+        if registered_dirs:
+            bootstrap_detail = f"Registered vendored CUDA DLL dirs: {', '.join(registered_dirs)}"
         if bootstrap_failures:
             detail = "; ".join(bootstrap_failures)
             if bootstrap_detail:

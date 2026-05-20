@@ -1,0 +1,12 @@
+# Pinned Windows CUDA runtime packages for Vociferous.
+# Install with:
+#   .\.venv\Scripts\python.exe -m pip install -r requirements-windows-cuda.txt
+#
+# These wheels provide the CUDA 12 / cuDNN 9 DLLs that CTranslate2 and
+# faster-whisper need on Windows when the full CUDA Toolkit is not installed.
+# Versions are hard-pinned to avoid drifting runtime combinations.
+
+nvidia-cuda-runtime-cu12==12.9.79
+nvidia-cuda-nvrtc-cu12==12.9.86
+nvidia-cublas-cu12==12.9.2.10
+nvidia-cudnn-cu12==9.22.0.52

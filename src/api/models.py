@@ -10,6 +10,7 @@ import threading
 from litestar import Response, get, post
 
 from src.api.deps import get_coordinator
+from src.core.engine_status import normalize_engine_error, track_download
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,7 @@ async def download_model(data: dict) -> Response:
         from src.provisioning.core import ProvisioningError, download_model_directory
 
         def on_progress(msg: str):
+            track_download(model_type, model_id, "downloading", msg)
             coordinator.event_bus.emit(
                 "download_progress",
                 {"model_id": model_id, "status": "downloading", "message": msg},
@@ -78,6 +80,7 @@ async def download_model(data: dict) -> Response:
                     "message": f"Starting download of {model.name}...",
                 },
             )
+            track_download(model_type, model_id, "started", f"Starting download of {model.name}...")
             download_model_directory(
                 repo_id=model.repo,
                 target_dir=cache_dir,
@@ -93,19 +96,24 @@ async def download_model(data: dict) -> Response:
                     "message": f"{model.name} downloaded successfully.",
                 },
             )
+            track_download(model_type, model_id, "complete", f"{model.name} downloaded successfully.")
         except ProvisioningError as e:
+            message = normalize_engine_error(e, model_name=model.name)
+            track_download(model_type, model_id, "error", message, error=message)
             coordinator.event_bus.emit(
                 "download_progress",
-                {"model_id": model_id, "status": "error", "message": str(e)},
+                {"model_id": model_id, "status": "error", "message": message},
             )
         except Exception as e:
             logger.exception("Model download failed: %s", model_id)
+            message = normalize_engine_error(e, model_name=model.name)
+            track_download(model_type, model_id, "error", message, error=message)
             coordinator.event_bus.emit(
                 "download_progress",
                 {
                     "model_id": model_id,
                     "status": "error",
-                    "message": f"Download failed: {e}",
+                    "message": message,
                 },
             )
 
