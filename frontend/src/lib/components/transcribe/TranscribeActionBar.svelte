@@ -1,8 +1,8 @@
 <script lang="ts">
     import { Check, Copy, Mic, Pencil, PlusCircle, RefreshCw, Save, Sparkles, Trash2, Undo2 } from "lucide-svelte";
 
-    import ActionBar from "../ActionBar.svelte";
-    import StyledButton from "../StyledButton.svelte";
+    import type { CommandNode } from "../../actions/command";
+    import CommandBar from "../CommandBar.svelte";
 
     type WorkspaceState = "idle" | "recording" | "transcribing" | "ready" | "viewing" | "editing";
 
@@ -43,61 +43,130 @@
         onGoToRefine,
         onStartNewRecording,
     }: Props = $props();
+
+    let editCommands = $derived.by(
+        (): CommandNode[] => [
+            {
+                id: "discard-edits",
+                label: "Discard",
+                icon: Undo2,
+                variant: "ghost",
+                group: "danger",
+                section: "start",
+                priority: 10,
+                run: onDiscardEdits,
+            },
+            {
+                id: "save-edits",
+                label: "Save",
+                icon: Save,
+                variant: "primary",
+                group: "edit",
+                section: "end",
+                priority: 20,
+                run: onCommitEdits,
+            },
+        ],
+    );
+
+    let transcriptCommands = $derived.by(
+        (): CommandNode[] => [
+            {
+                id: "delete-transcript",
+                label: "Delete",
+                icon: Trash2,
+                variant: "destructive",
+                group: "danger",
+                section: "start",
+                priority: 10,
+                run: onDeleteTranscript,
+            },
+            {
+                id: "copy-transcript",
+                label: copied ? "Copied" : "Copy",
+                icon: copied ? Check : Copy,
+                variant: "secondary",
+                group: "share",
+                section: "end",
+                priority: 20,
+                iconOnly: true,
+                title: copied ? "Copied" : "Copy transcript text",
+                run: onCopyToClipboard,
+            },
+            {
+                id: "continue-recording",
+                label: "Continue",
+                icon: Mic,
+                variant: "secondary",
+                group: "capture",
+                section: "end",
+                priority: 30,
+                visibleWhen: () => viewState === "ready" || viewState === "viewing",
+                title: "Continue recording from this transcript",
+                run: onQueueContinueMode,
+            },
+            {
+                id: "refine-transcript",
+                label: "Refine",
+                icon: Sparkles,
+                variant: "primary",
+                group: "edit",
+                section: "end",
+                priority: 40,
+                visibleWhen: () => refinementEnabled,
+                disabled: () => transcriptId == null,
+                run: onGoToRefine,
+            },
+            {
+                id: "new-recording",
+                label: "New Recording",
+                icon: Mic,
+                variant: "secondary",
+                group: "capture",
+                section: "end",
+                priority: 50,
+                run: onStartNewRecording,
+            },
+            {
+                id: "edit-transcript",
+                label: "Edit",
+                icon: Pencil,
+                variant: "secondary",
+                group: "edit",
+                placement: "overflow",
+                priority: 110,
+                run: onEnterEditMode,
+            },
+            {
+                id: "retranscribe-transcript",
+                label: "Re-transcribe",
+                icon: RefreshCw,
+                variant: "secondary",
+                group: "edit",
+                placement: "overflow",
+                priority: 120,
+                visibleWhen: () => hasAudioCached,
+                run: onRetranscribe,
+            },
+            {
+                id: "append-to-previous",
+                label: "Append to Previous",
+                icon: PlusCircle,
+                variant: "secondary",
+                group: "capture",
+                placement: "overflow",
+                priority: 130,
+                visibleWhen: () => viewState === "ready" && hasPreviousTranscript,
+                run: onAppendToPrevious,
+            },
+        ],
+    );
 </script>
 
 {#if viewState !== "idle" && viewState !== "transcribing" && viewState !== "recording"}
     {#if viewState === "editing"}
-        <div class="flex flex-wrap items-center gap-[var(--space-1)] py-[var(--space-1)] shrink-0">
-            <StyledButton variant="ghost" size="sm" onclick={onDiscardEdits}>
-                <Undo2 size={14} /> Discard
-            </StyledButton>
-            <div class="flex-1"></div>
-            <StyledButton variant="primary" size="sm" onclick={onCommitEdits}>
-                <Save size={14} /> Save
-            </StyledButton>
-        </div>
+        <CommandBar commands={editCommands} />
     {:else}
-        <ActionBar>
-            <StyledButton variant="destructive" size="sm" onclick={onDeleteTranscript}>
-                <Trash2 size={14} /> Delete
-            </StyledButton>
-            <StyledButton variant="secondary" size="sm" onclick={onEnterEditMode}>
-                <Pencil size={14} /> Edit
-            </StyledButton>
-            <StyledButton variant="secondary" size="sm" onclick={onCopyToClipboard}>
-                {#if copied}
-                    <Check size={14} /> Copied
-                {:else}
-                    <Copy size={14} /> Copy
-                {/if}
-            </StyledButton>
-
-            {#if hasAudioCached}
-                <StyledButton variant="secondary" size="sm" onclick={onRetranscribe}>
-                    <RefreshCw size={14} /> Re-transcribe
-                </StyledButton>
-            {/if}
-
-            <div class="flex-1"></div>
-
-            {#if viewState === "ready" && hasPreviousTranscript}
-                <StyledButton variant="secondary" size="sm" onclick={onAppendToPrevious}>
-                    <PlusCircle size={14} /> Append to Previous
-                </StyledButton>
-            {/if}
-            {#if viewState === "ready" || viewState === "viewing"}
-                <StyledButton variant="secondary" size="sm" onclick={onQueueContinueMode}>
-                    <Mic size={14} /> Continue
-                </StyledButton>
-            {/if}
-            {#if refinementEnabled}
-                <StyledButton variant="primary" size="sm" onclick={onGoToRefine} disabled={transcriptId == null}>
-                    <Sparkles size={14} /> Refine
-                </StyledButton>
-            {/if}
-            <StyledButton variant="secondary" size="sm" onclick={onStartNewRecording}>
-                <Mic size={14} /> New Recording
-            </StyledButton>
-        </ActionBar>
+        <CommandBar commands={transcriptCommands} />
     {/if}
 {/if}
