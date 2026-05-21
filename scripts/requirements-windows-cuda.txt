@@ -1,6 +1,6 @@
 # Pinned Windows CUDA runtime packages for Vociferous.
 # Install with:
-#   .\.venv\Scripts\python.exe -m pip install -r requirements-windows-cuda.txt
+#   .\.venv\Scripts\python.exe -m pip install -r scripts/requirements-windows-cuda.txt
 #
 # These wheels provide the CUDA 12 / cuDNN 9 DLLs that CTranslate2 and
 # faster-whisper need on Windows when the full CUDA Toolkit is not installed.

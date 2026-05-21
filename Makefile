@@ -29,7 +29,7 @@ provision: ## Download default ASR, SLM, and VAD models
 	$(UV) run python scripts/provision_models.py install qwen4b
 
 install-desktop: ## Install the .desktop launcher for the current location
-	@sed 's|{{INSTALL_DIR}}|$(CURDIR)|g' vociferous.desktop.template > vociferous.desktop
+	@sed 's|{{INSTALL_DIR}}|$(CURDIR)|g' scripts/vociferous.desktop.template > vociferous.desktop
 	@mkdir -p $(dir $(DESKTOP_DEST))
 	@cp vociferous.desktop $(DESKTOP_DEST)
 	@xdg-icon-resource install --novendor --size 512 $(CURDIR)/assets/icons/vociferous_icon.png vociferous 2>/dev/null || true

@@ -5,6 +5,7 @@ REM Runs the application using the project virtual environment.
 setlocal
 
 set "SCRIPT_DIR=%~dp0"
+set "PROJECT_DIR=%SCRIPT_DIR:~0,-1%"
 set "VENV_PYTHON=%SCRIPT_DIR%.venv\Scripts\python.exe"
 
 REM Use venv Python if available, otherwise system Python
@@ -20,15 +21,10 @@ if exist "%VENV_PYTHON%" (
     )
 )
 
-REM Build frontend if dist\ doesn't exist
-if not exist "%SCRIPT_DIR%frontend\dist" (
-    if exist "%SCRIPT_DIR%frontend\package.json" (
-        echo Building frontend...
-        pushd "%SCRIPT_DIR%frontend"
-        call npm install --silent
-        call npx vite build
-        popd
-    )
+REM Build frontend if dist\ is missing or stale
+if exist "%SCRIPT_DIR%scripts\build_frontend_if_needed.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%scripts\build_frontend_if_needed.ps1" -ProjectDir "%PROJECT_DIR%"
+    if errorlevel 1 exit /b %errorlevel%
 )
 
 "%PYTHON%" -m src.main %*

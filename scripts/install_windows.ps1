@@ -93,14 +93,14 @@ print(
 function Install-PinnedWindowsCudaRuntime {
     param([string]$PythonExe, [string]$ProjectRoot)
 
-    $manifest = Join-Path $ProjectRoot "requirements-windows-cuda.txt"
+    $manifest = Join-Path $ProjectRoot "scripts\requirements-windows-cuda.txt"
     if (-not (Test-Path $manifest)) {
         Write-Host "[FAIL] Windows CUDA runtime manifest missing: $manifest" -ForegroundColor Red
         return $false
     }
 
     Write-Host "Installing pinned Windows CUDA runtime wheels..." -ForegroundColor Cyan
-    Write-Host "  Manifest: requirements-windows-cuda.txt"
+    Write-Host "  Manifest: scripts/requirements-windows-cuda.txt"
     & $PythonExe -m pip install -r $manifest
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[FAIL] CUDA runtime wheel installation failed" -ForegroundColor Red
@@ -295,7 +295,6 @@ Write-Section "Creating virtual environment"
 
 $VenvDir = Join-Path $ProjectDir ".venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
-$VenvPip = Join-Path $VenvDir "Scripts\pip.exe"
 
 if (Test-Path $VenvDir) {
     $venvOk = $false
@@ -343,50 +342,18 @@ Write-Section "Building frontend"
 
 $FrontendDir = Join-Path $ProjectDir "frontend"
 $FrontendDistDir = Join-Path $FrontendDir "dist"
+$FrontendBuildHelper = Join-Path $ProjectDir "scripts\build_frontend_if_needed.ps1"
 
-if (Test-Path $FrontendDistDir) {
-    Write-Host "[OK] Frontend already built (frontend/dist exists)" -ForegroundColor Green
-    $Readiness.Frontend = $true
+Invoke-CheckedCommand -Command {
+    & $FrontendBuildHelper -ProjectDir $ProjectDir
+} -FailureMessage "Frontend build check failed"
+
+$FrontendIndex = Join-Path $FrontendDistDir "index.html"
+$Readiness.Frontend = Test-Path $FrontendIndex
+if ($Readiness.Frontend) {
+    Write-Host "[OK] Frontend built and current" -ForegroundColor Green
 } else {
-    # Find npm - same approach as Python: check PATH first, then well-known locations
-    $npmExe = $null
-    $npxExe = $null
-    $npmOnPath = Get-Command npm -ErrorAction SilentlyContinue
-    if ($npmOnPath) {
-        $npmExe = "npm"
-        $npxExe = "npx"
-    } else {
-        # Probe the standard Node.js install location
-        $nodeDir = "$env:ProgramFiles\nodejs"
-        if (Test-Path "$nodeDir\npm.cmd") {
-            # Add to session PATH - postinstall scripts (esbuild etc.) spawn
-            # child processes via cmd.exe that need 'node' resolvable on PATH
-            $env:PATH = "$nodeDir;$env:PATH"
-            $npmExe = "npm"
-            $npxExe = "npx"
-            Write-Host "[INFO] Found Node.js at $nodeDir (added to session PATH)" -ForegroundColor Yellow
-        }
-    }
-
-    if ($npmExe) {
-        Push-Location $FrontendDir
-        try {
-            Invoke-CheckedCommand -Command { & $npmExe install --silent } -FailureMessage "npm install failed"
-            Invoke-CheckedCommand -Command { & $npxExe vite build } -FailureMessage "vite build failed"
-
-            Write-Host "[OK] Frontend built" -ForegroundColor Green
-            $Readiness.Frontend = $true
-        } finally {
-            Pop-Location
-        }
-    } else {
-        Write-Host "[WARN] npm not found - skipping frontend build." -ForegroundColor Yellow
-        Write-Host "  Install Node.js 18+, then run:"
-        Write-Host "  cd frontend"
-        Write-Host "  npm install"
-        Write-Host "  npx vite build"
-        Write-Host "  (The launcher will auto-build on first run if npm is available.)"
-    }
+    Write-Host "[WARN] Frontend build did not produce frontend/dist/index.html" -ForegroundColor Yellow
 }
 
 # --- Verify critical dependencies ---

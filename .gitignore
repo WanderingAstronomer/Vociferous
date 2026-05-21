@@ -37,6 +37,7 @@ venv/
 *.swp
 *.swo
 *~
+.claude/
 
 # =========================
 # OS / Filesystem Artifacts
