@@ -8,13 +8,12 @@ survives across recordings without reloading.
 from __future__ import annotations
 
 import logging
-import platform
-import subprocess
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from src.core.clipboard import copy_to_system_clipboard as _copy_to_system_clipboard
 from src.core.command_bus import handles
 from src.core.engine_status import normalize_engine_error
 from src.core.intents.definitions import (
@@ -37,36 +36,20 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Clipboard helper (platform-native, no window focus required)
+# Audio decode helper (shared between import + retranscribe paths)
 # ---------------------------------------------------------------------------
 
 
-def _copy_to_system_clipboard(text: str) -> None:
-    """Copy text to the system clipboard using platform-native CLI tools."""
-    system = platform.system()
-    try:
-        if system == "Linux":
-            for cmd in (
-                ["xclip", "-selection", "clipboard"],
-                ["xsel", "--clipboard", "--input"],
-            ):
-                try:
-                    subprocess.run(cmd, input=text.encode("utf-8"), check=True, timeout=3)
-                    logger.debug("Copied %d chars to clipboard via %s", len(text), cmd[0])
-                    return
-                except FileNotFoundError:
-                    continue
-            logger.warning("No clipboard tool found (install xclip or xsel)")
-        elif system == "Darwin":
-            subprocess.run(["pbcopy"], input=text.encode("utf-8"), check=True, timeout=3)
-            logger.debug("Copied %d chars to clipboard via pbcopy", len(text))
-        elif system == "Windows":
-            subprocess.run(["clip.exe"], input=text.encode("utf-16le"), check=True, timeout=3)
-            logger.debug("Copied %d chars to clipboard via clip.exe", len(text))
-        else:
-            logger.warning("Auto-copy not supported on %s", system)
-    except Exception:
-        logger.warning("Failed to copy to system clipboard", exc_info=True)
+def _decode_audio_file_to_int16(path: Path):
+    """Decode an audio file to a 16kHz int16 numpy array via faster_whisper/ffmpeg.
+
+    Returns the int16 array (may be empty — callers must check len()).
+    """
+    import numpy as np
+    from faster_whisper.audio import decode_audio
+
+    float_audio = decode_audio(str(path), sampling_rate=16000)
+    return (float_audio * 32768).clip(-32768, 32767).astype(np.int16)
 
 
 # ---------------------------------------------------------------------------
@@ -288,14 +271,7 @@ class RecordingSession:
 
         def _import_worker() -> None:
             try:
-                import numpy as np
-                from faster_whisper.audio import decode_audio
-
-                # decode_audio returns float32 at target sample rate (uses ffmpeg)
-                float_audio = decode_audio(str(path), sampling_rate=16000)
-
-                # Convert to int16 for the standard AudioPipeline (VAD, normalization)
-                int16_audio = (float_audio * 32768).clip(-32768, 32767).astype(np.int16)
+                int16_audio = _decode_audio_file_to_int16(path)
 
                 if len(int16_audio) == 0:
                     self._emit("transcription_error", {"message": "Audio file is empty"})
@@ -340,11 +316,7 @@ class RecordingSession:
 
         def _retranscribe_worker() -> None:
             try:
-                import numpy as np
-                from faster_whisper.audio import decode_audio
-
-                float_audio = decode_audio(str(wav_path), sampling_rate=16000)
-                int16_audio = (float_audio * 32768).clip(-32768, 32767).astype(np.int16)
+                int16_audio = _decode_audio_file_to_int16(wav_path)
 
                 if len(int16_audio) == 0:
                     self._emit("transcription_error", {"message": "Cached audio is empty"})

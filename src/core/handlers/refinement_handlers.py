@@ -9,6 +9,7 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
+from src.core.clipboard import copy_to_system_clipboard
 from src.core.command_bus import handles
 from src.core.intents.definitions import (
     BulkRefineTranscriptsIntent,
@@ -63,9 +64,7 @@ class RefinementHandlers:
             return
         text = transcript.normalized_text or transcript.raw_text
         if text:
-            from src.core.handlers.recording_handlers import _copy_to_system_clipboard
-
-            _copy_to_system_clipboard(text)
+            copy_to_system_clipboard(text)
             logger.info("Auto-copy fallback: copied raw text for transcript %d", transcript_id)
 
     def _resolve_instructions(self, provided: str, db: Any) -> str:
@@ -89,43 +88,9 @@ class RefinementHandlers:
             self._emit("refinement_error", {"message": "Database not available"})
             return
 
-        slm_runtime = self._slm_runtime_provider()
-        if not slm_runtime:
-            self._emit("refinement_error", {"message": "Refinement is not configured. Enable it in Settings."})
-            self._fallback_raw_clipboard(intent.transcript_id)
-            return
-
-        from src.services.slm_types import SLMState
-
-        state = slm_runtime.state
-        if state == SLMState.DISABLED:
-            self._emit(
-                "refinement_error",
-                {"message": "Refinement is disabled. Enable it in Settings and ensure a model is downloaded."},
-            )
-            self._fallback_raw_clipboard(intent.transcript_id)
-            return
-        if state == SLMState.LOADING:
-            self._emit(
-                "refinement_error",
-                {"message": "The refinement model is still loading. Please wait a moment and try again."},
-            )
-            self._fallback_raw_clipboard(intent.transcript_id)
-            return
-        if state == SLMState.ERROR:
-            self._emit(
-                "refinement_error",
-                {
-                    "message": "The refinement model failed to load. Try restarting the engine in Settings → Maintenance."
-                },
-            )
-            self._fallback_raw_clipboard(intent.transcript_id)
-            return
-        if state == SLMState.INFERRING:
-            self._emit(
-                "refinement_error",
-                {"message": "A refinement is already in progress. Please wait for it to finish."},
-            )
+        _, err = self._validate_slm_ready()
+        if err:
+            self._emit("refinement_error", {"message": err})
             self._fallback_raw_clipboard(intent.transcript_id)
             return
         if self._bulk_active:
@@ -133,10 +98,6 @@ class RefinementHandlers:
                 "refinement_error",
                 {"message": "A bulk refinement is in progress. Please wait for it to finish."},
             )
-            self._fallback_raw_clipboard(intent.transcript_id)
-            return
-        if state != SLMState.READY:
-            self._emit("refinement_error", {"message": f"Refinement model not ready (state: {state.value})"})
             self._fallback_raw_clipboard(intent.transcript_id)
             return
 
@@ -199,9 +160,7 @@ class RefinementHandlers:
                 # the clipboard write — do it now with the refined text.
                 settings = self._settings_provider()
                 if settings.output.auto_refine and settings.output.auto_copy_to_clipboard:
-                    from src.core.handlers.recording_handlers import _copy_to_system_clipboard
-
-                    _copy_to_system_clipboard(refined)
+                    copy_to_system_clipboard(refined)
             except TimeoutError:
                 logger.warning("Refinement timed out waiting for SLM lock for transcript %d", intent.transcript_id)
                 self._emit(
@@ -238,20 +197,7 @@ class RefinementHandlers:
             self._emit("refinement_error", {"message": "Transcript not found"})
             return
 
-        db.update_normalized_text(intent.transcript_id, intent.text)
-        db.add_system_tag_to_transcript(intent.transcript_id, "Refined")
-
-        updated = db.get_transcript(intent.transcript_id)
-        if updated:
-            self._emit(
-                "transcript_updated",
-                {
-                    "id": intent.transcript_id,
-                    "tags": [
-                        {"id": t.id, "name": t.name, "color": t.color, "is_system": t.is_system} for t in updated.tags
-                    ],
-                },
-            )
+        self._persist_refinement(db, intent.transcript_id, intent.text)
 
         settings = self._settings_provider()
         if settings.output.auto_retitle_on_refine:
@@ -280,6 +226,34 @@ class RefinementHandlers:
         if state != SLMState.READY:
             return None, f"Refinement model not ready (state: {state.value})"
         return slm_runtime, None
+
+    def _persist_refinement(
+        self,
+        db: Any,
+        transcript_id: int,
+        refined_text: str,
+        *,
+        refine_elapsed_ms: int | None = None,
+    ) -> None:
+        """Persist refinement output and broadcast the resulting tag set.
+
+        Centralises the four-step "save + tag Refined + (optional) timing + emit"
+        sequence shared by single-commit and bulk-refine paths.
+        """
+        db.update_normalized_text(transcript_id, refined_text)
+        db.add_system_tag_to_transcript(transcript_id, "Refined")
+        if refine_elapsed_ms is not None:
+            db.update_refinement_time(transcript_id, refine_elapsed_ms)
+
+        updated = db.get_transcript(transcript_id)
+        if updated:
+            self._emit(
+                "transcript_updated",
+                {
+                    "id": transcript_id,
+                    "tags": [t.to_dict() for t in updated.tags],
+                },
+            )
 
     @handles(BulkRefineTranscriptsIntent)
     def handle_bulk_refine(self, intent: Any) -> None:
@@ -397,24 +371,9 @@ class RefinementHandlers:
                         )
                         continue
 
-                    # Auto-commit: persist + tag + timing
-                    _db.update_normalized_text(tid, refined)
-                    _db.add_system_tag_to_transcript(tid, "Refined")
-                    _db.update_refinement_time(tid, refine_elapsed_ms)
+                    # Auto-commit: persist + tag + timing + emit
+                    self._persist_refinement(_db, tid, refined, refine_elapsed_ms=refine_elapsed_ms)
                     completed += 1
-
-                    updated = _db.get_transcript(tid)
-                    if updated:
-                        self._emit(
-                            "transcript_updated",
-                            {
-                                "id": tid,
-                                "tags": [
-                                    {"id": t.id, "name": t.name, "color": t.color, "is_system": t.is_system}
-                                    for t in updated.tags
-                                ],
-                            },
-                        )
 
                     # Auto-retitle if enabled
                     settings = self._settings_provider()
