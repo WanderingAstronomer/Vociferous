@@ -68,6 +68,37 @@ class RevertToRawIntent(InteractionIntent):
 
 
 @dataclass(frozen=True, slots=True)
+class DeleteTranscriptIntent(InteractionIntent):
+    """Delete a single transcript."""
+
+    transcript_id: int = 0
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class BatchDeleteTranscriptsIntent(InteractionIntent):
+    """Delete multiple transcripts."""
+
+    transcript_ids: tuple[int, ...] = field(default_factory=tuple)
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class ClearAllTranscriptsIntent(InteractionIntent):
+    """Delete all non-protected transcripts."""
+
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class DeleteTagIntent(InteractionIntent):
+    """Delete a user tag."""
+
+    tag_id: int = 0
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
 class RefineTranscriptIntent(InteractionIntent):
     """Trigger SLM refinement on a transcript."""
 

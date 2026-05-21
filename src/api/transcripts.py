@@ -12,7 +12,7 @@ from litestar import Response, delete, get, post
 from litestar.exceptions import HTTPException
 
 from src.api.config import clear_default_refinement_prompt_if_matches
-from src.api.deps import get_coordinator
+from src.api.deps import get_coordinator, require_db, validate_pagination
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +30,7 @@ def list_transcripts(
     if coordinator.db is None:
         return {"items": [], "total": 0}
 
-    if limit < 0:
-        raise HTTPException(status_code=400, detail="limit must be >= 0")
-    if offset < 0:
-        raise HTTPException(status_code=400, detail="offset must be >= 0")
+    validate_pagination(limit, offset)
 
     parsed_tag_ids: list[int] | None = None
     if tag_ids:
@@ -50,20 +47,18 @@ def list_transcripts(
         tag_ids=parsed_tag_ids,
         tag_mode=tag_mode,
     )
-    return {"items": [transcript_to_dict(transcript) for transcript in transcripts], "total": total}
+    return {"items": [t.to_dict() for t in transcripts], "total": total}
 
 
 @get("/api/transcripts/{transcript_id:int}")
 async def get_transcript(transcript_id: int) -> Response:
     import asyncio
 
-    coordinator = get_coordinator()
-    if coordinator.db is None:
-        return Response(content={"error": "Database not available"}, status_code=503)
-    transcript = await asyncio.to_thread(coordinator.db.get_transcript, transcript_id)
+    db = require_db()
+    transcript = await asyncio.to_thread(db.get_transcript, transcript_id)
     if transcript is None:
         return Response(content={"error": "Not found"}, status_code=404)
-    return Response(content=transcript_to_dict(transcript))
+    return Response(content=transcript.to_dict())
 
 
 @delete("/api/transcripts/{transcript_id:int}", status_code=200)
@@ -71,17 +66,16 @@ async def delete_transcript(transcript_id: int) -> Response:
     """Delete a transcript and emit transcript_deleted event."""
     import asyncio
 
+    db = require_db()
     coordinator = get_coordinator()
-    if coordinator.db is None:
-        return Response(content={"error": "Database not available"}, status_code=503)
 
-    transcript = await asyncio.to_thread(coordinator.db.get_transcript, transcript_id)
+    transcript = await asyncio.to_thread(db.get_transcript, transcript_id)
     if transcript is None:
         return Response(content={"error": "Not found"}, status_code=404)
     if transcript.is_protected:
         return Response(content={"error": "Protected transcripts cannot be deleted"}, status_code=403)
 
-    deleted = await asyncio.to_thread(coordinator.db.delete_transcript, transcript_id)
+    deleted = await asyncio.to_thread(db.delete_transcript, transcript_id)
     if deleted:
         clear_default_refinement_prompt_if_matches(coordinator, transcript_id)
         coordinator.event_bus.emit("transcript_deleted", {"id": transcript_id})
@@ -99,16 +93,15 @@ async def batch_delete_transcripts(data: dict) -> Response:
     if not ids:
         return Response(content={"deleted": 0})
 
+    db = require_db()
     coordinator = get_coordinator()
-    if coordinator.db is None:
-        return Response(content={"error": "Database not available"}, status_code=503)
 
     default_prompt_id = coordinator.settings.refinement.default_prompt_transcript_id
     default_prompt = None
     if default_prompt_id in ids:
-        default_prompt = await asyncio.to_thread(coordinator.db.get_transcript, default_prompt_id)
+        default_prompt = await asyncio.to_thread(db.get_transcript, default_prompt_id)
 
-    count = await asyncio.to_thread(coordinator.db.batch_delete_transcripts, ids)
+    count = await asyncio.to_thread(db.batch_delete_transcripts, ids)
     if count and default_prompt_id in ids and (default_prompt is None or not default_prompt.is_protected):
         clear_default_refinement_prompt_if_matches(coordinator, default_prompt_id)
     coordinator.event_bus.emit("transcripts_batch_deleted", {"ids": ids, "count": count})
@@ -120,16 +113,15 @@ async def clear_all_transcripts() -> Response:
     """Delete all transcripts."""
     import asyncio
 
+    db = require_db()
     coordinator = get_coordinator()
-    if coordinator.db is None:
-        return Response(content={"error": "Database not available"}, status_code=503)
 
     default_prompt_id = coordinator.settings.refinement.default_prompt_transcript_id
     default_prompt = None
     if default_prompt_id is not None:
-        default_prompt = await asyncio.to_thread(coordinator.db.get_transcript, default_prompt_id)
+        default_prompt = await asyncio.to_thread(db.get_transcript, default_prompt_id)
 
-    deleted = await asyncio.to_thread(coordinator.db.clear_all_transcripts)
+    deleted = await asyncio.to_thread(db.clear_all_transcripts)
     if deleted and default_prompt_id is not None and (default_prompt is None or not default_prompt.is_protected):
         clear_default_refinement_prompt_if_matches(coordinator, default_prompt_id)
     coordinator.event_bus.emit("transcripts_cleared", {"count": deleted})
@@ -142,15 +134,12 @@ def search_transcripts(q: str, limit: int = 50, offset: int = 0) -> dict:
     if coordinator.db is None:
         return {"items": [], "total": 0, "offset": offset, "limit": limit}
 
-    if limit < 0:
-        raise HTTPException(status_code=400, detail="limit must be >= 0")
-    if offset < 0:
-        raise HTTPException(status_code=400, detail="offset must be >= 0")
+    validate_pagination(limit, offset)
 
     results = coordinator.db.search(q, limit=limit, offset=offset)
     total = coordinator.db.search_count(q)
     return {
-        "items": [transcript_to_dict(transcript) for transcript in results],
+        "items": [t.to_dict() for t in results],
         "total": total,
         "offset": offset,
         "limit": limit,
@@ -175,11 +164,10 @@ async def batch_tag_toggle(data: dict) -> Response:
     if not transcript_ids:
         return Response(content={"toggled": 0})
 
+    db = require_db()
     coordinator = get_coordinator()
-    if coordinator.db is None:
-        return Response(content={"error": "Database not available"}, status_code=503)
 
-    tag = await asyncio.to_thread(coordinator.db.get_tag, tag_id)
+    tag = await asyncio.to_thread(db.get_tag, tag_id)
     if tag is None:
         return Response(content={"error": "Tag not found"}, status_code=404)
     # Block auto-managed system tags (Refined, Compound) but allow user-assignable system tags (e.g. Prompt).
@@ -187,7 +175,7 @@ async def batch_tag_toggle(data: dict) -> Response:
     if tag.is_system and tag.name in _AUTO_MANAGED:
         return Response(content={"error": "Auto-managed system tags cannot be toggled"}, status_code=403)
 
-    await asyncio.to_thread(coordinator.db.batch_toggle_tag, list(transcript_ids), tag_id, add=add)
+    await asyncio.to_thread(db.batch_toggle_tag, list(transcript_ids), tag_id, add=add)
     if not add and tag.name == "Prompt":
         default_prompt_id = coordinator.settings.refinement.default_prompt_transcript_id
         if default_prompt_id in transcript_ids:
@@ -302,11 +290,10 @@ async def rename_transcript(transcript_id: int, data: dict) -> Response:
     if not title:
         return Response(content={"error": "Title is required"}, status_code=400)
 
+    db = require_db()
     coordinator = get_coordinator()
-    if coordinator.db is None:
-        return Response(content={"error": "Database not available"}, status_code=503)
 
-    renamed = coordinator.db.update_display_name(transcript_id, title)
+    renamed = db.update_display_name(transcript_id, title)
     if not renamed:
         return Response(content={"error": "Not found"}, status_code=404)
 
@@ -315,23 +302,8 @@ async def rename_transcript(transcript_id: int, data: dict) -> Response:
 
 
 def transcript_to_dict(transcript) -> dict:
-    """Convert a Transcript dataclass to a JSON-serializable dict."""
-    return {
-        "id": transcript.id,
-        "timestamp": transcript.timestamp,
-        "raw_text": transcript.raw_text,
-        "normalized_text": transcript.normalized_text,
-        "text": transcript.text,
-        "display_name": transcript.display_name,
-        "duration_ms": transcript.duration_ms,
-        "speech_duration_ms": transcript.speech_duration_ms,
-        "transcription_time_ms": transcript.transcription_time_ms,
-        "refinement_time_ms": transcript.refinement_time_ms,
-        "created_at": transcript.created_at,
-        "include_in_analytics": transcript.include_in_analytics,
-        "has_audio_cached": transcript.has_audio_cached,
-        "is_protected": transcript.is_protected,
-        "tags": [
-            {"id": tag.id, "name": tag.name, "color": tag.color, "is_system": tag.is_system} for tag in transcript.tags
-        ],
-    }
+    """Convert a Transcript dataclass to a JSON-serializable dict.
+
+    Thin wrapper kept for backward compatibility — prefer ``transcript.to_dict()``.
+    """
+    return transcript.to_dict()

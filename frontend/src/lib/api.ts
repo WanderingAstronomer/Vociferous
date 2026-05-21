@@ -74,11 +74,17 @@ export function getTranscript(id: number): Promise<Transcript> {
 }
 
 export function deleteTranscript(id: number): Promise<{ deleted: boolean }> {
-    return request(`/transcripts/${id}`, { method: "DELETE" });
+    return request("/intents", {
+        method: "POST",
+        body: JSON.stringify({ type: "delete_transcript", transcript_id: id }),
+    });
 }
 
 export function clearAllTranscripts(): Promise<{ deleted: number }> {
-    return request("/transcripts", { method: "DELETE" });
+    return request("/intents", {
+        method: "POST",
+        body: JSON.stringify({ type: "clear_all_transcripts" }),
+    });
 }
 
 export interface SearchResult {
@@ -154,7 +160,10 @@ export function updateTag(id: number, updates: { name?: string; color?: string }
 }
 
 export function deleteTag(id: number): Promise<{ deleted: boolean }> {
-    return request(`/tags/${id}`, { method: "DELETE" });
+    return request("/intents", {
+        method: "POST",
+        body: JSON.stringify({ type: "delete_tag", tag_id: id }),
+    });
 }
 
 export function assignTags(transcriptId: number, tagIds: number[]): Promise<{ status: string }> {
@@ -187,9 +196,9 @@ export async function batchDeleteTranscripts(
     transcriptIds: number[],
 ): Promise<{ deleted: number }> {
     if (transcriptIds.length === 0) return { deleted: 0 };
-    return request("/transcripts/batch-delete", {
+    return request("/intents", {
         method: "POST",
-        body: JSON.stringify({ ids: transcriptIds }),
+        body: JSON.stringify({ type: "batch_delete_transcripts", transcript_ids: transcriptIds }),
     });
 }
 

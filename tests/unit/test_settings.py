@@ -55,6 +55,10 @@ class TestDefaults:
         s = VociferousSettings()
         assert s.refinement.enabled is True
 
+    def test_default_delete_confirmation_enabled(self):
+        s = VociferousSettings()
+        assert s.safety.confirm_delete is True
+
 
 class TestModuleAPI:
     """Module-level settings API (init/get/save)."""
@@ -116,6 +120,11 @@ class TestUpdate:
         s = init_settings(config_path=config_file)
         assert s.user.name == "Drew"
 
+    def test_update_safety_setting(self, tmp_path: Path):
+        init_settings(config_path=tmp_path / "settings.json")
+        new = update_settings(safety={"confirm_delete": False})
+        assert new.safety.confirm_delete is False
+
 
 class TestSerialization:
     """Settings roundtrip through JSON."""
@@ -126,6 +135,7 @@ class TestSerialization:
         assert isinstance(d, dict)
         assert "model" in d
         assert "recording" in d
+        assert "safety" in d
         assert "refinement" in d
 
     def test_roundtrip(self, tmp_path: Path):
@@ -135,4 +145,5 @@ class TestSerialization:
 
         loaded = VociferousSettings(**json.loads(config_file.read_text()))
         assert loaded.model.model == original.model.model
+        assert loaded.safety.confirm_delete is original.safety.confirm_delete
         assert loaded.refinement.system_prompt == original.refinement.system_prompt

@@ -8,7 +8,7 @@ import logging
 
 from litestar import Response, delete, get, post, put
 
-from src.api.deps import get_coordinator
+from src.api.deps import get_coordinator, require_db
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +62,9 @@ async def set_default_refinement_prompt(data: dict) -> Response:
         return Response(content={"error": "'transcript_id' must be an integer"}, status_code=400)
 
     coordinator = get_coordinator()
-    if coordinator.db is None:
-        return Response(content={"error": "Database not available"}, status_code=503)
+    db = require_db()
 
-    transcript = await asyncio.to_thread(coordinator.db.get_transcript, transcript_id)
+    transcript = await asyncio.to_thread(db.get_transcript, transcript_id)
     if transcript is None:
         return Response(content={"error": "Transcript not found"}, status_code=404)
     if not transcript.text.strip():
@@ -123,7 +122,7 @@ def get_motd() -> dict:
 # --- Generic intent dispatch ---
 
 
-@post("/api/intents")
+@post("/api/intents", status_code=200)
 async def dispatch_intent(data: dict) -> Response:
     """
     Generic intent dispatch from frontend.
@@ -144,6 +143,10 @@ async def dispatch_intent(data: dict) -> Response:
         "toggle_recording": defs.ToggleRecordingIntent,
         "commit_edits": defs.CommitEditsIntent,
         "revert_to_raw": defs.RevertToRawIntent,
+        "delete_transcript": defs.DeleteTranscriptIntent,
+        "batch_delete_transcripts": defs.BatchDeleteTranscriptsIntent,
+        "clear_all_transcripts": defs.ClearAllTranscriptsIntent,
+        "delete_tag": defs.DeleteTagIntent,
         "refine_transcript": defs.RefineTranscriptIntent,
         "retitle_transcript": defs.RetitleTranscriptIntent,
         "append_to_transcript": defs.AppendToTranscriptIntent,
@@ -165,5 +168,10 @@ async def dispatch_intent(data: dict) -> Response:
     except Exception as e:
         return Response(content={"error": str(e)}, status_code=400)
 
-    success = coordinator.command_bus.dispatch(intent)
-    return Response(content={"dispatched": success})
+    success, result = coordinator.command_bus.dispatch_result(intent)
+    if not success:
+        return Response(content={"error": "Intent dispatch failed", "dispatched": False}, status_code=500)
+    content = {"dispatched": success}
+    if isinstance(result, dict):
+        content.update(result)
+    return Response(content=content)

@@ -63,20 +63,24 @@ class CommandBus:
 
         Returns True if a handler was found and executed successfully.
         """
+        success, _ = self.dispatch_result(intent)
+        return success
+
+    def dispatch_result(self, intent: InteractionIntent) -> tuple[bool, Any]:
+        """Dispatch an intent and return the handler result."""
         intent_type = type(intent)
         handler = self._handlers.get(intent_type)
 
         if handler is None:
             logger.warning("No handler registered for %s", intent_type.__name__)
-            return False
+            return False, None
 
         logger.info("Dispatching intent: %s", intent_type.__name__)
         try:
-            handler(intent)
-            return True
+            return True, handler(intent)
         except Exception:
             logger.exception("Handler failed for %s", intent_type.__name__)
-            return False
+            return False, None
 
     @property
     def registered_types(self) -> list[type[InteractionIntent]]:

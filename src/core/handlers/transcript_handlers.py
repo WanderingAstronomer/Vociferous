@@ -10,12 +10,16 @@ from typing import TYPE_CHECKING, Any, Callable
 from src.core.command_bus import handles
 from src.core.intents.definitions import (
     AppendToTranscriptIntent,
+    BatchDeleteTranscriptsIntent,
+    ClearAllTranscriptsIntent,
     CommitEditsIntent,
+    DeleteTranscriptIntent,
     RevertToRawIntent,
     SetAnalyticsInclusionIntent,
 )
 
 if TYPE_CHECKING:
+    from src.core.settings import VociferousSettings
     from src.database.db import TranscriptDB
 
 logger = logging.getLogger(__name__)
@@ -29,9 +33,23 @@ class TranscriptHandlers:
         *,
         db_provider: Callable[[], TranscriptDB | None],
         event_bus_emit: Callable,
+        settings_provider: Callable[[], VociferousSettings],
+        on_settings_updated: Callable[[VociferousSettings], None],
     ) -> None:
         self._db_provider = db_provider
         self._emit = event_bus_emit
+        self._settings_provider = settings_provider
+        self._on_settings_updated = on_settings_updated
+
+    def _clear_default_prompt_if_deleted(self, transcript_id: int) -> None:
+        from src.core.settings import update_settings
+
+        settings = self._settings_provider()
+        if settings.refinement.default_prompt_transcript_id != transcript_id:
+            return
+        new_settings = update_settings(refinement={"default_prompt_transcript_id": None})
+        self._on_settings_updated(new_settings)
+        self._emit("config_updated", new_settings.model_dump())
 
     @handles(CommitEditsIntent)
     def handle_commit_edits(self, intent: Any) -> None:
@@ -54,6 +72,49 @@ class TranscriptHandlers:
                 "transcript_updated",
                 {"id": intent.transcript_id},
             )
+
+    @handles(DeleteTranscriptIntent)
+    def handle_delete_transcript(self, intent: Any) -> dict[str, bool]:
+        db = self._db_provider()
+        if not db:
+            return {"deleted": False}
+        transcript = db.get_transcript(intent.transcript_id)
+        if transcript is None or transcript.is_protected:
+            return {"deleted": False}
+        deleted = db.delete_transcript(intent.transcript_id)
+        if deleted:
+            self._clear_default_prompt_if_deleted(intent.transcript_id)
+            self._emit("transcript_deleted", {"id": intent.transcript_id})
+        return {"deleted": bool(deleted)}
+
+    @handles(BatchDeleteTranscriptsIntent)
+    def handle_batch_delete_transcripts(self, intent: Any) -> dict[str, int]:
+        db = self._db_provider()
+        ids = list(intent.transcript_ids)
+        if not db or not ids:
+            return {"deleted": 0}
+        default_prompt_id = self._settings_provider().refinement.default_prompt_transcript_id
+        default_prompt = db.get_transcript(default_prompt_id) if default_prompt_id in ids else None
+        count = db.batch_delete_transcripts(ids)
+        if count and default_prompt_id in ids and (default_prompt is None or not default_prompt.is_protected):
+            self._clear_default_prompt_if_deleted(default_prompt_id)
+        if count:
+            self._emit("transcripts_batch_deleted", {"ids": ids, "count": count})
+        return {"deleted": count}
+
+    @handles(ClearAllTranscriptsIntent)
+    def handle_clear_all_transcripts(self, intent: Any) -> dict[str, int]:
+        db = self._db_provider()
+        if not db:
+            return {"deleted": 0}
+        default_prompt_id = self._settings_provider().refinement.default_prompt_transcript_id
+        default_prompt = db.get_transcript(default_prompt_id) if default_prompt_id is not None else None
+        deleted = db.clear_all_transcripts()
+        if deleted and default_prompt_id is not None and (default_prompt is None or not default_prompt.is_protected):
+            self._clear_default_prompt_if_deleted(default_prompt_id)
+        if deleted:
+            self._emit("transcripts_cleared", {"count": deleted})
+        return {"deleted": deleted}
 
     @handles(AppendToTranscriptIntent)
     def handle_append(self, intent: Any) -> None:

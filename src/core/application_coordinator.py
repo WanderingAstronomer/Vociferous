@@ -207,10 +207,17 @@ class ApplicationCoordinator:
         """
         from src.core.handlers.refinement_handlers import RefinementHandlers
         from src.core.handlers.system_handlers import SystemHandlers
+        from src.core.handlers.tag_handlers import TagHandlers
         from src.core.handlers.title_handlers import TitleHandlers
         from src.core.handlers.transcript_handlers import TranscriptHandlers
 
         transcript = TranscriptHandlers(
+            db_provider=lambda: self.db,
+            event_bus_emit=self.event_bus.emit,
+            settings_provider=lambda: self.settings,
+            on_settings_updated=lambda s: setattr(self, "settings", s),
+        )
+        tag = TagHandlers(
             db_provider=lambda: self.db,
             event_bus_emit=self.event_bus.emit,
         )
@@ -237,6 +244,7 @@ class ApplicationCoordinator:
         bus = self.command_bus
         bus.register_all(self.recording_session)
         bus.register_all(transcript)
+        bus.register_all(tag)
         bus.register_all(refinement)
         bus.register_all(system)
         bus.register_all(title)

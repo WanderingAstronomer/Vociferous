@@ -18,6 +18,7 @@ ALL_EVENTS = [
     "recording_started",
     "recording_stopped",
     "transcript_deleted",
+    "transcripts_batch_deleted",
     "transcript_updated",
     "transcripts_cleared",
     "refinement_started",
@@ -72,6 +73,72 @@ class TestCommitEdits:
         refreshed = coord.db.get_transcript(t.id)
         assert refreshed.raw_text == "original"
         assert refreshed.text == "new version"
+
+
+# ── Delete intents ───────────────────────────────────────────────────────
+
+
+class TestDeleteIntents:
+    """Delete intents mutate through CommandBus and emit domain events."""
+
+    def test_delete_transcript_removes_row_and_emits_event(self, wired):
+        coord, events = wired
+        t = coord.db.add_transcript(raw_text="delete me", duration_ms=100)
+
+        from src.core.intents.definitions import DeleteTranscriptIntent
+
+        success, result = coord.command_bus.dispatch_result(DeleteTranscriptIntent(transcript_id=t.id))
+
+        assert success is True
+        assert result == {"deleted": True}
+        assert coord.db.get_transcript(t.id) is None
+        assert events.of_type("transcript_deleted") == [{"id": t.id}]
+
+    def test_delete_default_prompt_clears_config(self, wired):
+        coord, events = wired
+        t = coord.db.add_transcript(raw_text="prompt text", duration_ms=100)
+
+        from src.core.intents.definitions import DeleteTranscriptIntent, UpdateConfigIntent
+
+        coord.command_bus.dispatch(
+            UpdateConfigIntent(settings={"refinement": {"default_prompt_transcript_id": t.id}}),
+        )
+        success, result = coord.command_bus.dispatch_result(DeleteTranscriptIntent(transcript_id=t.id))
+
+        assert success is True
+        assert result == {"deleted": True}
+        assert coord.settings.refinement.default_prompt_transcript_id is None
+        assert events.of_type("config_updated")[-1]["refinement"]["default_prompt_transcript_id"] is None
+
+    def test_batch_delete_transcripts_returns_count(self, wired):
+        coord, events = wired
+        first = coord.db.add_transcript(raw_text="first", duration_ms=100)
+        second = coord.db.add_transcript(raw_text="second", duration_ms=100)
+
+        from src.core.intents.definitions import BatchDeleteTranscriptsIntent
+
+        success, result = coord.command_bus.dispatch_result(
+            BatchDeleteTranscriptsIntent(transcript_ids=(first.id, second.id)),
+        )
+
+        assert success is True
+        assert result == {"deleted": 2}
+        assert events.of_type("transcripts_batch_deleted") == [
+            {"ids": [first.id, second.id], "count": 2},
+        ]
+
+    def test_delete_tag_removes_tag_and_emits_event(self, wired):
+        coord, events = wired
+        tag = coord.db.add_tag("Temporary", color="#ffffff")
+
+        from src.core.intents.definitions import DeleteTagIntent
+
+        success, result = coord.command_bus.dispatch_result(DeleteTagIntent(tag_id=tag.id))
+
+        assert success is True
+        assert result == {"deleted": True}
+        assert coord.db.get_tag(tag.id) is None
+        assert events.of_type("tag_deleted") == [{"id": tag.id}]
 
 
 # ── RefineTranscriptIntent (error paths) ──────────────────────────────────
@@ -231,6 +298,19 @@ class TestUpdateConfig:
         )
 
         assert coord.settings.output.auto_copy_to_clipboard is False
+
+    def test_update_config_supports_delete_confirmation_setting(self, wired):
+        coord, events = wired
+
+        from src.core.intents.definitions import UpdateConfigIntent
+
+        coord.command_bus.dispatch(
+            UpdateConfigIntent(settings={"safety": {"confirm_delete": False}}),
+        )
+
+        cfg_events = events.of_type("config_updated")
+        assert cfg_events[-1]["safety"]["confirm_delete"] is False
+        assert coord.settings.safety.confirm_delete is False
 
 
 # ── RestartEngineIntent ───────────────────────────────────────────────────

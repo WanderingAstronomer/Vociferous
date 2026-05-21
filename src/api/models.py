@@ -61,26 +61,22 @@ async def download_model(data: dict) -> Response:
 
     cache_dir = ResourceManager.get_user_cache_dir("models")
 
+    def publish(status: str, message: str, *, error: str | None = None) -> None:
+        """Mirror download status to the engine-status tracker and the WS bus."""
+        track_download(model_type, model_id, status, message, error=error)
+        coordinator.event_bus.emit(
+            "download_progress",
+            {"model_id": model_id, "status": status, "message": message},
+        )
+
     def do_download():
         from src.provisioning.core import ProvisioningError, download_model_directory
 
         def on_progress(msg: str):
-            track_download(model_type, model_id, "downloading", msg)
-            coordinator.event_bus.emit(
-                "download_progress",
-                {"model_id": model_id, "status": "downloading", "message": msg},
-            )
+            publish("downloading", msg)
 
         try:
-            coordinator.event_bus.emit(
-                "download_progress",
-                {
-                    "model_id": model_id,
-                    "status": "started",
-                    "message": f"Starting download of {model.name}...",
-                },
-            )
-            track_download(model_type, model_id, "started", f"Starting download of {model.name}...")
+            publish("started", f"Starting download of {model.name}...")
             download_model_directory(
                 repo_id=model.repo,
                 target_dir=cache_dir,
@@ -88,34 +84,14 @@ async def download_model(data: dict) -> Response:
                 expected_sha256=getattr(model, "sha256", None),
                 model_file=model.model_file,
             )
-            coordinator.event_bus.emit(
-                "download_progress",
-                {
-                    "model_id": model_id,
-                    "status": "complete",
-                    "message": f"{model.name} downloaded successfully.",
-                },
-            )
-            track_download(model_type, model_id, "complete", f"{model.name} downloaded successfully.")
+            publish("complete", f"{model.name} downloaded successfully.")
         except ProvisioningError as e:
             message = normalize_engine_error(e, model_name=model.name)
-            track_download(model_type, model_id, "error", message, error=message)
-            coordinator.event_bus.emit(
-                "download_progress",
-                {"model_id": model_id, "status": "error", "message": message},
-            )
+            publish("error", message, error=message)
         except Exception as e:
             logger.exception("Model download failed: %s", model_id)
             message = normalize_engine_error(e, model_name=model.name)
-            track_download(model_type, model_id, "error", message, error=message)
-            coordinator.event_bus.emit(
-                "download_progress",
-                {
-                    "model_id": model_id,
-                    "status": "error",
-                    "message": message,
-                },
-            )
+            publish("error", message, error=message)
 
     download_thread = threading.Thread(target=do_download, daemon=True, name=f"download-{model_id}")
     download_thread.start()

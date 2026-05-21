@@ -37,6 +37,15 @@ class Tag:
     is_system: bool = False
     created_at: str = ""
 
+    def to_dict(self) -> dict:
+        """JSON-serializable representation used by API responses and WS events."""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "color": self.color,
+            "is_system": self.is_system,
+        }
+
 
 @dataclass(slots=True)
 class Transcript:
@@ -62,6 +71,26 @@ class Transcript:
     def text(self) -> str:
         """Current display text: normalized_text (edited/refined) or raw_text."""
         return self.normalized_text or self.raw_text
+
+    def to_dict(self) -> dict:
+        """JSON-serializable representation used by API responses."""
+        return {
+            "id": self.id,
+            "timestamp": self.timestamp,
+            "raw_text": self.raw_text,
+            "normalized_text": self.normalized_text,
+            "text": self.text,
+            "display_name": self.display_name,
+            "duration_ms": self.duration_ms,
+            "speech_duration_ms": self.speech_duration_ms,
+            "transcription_time_ms": self.transcription_time_ms,
+            "refinement_time_ms": self.refinement_time_ms,
+            "created_at": self.created_at,
+            "include_in_analytics": self.include_in_analytics,
+            "has_audio_cached": self.has_audio_cached,
+            "is_protected": self.is_protected,
+            "tags": [tag.to_dict() for tag in self.tags],
+        }
 
 
 # --- Database ---

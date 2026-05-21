@@ -105,6 +105,14 @@ class OutputSettings(BaseModel):
     exclude_imported_from_analytics: bool = False
 
 
+class SafetySettings(BaseModel):
+    """Destructive-action safeguards."""
+
+    model_config = ConfigDict(frozen=True)
+
+    confirm_delete: bool = True
+
+
 class DisplaySettings(BaseModel):
     """Display and UI scaling configuration."""
 
@@ -167,6 +175,7 @@ class VociferousSettings(BaseSettings):
     user: UserSettings = Field(default_factory=UserSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     output: OutputSettings = Field(default_factory=OutputSettings)
+    safety: SafetySettings = Field(default_factory=SafetySettings)
     refinement: RefinementSettings = Field(default_factory=RefinementSettings)
     display: DisplaySettings = Field(default_factory=DisplaySettings)
 

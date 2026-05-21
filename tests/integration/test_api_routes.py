@@ -47,8 +47,6 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
     from src.api.system import health
     from src.api.transcripts import (
         batch_tag_toggle,
-        clear_all_transcripts,
-        delete_transcript,
         get_transcript,
         list_transcripts,
         refine_transcript,
@@ -80,8 +78,6 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
         route_handlers=[
             list_transcripts,
             get_transcript,
-            delete_transcript,
-            clear_all_transcripts,
             refine_transcript,
             search_transcripts,
             batch_tag_toggle,
@@ -205,7 +201,7 @@ class TestTranscriptRoutes:
             },
         )
 
-        assert resp.status_code == 201
+        assert resp.status_code == 200
         assert resp.json()["dispatched"] is True
 
         listing = client.get("/api/transcripts").json()
@@ -251,13 +247,14 @@ class TestTranscriptRoutes:
         resp = client.get("/api/transcripts/99999")
         assert resp.status_code == 404
 
-    def test_delete_transcript_via_api(self, api):
-        """DELETE /api/transcripts/:id removes the row and emits transcript_deleted."""
+    def test_delete_transcript_via_intent_api(self, api):
+        """POST /api/intents delete_transcript removes the row and emits transcript_deleted."""
         client, coord, events = api
         t = coord.db.add_transcript(raw_text="delete me", duration_ms=100)
 
-        resp = client.delete(f"/api/transcripts/{t.id}")
+        resp = client.post("/api/intents", json={"type": "delete_transcript", "transcript_id": t.id})
         assert resp.status_code == 200
+        assert resp.json()["dispatched"] is True
         assert resp.json()["deleted"] is True
 
         # Verify DB state
@@ -268,15 +265,16 @@ class TestTranscriptRoutes:
         assert len(deleted) == 1
         assert deleted[0]["id"] == t.id
 
-    def test_clear_all_transcripts(self, api):
-        """DELETE /api/transcripts returns deleted count and clears non-protected records."""
+    def test_clear_all_transcripts_via_intent_api(self, api):
+        """POST /api/intents clear_all_transcripts returns deleted count."""
         client, coord, events = api
         coord.db.add_transcript(raw_text="first", duration_ms=100)
         coord.db.add_transcript(raw_text="second", duration_ms=200)
 
-        resp = client.delete("/api/transcripts")
+        resp = client.post("/api/intents", json={"type": "clear_all_transcripts"})
         assert resp.status_code == 200
         data = resp.json()
+        assert data["dispatched"] is True
         assert "deleted" in data
         assert data["deleted"] == 2  # only non-protected transcripts deleted
         assert coord.db.transcript_count() == 1  # protected prompt transcript survives
@@ -288,7 +286,7 @@ class TestTranscriptRoutes:
         coord.db.assign_tags(prompt.id, [prompt_tag.id])
         client.put("/api/config/refinement/default-prompt", json={"transcript_id": prompt.id})
 
-        resp = client.delete(f"/api/transcripts/{prompt.id}")
+        resp = client.post("/api/intents", json={"type": "delete_transcript", "transcript_id": prompt.id})
 
         assert resp.status_code == 200
         assert coord.settings.refinement.default_prompt_transcript_id is None

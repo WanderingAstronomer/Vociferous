@@ -50,7 +50,6 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
     from src.api.models import download_model, list_models
     from src.api.system import health
     from src.api.transcripts import (
-        delete_transcript,
         get_transcript,
         list_transcripts,
         refine_transcript,
@@ -66,7 +65,6 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
         route_handlers=[
             list_transcripts,
             get_transcript,
-            delete_transcript,
             refine_transcript,
             search_transcripts,
             get_config,
@@ -169,12 +167,11 @@ class TestTranscriptErrors:
         resp = client.get("/api/transcripts/-1")
         assert resp.status_code == 404
 
-    def test_delete_nonexistent_transcript(self, api):
-        """DELETE a non-existent transcript returns 404."""
+    def test_legacy_delete_transcript_route_is_removed(self, api):
+        """Legacy DELETE transcript route is intentionally not registered."""
         client, coord, events = api
         resp = client.delete("/api/transcripts/99999")
-        assert resp.status_code == 404
-        assert "error" in resp.json()
+        assert resp.status_code == 405
         assert len(events.of_type("transcript_deleted")) == 0
 
     def test_search_empty_query(self, api):
