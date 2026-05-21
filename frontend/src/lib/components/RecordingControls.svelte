@@ -1,80 +1,53 @@
 <script lang="ts">
     /**
-     * RecordingControls — Single mic button for idle and recording states.
+     * RecordingControls — Single button that IS the visual surface.
      *
-     * ONE button element for both states. Idle: blue border + mic icon.
-     * Recording: RecordingPulse overlay fades in (blob, glow, orange).
-     * No DOM destruction/creation on state change — smooth visual transition.
-     *
-     * Uses ResizeObserver on its container to compute the button diameter
-     * from actual available space (same pattern as ActivityHeatmap).
-     * Viewport units (vmin) are NOT used — they break under CSS zoom.
+     * Click target equals the visual rounded-rect (no oversized invisible wrapper).
+     * Idle and recording share the same rounded-rect at 60% of the parent's width
+     * and height so the surface doesn't shift when you click record. The label
+     * "Click to record" is gone — the hover tooltip carries the affordance.
      */
 
     import { Mic } from "lucide-svelte";
     import RecordingPulse from "./RecordingPulse.svelte";
 
     interface Props {
-        /** Whether a recording is currently active. */
         isRecording: boolean;
-        /** Current audio level (0–1) for the pulse visualizer. */
         audioLevel: number;
-        /** Called when the user clicks the idle mic button. */
         onstart: () => void;
-        /** Called when the user clicks the active recording button (stop). */
         onstop: () => void;
     }
 
     let { isRecording, audioLevel, onstart, onstop }: Props = $props();
 
-    let containerEl: HTMLDivElement | undefined = $state();
-    let btnSize = $state(160);
+    let btnEl: HTMLButtonElement | undefined = $state();
+    let micIconSize = $state(80);
 
-    // Watch the container and scale the button to 40% of the smaller dimension,
-    // clamped between 80px and 160px.
     $effect(() => {
-        if (!containerEl) return;
+        if (!btnEl) return;
         const ro = new ResizeObserver(([e]) => {
-            const { width, height } = e.contentRect;
-            const side = Math.min(width, height);
-            btnSize = Math.max(80, Math.min(160, Math.round(side * 0.4)));
+            const side = Math.min(e.contentRect.width, e.contentRect.height);
+            micIconSize = Math.max(56, Math.min(180, Math.round(side * 0.35)));
         });
-        ro.observe(containerEl);
+        ro.observe(btnEl);
         return () => ro.disconnect();
     });
 </script>
 
-<!-- Mic / Pulse button — single element, two visual states -->
-<div
-    bind:this={containerEl}
-    class="flex flex-col items-center justify-center gap-[var(--space-4)] w-full h-full"
+<button
+    bind:this={btnEl}
+    class="w-3/5 h-3/5 shrink-0 p-0 border-none bg-transparent cursor-pointer rounded-[var(--radius-lg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+    onclick={isRecording ? onstop : onstart}
+    aria-label={isRecording ? "Stop recording" : "Start recording"}
+    title={isRecording ? "Stop recording and transcribe" : "Start recording"}
 >
-    <button
-        class="relative rounded-full cursor-pointer p-0 border-2 flex items-center justify-center transition-[border-color,background-color,color] duration-300 focus:outline-none overflow-visible
-            {isRecording
-                ? 'border-transparent bg-transparent text-transparent'
-                : 'border-[var(--accent)] bg-transparent text-[var(--accent)] hover:bg-[var(--hover-overlay-blue)] hover:border-[var(--accent-hover)] hover:text-[var(--accent-hover)]'}"
-        style="width: {btnSize}px; height: {btnSize}px;"
-        onclick={isRecording ? onstop : onstart}
-        aria-label={isRecording ? "Stop recording" : "Start recording"}
-        title={isRecording ? "Stop recording and transcribe" : "Start recording"}
-    >
-        <!-- Idle: Mic icon (fades out when recording) -->
-        <Mic
-            class="w-[35%] h-[35%] transition-opacity duration-300 {isRecording ? 'opacity-0' : 'opacity-100'}"
-            strokeWidth={1.5}
-        />
-        <!-- Recording: Pulse overlay (fades in when recording) -->
+    {#if isRecording}
+        <RecordingPulse {audioLevel} />
+    {:else}
         <div
-            class="absolute inset-0 transition-opacity duration-300 {isRecording ? 'opacity-100' : 'opacity-0 pointer-events-none'}"
+            class="flex items-center justify-center w-full h-full rounded-[var(--radius-lg)] border-2 border-[var(--accent)] text-[var(--accent)] transition-colors duration-300 hover:bg-[var(--hover-overlay-blue)] hover:border-[var(--accent-hover)] hover:text-[var(--accent-hover)]"
         >
-            <RecordingPulse {audioLevel} size={btnSize} />
+            <Mic size={micIconSize} strokeWidth={1.5} />
         </div>
-    </button>
-    <p
-        class="text-[var(--text-base)] text-[var(--text-tertiary)] m-0 transition-opacity duration-300
-            {isRecording ? 'opacity-0' : 'opacity-100'}"
-    >
-        {isRecording ? '\u00A0' : 'Click to record'}
-    </p>
-</div>
+    {/if}
+</button>

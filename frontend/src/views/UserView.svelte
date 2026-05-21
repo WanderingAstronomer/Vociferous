@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { getTranscripts, getHealth, getConfig, type Transcript } from "../lib/api";
+    import { getTranscripts, getHealth, type Transcript } from "../lib/api";
+    import { appConfig } from "../lib/config.svelte";
     import { toast } from "../lib/toast.svelte";
     import { ws } from "../lib/ws";
     import { formatCount } from "../lib/formatters";
@@ -137,7 +138,7 @@
             const [transcriptResult, health, config] = await Promise.all([
                 getTranscripts({ limit: TRANSCRIPT_EXPORT_LIMIT }),
                 getHealth().catch(() => null),
-                getConfig().catch(() => ({})),
+                appConfig.ensureLoaded().catch(() => ({})),
             ]);
             if (gen !== loadGeneration) return; // stale response
             entries = transcriptResult.items.filter((t) => t.include_in_analytics);
@@ -254,7 +255,7 @@
                         {titleText}
                     </h2>
                     <div class="w-12 h-[2px] rounded-full bg-[var(--accent)]"></div>
-                    <AnalyticsParagraph class="text-center text-[var(--text-sm)] text-[var(--accent)]" />
+                    <AnalyticsParagraph segment="lifetime" class="text-center text-[var(--text-sm)] text-[var(--accent)]" />
                 </div>
 
                 <!-- ═══ Activity Heatmap (shared, above tabs) ═══ -->

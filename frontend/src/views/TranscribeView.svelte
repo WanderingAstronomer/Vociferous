@@ -42,7 +42,6 @@
     import {
         deleteTranscript as apiDeleteTranscript,
         dispatchIntent,
-        getConfig,
         getHealth,
         getTranscript,
         getTranscripts,
@@ -60,6 +59,9 @@
     import type { Transcript, Tag } from "../lib/api";
     import TagBar from "../lib/components/TagBar.svelte";
     import AnalyticsParagraph from "../lib/components/AnalyticsParagraph.svelte";
+    import { confirmDeleteAction } from "../lib/deleteConfirm";
+    import { appConfig } from "../lib/config.svelte";
+    import { confirmDialog } from "../lib/confirm.svelte";
     import { toast } from "../lib/toast.svelte";
 
     type WorkspaceState = "idle" | "recording" | "transcribing" | "ready" | "viewing" | "editing";
@@ -74,9 +76,9 @@
     let speechDurationMs = $state(0);
     let hasAudioCached = $state(false);
     let copied = $state(false);
-    let refinementEnabled = $state(true);
-    let autoRefine = $state(false);
-    let username = $state("");
+    let refinementEnabled = $derived(appConfig.current?.refinement?.enabled ?? true);
+    let autoRefine = $derived(appConfig.current?.output?.auto_refine ?? false);
+    let username = $derived(appConfig.current?.user?.name ?? "");
 
     /* ===== Audio file import ===== */
     const AUDIO_ACCEPT = ".wav,.mp3,.m4a,.flac,.ogg,.webm,.wma,.aac,.opus";
@@ -135,6 +137,14 @@
     }
 
     async function handleSessionTagDelete(tagId: number) {
+        const tagName = allTags.find((tag) => tag.id === tagId)?.name;
+        const confirmed = await confirmDeleteAction({
+            title: "Delete tag?",
+            message: `This permanently deletes ${tagName ? `the tag \"${tagName}\"` : "this tag"} and removes it from any transcript using it.`,
+            confirmLabel: "Delete tag",
+            cancelLabel: "Keep tag",
+        });
+        if (!confirmed) return;
         try {
             await deleteTag(tagId);
             const next = new Set(sessionTagIds);
@@ -356,13 +366,7 @@
 
     /* ===== WebSocket handlers ===== */
     onMount(() => {
-        getConfig()
-            .then((config) => {
-                refinementEnabled = (config as any)?.refinement?.enabled ?? true;
-                autoRefine = (config as any)?.output?.auto_refine ?? false;
-                username = (config as any)?.user?.name ?? "";
-            })
-            .catch(() => {});
+        appConfig.ensureLoaded().catch(() => {});
 
         loadRecentSessions();
         loadTags();
@@ -450,20 +454,6 @@
             }),
             ws.on("audio_level", (data) => {
                 audioLevel = data.level;
-            }),
-            ws.on("config_updated", (data) => {
-                const refinement = (data as any)?.refinement;
-                if (typeof refinement === "object" && refinement !== null && "enabled" in refinement) {
-                    refinementEnabled = Boolean((refinement as any).enabled);
-                }
-                const output = (data as any)?.output;
-                if (typeof output === "object" && output !== null && "auto_refine" in output) {
-                    autoRefine = Boolean((output as any).auto_refine);
-                }
-                const user = (data as any)?.user;
-                if (typeof user === "object" && user !== null && "name" in user) {
-                    username = String((user as any).name ?? "");
-                }
             }),
             ws.on("refinement_complete", async (data) => {
                 /* Auto-commit: if this transcript is the current one and auto-refine triggered it */
@@ -602,6 +592,13 @@
 
     async function deleteTranscript() {
         if (transcriptId == null) return;
+        const confirmed = await confirmDeleteAction({
+            title: "Delete transcript?",
+            message: `This permanently deletes \"${transcriptTitle.trim() || `Transcript #${transcriptId}`}\" and any saved variants. This cannot be undone.`,
+            confirmLabel: "Delete",
+            cancelLabel: "Keep",
+        });
+        if (!confirmed) return;
         try {
             await apiDeleteTranscript(transcriptId);
             resetTranscriptWorkspace();
@@ -624,7 +621,7 @@
     async function appendToPrevious() {
         if (!transcriptId || !transcriptText || !prevTranscript) return;
         const targetTitle = prevTranscript.display_name?.trim() || `Transcript #${prevTranscript.id}`;
-        const confirmed = await toast.confirm({
+        const confirmed = await confirmDialog.confirm({
             title: "Append to previous recording?",
             message: `This will append the current recording to "${targetTitle}" while preserving segment history.`,
             confirmLabel: "Append",
@@ -662,7 +659,7 @@
     }
 </script>
 
-<div class="flex flex-col h-full overflow-hidden p-[var(--space-4)] gap-[var(--minor-gap)]">
+<div class="flex flex-col h-full overflow-hidden bg-[var(--surface-primary)] p-[var(--space-4)] gap-[var(--minor-gap)]">
     <TranscribeHeader
         {viewState}
         {greeting}
@@ -743,30 +740,12 @@
 
     <!-- Content panel -->
     <WorkspacePanel editing={viewState === "editing"} recording={isRecording || isTranscribing}>
-        <!-- IDLE + RECORDING: shared composition with heatmap anchored at the bottom -->
+        <!-- IDLE + RECORDING: the panel hosts only the mic surface. The import
+             affordance, heatmap, and other dashboard context live outside the
+             panel so the panel can size itself purely around recording. -->
         {#if viewState === "idle" || viewState === "recording"}
-            <div class="flex-1 flex flex-col min-h-0">
-                <div class="flex-1 min-h-0 flex flex-col items-center justify-center gap-[var(--space-4)]">
-                    <RecordingControls {isRecording} {audioLevel} onstart={startRecording} onstop={stopRecording} />
-                    {#if viewState === "idle"}
-                        <input
-                            bind:this={fileInput}
-                            type="file"
-                            accept={AUDIO_ACCEPT}
-                            class="hidden"
-                            onchange={handleFileSelected}
-                        />
-                        <StyledButton variant="ghost" size="sm" onclick={importAudio}>
-                            <FileAudio size={14} /> Import Audio File
-                        </StyledButton>
-                    {/if}
-                </div>
-
-                {#if recentSessions.length > 0}
-                    <div class="shrink-0 flex flex-col gap-[var(--space-2)] px-[var(--space-1)]">
-                        <ActivityHeatmap entries={recentSessions} />
-                    </div>
-                {/if}
+            <div class="flex-1 min-h-0 flex flex-col items-center justify-center">
+                <RecordingControls {isRecording} {audioLevel} onstart={startRecording} onstop={stopRecording} />
             </div>
 
             <!-- TRANSCRIBING: spinner -->
@@ -794,20 +773,49 @@
         {/if}
     </WorkspacePanel>
 
-    <!-- Recording status bar (cancel + timer) — below the panel during active recording -->
-    {#if isRecording}
-        <div class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] shrink-0">
-            <StyledButton
-                variant="danger-outline"
-                size="sm"
-                onclick={cancelRecording}
-                ariaLabel="Cancel recording and discard audio"
-                title="Cancel recording and discard captured audio"
-            >
-                <Trash2 size={15} /> Cancel
+    <!-- Import Audio File — secondary recording path. Lives outside the panel so the
+         panel can size itself purely around the mic surface. Idle-only. -->
+    {#if viewState === "idle"}
+        <input
+            bind:this={fileInput}
+            type="file"
+            accept={AUDIO_ACCEPT}
+            class="hidden"
+            onchange={handleFileSelected}
+        />
+        <div class="shrink-0 flex justify-center py-[var(--space-1)]">
+            <StyledButton variant="ghost" size="sm" onclick={importAudio}>
+                <FileAudio size={14} /> Import Audio File
             </StyledButton>
+        </div>
+    {/if}
 
-            <div class="flex-1 flex items-center justify-center gap-[var(--space-2)]">
+    <!-- Heatmap lives outside the WorkspacePanel so the panel can size itself purely around
+         the recording surface. Idle-only — during recording, the dashboard recedes. -->
+    {#if viewState === "idle" && recentSessions.length > 0}
+        <div class="shrink-0 flex flex-col gap-[var(--space-2)] px-[var(--space-1)]">
+            <ActivityHeatmap entries={recentSessions} />
+        </div>
+    {/if}
+
+    <!-- Recording status bar (cancel + status + timer) — below the panel during active recording.
+         3-column grid: Cancel, status, timer each get equal width so the middle status text is
+         geometrically centered regardless of the side elements' widths. -->
+    {#if isRecording}
+        <div class="grid grid-cols-3 items-center gap-[var(--space-2)] py-[var(--space-1)] shrink-0">
+            <div class="justify-self-start">
+                <StyledButton
+                    variant="danger-outline"
+                    size="sm"
+                    onclick={cancelRecording}
+                    ariaLabel="Cancel recording and discard audio"
+                    title="Cancel recording and discard captured audio"
+                >
+                    <X size={15} /> Cancel
+                </StyledButton>
+            </div>
+
+            <div class="flex items-center justify-center gap-[var(--space-2)]">
                 <span
                     class="w-2 h-2 rounded-full bg-[var(--color-danger)] shrink-0 animate-[pulse-dot_1.2s_ease-in-out_infinite]"
                 ></span>
@@ -817,7 +825,7 @@
             </div>
 
             <span
-                class="text-[var(--text-sm)] font-[var(--font-mono)] text-[var(--text-tertiary)] tabular-nums whitespace-nowrap"
+                class="justify-self-end text-[var(--text-sm)] font-[var(--font-mono)] text-[var(--text-tertiary)] tabular-nums whitespace-nowrap"
                 >{formatElapsed(recordingElapsedMs)}</span
             >
         </div>

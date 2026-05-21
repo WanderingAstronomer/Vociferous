@@ -1,16 +1,23 @@
 <!--
-  AnalyticsParagraph — Reusable SLM-generated analytics insight display.
+  AnalyticsParagraph — SLM-generated analytics insight display.
 
-  Shared by UserView and TranscribeView. Fetches the cached insight on mount
-  and subscribes to the `insight_ready` WebSocket event for live updates.
+  The SLM produces a single insight string with a paragraph break between the
+  daily summary and the lifetime/big-picture summary. The `segment` prop selects
+  which portion to render so the daily insight can live on the Transcribe
+  dashboard while the lifetime insight lives on the User view, without forcing
+  two backend calls or duplicating the same text in two places.
 -->
 <script lang="ts">
     import { onMount } from "svelte";
     import { getInsight } from "../api";
     import { ws } from "../ws";
 
-    /** Optional extra CSS classes applied to the outermost wrapper. */
-    let { class: className = "" }: { class?: string } = $props();
+    type Segment = "daily" | "lifetime" | "all";
+
+    let {
+        class: className = "",
+        segment = "all" as Segment,
+    }: { class?: string; segment?: Segment } = $props();
 
     let text = $state("");
 
@@ -26,12 +33,20 @@
         });
         return unsub;
     });
+
+    let displayText = $derived.by(() => {
+        if (!text) return "";
+        if (segment === "all") return text;
+        const parts = text.split(/\n\s*\n/);
+        if (segment === "daily") return parts[0] ?? "";
+        return parts.slice(1).join("\n\n");
+    });
 </script>
 
-{#if text}
+{#if displayText}
     <p
         class="text-[var(--text-base)] text-[var(--text-secondary)] italic mb-0 leading-[var(--leading-normal)] opacity-85 max-w-[var(--content-max-width)] px-[var(--space-4)] [overflow-wrap:anywhere] whitespace-pre-line {className}"
     >
-        {text}
+        {displayText}
     </p>
 {/if}

@@ -19,6 +19,15 @@ interface NavigateOptions {
     force?: boolean;
 }
 
+export interface NavigationRequest {
+    from: ViewId;
+    to: ViewId;
+    transcriptId: number | null;
+    transcriptMode: PendingTranscriptMode;
+}
+
+export type NavigationBlocker = (request: NavigationRequest) => boolean | Promise<boolean>;
+
 class NavigationStore {
     current: ViewId = $state("transcribe");
     /** Transcript ID to pre-select when navigating to a view (e.g., RefineView). */
@@ -28,19 +37,45 @@ class NavigationStore {
     isNavigationLocked: boolean = $state(false);
     /** Transcript ID to append subsequent recordings to (append/continue mode). */
     appendTargetId: number | null = $state(null);
+    private blockers = new Set<NavigationBlocker>();
 
-    navigate(
+    async navigate(
         view: ViewId,
         transcriptId?: number,
         transcriptMode: PendingTranscriptMode = "view",
         options?: NavigateOptions,
-    ): void {
+    ): Promise<boolean> {
         if (this.isNavigationLocked && !options?.force) {
-            return;
+            return false;
         }
+
+        const request: NavigationRequest = {
+            from: this.current,
+            to: view,
+            transcriptId: transcriptId ?? null,
+            transcriptMode,
+        };
+
+        if (!options?.force) {
+            for (const blocker of this.blockers) {
+                const allowed = await blocker(request);
+                if (!allowed) {
+                    return false;
+                }
+            }
+        }
+
         this.pendingTranscriptId = transcriptId ?? null;
         this.pendingTranscriptMode = transcriptMode;
         this.current = view;
+        return true;
+    }
+
+    registerBlocker(blocker: NavigationBlocker): () => void {
+        this.blockers.add(blocker);
+        return () => {
+            this.blockers.delete(blocker);
+        };
     }
 
     beginEditSession(returnTarget?: EditReturnTarget): void {

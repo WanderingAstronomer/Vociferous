@@ -69,8 +69,10 @@
        SEMANTIC TOKENS — Surface, text, and interactive colors
        ====================================================================== */
 
-    /* Shell (title bar, icon rail) */
-    --shell-bg: var(--gray-9);
+    /* Shell (title bar, icon rail, outer chrome) — matches main content surface.
+       The chrome reads as one base value; deliberate elevations (settings sidebar)
+       and recessed wells (cards) move off this base instead of the chrome moving. */
+    --shell-bg: var(--gray-8);
     --shell-border: var(--gray-7);
 
     /* Content surfaces */
@@ -162,8 +164,9 @@
     --radius-xl: 16px;
 
     /* Icon rail */
-    --rail-width: 142px;
-    --rail-button-height: 80px;
+    --rail-width: 60px;
+    --rail-px: 8px;
+    --rail-button-height: 48px;
 
     /* Content column */
     --content-min-width: 480px;

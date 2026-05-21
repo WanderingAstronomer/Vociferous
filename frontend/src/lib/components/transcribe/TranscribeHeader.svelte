@@ -26,19 +26,10 @@
 
 <div class="shrink-0 py-[var(--space-1)]">
     {#if showsGreeting}
-        <div class="flex flex-col items-center text-center gap-[var(--space-1)]">
-            <h1 class="text-3xl font-[var(--weight-emphasis)] text-[var(--accent)] m-0 leading-[var(--leading-tight)]">
-                {greeting}
-            </h1>
-            <AnalyticsParagraph />
-            {#if !refinementEnabled && viewState === "idle"}
-                <p class="text-[var(--text-sm)] text-[var(--text-tertiary)] mb-0">
-                    Enable Grammar Refinement in Settings to unlock AI insights.
-                </p>
-            {/if}
+        <div class="flex flex-col items-center text-center gap-[var(--space-2)]">
             {#if sessionStats && sessionStats.count > 0}
                 <div
-                    class="inline-flex items-stretch bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-[var(--radius-md)] mt-[var(--space-2)]"
+                    class="inline-flex items-stretch bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-[var(--radius-md)]"
                 >
                     <div class="flex flex-col items-center justify-center px-5 py-2">
                         <span class="text-[11px] text-[var(--text-tertiary)] leading-none mb-1.5">Today's Words</span>
@@ -67,6 +58,15 @@
                         </span>
                     </div>
                 </div>
+            {/if}
+            <h1 class="text-3xl font-[var(--weight-emphasis)] text-[var(--accent)] m-0 leading-[var(--leading-tight)]">
+                {greeting}
+            </h1>
+            <AnalyticsParagraph segment="daily" />
+            {#if !refinementEnabled && viewState === "idle"}
+                <p class="text-[var(--text-sm)] text-[var(--text-tertiary)] mb-0">
+                    Enable Grammar Refinement in Settings to unlock AI insights.
+                </p>
             {/if}
         </div>
     {:else if viewState !== "transcribing"}

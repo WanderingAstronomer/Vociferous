@@ -7,7 +7,7 @@
         id: ViewId;
         label: string;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        icon: any; // Relaxed type for compatibility with lucide-svelte
+        icon: any;
         section: "main" | "footer";
     }
 
@@ -38,7 +38,6 @@
     const mainItems = $derived(navItems.filter((i) => i.section === "main" && !hiddenViews.has(i.id)));
     const footerItems = $derived(navItems.filter((i) => i.section === "footer" && !hiddenViews.has(i.id)));
 
-    /* Blink animation state */
     let blinkTarget: ViewId | null = $state(null);
 
     function handleClick(id: ViewId) {
@@ -54,40 +53,39 @@
     function isLockedDestination(id: ViewId): boolean {
         return navigationLocked && id !== currentView;
     }
+
+    function getTitle(item: NavItem): string {
+        if (isLockedDestination(item.id)) return "Finish or discard edits first";
+        if (isRecording && item.id === "transcribe") return "Recording in progress";
+        return item.label;
+    }
 </script>
 
 <nav
-    class="flex flex-col w-[var(--rail-width)] min-w-[var(--rail-width)] h-full bg-[var(--shell-bg)] border-r border-[var(--shell-border)] py-7 px-4 select-none overflow-hidden"
+    class="flex flex-col w-[var(--rail-width)] min-w-[var(--rail-width)] h-full bg-[var(--shell-bg)] border-r border-[var(--shell-border)] py-5 px-[var(--rail-px)] select-none overflow-hidden"
 >
-    <div class="flex flex-col gap-1.5 flex-1">
+    <div class="flex flex-col gap-1 flex-1">
         {#each mainItems as item}
             <button
                 class="rail-button"
                 class:active={currentView === item.id}
-                class:recording={isRecording && item.id === "transcribe" && currentView !== "transcribe"}
+                class:recording={isRecording && item.id === "transcribe"}
                 class:blink={blinkTarget === item.id}
                 class:locked={isLockedDestination(item.id)}
                 disabled={isLockedDestination(item.id)}
-                title={isLockedDestination(item.id)
-                    ? "Finish or discard edits first"
-                    : isRecording && item.id === "transcribe"
-                      ? "Recording in progress"
-                      : item.label}
+                title={getTitle(item)}
+                aria-label={getTitle(item)}
+                aria-current={currentView === item.id ? "page" : undefined}
                 onclick={() => handleClick(item.id)}
             >
-                <span class="flex items-center justify-center w-10 h-10 shrink-0">
-                    <item.icon size={32} strokeWidth={1.5} />
-                </span>
-                <span class="text-[var(--text-sm)] font-medium leading-none tracking-wide whitespace-nowrap"
-                    >{item.label}</span
-                >
+                <item.icon size={22} strokeWidth={1.5} />
             </button>
         {/each}
     </div>
 
     <div class="h-px bg-[var(--shell-border)] my-[var(--space-2)] shrink-0"></div>
 
-    <div class="flex flex-col gap-1.5">
+    <div class="flex flex-col gap-1">
         {#each footerItems as item}
             <button
                 class="rail-button"
@@ -95,15 +93,12 @@
                 class:blink={blinkTarget === item.id}
                 class:locked={isLockedDestination(item.id)}
                 disabled={isLockedDestination(item.id)}
-                title={isLockedDestination(item.id) ? "Finish or discard edits first" : item.label}
+                title={getTitle(item)}
+                aria-label={getTitle(item)}
+                aria-current={currentView === item.id ? "page" : undefined}
                 onclick={() => handleClick(item.id)}
             >
-                <span class="flex items-center justify-center w-10 h-10 shrink-0">
-                    <item.icon size={32} strokeWidth={1.5} />
-                </span>
-                <span class="text-[var(--text-sm)] font-medium leading-none tracking-wide whitespace-nowrap"
-                    >{item.label}</span
-                >
+                <item.icon size={22} strokeWidth={1.5} />
             </button>
         {/each}
     </div>
@@ -112,10 +107,8 @@
 <style>
     .rail-button {
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 8px;
         width: 100%;
         height: var(--rail-button-height);
         border: none;
@@ -132,7 +125,7 @@
     .rail-button::before {
         content: "";
         position: absolute;
-        left: -16px;
+        left: calc(-1 * var(--rail-px));
         top: 50%;
         transform: translateY(-50%);
         width: 3px;
@@ -153,7 +146,7 @@
     }
 
     .rail-button.active::before {
-        height: 32px;
+        height: 24px;
     }
 
     .rail-button.locked {
@@ -161,14 +154,19 @@
         cursor: not-allowed;
     }
 
+    /* Recording-in-progress is a system state, not a navigation state — it gets a
+       dedicated color (red) that overrides the active-view styling when both apply.
+       Recording is conventionally red across DAWs, dashcams, video conferencing,
+       and OBS; the association is learned and worth honoring. The pulse animation
+       differentiates a static red icon from the live recording cue. */
     .rail-button.recording {
-        color: #ef4444;
+        color: var(--color-danger);
         animation: recording-pulse 2s ease-in-out infinite;
     }
 
     .rail-button.recording::before {
-        height: 32px;
-        background: #ef4444;
+        height: 24px;
+        background: var(--color-danger);
     }
 
     @keyframes recording-pulse {
