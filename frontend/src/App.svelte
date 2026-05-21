@@ -1,7 +1,8 @@
 <script lang="ts">
     import { ws } from "./lib/ws";
     import { onMount, onDestroy } from "svelte";
-    import { getModels, getConfig, getHealth } from "./lib/api";
+    import { getModels, getHealth } from "./lib/api";
+    import { appConfig } from "./lib/config.svelte";
     import { nav } from "./lib/navigation.svelte";
     import type { ViewId } from "./lib/navigation.svelte";
     import IconRail from "./lib/components/IconRail.svelte";
@@ -12,13 +13,14 @@
     import UserView from "./views/UserView.svelte";
     import EditView from "./views/EditView.svelte";
     import ToastContainer from "./lib/components/ToastContainer.svelte";
+    import ConfirmDialog from "./lib/components/ConfirmDialog.svelte";
+    import ExportDialog from "./lib/components/ExportDialog.svelte";
     import { toast } from "./lib/toast.svelte";
-    import type { ConfigUpdatedData } from "./lib/events";
 
     let appReady = $state(false);
-    let refinementEnabled = $state(true);
     let recordingActive = $state(false);
 
+    let refinementEnabled = $derived(appConfig.current?.refinement?.enabled ?? true);
     let hiddenViews: Set<ViewId> = $derived(refinementEnabled ? new Set() : new Set<ViewId>(["refine"]));
 
     const VALID_SCALES = [75, 90, 100, 125, 150, 175, 200];
@@ -32,22 +34,29 @@
         if (appEl) appEl.style.zoom = clamped === 100 ? "" : `${clamped}%`;
     }
 
-    let unsubConfigUpdated: (() => void) | null = null;
     let unsubRecordingStarted: (() => void) | null = null;
     let unsubRecordingStopped: (() => void) | null = null;
+
+    $effect(() => {
+        applyUiScale(appConfig.current?.display?.ui_scale ?? 100);
+    });
+
+    $effect(() => {
+        if (!refinementEnabled && nav.current === "refine") {
+            nav.navigate("transcribe");
+        }
+    });
 
     onMount(async () => {
         ws.connect();
 
         // Check ASR model availability + refinement toggle + UI scale
         try {
-            const [models, config] = await Promise.all([getModels(), getConfig()]);
+            const [models] = await Promise.all([getModels(), appConfig.ensureLoaded()]);
             const hasAsr = Object.values(models.asr).some((m: any) => m.downloaded);
             if (!hasAsr) {
                 nav.navigate("settings");
             }
-            refinementEnabled = (config as any)?.refinement?.enabled ?? true;
-            applyUiScale((config as any)?.display?.ui_scale ?? 100);
         } catch {
             console.warn("Could not check initial status");
         }
@@ -75,34 +84,11 @@
             recordingActive = false;
         });
 
-        // Stay in sync when settings change
-        unsubConfigUpdated = ws.on("config_updated", (data: ConfigUpdatedData) => {
-            const refinement = data.refinement;
-            if (typeof refinement === "object" && refinement !== null && "enabled" in refinement) {
-                refinementEnabled = Boolean(refinement.enabled);
-                // If user is on refine view but just disabled it, bounce to transcribe
-                if (!refinementEnabled && nav.current === "refine") {
-                    nav.navigate("transcribe");
-                }
-            }
-
-            const display = data.display;
-            if (
-                typeof display === "object" &&
-                display !== null &&
-                "ui_scale" in display &&
-                typeof display.ui_scale === "number"
-            ) {
-                applyUiScale(display.ui_scale);
-            }
-        });
-
         appReady = true;
     });
 
     onDestroy(() => {
         ws.disconnect();
-        unsubConfigUpdated?.();
         unsubRecordingStarted?.();
         unsubRecordingStopped?.();
     });
@@ -150,4 +136,6 @@
         {/if}
     </div>
     <ToastContainer />
+    <ConfirmDialog />
+    <ExportDialog />
 </div>

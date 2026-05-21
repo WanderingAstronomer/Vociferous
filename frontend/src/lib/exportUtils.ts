@@ -1,6 +1,6 @@
 /**
  * Shared export formatting utilities.
- * Used by both MaintenanceCard (bulk "Export All") and TranscriptsView (contextual export).
+ * Used by ExportDialog (bulk "Export All") and TranscriptsView (contextual export).
  */
 import type { Transcript } from "./api";
 

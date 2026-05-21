@@ -1,9 +1,16 @@
 <script lang="ts">
     /**
      * Animated toggle switch. Pill-shaped track with sliding circle.
+     *
+     * Accepts `id` so a sibling <label for="..."> actually toggles it, and
+     * `ariaLabel`/`ariaLabelledby` so screen readers get a real name instead
+     * of the generic "Toggle".
      */
 
     let {
+        id = undefined as string | undefined,
+        ariaLabel = undefined as string | undefined,
+        ariaLabelledby = undefined as string | undefined,
         checked = $bindable(false),
         disabled = false,
         size = "md" as "sm" | "md",
@@ -14,12 +21,15 @@
 
     function toggle() {
         if (disabled) return;
-        checked = !checked;
-        onChange?.(checked);
+        const next = !checked;
+        checked = next;
+        onChange?.(next);
     }
 </script>
 
 <button
+    {id}
+    type="button"
     class="relative border-none cursor-pointer p-0 transition-colors duration-250 flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
     class:w-[50px]={!isSmall}
     class:h-[24px]={!isSmall}
@@ -30,7 +40,8 @@
     class:bg-[var(--accent)]={checked}
     class:bg-[var(--gray-6)]={!checked}
     role="switch"
-    aria-label="Toggle"
+    aria-label={ariaLabel ?? (ariaLabelledby ? undefined : "Toggle")}
+    aria-labelledby={ariaLabelledby}
     aria-checked={checked}
     {disabled}
     onclick={toggle}

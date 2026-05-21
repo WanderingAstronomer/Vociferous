@@ -7,18 +7,20 @@
      */
 
     import { Loader2, CheckCircle, AlertCircle, ChevronDown, Info } from "lucide-svelte";
+    import type { ModelInfo } from "../api";
+    import type { GetConfigValue, SetConfigValue, VociferousConfig } from "../config.svelte";
     import ToggleSwitch from "./ToggleSwitch.svelte";
     import CustomSelect from "./CustomSelect.svelte";
     import DownloadButton from "./DownloadButton.svelte";
 
     interface Props {
-        config: Record<string, any>;
-        models: { slm: Record<string, any> };
+        config: VociferousConfig;
+        models: { slm: Record<string, ModelInfo> };
         downloadingModel: string | null;
         downloadMessage: string;
         downloadErrorSlm: string;
-        getSafe: (obj: any, path: string, fallback?: any) => any;
-        setSafe: (path: string, value: any) => void;
+        getSafe: GetConfigValue;
+        setSafe: SetConfigValue;
         handleDownload: (type: "asr" | "slm", modelId: string) => void;
     }
 
@@ -41,7 +43,7 @@
 
     /* AWQ + CPU incompatibility check */
     let selectedModelQuant = $derived(
-        (models.slm[getSafe(config, "refinement.model_id", "qwen8b")] as any)?.quant ?? "",
+        models.slm[getSafe(config, "refinement.model_id", "qwen8b")]?.quant ?? "",
     );
     let awqCpuConflict = $derived(isCpu && selectedModelQuant === "awq");
 
@@ -53,14 +55,19 @@
 <div class="flex flex-col gap-[var(--space-3)]">
     <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
         <label
+            id="setting-refinement-label"
             class="text-[var(--text-sm)] text-[var(--text-primary)]"
             for="setting-refinement"
             data-tip="Uses a local language model to improve grammar and punctuation after transcription."
             >Grammar Refinement</label
         >
         <ToggleSwitch
-            checked={getSafe(config, "refinement.enabled", false)}
-            onChange={() => setSafe("refinement.enabled", !getSafe(config, "refinement.enabled", false))}
+            id="setting-refinement"
+            ariaLabelledby="setting-refinement-label"
+            bind:checked={
+                () => getSafe(config, "refinement.enabled", false),
+                (checked: boolean) => setSafe("refinement.enabled", checked)
+            }
         />
     </div>
 
@@ -119,7 +126,7 @@
                         id="setting-refmodel"
                         options={Object.entries(models.slm).map(([id, m]) => ({
                             value: id,
-                            label: `${(m as any).name} (${(m as any).size_mb}MB)${(m as any).downloaded ? "" : " ⬇"}${isCpu && (m as any).quant === "awq" ? " — GPU only" : ""}`,
+                            label: `${m.name} (${m.size_mb}MB)${m.downloaded ? "" : " ⬇"}${isCpu && m.quant === "awq" ? " — GPU only" : ""}`,
                         }))}
                         value={getSafe(config, "refinement.model_id", "qwen8b")}
                         onchange={(v: string) => setSafe("refinement.model_id", v)}
@@ -127,7 +134,7 @@
                     />
                 </div>
                 {#if models.slm[getSafe(config, "refinement.model_id", "qwen8b")]}
-                    {@const selectedSlm = models.slm[getSafe(config, "refinement.model_id", "qwen8b")] as any}
+                    {@const selectedSlm = models.slm[getSafe(config, "refinement.model_id", "qwen8b")]}
                     {#if !selectedSlm.downloaded}
                         {#if downloadingModel === getSafe(config, "refinement.model_id", "qwen8b")}
                             <span
@@ -174,27 +181,36 @@
         {/if}
         <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
             <label
+                id="setting-autorefine-label"
                 class="text-[var(--text-sm)] text-[var(--text-primary)]"
                 for="setting-autorefine"
                 data-tip="Automatically refines each transcription with the default refinement level immediately after recording."
                 >Auto-Refine After Recording</label
             >
             <ToggleSwitch
-                checked={getSafe(config, "output.auto_refine", false)}
-                onChange={() => setSafe("output.auto_refine", !getSafe(config, "output.auto_refine", false))}
+                id="setting-autorefine"
+                ariaLabelledby="setting-autorefine-label"
+                bind:checked={
+                    () => getSafe(config, "output.auto_refine", false),
+                    (checked: boolean) => setSafe("output.auto_refine", checked)
+                }
             />
         </div>
         <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
             <label
+                id="setting-retitle-refine-label"
                 class="text-[var(--text-sm)] text-[var(--text-primary)]"
                 for="setting-retitle-refine"
                 data-tip="Automatically regenerates the transcript title when a refinement is accepted. Uses the refined text for a more accurate title."
                 >Auto-Retitle on Refine</label
             >
             <ToggleSwitch
-                checked={getSafe(config, "output.auto_retitle_on_refine", true)}
-                onChange={() =>
-                    setSafe("output.auto_retitle_on_refine", !getSafe(config, "output.auto_retitle_on_refine", true))}
+                id="setting-retitle-refine"
+                ariaLabelledby="setting-retitle-refine-label"
+                bind:checked={
+                    () => getSafe(config, "output.auto_retitle_on_refine", true),
+                    (checked: boolean) => setSafe("output.auto_retitle_on_refine", checked)
+                }
             />
         </div>
 
@@ -299,15 +315,19 @@
                 </div>
                 <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
                     <label
+                        id="setting-use-thinking-label"
                         class="text-[var(--text-sm)] text-[var(--text-primary)]"
                         for="setting-use-thinking"
                         data-tip="Allow the model to reason internally before producing output. Improves quality on complex edits but uses more tokens and is slower. Only effective on reasoning-capable models."
                         >Enable Thinking Mode</label
                     >
                     <ToggleSwitch
-                        checked={getSafe(config, "refinement.use_thinking", false)}
-                        onChange={() =>
-                            setSafe("refinement.use_thinking", !getSafe(config, "refinement.use_thinking", false))}
+                        id="setting-use-thinking"
+                        ariaLabelledby="setting-use-thinking-label"
+                        bind:checked={
+                            () => getSafe(config, "refinement.use_thinking", false),
+                            (checked: boolean) => setSafe("refinement.use_thinking", checked)
+                        }
                     />
                 </div>
             </div>

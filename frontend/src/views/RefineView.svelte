@@ -3,7 +3,6 @@
     import {
         clearDefaultRefinementPrompt,
         commitRefinement,
-        getConfig,
         getTags,
         getTranscript,
         getTranscripts,
@@ -14,6 +13,7 @@
         type Tag,
     } from "../lib/api";
     import { toast } from "../lib/toast.svelte";
+    import { appConfig } from "../lib/config.svelte";
     import { ws } from "../lib/ws";
     import { nav } from "../lib/navigation.svelte";
     import { wordCount } from "../lib/formatters";
@@ -274,26 +274,34 @@
     let unsubBulkProgress: (() => void) | undefined;
     let unsubBulkComplete: (() => void) | undefined;
     let unsubBulkError: (() => void) | undefined;
-    let unsubConfigUpdated: (() => void) | undefined;
     let unsubTranscriptUpdated: (() => void) | undefined;
+
+    function applyConfigToView() {
+        const cfg = appConfig.current;
+        if (!cfg) return;
+        renderMarkdown = Boolean(cfg.display?.render_markdown_in_editor);
+        const nextDefault =
+            typeof cfg.refinement?.default_prompt_transcript_id === "number"
+                ? cfg.refinement.default_prompt_transcript_id
+                : null;
+        defaultPromptId = nextDefault;
+        if (!selectedPromptId && nextDefault && savedPrompts.length > 0) {
+            const def = savedPrompts.find((p) => p.id === nextDefault);
+            if (def) {
+                selectedPromptId = String(def.id);
+                customInstructions = def.text || def.normalized_text || def.raw_text || "";
+            }
+        }
+    }
+
+    $effect(() => {
+        applyConfigToView();
+    });
 
     onMount(async () => {
         try {
-            const cfg = await getConfig();
-            const display = cfg.display as Record<string, unknown> | undefined;
-            renderMarkdown = Boolean(display?.render_markdown_in_editor);
-
-            const refinement = cfg.refinement as Record<string, unknown> | undefined;
-            if (refinement?.default_prompt_transcript_id) {
-                defaultPromptId = Number(refinement.default_prompt_transcript_id);
-                if (!selectedPromptId && savedPrompts.length > 0) {
-                    const def = savedPrompts.find((p) => p.id === defaultPromptId);
-                    if (def) {
-                        selectedPromptId = String(def.id);
-                        customInstructions = def.text || def.normalized_text || def.raw_text || "";
-                    }
-                }
-            }
+            await appConfig.ensureLoaded();
+            applyConfigToView();
         } catch {
             /* default false */
         }
@@ -345,15 +353,6 @@
             bulkRefineActive = false;
         });
 
-        unsubConfigUpdated = ws.on("config_updated", (data) => {
-            const refinement = data.refinement as Record<string, unknown> | undefined;
-            const nextDefault =
-                typeof refinement?.default_prompt_transcript_id === "number"
-                    ? refinement.default_prompt_transcript_id
-                    : null;
-            defaultPromptId = nextDefault;
-        });
-
         // Reload the saved-prompts list whenever a prompt transcript is edited
         // or whenever a transcript is tagged/untagged as a Prompt.
         unsubTranscriptUpdated = ws.on("transcript_updated", (data) => {
@@ -371,7 +370,6 @@
         unsubBulkProgress?.();
         unsubBulkComplete?.();
         unsubBulkError?.();
-        unsubConfigUpdated?.();
         unsubTranscriptUpdated?.();
         stopRefineTimer();
     });

@@ -11,7 +11,6 @@
     import { nav } from "../lib/navigation.svelte";
     import {
         clearDefaultRefinementPrompt,
-        getConfig,
         getTranscript,
         getTags,
         createTag,
@@ -26,6 +25,9 @@
         type Tag,
     } from "../lib/api";
     import { ws } from "../lib/ws";
+    import { confirmDeleteAction } from "../lib/deleteConfirm";
+    import { appConfig } from "../lib/config.svelte";
+    import { confirmDialog } from "../lib/confirm.svelte";
     import { toast } from "../lib/toast.svelte";
     import { formatRelativeDate, formatDuration, wordCount, formatWpm } from "../lib/formatters";
     import { countFillers, fleschKincaidGrade } from "../lib/textAnalysis";
@@ -49,7 +51,11 @@
     let editingTitle = $state(false);
     let titleDraft = $state("");
     let showMarkdownPreview = $state(false);
-    let defaultPromptId: number | null = $state(null);
+    let defaultPromptId: number | null = $derived(
+        typeof appConfig.current?.refinement?.default_prompt_transcript_id === "number"
+            ? appConfig.current.refinement.default_prompt_transcript_id
+            : null,
+    );
 
     /* ===== Derived ===== */
 
@@ -155,7 +161,7 @@
 
     async function revertToRaw() {
         if (!transcript?.id || !isRefined) return;
-        const confirmed = await toast.confirm({
+        const confirmed = await confirmDialog.confirm({
             title: "Revert to original text?",
             message:
                 "This will discard the refined version and restore the original captured text. The Refined tag will be removed.",
@@ -219,6 +225,14 @@
     }
 
     async function handleTagDelete(tagId: number) {
+        const tagName = allTags.find((tag) => tag.id === tagId)?.name;
+        const confirmed = await confirmDeleteAction({
+            title: "Delete tag?",
+            message: `This permanently deletes ${tagName ? `the tag \"${tagName}\"` : "this tag"} and removes it from any transcript using it.`,
+            confirmLabel: "Delete tag",
+            cancelLabel: "Keep tag",
+        });
+        if (!confirmed) return;
         try {
             await deleteTag(tagId);
             allTags = await getTags();
@@ -243,7 +257,7 @@
         if (!transcript?.id) return;
         try {
             await setDefaultRefinementPrompt(transcript.id);
-            defaultPromptId = transcript.id;
+            await appConfig.refresh();
             toast.success("Default refinement prompt updated");
         } catch (e: any) {
             toast.error(`Failed to set default prompt: ${e.message}`);
@@ -253,7 +267,7 @@
     async function handleClearDefaultPrompt() {
         try {
             await clearDefaultRefinementPrompt();
-            defaultPromptId = null;
+            await appConfig.refresh();
             toast.success("Default refinement prompt cleared");
         } catch (e: any) {
             toast.error(`Failed to clear default prompt: ${e.message}`);
@@ -279,14 +293,8 @@
 
     onMount(async () => {
         try {
-            const cfg = await getConfig();
-            const display = cfg.display as Record<string, unknown> | undefined;
-            const refinement = cfg.refinement as Record<string, unknown> | undefined;
-            showMarkdownPreview = Boolean(display?.render_markdown_in_editor);
-            defaultPromptId =
-                typeof refinement?.default_prompt_transcript_id === "number"
-                    ? refinement.default_prompt_transcript_id
-                    : null;
+            const cfg = await appConfig.ensureLoaded();
+            showMarkdownPreview = Boolean(cfg.display?.render_markdown_in_editor);
         } catch {
             /* fall back to default false */
         }
@@ -313,13 +321,6 @@
                 if (transcript?.id && data.id === transcript.id) {
                     transcript = await getTranscript(transcript.id);
                 }
-            }),
-            ws.on("config_updated", async (data) => {
-                const refinement = data.refinement as Record<string, unknown> | undefined;
-                defaultPromptId =
-                    typeof refinement?.default_prompt_transcript_id === "number"
-                        ? refinement.default_prompt_transcript_id
-                        : null;
             }),
         ];
     });

@@ -7,17 +7,19 @@
      */
 
     import { Loader2, CheckCircle, AlertCircle } from "lucide-svelte";
+    import type { ModelInfo } from "../api";
+    import type { GetConfigValue, SetConfigValue, VociferousConfig } from "../config.svelte";
     import CustomSelect from "./CustomSelect.svelte";
     import DownloadButton from "./DownloadButton.svelte";
 
     interface Props {
-        config: Record<string, any>;
-        models: { asr: Record<string, any> };
+        config: VociferousConfig;
+        models: { asr: Record<string, ModelInfo> };
         downloadingModel: string | null;
         downloadMessage: string;
         downloadErrorAsr: string;
-        getSafe: (obj: any, path: string, fallback?: any) => any;
-        setSafe: (path: string, value: any) => void;
+        getSafe: GetConfigValue;
+        setSafe: SetConfigValue;
         handleDownload: (type: "asr" | "slm", modelId: string) => void;
     }
 
@@ -49,17 +51,17 @@
                     id="setting-model"
                     options={Object.entries(models.asr).map(([id, m]) => ({
                         value: id,
-                        label: `${(m as any).name} (${(m as any).size_mb}MB)${(m as any).downloaded ? "" : " ⬇"}`,
+                        label: `${m.name} (${m.size_mb}MB)${m.downloaded ? "" : " ⬇"}`,
                     }))}
                     value={String(getSafe(config, "model.model", ""))}
                     onchange={(v: string) => setSafe("model.model", v)}
                     placeholder="Select model…"
                 />
             </div>
-            {#if models.asr[getSafe(config, "model.model")]}
-                {@const selectedAsr = models.asr[getSafe(config, "model.model")] as any}
+            {#if models.asr[getSafe(config, "model.model", "")]}
+                {@const selectedAsr = models.asr[getSafe(config, "model.model", "")]}
                 {#if !selectedAsr.downloaded}
-                    {#if downloadingModel === getSafe(config, "model.model")}
+                    {#if downloadingModel === getSafe(config, "model.model", "")}
                         <span
                             class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--accent)] shrink overflow-hidden"
                         >
@@ -67,7 +69,7 @@
                             <span class="overflow-hidden text-ellipsis whitespace-nowrap">{downloadMessage}</span>
                         </span>
                     {:else}
-                        <DownloadButton onclick={() => handleDownload("asr", getSafe(config, "model.model"))} />
+                        <DownloadButton onclick={() => handleDownload("asr", getSafe(config, "model.model", ""))} />
                     {/if}
                 {:else}
                     <span

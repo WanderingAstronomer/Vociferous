@@ -3,7 +3,6 @@
         clearDefaultRefinementPrompt,
         setDefaultRefinementPrompt,
         getTranscripts,
-        getConfig,
         updateConfig,
         updateTag,
         searchTranscripts,
@@ -24,6 +23,7 @@
     } from "../lib/api";
     import { buildExportPayload, type ExportFormat } from "../lib/exportUtils";
     import { ws } from "../lib/ws";
+    import { confirmDialog } from "../lib/confirm.svelte";
     import { toast } from "../lib/toast.svelte";
     import { nav } from "../lib/navigation.svelte";
     import { SelectionManager } from "../lib/selection.svelte";
@@ -45,6 +45,8 @@
         Download,
     } from "lucide-svelte";
     import StyledButton from "../lib/components/StyledButton.svelte";
+    import { confirmDeleteAction } from "../lib/deleteConfirm";
+    import { appConfig } from "../lib/config.svelte";
     import { getZoomFactor } from "../lib/zoom";
     import TranscriptsHeader from "../lib/components/transcripts/TranscriptsHeader.svelte";
     import TranscriptsListPane from "../lib/components/transcripts/TranscriptsListPane.svelte";
@@ -107,7 +109,11 @@
     let spotCheckRemaining: number[] | null = $state(null);
     const SPOT_CHECK_SIZE = 10;
     const DEFAULT_REFINEMENT_LEVEL = 2;
-    let defaultPromptId: number | null = $state(null);
+    let defaultPromptId: number | null = $derived(
+        typeof appConfig.current?.refinement?.default_prompt_transcript_id === "number"
+            ? appConfig.current.refinement.default_prompt_transcript_id
+            : null,
+    );
 
     /* ===== Multi-Selection ===== */
 
@@ -299,7 +305,7 @@
         const spotCheckCount = Math.min(SPOT_CHECK_SIZE, total);
         const offerSpotCheck = total > spotCheckCount;
 
-        const confirmed = await toast.confirm({
+        const confirmed = await confirmDialog.confirm({
             title: `Refine ${total} Transcripts`,
             message: `This will refine and auto-commit ${total} transcripts. Refined text replaces the current version. Individual transcripts can be reverted from Edit view.`,
             confirmLabel: `Refine All ${total}`,
@@ -310,9 +316,9 @@
         });
 
         if (!confirmed) return;
-        bulkSkipRefined = toast.lastCheckboxValue;
+        bulkSkipRefined = confirmDialog.lastCheckboxValue;
 
-        if (offerSpotCheck && toast.lastConfirmWasAlternative) {
+        if (offerSpotCheck && confirmDialog.lastConfirmWasAlternative) {
             // Spot-check path: process first batch, stash remainder
             spotCheckRemaining = ids.slice(spotCheckCount);
             await startBulkRefine(ids.slice(0, spotCheckCount));
@@ -346,7 +352,7 @@
     async function handleSpotCheckContinue() {
         if (!spotCheckRemaining?.length) return;
         const remaining = spotCheckRemaining;
-        const confirmed = await toast.confirm({
+        const confirmed = await confirmDialog.confirm({
             title: `Continue Bulk Refinement`,
             message: `Spot-check complete (${bulkRefineCompleted} refined, ${bulkRefineFailed} failed). Continue with remaining ${remaining.length} transcripts?`,
             confirmLabel: `Refine Remaining ${remaining.length}`,
@@ -367,10 +373,18 @@
     async function handleDelete() {
         if (selection.isMulti) {
             const ids = selection.ids;
+            const idSet = new Set(ids);
+            const confirmed = await confirmDeleteAction({
+                title: `Delete ${ids.length} transcripts?`,
+                message: `This permanently deletes ${ids.length} transcript${ids.length === 1 ? "" : "s"} and any saved variants. This cannot be undone.`,
+                confirmLabel: `Delete ${ids.length}`,
+                cancelLabel: "Keep",
+            });
+            if (!confirmed) return;
             try {
                 await batchDeleteTranscripts(ids);
-                entries = entries.filter((e) => !selection.isSelected(e.id));
-                searchResults = searchResults.filter((e) => !selection.isSelected(e.id));
+                entries = entries.filter((e) => !idSet.has(e.id));
+                searchResults = searchResults.filter((e) => !idSet.has(e.id));
                 selection.clear();
                 toast.success(`Deleted ${ids.length} transcripts`);
             } catch (e: any) {
@@ -379,11 +393,20 @@
             }
             return;
         }
-        if (!selectedEntry) return;
+        const target = selectedEntry;
+        if (!target) return;
+        const targetId = target.id;
+        const confirmed = await confirmDeleteAction({
+            title: "Delete transcript?",
+            message: `This permanently deletes \"${target.display_name?.trim() || `Transcript #${targetId}`}\" and any saved variants. This cannot be undone.`,
+            confirmLabel: "Delete",
+            cancelLabel: "Keep",
+        });
+        if (!confirmed) return;
         try {
-            await deleteTranscript(selectedEntry.id);
-            entries = entries.filter((e) => e.id !== selectedEntry!.id);
-            searchResults = searchResults.filter((e) => e.id !== selectedEntry!.id);
+            await deleteTranscript(targetId);
+            entries = entries.filter((e) => e.id !== targetId);
+            searchResults = searchResults.filter((e) => e.id !== targetId);
             selection.clear();
             toast.success("Transcript deleted");
         } catch (e: any) {
@@ -396,7 +419,7 @@
         if (!selectedEntry) return;
         try {
             await setDefaultRefinementPrompt(selectedEntry.id);
-            defaultPromptId = selectedEntry.id;
+            await appConfig.refresh();
             toast.success("Default refinement prompt updated");
         } catch (e: any) {
             toast.error(`Failed to set default prompt: ${e.message}`);
@@ -406,7 +429,7 @@
     async function handleClearDefaultPrompt() {
         try {
             await clearDefaultRefinementPrompt();
-            defaultPromptId = null;
+            await appConfig.refresh();
             toast.success("Default refinement prompt cleared");
         } catch (e: any) {
             toast.error(`Failed to clear default prompt: ${e.message}`);
@@ -477,6 +500,14 @@
     }
 
     async function handleDeleteTag(tagId: number) {
+        const tagName = allTags.find((tag) => tag.id === tagId)?.name;
+        const confirmed = await confirmDeleteAction({
+            title: "Delete tag?",
+            message: `This permanently deletes ${tagName ? `the tag \"${tagName}\"` : "this tag"} and removes it from any transcript using it.`,
+            confirmLabel: "Delete tag",
+            cancelLabel: "Keep tag",
+        });
+        if (!confirmed) return;
         try {
             await deleteTag(tagId);
             const next = new Set(activeTagIds);
@@ -619,16 +650,10 @@
 
     onMount(() => {
         // Load page_size from user settings, then load data
-        getConfig()
+        appConfig.ensureLoaded()
             .then((cfg) => {
-                const userCfg = cfg?.user as Record<string, unknown> | undefined;
-                const refinementCfg = cfg?.refinement as Record<string, unknown> | undefined;
-                const savedSize = Number(userCfg?.page_size);
+                const savedSize = Number(cfg.user?.page_size);
                 if ([25, 50, 100].includes(savedSize)) pageSize = savedSize;
-                defaultPromptId =
-                    typeof refinementCfg?.default_prompt_transcript_id === "number"
-                        ? refinementCfg.default_prompt_transcript_id
-                        : null;
             })
             .catch(() => {})
             .finally(() => {
@@ -691,13 +716,6 @@
             ws.on("tag_deleted", () => {
                 loadTags();
                 loadTranscripts();
-            }),
-            ws.on("config_updated", (data) => {
-                const refinement = data.refinement as Record<string, unknown> | undefined;
-                defaultPromptId =
-                    typeof refinement?.default_prompt_transcript_id === "number"
-                        ? refinement.default_prompt_transcript_id
-                        : null;
             }),
         ];
 
