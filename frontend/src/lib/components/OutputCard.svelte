@@ -2,7 +2,7 @@
     /**
      * OutputCard — Output behavior toggles.
      *
-     * Manages: trailing space, auto-copy, markdown rendering.
+     * Manages: trailing space, auto-copy.
      */
 
     import ToggleSwitch from "./ToggleSwitch.svelte";
@@ -49,23 +49,6 @@
             bind:checked={
                 () => getSafe(config, "output.auto_copy_to_clipboard", true),
                 (checked: boolean) => setSafe("output.auto_copy_to_clipboard", checked)
-            }
-        />
-    </div>
-    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-        <label
-            id="setting-markdown-editor-label"
-            class="text-[var(--text-sm)] text-[var(--text-primary)]"
-            for="setting-markdown-editor"
-            data-tip="Render transcript text as formatted markdown in the Edit View by default. You can still toggle per-session."
-            >Markdown in Editor</label
-        >
-        <ToggleSwitch
-            id="setting-markdown-editor"
-            ariaLabelledby="setting-markdown-editor-label"
-            bind:checked={
-                () => getSafe(config, "display.render_markdown_in_editor", false),
-                (checked: boolean) => setSafe("display.render_markdown_in_editor", checked)
             }
         />
     </div>

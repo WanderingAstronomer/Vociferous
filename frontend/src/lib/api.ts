@@ -139,6 +139,10 @@ export function retranscribeTranscript(id: number): Promise<{ status: string }> 
     return request(`/transcripts/${id}/retranscribe`, { method: "POST" });
 }
 
+export function retitleTranscript(id: number): Promise<{ status: string }> {
+    return request(`/transcripts/${id}/retitle`, { method: "POST" });
+}
+
 // --- Tags ---
 
 export function getTags(): Promise<Tag[]> {

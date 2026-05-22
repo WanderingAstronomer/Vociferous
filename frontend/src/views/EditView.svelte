@@ -20,6 +20,7 @@
         dispatchIntent,
         renameTranscript,
         retranscribeTranscript,
+        retitleTranscript,
         setDefaultRefinementPrompt,
         type Transcript,
         type Tag,
@@ -35,8 +36,8 @@
     import TagBar from "../lib/components/TagBar.svelte";
     import ActionBar from "../lib/components/ActionBar.svelte";
     import ToggleSwitch from "../lib/components/ToggleSwitch.svelte";
-    import MarkdownBody from "../lib/components/MarkdownBody.svelte";
-    import { ArrowLeft, Check, X, Hammer, RotateCcw, Pencil, Copy, RefreshCw } from "lucide-svelte";
+    import MarkdownEditor from "../lib/components/MarkdownEditor.svelte";
+    import { ArrowLeft, Check, X, Hammer, RotateCcw, Pencil, Copy, RefreshCw, Wand2 } from "lucide-svelte";
 
     /* ===== State ===== */
 
@@ -50,7 +51,7 @@
     let tagMenuOpen = $state(false);
     let editingTitle = $state(false);
     let titleDraft = $state("");
-    let showMarkdownPreview = $state(false);
+    let retitling = $state(false);
     let defaultPromptId: number | null = $derived(
         typeof appConfig.current?.refinement?.default_prompt_transcript_id === "number"
             ? appConfig.current.refinement.default_prompt_transcript_id
@@ -109,6 +110,19 @@
 
     function cancelTitleEdit() {
         editingTitle = false;
+    }
+
+    async function handleRetitle() {
+        if (!transcript?.id || retitling) return;
+        retitling = true;
+        try {
+            await retitleTranscript(transcript.id);
+            toast.info("Generating title…");
+        } catch (e: any) {
+            toast.error(`Retitle failed: ${e.message}`);
+        } finally {
+            retitling = false;
+        }
     }
 
     function handleTitleKeydown(e: KeyboardEvent) {
@@ -292,13 +306,6 @@
     let unsubs: (() => void)[] = [];
 
     onMount(async () => {
-        try {
-            const cfg = await appConfig.ensureLoaded();
-            showMarkdownPreview = Boolean(cfg.display?.render_markdown_in_editor);
-        } catch {
-            /* fall back to default false */
-        }
-
         const id = nav.consumePendingTranscript();
         if (id !== null) {
             load(id);
@@ -379,27 +386,68 @@
                         </button>
                     </div>
                 {:else}
-                    <button
-                        class="group/title flex items-center gap-1.5 bg-transparent border-none p-0 cursor-pointer text-left min-w-0 max-w-full"
-                        onclick={startTitleEdit}
-                        title="Click to rename"
-                    >
-                        <h1 class="text-[18px] font-semibold text-[var(--text-primary)] leading-snug truncate m-0">
-                            {getTitle(transcript)}
-                        </h1>
-                        <Pencil
-                            size={13}
-                            class="shrink-0 text-[var(--text-tertiary)] opacity-0 group-hover/title:opacity-100 transition-opacity"
-                        />
-                    </button>
+                    <div class="flex items-center gap-1.5 min-w-0">
+                        <button
+                            class="group/title flex items-center gap-1.5 bg-transparent border-none p-0 cursor-pointer text-left min-w-0"
+                            onclick={startTitleEdit}
+                            title="Click to rename"
+                        >
+                            <h1 class="text-[18px] font-semibold text-[var(--text-primary)] leading-snug truncate m-0">
+                                {getTitle(transcript)}
+                            </h1>
+                            <Pencil
+                                size={13}
+                                class="shrink-0 text-[var(--text-tertiary)] opacity-0 group-hover/title:opacity-100 transition-opacity"
+                            />
+                        </button>
+                        <button
+                            class="shrink-0 w-6 h-6 rounded flex items-center justify-center bg-transparent border-none text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:bg-[var(--hover-overlay)] cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            onclick={handleRetitle}
+                            disabled={retitling}
+                            title="Generate AI title"
+                        >
+                            <Wand2 size={12} />
+                        </button>
+                    </div>
                 {/if}
-                <div class="flex items-center gap-3 mt-1 flex-wrap">
+                <div class="flex items-center gap-2 mt-1 flex-wrap">
                     <span class="text-[13px] text-[var(--text-tertiary)]">
                         {formatRelativeDate(transcript.created_at)}
                     </span>
+                    <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
                     <span class="text-[13px] text-[var(--text-tertiary)]">
                         {formatDuration(transcript.duration_ms)}
                     </span>
+                    <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
+                    <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">
+                        {wc.toLocaleString()} word{wc !== 1 ? "s" : ""}
+                    </span>
+                    {#if transcript.duration_ms}
+                        <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
+                        <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">
+                            {formatWpm(wc, transcript.duration_ms)}
+                        </span>
+                    {/if}
+                    {#if speechPct !== null}
+                        <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
+                        <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">{speechPct}% speech</span>
+                    {/if}
+                    {#if fkGrade !== null}
+                        <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
+                        <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">Grade {fkGrade}</span>
+                    {/if}
+                    {#if fillerCount > 0}
+                        <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
+                        <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">
+                            {fillerCount} filler{fillerCount !== 1 ? "s" : ""}{wc > 0
+                                ? ` (${((fillerCount / wc) * 100).toFixed(1)}%)`
+                                : ""}
+                        </span>
+                    {/if}
+                    {#if isDirty}
+                        <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
+                        <span class="text-[12px] text-[var(--accent)]">edited</span>
+                    {/if}
                 </div>
             {:else if loading}
                 <div class="h-7 w-48 bg-[var(--hover-overlay)] rounded animate-pulse"></div>
@@ -408,14 +456,6 @@
 
         {#if transcript}
             <div class="shrink-0 flex items-center gap-3 mt-0.5">
-                <div class="flex items-center gap-1.5" title="Render transcript text as markdown">
-                    <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap select-none">Markdown</span>
-                    <ToggleSwitch
-                        size="sm"
-                        checked={showMarkdownPreview}
-                        onChange={() => (showMarkdownPreview = !showMarkdownPreview)}
-                    />
-                </div>
                 <div class="flex items-center gap-1.5" title="Toggle analytics inclusion">
                     <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap select-none"
                         >Include in analytics</span
@@ -492,19 +532,12 @@
             <div class="flex items-center justify-center h-full text-[var(--color-danger)] text-sm">
                 {error}
             </div>
-        {:else if showMarkdownPreview}
-            <div
-                class="w-full h-full overflow-y-auto bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-lg p-4"
-            >
-                <MarkdownBody text={editText} className="text-[15px] text-[var(--text-primary)]" />
-            </div>
         {:else}
-            <textarea
-                class="w-full h-full resize-none bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-lg text-[var(--text-primary)] text-[15px] leading-relaxed p-4 outline-none transition-colors focus:border-[var(--accent)] font-sans"
-                bind:value={editText}
-                spellcheck={true}
-                placeholder="Transcript text…"
-            ></textarea>
+            <div
+                class="w-full h-full bg-[var(--surface-secondary)] border border-[var(--shell-border)] rounded-lg overflow-hidden transition-colors focus-within:border-[var(--accent)]"
+            >
+                <MarkdownEditor bind:value={editText} placeholder="Transcript text…" />
+            </div>
         {/if}
     </div>
 
@@ -534,51 +567,6 @@
         >
             <RefreshCw size={13} /> Re-transcribe
         </StyledButton>
-
-        <div class="flex-1"></div>
-
-        <!-- Statistics strip -->
-        <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">
-            {wc.toLocaleString()} word{wc !== 1 ? "s" : ""}
-        </span>
-
-        {#if transcript?.duration_ms}
-            <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
-            <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">
-                {formatDuration(transcript.duration_ms)}
-            </span>
-            <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
-            <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">
-                {formatWpm(wc, transcript.duration_ms)}
-            </span>
-        {/if}
-
-        {#if speechPct !== null}
-            <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
-            <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">{speechPct}% speech</span>
-        {/if}
-
-        {#if fkGrade !== null}
-            <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
-            <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">Grade {fkGrade}</span>
-        {/if}
-
-        {#if fillerCount > 0}
-            <span class="text-[11px] text-[var(--text-tertiary)]">·</span>
-            <span class="text-[13px] text-[var(--text-tertiary)] tabular-nums">
-                {fillerCount} filler{fillerCount !== 1 ? "s" : ""}{wc > 0
-                    ? ` (${((fillerCount / wc) * 100).toFixed(1)}%)`
-                    : ""}
-            </span>
-        {/if}
-
-        {#if isDirty}
-            <span class="text-[12px] text-[var(--accent)] ml-1">● edited</span>
-        {/if}
-
-        {#if error}
-            <span class="text-[12px] text-[var(--color-danger)] ml-1">{error}</span>
-        {/if}
 
         <div class="flex-1"></div>
 

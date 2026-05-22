@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { Check, Copy, Mic, Pencil, PlusCircle, RefreshCw, Save, Sparkles, Trash2, Undo2 } from "lucide-svelte";
+    import { Check, Copy, House, Mic, Pencil, PlusCircle, RefreshCw, Save, Sparkles, Trash2, Undo2 } from "lucide-svelte";
 
     import type { CommandNode } from "../../actions/command";
     import CommandBar from "../CommandBar.svelte";
@@ -23,6 +23,7 @@
         onQueueContinueMode: () => void;
         onGoToRefine: () => void;
         onStartNewRecording: () => void;
+        onGoToDashboard: () => void;
     }
 
     let {
@@ -42,6 +43,7 @@
         onQueueContinueMode,
         onGoToRefine,
         onStartNewRecording,
+        onGoToDashboard,
     }: Props = $props();
 
     let editCommands = $derived.by(
@@ -71,6 +73,19 @@
 
     let transcriptCommands = $derived.by(
         (): CommandNode[] => [
+            {
+                id: "go-to-dashboard",
+                label: "Dashboard",
+                icon: House,
+                variant: "ghost",
+                group: "status",
+                section: "start",
+                priority: 5,
+                iconOnly: true,
+                title: "Back to dashboard",
+                visibleWhen: () => viewState === "ready" || viewState === "viewing",
+                run: onGoToDashboard,
+            },
             {
                 id: "delete-transcript",
                 label: "Delete",

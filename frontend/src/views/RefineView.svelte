@@ -19,18 +19,20 @@
     import { wordCount } from "../lib/formatters";
     import { computeTextMetrics, type TextMetrics } from "../lib/textAnalysis";
     import WorkspacePanel from "../lib/components/WorkspacePanel.svelte";
-    import MarkdownBody from "../lib/components/MarkdownBody.svelte";
+    import MarkdownEditor from "../lib/components/MarkdownEditor.svelte";
     import DiffView from "../lib/components/DiffView.svelte";
     import CustomSelect from "../lib/components/CustomSelect.svelte";
     import Tooltip from "../lib/components/Tooltip.svelte";
     import StyledButton from "../lib/components/StyledButton.svelte";
     import EmptyState from "../lib/components/EmptyState.svelte";
     import ActionBar from "../lib/components/ActionBar.svelte";
-    import ToggleSwitch from "../lib/components/ToggleSwitch.svelte";
+    import RefinePane from "../lib/components/refine/RefinePane.svelte";
     import {
         Sparkles,
         Copy,
         Check,
+        ChevronDown,
+        ChevronUp,
         RotateCcw,
         ThumbsUp,
         Pencil,
@@ -38,7 +40,7 @@
         Loader2,
         FileText,
         ExternalLink,
-        ArrowUpDown,
+        GitCompare,
         X,
     } from "lucide-svelte";
 
@@ -59,8 +61,15 @@
     let refineElapsed = $state(0);
     let refineTimer: ReturnType<typeof setInterval> | null = $state(null);
     let refineError = $state("");
-    let showDiff = $state(false);
-    let renderMarkdown = $state(false);
+    /**
+     * Diff is the most useful default view after a refinement: it shows what
+     * actually changed. The user can flip back to clean text via the header
+     * toggle in the refined pane.
+     */
+    let showDiff = $state(true);
+    /** Instructions card is collapsed by default; the default prompt status
+     * stays visible so the user knows what will run. */
+    let showInstructions = $state(false);
 
     /* ── Prompt System ── */
     let savedPrompts: Transcript[] = $state([]);
@@ -212,11 +221,17 @@
         if (!refinedText || selectedId === null) return;
         try {
             await commitRefinement(selectedId, refinedText);
-            navigator.clipboard.writeText(refinedText).catch(() => {});
             originalText = refinedText;
             accepted = true;
-            setTimeout(() => (accepted = false), 2000);
             toast.success("Refinement committed");
+            // After the flash, auto-reset to idle so the user isn't staring at
+            // a stale Discard button on an already-accepted result.
+            setTimeout(() => {
+                accepted = false;
+                hasRefined = false;
+                refinedText = "";
+                showDiff = true;
+            }, 2000);
         } catch (e) {
             toast.error(e instanceof Error ? e.message : "Failed to commit refinement");
         }
@@ -279,7 +294,6 @@
     function applyConfigToView() {
         const cfg = appConfig.current;
         if (!cfg) return;
-        renderMarkdown = Boolean(cfg.display?.render_markdown_in_editor);
         const nextDefault =
             typeof cfg.refinement?.default_prompt_transcript_id === "number"
                 ? cfg.refinement.default_prompt_transcript_id
@@ -312,6 +326,9 @@
                 isRefining = false;
                 hasRefined = true;
                 refineError = "";
+                // Surface the diff by default — the change set is the
+                // interesting view; clean text is one click away.
+                showDiff = true;
                 stopRefineTimer();
                 toast.success("Refinement complete");
             }
@@ -411,165 +428,10 @@
             />
         </div>
     {:else}
-        <!-- Comparison Area -->
-        <div class="flex-1 flex gap-[var(--space-4)] p-[var(--space-4)] min-h-0 overflow-hidden">
-            <!-- Original Panel -->
-            <div
-                class="flex-1 flex flex-col border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] overflow-hidden"
-            >
-                <div
-                    class="flex items-center py-[var(--space-3)] px-[var(--space-4)] border-b border-[var(--shell-border)]"
-                >
-                    <div class="flex items-center gap-1 w-10">
-                        {#if originalText}
-                            <button
-                                class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
-                                onclick={handleCopyOriginal}
-                                title="Copy original"
-                            >
-                                {#if copiedOriginal}
-                                    <Check size={14} />
-                                {:else}
-                                    <Copy size={14} />
-                                {/if}
-                            </button>
-                        {/if}
-                    </div>
-                    <h3
-                        class="m-0 flex-1 text-center text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-secondary)]"
-                    >
-                        Original Transcript
-                    </h3>
-                    <div class="flex items-center gap-1 w-10 justify-end">
-                        {#if originalText}
-                            <button
-                                class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
-                                onclick={editSelectedTranscript}
-                                title="Edit transcript"
-                            >
-                                <Pencil size={14} />
-                            </button>
-                        {/if}
-                    </div>
-                </div>
-                <div class="flex-1 overflow-y-auto p-[var(--space-4)]">
-                    {#if originalText}
-                        <WorkspacePanel>
-                            {#if renderMarkdown}
-                                <MarkdownBody
-                                    text={originalText}
-                                    className="text-[var(--text-sm)] text-[var(--text-primary)]"
-                                />
-                            {:else}
-                                <p
-                                    class="m-0 text-[var(--text-sm)] text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed"
-                                >
-                                    {originalText}
-                                </p>
-                            {/if}
-                        </WorkspacePanel>
-                    {:else}
-                        <EmptyState icon={FileText} message="Loading transcript…" />
-                    {/if}
-                </div>
-            </div>
-
-            <!-- Refined Panel -->
-            <div
-                class="flex-1 flex flex-col border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] overflow-hidden"
-            >
-                <div
-                    class="flex items-center py-[var(--space-3)] px-[var(--space-4)] border-b border-[var(--shell-border)]"
-                >
-                    <div class="flex items-center gap-1 w-10">
-                        {#if refinedText}
-                            <button
-                                class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
-                                onclick={handleCopyRefined}
-                                title="Copy refined"
-                            >
-                                {#if copied}
-                                    <Check size={14} />
-                                {:else}
-                                    <Copy size={14} />
-                                {/if}
-                            </button>
-                        {/if}
-                    </div>
-                    <h3
-                        class="m-0 flex-1 text-center text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-secondary)]"
-                    >
-                        Refined / AI Suggestion
-                    </h3>
-                    <div class="flex items-center gap-1 w-10 justify-end">
-                        {#if refinedText}
-                            <button
-                                class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
-                                onclick={() => (showDiff = !showDiff)}
-                                title={showDiff ? "Show clean text" : "Show changes"}
-                            >
-                                <ArrowUpDown size={14} />
-                            </button>
-                        {/if}
-                    </div>
-                </div>
-                <div class="flex-1 overflow-y-auto p-[var(--space-4)]">
-                    {#if isRefining}
-                        <EmptyState icon={Loader2} spinning>
-                            <p
-                                class="m-0 text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]"
-                            >
-                                {refineStatus}
-                            </p>
-                            <p class="m-0 font-[var(--font-mono)] text-[var(--text-xs)] text-[var(--text-tertiary)]">
-                                {refineElapsed}s elapsed
-                            </p>
-                        </EmptyState>
-                    {:else if refineError}
-                        <EmptyState>
-                            <div
-                                class="rounded-[var(--radius-md)] bg-red-500/10 border border-red-500/30 px-[var(--space-4)] py-[var(--space-3)] max-w-md text-center"
-                            >
-                                <p class="m-0 text-[var(--text-sm)] text-red-400 font-[var(--weight-emphasis)]">
-                                    Refinement Failed
-                                </p>
-                                <p class="m-0 mt-[var(--space-1)] text-[var(--text-xs)] text-red-400/80">
-                                    {refineError}
-                                </p>
-                            </div>
-                        </EmptyState>
-                    {:else if refinedText}
-                        <WorkspacePanel>
-                            {#if showDiff}
-                                <DiffView
-                                    original={originalText}
-                                    revised={refinedText}
-                                    className="text-[var(--text-sm)]"
-                                />
-                            {:else if renderMarkdown}
-                                <MarkdownBody
-                                    text={refinedText}
-                                    className="text-[var(--text-sm)] text-[var(--text-primary)]"
-                                />
-                            {:else}
-                                <p
-                                    class="m-0 text-[var(--text-sm)] text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed"
-                                >
-                                    {refinedText}
-                                </p>
-                            {/if}
-                        </WorkspacePanel>
-                    {:else}
-                        <EmptyState icon={Sparkles} message="Ready to refine" />
-                    {/if}
-                </div>
-            </div>
-        </div>
-
         <!-- Analytics Delta (visible after refinement) -->
         {#if hasRefined && refinedText}
             <div
-                class="shrink-0 mx-[var(--space-4)] mb-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] px-[var(--space-4)] py-[var(--space-2)]"
+                class="shrink-0 mx-[var(--space-4)] mt-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] bg-[var(--surface-secondary)] px-[var(--space-4)] py-[var(--space-2)]"
             >
                 <div class="flex items-center justify-center gap-[var(--space-6)] flex-wrap text-[13px]">
                     <div class="flex items-center gap-1.5">
@@ -656,6 +518,100 @@
             </div>
         {/if}
 
+        <!-- Single-Pane Editor -->
+        <!--
+            Single window: live WYSIWYG markdown editor. The pane shows
+            the original transcript before refinement and the refined draft
+            after — the user edits inline in both modes. Diff toggle swaps
+            the editor for an inline word-level diff overlay (original vs
+            refined). Edits to the refined draft propagate back to
+            refinedText so Accept commits whatever is on screen.
+        -->
+        <div class="flex-1 flex flex-col p-[var(--space-4)] min-h-0 overflow-hidden">
+            <RefinePane title={hasRefined ? "Refined Draft" : "Transcript"}>
+                {#snippet headerStart()}
+                    {#if hasRefined ? refinedText : originalText}
+                        <button
+                            class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
+                            onclick={hasRefined ? handleCopyRefined : handleCopyOriginal}
+                            title={hasRefined ? "Copy refined" : "Copy transcript"}
+                        >
+                            {#if hasRefined ? copied : copiedOriginal}
+                                <Check size={14} />
+                            {:else}
+                                <Copy size={14} />
+                            {/if}
+                        </button>
+                    {/if}
+                {/snippet}
+                {#snippet headerEnd()}
+                    {#if hasRefined && refinedText}
+                        <button
+                            class="bg-none border-none cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)]"
+                            class:text-[var(--accent)]={showDiff}
+                            class:text-[var(--text-tertiary)]={!showDiff}
+                            class:hover:text-[var(--accent)]={!showDiff}
+                            onclick={() => (showDiff = !showDiff)}
+                            title={showDiff ? "Edit refined draft" : "Compare with original"}
+                        >
+                            <GitCompare size={14} />
+                        </button>
+                    {:else if originalText && !hasRefined}
+                        <button
+                            class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
+                            onclick={editSelectedTranscript}
+                            title="Edit transcript"
+                        >
+                            <Pencil size={14} />
+                        </button>
+                    {/if}
+                {/snippet}
+                {#if isRefining}
+                    <EmptyState icon={Loader2} spinning>
+                        <p
+                            class="m-0 text-[var(--text-sm)] text-[var(--text-secondary)] font-[var(--weight-emphasis)]"
+                        >
+                            {refineStatus}
+                        </p>
+                        <p class="m-0 font-[var(--font-mono)] text-[var(--text-xs)] text-[var(--text-tertiary)]">
+                            {refineElapsed}s elapsed
+                        </p>
+                    </EmptyState>
+                {:else if refineError}
+                    <EmptyState>
+                        <div
+                            class="rounded-[var(--radius-md)] bg-red-500/10 border border-red-500/30 px-[var(--space-4)] py-[var(--space-3)] max-w-md text-center"
+                        >
+                            <p class="m-0 text-[var(--text-sm)] text-red-400 font-[var(--weight-emphasis)]">
+                                Refinement Failed
+                            </p>
+                            <p class="m-0 mt-[var(--space-1)] text-[var(--text-xs)] text-red-400/80">
+                                {refineError}
+                            </p>
+                        </div>
+                    </EmptyState>
+                {:else if hasRefined && refinedText}
+                    {#if showDiff}
+                        <WorkspacePanel>
+                            <DiffView
+                                original={originalText}
+                                revised={refinedText}
+                                className="text-[var(--text-sm)]"
+                            />
+                        </WorkspacePanel>
+                    {:else}
+                        <MarkdownEditor bind:value={refinedText} placeholder="Refined draft…" />
+                    {/if}
+                {:else if originalText}
+                    <!-- Pre-refine: editor is read-only; edits to the
+                         underlying transcript should go through EditView. -->
+                    <MarkdownEditor value={originalText} editable={false} />
+                {:else}
+                    <EmptyState icon={FileText} message="Loading transcript…" />
+                {/if}
+            </RefinePane>
+        </div>
+
         <!-- Footer Controls -->
         <div class="px-[var(--space-4)]">
             <!-- Bulk Refinement Progress -->
@@ -692,80 +648,105 @@
                 </div>
             {/if}
 
-            <!-- Custom Instructions Card -->
+            <!-- Custom Instructions Card (collapsed by default) -->
             <div
                 class="flex flex-col gap-[var(--space-2)] border border-[var(--shell-border)] rounded-[var(--radius-lg)] py-[var(--space-3)] px-[var(--space-4)] bg-[var(--surface-secondary)]"
             >
-                <h4
-                    class="m-0 text-[var(--text-base)] font-[var(--weight-emphasis)] text-[var(--text-secondary)] text-center"
+                <button
+                    type="button"
+                    class="flex items-center justify-between gap-[var(--space-2)] bg-none border-none cursor-pointer text-left p-0"
+                    onclick={() => (showInstructions = !showInstructions)}
+                    aria-expanded={showInstructions}
                 >
-                    Instructions (Optional)
-                </h4>
-                <p class="m-0 text-[var(--text-xs)] text-[var(--text-tertiary)] text-center">
-                    Default behavior fixes grammar and punctuation with minimal wording changes.
-                </p>
-                <div class="flex items-center justify-between gap-[var(--space-2)] flex-wrap">
-                    <p class="m-0 text-[var(--text-xs)] text-[var(--text-tertiary)]">
-                        {#if defaultPromptId !== null}
-                            Default prompt: <span class="text-[var(--text-secondary)]">{defaultPromptLabel}</span>. It
-                            is applied automatically whenever this box is empty.
-                        {:else}
-                            No default saved prompt is configured. Set one if you want refinement to always fall back to
-                            it.
-                        {/if}
-                    </p>
-                    <div class="flex items-center gap-[var(--space-2)]">
-                        {#if selectedPromptId && Number(selectedPromptId) !== defaultPromptId}
-                            <StyledButton size="sm" variant="neutral" onclick={handleSetDefaultPrompt}>
-                                Set Selected As Default
-                            </StyledButton>
-                        {/if}
-                        {#if defaultPromptId !== null}
-                            <StyledButton size="sm" variant="ghost" onclick={handleClearDefaultPrompt}>
-                                Clear Default
-                            </StyledButton>
-                        {/if}
-                    </div>
-                </div>
-                {#if savedPrompts.length > 0}
-                    <div class="flex items-center gap-[var(--space-2)]">
-                        <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] shrink-0">Saved Prompts</span>
-                        <div class="flex-1">
-                            <CustomSelect
-                                options={savedPrompts.map((p) => ({
-                                    value: String(p.id),
-                                    label:
-                                        p.id === defaultPromptId
-                                            ? `${p.display_name || `Prompt #${p.id}`} (default)`
-                                            : p.display_name || `Prompt #${p.id}`,
-                                }))}
-                                value={selectedPromptId}
-                                onchange={handlePromptSelect}
-                                placeholder="Load a saved prompt…"
-                            />
-                        </div>
-                        <!-- Always rendered so the CustomSelect width stays stable
-                             between the first open (no prompt selected) and subsequent
-                             opens (prompt selected). Visibility toggles via CSS only. -->
-                        <button
-                            class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
-                            class:invisible={!selectedPromptId}
-                            class:pointer-events-none={!selectedPromptId}
-                            tabindex={selectedPromptId ? 0 : -1}
-                            onclick={editSelectedPrompt}
-                            title="Edit this prompt"
+                    <div class="flex flex-col gap-0.5 min-w-0">
+                        <span class="text-[var(--text-sm)] font-[var(--weight-emphasis)] text-[var(--text-secondary)]"
+                            >Instructions</span
                         >
-                            <ExternalLink size={14} />
-                        </button>
+                        <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] truncate">
+                            {#if customInstructions.trim()}
+                                {selectedPromptId && Number(selectedPromptId) === defaultPromptId
+                                    ? `Default: ${defaultPromptLabel}`
+                                    : selectedPromptId
+                                      ? `Prompt: ${savedPrompts.find((p) => String(p.id) === selectedPromptId)?.display_name || "Custom"}`
+                                      : "Custom instructions set"}
+                            {:else if defaultPromptId !== null}
+                                Default prompt: {defaultPromptLabel}
+                            {:else}
+                                Grammar and punctuation fixes only
+                            {/if}
+                        </span>
                     </div>
+                    <span class="text-[var(--text-tertiary)] flex shrink-0">
+                        {#if showInstructions}
+                            <ChevronUp size={16} />
+                        {:else}
+                            <ChevronDown size={16} />
+                        {/if}
+                    </span>
+                </button>
+                {#if showInstructions}
+                    <p class="m-0 text-[var(--text-xs)] text-[var(--text-tertiary)]">
+                        Default behavior fixes grammar and punctuation with minimal wording changes. The default saved
+                        prompt (if any) is applied automatically when the box below is empty.
+                    </p>
+                    <div class="flex items-center justify-between gap-[var(--space-2)] flex-wrap">
+                        <p class="m-0 text-[var(--text-xs)] text-[var(--text-tertiary)]">
+                            {#if defaultPromptId !== null}
+                                Default prompt: <span class="text-[var(--text-secondary)]">{defaultPromptLabel}</span>
+                            {:else}
+                                No default saved prompt is configured.
+                            {/if}
+                        </p>
+                        <div class="flex items-center gap-[var(--space-2)]">
+                            {#if selectedPromptId && Number(selectedPromptId) !== defaultPromptId}
+                                <StyledButton size="sm" variant="neutral" onclick={handleSetDefaultPrompt}>
+                                    Set Selected As Default
+                                </StyledButton>
+                            {/if}
+                            {#if defaultPromptId !== null}
+                                <StyledButton size="sm" variant="ghost" onclick={handleClearDefaultPrompt}>
+                                    Clear Default
+                                </StyledButton>
+                            {/if}
+                        </div>
+                    </div>
+                    {#if savedPrompts.length > 0}
+                        <div class="flex items-center gap-[var(--space-2)]">
+                            <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] shrink-0">Saved Prompts</span>
+                            <div class="flex-1">
+                                <CustomSelect
+                                    options={savedPrompts.map((p) => ({
+                                        value: String(p.id),
+                                        label:
+                                            p.id === defaultPromptId
+                                                ? `${p.display_name || `Prompt #${p.id}`} (default)`
+                                                : p.display_name || `Prompt #${p.id}`,
+                                    }))}
+                                    value={selectedPromptId}
+                                    onchange={handlePromptSelect}
+                                    placeholder="Load a saved prompt…"
+                                />
+                            </div>
+                            <button
+                                class="bg-none border-none text-[var(--text-tertiary)] cursor-pointer p-[var(--space-1)] rounded-[var(--radius-sm)] flex transition-colors duration-[var(--transition-fast)] hover:text-[var(--accent)]"
+                                class:invisible={!selectedPromptId}
+                                class:pointer-events-none={!selectedPromptId}
+                                tabindex={selectedPromptId ? 0 : -1}
+                                onclick={editSelectedPrompt}
+                                title="Edit this prompt"
+                            >
+                                <ExternalLink size={14} />
+                            </button>
+                        </div>
+                    {/if}
+                    <textarea
+                        class="flex-1 resize-none py-[var(--space-2)] px-[var(--space-3)] border border-[var(--shell-border)] rounded-[var(--radius-sm)] bg-[var(--surface-primary)] text-[var(--text-primary)] text-[var(--text-sm)] font-[inherit] outline-none transition-[border-color] duration-[var(--transition-fast)] focus:border-[var(--accent)] disabled:opacity-50"
+                        placeholder="Add specific instructions (e.g., 'Make it bullet points', 'Fix technical jargon')…"
+                        bind:value={customInstructions}
+                        disabled={isRefining}
+                        rows="4"
+                    ></textarea>
                 {/if}
-                <textarea
-                    class="flex-1 resize-none py-[var(--space-2)] px-[var(--space-3)] border border-[var(--shell-border)] rounded-[var(--radius-sm)] bg-[var(--surface-primary)] text-[var(--text-primary)] text-[var(--text-sm)] font-[inherit] outline-none transition-[border-color] duration-[var(--transition-fast)] focus:border-[var(--accent)] disabled:opacity-50"
-                    placeholder="Add specific instructions (e.g., 'Make it bullet points', 'Fix technical jargon')…"
-                    bind:value={customInstructions}
-                    disabled={isRefining}
-                    rows="4"
-                ></textarea>
             </div>
         </div>
 
@@ -780,29 +761,24 @@
                 >
                     <Trash2 size={15} /> Discard
                 </StyledButton>
-                <div class="flex items-center gap-1.5 ml-2" title="Toggle diff highlight view">
-                    <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap select-none">Diff</span>
-                    <ToggleSwitch size="sm" checked={showDiff} onChange={() => (showDiff = !showDiff)} />
-                </div>
-                <div class="flex items-center gap-1.5 ml-2" title="Render text as formatted markdown">
-                    <span class="text-[12px] text-[var(--text-tertiary)] whitespace-nowrap select-none">Markdown</span>
-                    <ToggleSwitch
-                        size="sm"
-                        checked={renderMarkdown}
-                        onChange={() => (renderMarkdown = !renderMarkdown)}
-                    />
-                </div>
                 <div class="flex-1"></div>
                 {#if !accepted}
-                    <StyledButton variant="neutral" size="sm" onclick={handleRerun}>
-                        <RotateCcw size={15} /> Re-run
+                    <StyledButton variant="neutral" size="sm" title="Re-run refinement" onclick={handleRerun}>
+                        <RotateCcw size={15} />
                     </StyledButton>
                 {/if}
+                <StyledButton variant="neutral" size="sm" onclick={handleCopyRefined} title={copied ? "Copied!" : "Copy refined text"}>
+                    {#if copied}
+                        <Check size={15} />
+                    {:else}
+                        <Copy size={15} />
+                    {/if}
+                </StyledButton>
                 <StyledButton variant="primary" size="sm" onclick={handleAccept}>
                     {#if accepted}
                         <Check size={15} /> Accepted!
                     {:else}
-                        <ThumbsUp size={15} /> Accept & Copy
+                        <ThumbsUp size={15} /> Accept
                     {/if}
                 </StyledButton>
             {:else}

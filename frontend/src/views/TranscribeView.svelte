@@ -874,5 +874,9 @@
         onQueueContinueMode={queueContinueMode}
         onGoToRefine={goToRefine}
         onStartNewRecording={startNewRecording}
+        onGoToDashboard={() => {
+            resetTranscriptWorkspace();
+            viewState = "idle";
+        }}
     />
 </div>

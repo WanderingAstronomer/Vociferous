@@ -10,7 +10,7 @@
     let { children, gap = "gap-2", padx = "px-4" }: Props = $props();
 </script>
 
-<div class="shrink-0 {padx} py-2 overflow-y-auto" style="scrollbar-gutter: stable">
+<div class="shrink-0 {padx} py-2">
     <div class="flex flex-wrap items-center {gap} bg-[var(--surface-secondary)] rounded-lg px-3 py-1.5">
         {@render children()}
     </div>

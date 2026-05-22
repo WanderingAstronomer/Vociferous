@@ -56,14 +56,12 @@ export interface VociferousConfig {
         default_prompt_transcript_id?: number | null;
     };
     display?: {
-        render_markdown_in_editor?: boolean;
         ui_scale?: number;
     };
     [key: string]: unknown;
 }
 
 export interface ConfigValueByPath {
-    "display.render_markdown_in_editor": boolean;
     "display.ui_scale": number;
     "logging.level": string;
     "model.device": string;
