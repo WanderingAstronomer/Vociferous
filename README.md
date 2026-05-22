@@ -1,8 +1,8 @@
 <div align="center">
 
-## Vociferous v6.4.1
+## Vociferous v6.6.0
 
-**April 2026**
+**May 2026**
 
 <img src="assets/icons/vociferous_icon.png" alt="Vociferous" width="128" height="128"/>
 
@@ -79,6 +79,7 @@ Record. Transcribe. Refine. Copy. That's the core loop. The rest is infrastructu
 ### Core Workflow
 - **Real-time speech-to-text** — Record via mic button or system-wide global hotkey. Transcription runs on a dedicated background thread using faster-whisper with int8 quantization, or through Groq when explicitly selected.
 - **AI-powered refinement** — SLM cleanup for grammar, filler words, and sentence structure. Run refinement locally through CTranslate2, through LM Studio's local OpenAI-compatible server, or through a configured external provider.
+- **Smart refinement control** — Optional skip logic can avoid refinement for transcripts with minimal errors. It is off by default so refinement behavior stays under explicit user control.
 - **Audio file import** — Drag in WAV, MP3, M4A, FLAC, OGG, or WEBM files for transcription.
 - **Continue recording** — Append new audio to any existing transcript. Pick up where you left off.
 - **Auto-refine** — Optionally refine every new transcription automatically, no clicks required.

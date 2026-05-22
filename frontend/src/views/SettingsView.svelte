@@ -81,6 +81,7 @@
     let engineStatus: EngineStatusInfo | null = $state(null);
     let loading = $state(true);
     let saving = $state(false);
+    let restartPromptArmed = $state(false);
     let restartPending = $state(false);
     let confirmingNavigation = $state(false);
     let message = $state("");
@@ -98,7 +99,9 @@
     let isDirty = $derived(JSON.stringify(config) !== originalConfig);
     let showGpuRuntimeWarning = $derived(Boolean(health.gpu?.driver_detected && !health.gpu?.cuda_available));
 
-    let restartReasons = $derived(detectRestartRequired(JSON.parse(originalConfig || "{}"), engineStatus));
+    let restartReasons = $derived(
+        restartPromptArmed ? detectRestartRequired(JSON.parse(originalConfig || "{}"), engineStatus, true) : [],
+    );
     let restartRequired = $derived(restartReasons.length > 0);
 
     /* ===== Lifecycle ===== */
@@ -197,6 +200,7 @@
             const reasons = detectRestartRequired(JSON.parse(originalConfig || "{}"), s);
             if (reasons.length === 0) {
                 toast.success("Engine restarted");
+                restartPromptArmed = false;
                 restartPending = false;
                 return;
             }
@@ -217,10 +221,14 @@
     async function saveConfig(): Promise<boolean> {
         saving = true;
         try {
+            const previousConfig = cloneConfig(JSON.parse(originalConfig || "{}"));
             const updated = await updateConfig(config);
             appConfig.apply(updated);
             config = cloneConfig(updated);
             originalConfig = JSON.stringify(config);
+            const shouldArmRestartPrompt = restartPromptArmed || runtimeSettingsChanged(previousConfig, config);
+            restartPromptArmed =
+                shouldArmRestartPrompt && detectRestartRequired(config, engineStatus, true).length > 0;
             showMessage("Settings saved", "success");
             return true;
         } catch (e: unknown) {
@@ -288,19 +296,29 @@
 
     /* ===== Restart-required detector ===== */
 
-    function detectRestartRequired(saved: VociferousConfig, engine: EngineStatusInfo | null): string[] {
+    function detectRestartRequired(
+        saved: VociferousConfig,
+        engine: EngineStatusInfo | null,
+        includeUnavailable = false,
+    ): string[] {
         if (!engine) return [];
         const reasons: string[] = [];
 
+        const runtimeIsComparable = (component: EngineStatusInfo["asr"] | EngineStatusInfo["slm"]): boolean => {
+            if (!component.runtime) return false;
+            return !["loading", "unknown", "missing_model", "error"].includes(component.state);
+        };
+
         const runtimeAsr = engine.asr.runtime as Record<string, unknown> | undefined;
         const cfgAsrProvider = saved.model?.provider ?? "local_faster_whisper";
-        const loadedAsrProvider = (runtimeAsr?.provider ?? "local_faster_whisper") as string;
-        if (cfgAsrProvider !== loadedAsrProvider) reasons.push("ASR provider");
+        const asrComparable = runtimeIsComparable(engine.asr);
+        const loadedAsrProvider = runtimeAsr?.provider as string | undefined;
+        if (asrComparable && loadedAsrProvider && cfgAsrProvider !== loadedAsrProvider) reasons.push("ASR provider");
 
         if (cfgAsrProvider === "local_faster_whisper") {
             const cfgAsrModel = saved.model?.model ?? "";
-            const loadedAsrModel = engine.asr.model_id ?? "";
-            if (cfgAsrModel && loadedAsrModel && cfgAsrModel !== loadedAsrModel) {
+            const loadedAsrModel = runtimeAsr?.model_id as string | undefined;
+            if (asrComparable && cfgAsrModel && loadedAsrModel && cfgAsrModel !== loadedAsrModel) {
                 reasons.push("ASR model");
             }
 
@@ -313,16 +331,16 @@
             }
 
             const cfgAsrThreads = saved.model?.n_threads;
-            const runtimeThreadsRaw = engine.asr.runtime?.n_threads;
+            const runtimeThreadsRaw = runtimeAsr?.cpu_threads;
             const loadedAsrThreads = typeof runtimeThreadsRaw === "number" ? runtimeThreadsRaw : undefined;
-            if (cfgAsrThreads !== undefined && loadedAsrThreads !== undefined && cfgAsrThreads !== loadedAsrThreads) {
+            if (asrComparable && cfgAsrThreads !== undefined && loadedAsrThreads !== undefined && cfgAsrThreads !== loadedAsrThreads) {
                 reasons.push("ASR threads");
             }
         } else if (cfgAsrProvider === "groq") {
-            if ((saved.model?.groq?.model_id ?? "") !== (runtimeAsr?.model_id as string | undefined)) {
+            if (asrComparable && (saved.model?.groq?.model_id ?? "") !== (runtimeAsr?.model_id as string | undefined)) {
                 reasons.push("Groq ASR model");
             }
-            if ((saved.model?.groq?.base_url ?? "") !== (runtimeAsr?.base_url as string | undefined)) {
+            if (asrComparable && (saved.model?.groq?.base_url ?? "") !== (runtimeAsr?.base_url as string | undefined)) {
                 reasons.push("Groq ASR base URL");
             }
         }
@@ -330,21 +348,27 @@
         const cfgSlmEnabled = saved.refinement?.enabled ?? false;
         const loadedSlmState = engine.slm.state;
         const loadedSlmActive = loadedSlmState !== "disabled" && loadedSlmState !== "unavailable";
-        if (cfgSlmEnabled !== loadedSlmActive) {
+        const slmComparable = runtimeIsComparable(engine.slm);
+        if ((slmComparable || includeUnavailable) && cfgSlmEnabled !== loadedSlmActive) {
             reasons.push(cfgSlmEnabled ? "Refinement enabled" : "Refinement disabled");
         }
 
         if (cfgSlmEnabled && loadedSlmActive) {
             const runtime = engine.slm.runtime as Record<string, unknown> | undefined;
             const cfgSlmProvider = saved.refinement?.provider ?? "local_ct2";
-            const loadedProvider = (runtime?.provider ?? "local_ct2") as string;
-            if (cfgSlmProvider !== loadedProvider) reasons.push("Refinement provider");
+            const loadedProvider = runtime?.provider as string | undefined;
+            if (slmComparable && loadedProvider && cfgSlmProvider !== loadedProvider) reasons.push("Refinement provider");
 
             if (cfgSlmProvider === "local_ct2") {
                 const cfgSlmModel = saved.refinement?.model_id ?? "";
-                const loadedSlmModel = engine.slm.model_id ?? "";
-                if (cfgSlmModel && loadedSlmModel && cfgSlmModel !== loadedSlmModel) {
+                const loadedSlmModel = runtime?.model_id as string | undefined;
+                if (slmComparable && cfgSlmModel && loadedSlmModel && cfgSlmModel !== loadedSlmModel) {
                     reasons.push("Refinement model");
+                }
+                const cfgSlmThreads = saved.refinement?.n_threads;
+                const loadedSlmThreads = runtime?.cpu_threads as number | undefined;
+                if (slmComparable && cfgSlmThreads !== undefined && loadedSlmThreads !== undefined && cfgSlmThreads !== loadedSlmThreads) {
+                    reasons.push("Refinement threads");
                 }
                 const cfgSlmCpu = (saved.refinement?.n_gpu_layers ?? -1) === 0;
                 const loadedSlmDevice = (engine.slm.device ?? "").toLowerCase();
@@ -354,17 +378,17 @@
                     else if (!cfgSlmCpu && loadedSlmCpu && health.gpu?.cuda_available) reasons.push("Refinement device");
                 }
             } else if (cfgSlmProvider === "lm_studio") {
-                if ((saved.refinement?.lm_studio?.model_id ?? "") !== (runtime?.model_id as string | undefined)) {
+                if (slmComparable && (saved.refinement?.lm_studio?.model_id ?? "") !== (runtime?.model_id as string | undefined)) {
                     reasons.push("LM Studio model");
                 }
-                if ((saved.refinement?.lm_studio?.base_url ?? "") !== (runtime?.base_url as string | undefined)) {
+                if (slmComparable && (saved.refinement?.lm_studio?.base_url ?? "") !== (runtime?.base_url as string | undefined)) {
                     reasons.push("LM Studio base URL");
                 }
             } else if (cfgSlmProvider === "groq") {
-                if ((saved.refinement?.groq?.model_id ?? "") !== (runtime?.model_id as string | undefined)) {
+                if (slmComparable && (saved.refinement?.groq?.model_id ?? "") !== (runtime?.model_id as string | undefined)) {
                     reasons.push("Groq model");
                 }
-                if ((saved.refinement?.groq?.base_url ?? "") !== (runtime?.base_url as string | undefined)) {
+                if (slmComparable && (saved.refinement?.groq?.base_url ?? "") !== (runtime?.base_url as string | undefined)) {
                     reasons.push("Groq base URL");
                 }
             }
@@ -396,6 +420,45 @@
 
     function cloneConfig(source: Record<string, unknown> | VociferousConfig): VociferousConfig {
         return JSON.parse(JSON.stringify(source)) as VociferousConfig;
+    }
+
+    const RUNTIME_SETTING_PATHS = [
+        "model.provider",
+        "model.model",
+        "model.device",
+        "model.n_threads",
+        "model.compute_type",
+        "model.groq.base_url",
+        "model.groq.model_id",
+        "model.groq.api_key_env",
+        "model.groq.timeout_seconds",
+        "refinement.enabled",
+        "refinement.provider",
+        "refinement.model_id",
+        "refinement.n_gpu_layers",
+        "refinement.n_threads",
+        "refinement.lm_studio.base_url",
+        "refinement.lm_studio.model_id",
+        "refinement.lm_studio.api_key_env",
+        "refinement.lm_studio.timeout_seconds",
+        "refinement.lm_studio.max_output_tokens",
+        "refinement.groq.base_url",
+        "refinement.groq.model_id",
+        "refinement.groq.api_key_env",
+        "refinement.groq.timeout_seconds",
+        "refinement.groq.max_output_tokens",
+        "refinement.groq.max_retries",
+        "refinement.groq.retry_backoff_seconds",
+    ];
+
+    function runtimeSettingsChanged(before: VociferousConfig, after: VociferousConfig): boolean {
+        return RUNTIME_SETTING_PATHS.some(
+            (path) => JSON.stringify(readConfigPath(before, path)) !== JSON.stringify(readConfigPath(after, path)),
+        );
+    }
+
+    function readConfigPath(source: VociferousConfig, path: string): unknown {
+        return path.split(".").reduce<unknown>((current, key) => (isRecord(current) ? current[key] : undefined), source);
     }
 
     function withConfigValue<Path extends ConfigPath>(

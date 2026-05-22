@@ -16,6 +16,7 @@
         assignTags,
         batchToggleTag,
         retranscribeTranscript,
+        retitleTranscript,
         exportFile,
         type Transcript,
         type Tag,
@@ -106,9 +107,12 @@
     let bulkRefineFailed = $state(0);
     let bulkRefineTotal = $state(0);
     let bulkSkipRefined = $state(true);
+    let bulkPromptInstructions = $state("");
     let spotCheckRemaining: number[] | null = $state(null);
     const SPOT_CHECK_SIZE = 10;
     const DEFAULT_REFINEMENT_LEVEL = 2;
+    const DEFAULT_PROMPT_OPTION = "__default_prompt__";
+    const NO_PROMPT_OPTION = "__no_prompt__";
     let defaultPromptId: number | null = $derived(
         typeof appConfig.current?.refinement?.default_prompt_transcript_id === "number"
             ? appConfig.current.refinement.default_prompt_transcript_id
@@ -202,6 +206,19 @@
         }
     }
 
+    async function loadPromptTranscripts(): Promise<Transcript[]> {
+        const tags = allTags.length > 0 ? allTags : await getTags();
+        if (allTags.length === 0) allTags = tags;
+        const promptTag = tags.find((tag) => tag.name === "Prompt" && tag.is_system);
+        if (!promptTag) return [];
+        const result = await getTranscripts({ limit: 100, tag_ids: [promptTag.id], sort_by: "display_name", sort_dir: "asc" });
+        return result.items;
+    }
+
+    function promptText(prompt: Transcript): string {
+        return prompt.text || prompt.normalized_text || prompt.raw_text || "";
+    }
+
     async function doSearch() {
         if (!searchQuery.trim()) {
             searchResults = [];
@@ -236,6 +253,14 @@
             error = e.message;
         } finally {
             searching = false;
+        }
+    }
+
+    async function refreshVisibleTranscripts() {
+        if (isSearching) {
+            await doSearch();
+        } else {
+            await loadTranscripts();
         }
     }
 
@@ -304,6 +329,20 @@
         const total = ids.length;
         const spotCheckCount = Math.min(SPOT_CHECK_SIZE, total);
         const offerSpotCheck = total > spotCheckCount;
+        const promptTranscripts = await loadPromptTranscripts();
+        const defaultPrompt = defaultPromptId ? promptTranscripts.find((prompt) => prompt.id === defaultPromptId) : null;
+        const promptOptions = [
+            defaultPrompt
+                ? {
+                      value: DEFAULT_PROMPT_OPTION,
+                      label: `Default prompt: ${defaultPrompt.display_name?.trim() || `Prompt #${defaultPrompt.id}`}`,
+                  }
+                : { value: NO_PROMPT_OPTION, label: "No custom prompt" },
+            ...promptTranscripts.map((prompt) => ({
+                value: String(prompt.id),
+                label: prompt.display_name?.trim() || `Prompt #${prompt.id}`,
+            })),
+        ];
 
         const confirmed = await confirmDialog.confirm({
             title: `Refine ${total} Transcripts`,
@@ -313,10 +352,16 @@
             alternativeLabel: offerSpotCheck ? `Spot-Check First ${spotCheckCount}` : undefined,
             checkboxLabel: "Skip already-refined transcripts",
             checkboxDefault: true,
+            selectLabel: "Prompt",
+            selectOptions: promptOptions,
+            selectDefault: defaultPrompt ? DEFAULT_PROMPT_OPTION : NO_PROMPT_OPTION,
         });
 
         if (!confirmed) return;
         bulkSkipRefined = confirmDialog.lastCheckboxValue;
+        const selectedPromptValue = confirmDialog.lastSelectValue;
+        const selectedPrompt = promptTranscripts.find((prompt) => String(prompt.id) === selectedPromptValue);
+        bulkPromptInstructions = selectedPrompt ? promptText(selectedPrompt) : "";
 
         if (offerSpotCheck && confirmDialog.lastConfirmWasAlternative) {
             // Spot-check path: process first batch, stash remainder
@@ -334,7 +379,7 @@
         bulkRefineFailed = 0;
         bulkRefineTotal = ids.length;
         try {
-            await bulkRefineTranscripts(ids, DEFAULT_REFINEMENT_LEVEL, "", bulkSkipRefined);
+            await bulkRefineTranscripts(ids, DEFAULT_REFINEMENT_LEVEL, bulkPromptInstructions, bulkSkipRefined);
         } catch (e: any) {
             toast.error(`Bulk refine failed: ${e.message}`);
             bulkRefineActive = false;
@@ -615,9 +660,22 @@
                 const allHave = selectedTranscripts.every((t) => t.tags.some((tag) => tag.id === tagId));
                 await batchToggleTag(ids, tagId, !allHave);
             }
-            await loadTranscripts();
+            await refreshVisibleTranscripts();
         } catch (e: any) {
             toast.error(`Tag update failed: ${e.message}`);
+        }
+    }
+
+    async function handleRetitleSelection() {
+        const ids = selection.ids;
+        if (ids.length === 0) return;
+
+        try {
+            await Promise.all(ids.map((id) => retitleTranscript(id)));
+            toast.info(ids.length === 1 ? "Retitle queued" : `Retitle queued for ${ids.length} transcripts`);
+            await refreshVisibleTranscripts();
+        } catch (e: any) {
+            toast.error(`Retitle failed: ${e.message}`);
         }
     }
 
@@ -680,8 +738,8 @@
                 entries = entries.filter((e) => !deleted.has(e.id));
                 searchResults = searchResults.filter((e) => !deleted.has(e.id));
             }),
-            ws.on("refinement_complete", () => loadTranscripts()),
-            ws.on("transcript_updated", () => loadTranscripts()),
+            ws.on("refinement_complete", () => refreshVisibleTranscripts()),
+            ws.on("transcript_updated", () => refreshVisibleTranscripts()),
             ws.on("bulk_refinement_started", (data) => {
                 bulkRefineTotal = data.total;
             }),
@@ -698,7 +756,7 @@
                       : `Refined ${data.completed} transcripts`;
                 if (data.cancelled || data.failed > 0) toast.warning(msg);
                 else toast.success(msg);
-                loadTranscripts();
+                refreshVisibleTranscripts();
                 if (spotCheckRemaining?.length && !data.cancelled) {
                     handleSpotCheckContinue();
                 } else {
@@ -715,7 +773,7 @@
             ws.on("tag_updated", () => loadTags()),
             ws.on("tag_deleted", () => {
                 loadTags();
-                loadTranscripts();
+                refreshVisibleTranscripts();
             }),
         ];
 
@@ -809,6 +867,7 @@
             onOpenTagAssign={openTagAssign}
             onToggleExportPopover={toggleExportPopover}
             onBulkRefine={handleBulkRefine}
+            onRetitleSelection={handleRetitleSelection}
             onExportAnchorChange={handleExportAnchorChange}
         />
     </div>

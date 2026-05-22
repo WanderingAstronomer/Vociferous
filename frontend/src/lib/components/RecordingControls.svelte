@@ -21,7 +21,7 @@
     const idleClasses =
         "border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--surface-secondary))] text-[var(--accent)] shadow-[0_0_18px_rgba(90,159,212,0.10)] hover:border-[var(--accent-hover)] hover:bg-[color-mix(in_srgb,var(--accent)_11%,var(--surface-secondary))] hover:text-[var(--accent-hover)]";
     const recordingClasses =
-        "border-transparent bg-transparent text-[var(--orange-4)] shadow-[0_0_18px_rgba(255,160,60,0.12)]";
+        "border-transparent bg-transparent text-[var(--orange-4)] shadow-[0_0_36px_rgba(255,160,60,0.34)]";
 </script>
 
 <button

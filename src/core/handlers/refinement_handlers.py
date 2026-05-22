@@ -136,7 +136,7 @@ class RefinementHandlers:
                     text,
                     level=intent.level,
                     instructions=resolved_instructions,
-                    allow_skip=False,
+                    allow_skip=self._settings_provider().refinement.smart_refinement,
                 )
 
                 elapsed = round(time.monotonic() - start_time, 1)
@@ -340,6 +340,7 @@ class RefinementHandlers:
                             text,
                             level=intent.level,
                             instructions=resolved_instructions,
+                            allow_skip=self._settings_provider().refinement.smart_refinement,
                         )
                         refine_elapsed_ms = int((time.monotonic() - refine_start) * 1000)
                     except TimeoutError:

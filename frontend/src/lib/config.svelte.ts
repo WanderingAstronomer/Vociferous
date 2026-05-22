@@ -59,6 +59,7 @@ export interface VociferousConfig {
         model_id?: string;
         n_gpu_layers?: number;
         n_threads?: number;
+        smart_refinement?: boolean;
         use_thinking?: boolean;
         temperature?: number;
         top_p?: number;
@@ -125,6 +126,7 @@ export interface ConfigValueByPath {
     "refinement.model_id": string;
     "refinement.n_gpu_layers": number;
     "refinement.n_threads": number;
+    "refinement.smart_refinement": boolean;
     "refinement.repetition_penalty": number;
     "refinement.temperature": number;
     "refinement.top_k": number;

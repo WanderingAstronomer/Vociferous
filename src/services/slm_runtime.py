@@ -237,7 +237,7 @@ class SLMRuntime:
         )
         t.start()
 
-    def refine_text_sync(self, text: str, level: int = 1, instructions: str = "", allow_skip: bool = True) -> str:
+    def refine_text_sync(self, text: str, level: int = 1, instructions: str = "", allow_skip: bool | None = None) -> str:
         """Synchronous refinement — blocks until complete. Returns refined text."""
         if not self._engine:
             raise RuntimeError("Engine not loaded.")
@@ -257,6 +257,7 @@ class SLMRuntime:
             if not self._engine:
                 raise RuntimeError("Engine not loaded.")
             params = self._sampling_params_for_level(level)
+            should_allow_skip = self._settings_provider().refinement.smart_refinement if allow_skip is None else allow_skip
             start = time.perf_counter()
             result = self._engine.refine(
                 text,
@@ -266,7 +267,7 @@ class SLMRuntime:
                 top_k=int(params["top_k"]),
                 repetition_penalty=float(params["repetition_penalty"]),
                 use_thinking=bool(params["use_thinking"]),
-                allow_skip=allow_skip,
+                allow_skip=should_allow_skip,
             )
             self._log_inference_timing("refinement", text, result.content, time.perf_counter() - start)
         finally:
@@ -332,6 +333,7 @@ class SLMRuntime:
                     top_k=int(params["top_k"]),
                     repetition_penalty=float(params["repetition_penalty"]),
                     use_thinking=bool(params["use_thinking"]),
+                    allow_skip=self._settings_provider().refinement.smart_refinement,
                 )
                 self._log_inference_timing("refinement", text, result.content, time.perf_counter() - start)
 

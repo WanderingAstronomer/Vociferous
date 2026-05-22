@@ -92,10 +92,10 @@
             </span>
         </EmptyState>
     {:else}
-        <div class="flex flex-col gap-1.5 pt-1">
+        <div class="flex flex-col gap-2 pt-1">
             {#each entries as entry (entry.id)}
                 <button
-                    class="w-full text-left p-3 rounded-lg border cursor-pointer transition-all duration-150 group/card"
+                    class="w-full min-h-[184px] text-left p-4 rounded-lg border cursor-pointer transition-all duration-150 group/card"
                     class:bg-[var(--hover-overlay-blue)]={selection.isSelected(entry.id)}
                     class:border-[var(--accent)]={selection.isSelected(entry.id)}
                     class:bg-[var(--surface-secondary)]={!selection.isSelected(entry.id)}
@@ -117,12 +117,12 @@
                     </div>
 
                     {#if isSearching}
-                        <p class="text-[15px] text-[var(--text-secondary)] leading-relaxed m-0 mb-2 line-clamp-2">
+                        <p class="text-[15px] text-[var(--text-secondary)] leading-relaxed m-0 mb-2 line-clamp-4">
                             {@html highlight(truncate(getDisplayText(entry)), searchQuery)}
                         </p>
                     {:else}
                         <div
-                            class="text-[15px] text-[var(--text-secondary)] leading-relaxed mb-2 max-h-[3.25em] overflow-hidden"
+                            class="text-[15px] text-[var(--text-secondary)] leading-relaxed mb-2 max-h-[6.5em] overflow-hidden"
                         >
                             <MarkdownBody text={getDisplayText(entry)} className="[&>*:first-child]:mt-0" />
                         </div>

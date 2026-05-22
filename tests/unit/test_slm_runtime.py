@@ -312,7 +312,10 @@ class TestLoadModelTask:
         fresh_settings.refinement.groq.model_list_enabled = False
         runtime._state = SLMState.LOADING
 
-        with patch("src.refinement.providers.RefinementEngine") as mock_engine:
+        with (
+            patch("src.refinement.providers.RefinementEngine") as mock_engine,
+            patch("src.refinement.providers.OpenAICompatibleRefinementProvider.list_models", return_value=[]),
+        ):
             runtime._load_model_task()
 
         assert runtime.state is SLMState.READY
@@ -330,7 +333,8 @@ class TestLoadModelTask:
         runtime._state = SLMState.LOADING
         caplog.set_level(logging.INFO, logger="src.services.slm_runtime")
 
-        runtime._load_model_task()
+        with patch("src.refinement.providers.OpenAICompatibleRefinementProvider.list_models", return_value=[]):
+            runtime._load_model_task()
 
         assert "Initializing external refinement provider" in caplog.text
         assert "External refinement provider ready" in caplog.text
@@ -351,6 +355,28 @@ class TestRefineTextSync:
 
         assert result == "polished text"
         mock_engine.refine.assert_called_once()
+        assert mock_engine.refine.call_args.kwargs["allow_skip"] is False
+
+    def test_sync_refine_uses_smart_refinement_setting(self, runtime, fresh_settings):
+        fresh_settings.refinement.smart_refinement = True
+        mock_engine = MagicMock()
+        mock_engine.refine.return_value = MagicMock(content="polished text")
+        runtime._engine = mock_engine
+
+        result = runtime.refine_text_sync("rough text", level=1)
+
+        assert result == "polished text"
+        assert mock_engine.refine.call_args.kwargs["allow_skip"] is True
+
+    def test_sync_refine_explicit_allow_skip_overrides_setting(self, runtime, fresh_settings):
+        fresh_settings.refinement.smart_refinement = False
+        mock_engine = MagicMock()
+        mock_engine.refine.return_value = MagicMock(content="rough text")
+        runtime._engine = mock_engine
+
+        runtime.refine_text_sync("rough text", level=1, allow_skip=True)
+
+        assert mock_engine.refine.call_args.kwargs["allow_skip"] is True
 
     def test_sync_refine_without_engine_raises(self, runtime):
         runtime._engine = None

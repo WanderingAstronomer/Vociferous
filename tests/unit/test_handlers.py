@@ -261,12 +261,38 @@ class TestRefinementHandlersHappyPath:
         assert complete[0]["transcript_id"] == t.id
         assert complete[0]["text"] == "refined version of the text"
         assert complete[0]["level"] == 2
+        mock_slm.refine_text_sync.assert_called_once()
+        assert mock_slm.refine_text_sync.call_args.kwargs["allow_skip"] is False
 
         # Completion is preview-only until an explicit commit intent is handled.
         refreshed = db.get_transcript(t.id)
         assert refreshed is not None
         assert refreshed.normalized_text == "original text to refine"
         assert refreshed.text == "original text to refine"
+
+    def test_smart_refinement_passes_skip_gate_to_single_refine(self, db, events):
+        from src.core.handlers.refinement_handlers import RefinementHandlers
+        from src.core.settings import VociferousSettings
+
+        t = db.add_transcript(raw_text="clean enough text", duration_ms=1000)
+        settings = VociferousSettings()
+        settings.refinement.smart_refinement = True
+
+        mock_slm = MagicMock()
+        mock_slm.state = SLMState.READY
+        mock_slm.refine_text_sync.return_value = "clean enough text"
+
+        handler = RefinementHandlers(
+            db_provider=lambda: db,
+            slm_runtime_provider=lambda: mock_slm,
+            settings_provider=lambda: settings,
+            event_bus_emit=_emit_to(events),
+        )
+
+        handler.handle_refine(SimpleNamespace(transcript_id=t.id, level=2, instructions=None))
+        _wait_for_threads("refine")
+
+        assert mock_slm.refine_text_sync.call_args.kwargs["allow_skip"] is True
 
     def test_commit_refinement_persists_text(self, db, events):
         from src.core.handlers.refinement_handlers import RefinementHandlers
@@ -367,6 +393,7 @@ class TestBulkRefinementHappyPath:
         assert len(progress) == 3
         assert progress[-1]["completed"] == 3
         assert progress[-1]["failed"] == 0
+        assert all(call.kwargs["allow_skip"] is False for call in mock_slm.refine_text_sync.call_args_list)
 
         complete = _events_of(ev, "bulk_refinement_complete")
         assert len(complete) == 1
@@ -374,6 +401,26 @@ class TestBulkRefinementHappyPath:
         assert complete[0]["total"] == 3
         assert complete[0]["failed"] == 0
         assert complete[0]["cancelled"] is False
+
+    def test_smart_refinement_passes_skip_gate_to_bulk_refine(self, db, events):
+        from src.core.settings import VociferousSettings
+
+        t = db.add_transcript(raw_text="clean enough text", duration_ms=1000)
+        settings = VociferousSettings()
+        settings.refinement.smart_refinement = True
+
+        mock_slm = MagicMock()
+        mock_slm.state = SLMState.READY
+        mock_slm.refine_text_sync.return_value = "clean enough text"
+
+        handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
+        handler._settings_provider = lambda: settings
+        handler.handle_bulk_refine(SimpleNamespace(
+            transcript_ids=(t.id,), level=2, instructions="", skip_refined=False,
+        ))
+        _wait_for_threads("bulk-refine")
+
+        assert mock_slm.refine_text_sync.call_args.kwargs["allow_skip"] is True
 
     def test_bulk_refine_skips_missing_transcripts(self, db, events):
         t1 = db.add_transcript(raw_text="exists", duration_ms=1000)
