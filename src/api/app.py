@@ -57,13 +57,16 @@ from src.api.transcripts import (
     batch_tag_toggle,
     cancel_batch_refine,
     commit_refinement,
+    delete_recovered_recording,
     get_transcript,
     list_transcripts,
+    list_recoverable_recordings,
     refine_transcript,
     rename_transcript,
     retitle_transcript,
     retranscribe_transcript,
     search_transcripts,
+    transcribe_recovered_recording,
 )
 from src.api.window import close_window, export_file, maximize_window, minimize_window
 from src.core.constants import APP_VERSION
@@ -282,6 +285,9 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             retitle_transcript,
             retranscribe_transcript,
             search_transcripts,
+            list_recoverable_recordings,
+            transcribe_recovered_recording,
+            delete_recovered_recording,
             # Tags
             list_tags,
             create_tag,
@@ -364,6 +370,7 @@ def _wire_event_bridge(coordinator: ApplicationCoordinator, ws_manager: Connecti
         "tag_updated",
         "key_captured",
         "transcript_updated",
+        "audio_recovery_updated",
         "refinement_progress",
         "bulk_refinement_started",
         "bulk_refinement_progress",

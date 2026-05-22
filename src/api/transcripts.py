@@ -316,3 +316,31 @@ def transcript_to_dict(transcript) -> dict:
     Thin wrapper kept for backward compatibility — prefer ``transcript.to_dict()``.
     """
     return transcript.to_dict()
+
+
+@get("/api/audio/recoverable", sync_to_thread=True)
+def list_recoverable_recordings() -> dict:
+    """List durable recordings that need recovery handling."""
+    db = require_db()
+    records = db.list_recoverable_recordings()
+    return {"items": [record.to_dict() for record in records], "total": len(records)}
+
+
+@post("/api/audio/recoverable/{recording_id:str}/transcribe", status_code=200)
+async def transcribe_recovered_recording(recording_id: str) -> Response:
+    """Queue transcription for a recovered audio vault recording."""
+    from src.core.intents.definitions import TranscribeRecoveredRecordingIntent
+
+    coordinator = get_coordinator()
+    coordinator.command_bus.dispatch(TranscribeRecoveredRecordingIntent(recording_id=recording_id))
+    return Response(content={"status": "queued", "recording_id": recording_id})
+
+
+@delete("/api/audio/recoverable/{recording_id:str}", status_code=200)
+async def delete_recovered_recording(recording_id: str) -> Response:
+    """Delete a recovered recording from the local audio vault."""
+    from src.core.intents.definitions import DeleteRecoveredRecordingIntent
+
+    coordinator = get_coordinator()
+    coordinator.command_bus.dispatch(DeleteRecoveredRecordingIntent(recording_id=recording_id))
+    return Response(content={"deleted": True, "recording_id": recording_id})

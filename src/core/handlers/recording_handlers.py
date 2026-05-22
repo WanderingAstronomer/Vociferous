@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
@@ -19,10 +20,12 @@ from src.core.engine_status import normalize_engine_error
 from src.core.intents.definitions import (
     BeginRecordingIntent,
     CancelRecordingIntent,
+    DeleteRecoveredRecordingIntent,
     ImportAudioFileIntent,
     RetranscribeIntent,
     StopRecordingIntent,
     ToggleRecordingIntent,
+    TranscribeRecoveredRecordingIntent,
 )
 
 if TYPE_CHECKING:
@@ -30,7 +33,7 @@ if TYPE_CHECKING:
     from src.database.db import TranscriptDB
     from src.services.audio_cache import AudioCacheManager
     from src.services.audio_service import AudioService
-    from src.services.audio_spool import AudioSpoolWriter
+    from src.services.audio_vault import AudioVaultWriter
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +97,7 @@ class RecordingSession:
         self.last_asr_error: str | None = None
         self.is_transcribing = False
         self._audio_pipeline: Any = None  # lazy AudioPipeline instance
-        self._spool: AudioSpoolWriter | None = None
+        self._spool: AudioVaultWriter | None = None
         self._audio_cache: AudioCacheManager | None = None
 
     # --- Public lifecycle interface ---
@@ -174,9 +177,6 @@ class RecordingSession:
         """Signal the recording loop to abort without transcribing."""
         self._recording_stop.set()
         self._is_recording = False
-        if self._spool is not None:
-            self._spool.discard()
-            self._spool = None
 
     # --- Intent handlers ---
 
@@ -217,14 +217,32 @@ class RecordingSession:
 
         self._recording_stop.clear()
 
-        # Create disk spool for crash-resilient recording
-        from src.services.audio_spool import AudioSpoolWriter
+        db = self._db_provider()
+        if db is None:
+            with self._recording_lock:
+                self._is_recording = False
+            self._emit("transcription_error", {"message": "Database not available for durable recording"})
+            return
 
-        session_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        from src.services.audio_vault import AudioVaultError, AudioVaultWriter
+
+        session_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:8]}"
         settings = self._settings_provider()
-        self._spool = AudioSpoolWriter(session_id, sample_rate=settings.recording.sample_rate)
+        try:
+            self._spool = AudioVaultWriter(
+                db=db,
+                session_id=session_id,
+                sample_rate=settings.recording.sample_rate,
+                durability_interval_seconds=settings.recording.durability_interval_seconds,
+                encrypted=settings.recording.audio_vault_encryption == "required",
+            )
+        except AudioVaultError as exc:
+            with self._recording_lock:
+                self._is_recording = False
+            self._emit("transcription_error", {"message": str(exc)})
+            return
 
-        self._emit("recording_started", {})
+        self._emit("recording_started", {"recording_id": session_id})
 
         t = threading.Thread(target=self._recording_loop, daemon=True, name="recording")
         self._recording_thread = t
@@ -295,29 +313,37 @@ class RecordingSession:
 
     @handles(RetranscribeIntent)
     def handle_retranscribe(self, intent: Any) -> None:
-        """Re-transcribe a transcript from its cached audio WAV."""
+        """Re-transcribe a transcript from its durable source audio."""
         transcript_id: int = intent.transcript_id
         if not transcript_id:
             self._emit("transcription_error", {"message": "No transcript ID provided"})
             return
 
-        if self._audio_cache is None:
-            self._emit("transcription_error", {"message": "Audio cache not available"})
+        db = self._db_provider()
+        if db is None:
+            self._emit("transcription_error", {"message": "Database not available"})
             return
 
-        wav_path = self._audio_cache.get_path(transcript_id)
-        if wav_path is None:
+        assets = db.get_audio_assets_for_transcript(transcript_id)
+        source_asset = next((asset for asset in assets if asset.role == "transcript_source"), None)
+        wav_path = self._audio_cache.get_path(transcript_id) if self._audio_cache is not None else None
+        if source_asset is None and wav_path is None:
             self._emit("transcription_error", {"message": "No cached audio for this transcript"})
-            # Clear stale flag
-            db = self._db_provider()
-            if db:
-                db.set_audio_cached(transcript_id, False)
-                self._emit("transcript_updated", {"id": transcript_id})
+            db.set_audio_cached(transcript_id, False)
+            self._emit("transcript_updated", {"id": transcript_id})
             return
 
         def _retranscribe_worker() -> None:
             try:
-                int16_audio = _decode_audio_file_to_int16(wav_path)
+                if source_asset is not None:
+                    from src.services.audio_vault import AudioVaultManager
+
+                    if source_asset.recording_id is None:
+                        self._emit("transcription_error", {"message": "Cached audio is missing recording metadata"})
+                        return
+                    int16_audio = AudioVaultManager(db).load_audio(source_asset.recording_id)
+                else:
+                    int16_audio = _decode_audio_file_to_int16(wav_path)
 
                 if len(int16_audio) == 0:
                     self._emit("transcription_error", {"message": "Cached audio is empty"})
@@ -351,10 +377,8 @@ class RecordingSession:
                     self._emit("transcription_error", {"message": "No speech detected in cached audio"})
                     return
 
-                db = self._db_provider()
-                if db:
-                    db.update_normalized_text(transcript_id, text)
-                    self._emit("transcript_updated", {"id": transcript_id})
+                db.update_normalized_text(transcript_id, text)
+                self._emit("transcript_updated", {"id": transcript_id})
 
                 logger.info("Re-transcription complete for transcript %d: %d chars", transcript_id, len(text))
 
@@ -365,12 +389,78 @@ class RecordingSession:
         t = threading.Thread(target=_retranscribe_worker, daemon=True, name="retranscribe")
         t.start()
 
+    @handles(TranscribeRecoveredRecordingIntent)
+    def handle_transcribe_recovered(self, intent: Any) -> None:
+        """Transcribe a recovered recording that survived a crash."""
+        recording_id: str = intent.recording_id
+        if not recording_id:
+            self._emit("transcription_error", {"message": "No recording ID provided"})
+            return
+
+        db = self._db_provider()
+        if db is None:
+            self._emit("transcription_error", {"message": "Database not available"})
+            return
+
+        record = db.get_recording_session(recording_id)
+        if record is None:
+            self._emit("transcription_error", {"message": "Recovered recording not found"})
+            return
+        if record.status == "completed" and record.transcript_id is not None:
+            self._emit("transcription_error", {"message": "Recording has already been transcribed"})
+            return
+
+        def _recovery_worker() -> None:
+            try:
+                from src.services.audio_vault import AudioVaultManager
+
+                audio_data = AudioVaultManager(db).load_audio(recording_id)
+                if len(audio_data) == 0:
+                    db.mark_recording_status(recording_id, "failed", failure_reason="Recovered audio is empty")
+                    self._emit("transcription_error", {"message": "Recovered audio is empty"})
+                    return
+                display_name = f"Recovered {record.started_at[:19]}" if record.started_at else "Recovered Recording"
+                self._transcribe_and_store(
+                    audio_data,
+                    spool_path=Path(record.audio_path),
+                    recording_id=recording_id,
+                    display_name=display_name,
+                )
+                self._emit("audio_recovery_updated", {"recording_id": recording_id})
+            except Exception as exc:
+                logger.exception("Recovered recording transcription failed: %s", recording_id)
+                db.mark_recording_status(recording_id, "failed", failure_reason=str(exc))
+                self._emit("transcription_error", {"message": f"Recovered transcription failed: {exc}"})
+
+        t = threading.Thread(target=_recovery_worker, daemon=True, name="transcribe-recovered")
+        t.start()
+
+    @handles(DeleteRecoveredRecordingIntent)
+    def handle_delete_recovered(self, intent: Any) -> None:
+        """Delete a recovered recording the user no longer wants."""
+        recording_id: str = intent.recording_id
+        db = self._db_provider()
+        if db is None:
+            return
+        record = db.get_recording_session(recording_id)
+        if record is None or record.status in {"active", "transcribing"}:
+            return
+        try:
+            Path(record.audio_path).unlink(missing_ok=True)
+            from src.core.secret_store import delete_audio_vault_key
+
+            delete_audio_vault_key(recording_id)
+        finally:
+            db.mark_recording_status(recording_id, "deleted", finalized=True)
+            self._emit("audio_recovery_updated", {"recording_id": recording_id})
+
     # --- Pipeline ---
 
     def _recording_loop(self) -> None:
         """Background thread: record audio → transcribe → store → emit."""
         spool = self._spool
         spool_path: Path | None = None
+        recording_id = spool.session_id if spool is not None else None
         try:
             audio_service = self._audio_service_provider()
             audio_data = audio_service.record_audio(
@@ -397,7 +487,7 @@ class RecordingSession:
                 self._cleanup_spool(spool_path)
                 return
 
-            self._transcribe_and_store(audio_data, spool_path=spool_path)
+            self._transcribe_and_store(audio_data, spool_path=spool_path, recording_id=recording_id)
 
         except Exception as e:
             logger.exception("Recording loop error")
@@ -408,6 +498,10 @@ class RecordingSession:
                 except Exception:
                     pass
                 self._spool = None
+            if recording_id:
+                db = self._db_provider()
+                if db is not None:
+                    db.mark_recording_status(recording_id, "failed", failure_reason=str(e), finalized=True)
             self._is_recording = False
             self._emit("recording_stopped", {"cancelled": False})
             self._emit("transcription_error", {"message": str(e)})
@@ -417,6 +511,7 @@ class RecordingSession:
         audio_data: Any,
         *,
         spool_path: Path | None = None,
+        recording_id: str | None = None,
         source_tag: str | None = None,
         display_name: str | None = None,
     ) -> None:
@@ -428,6 +523,7 @@ class RecordingSession:
         from src.services.transcription_service import create_local_model, transcribe
 
         settings = self._settings_provider()
+        db = self._db_provider()
         try:
             # Lazy-load ASR model if warm load failed at startup
             if self._asr_model is None:
@@ -443,7 +539,12 @@ class RecordingSession:
                             "message": "Speech recognition model failed to load. Check GPU memory or switch to a smaller model in Settings.",
                         },
                     )
+                    if recording_id and db is not None:
+                        db.mark_recording_status(recording_id, "failed", failure_reason="ASR model failed to load")
                     return
+
+            if recording_id and db is not None:
+                db.mark_recording_status(recording_id, "transcribing")
 
             # Lazy-create the AudioPipeline (holds cached Silero VAD session)
             if self._audio_pipeline is None:
@@ -460,13 +561,15 @@ class RecordingSession:
 
             if not text.strip():
                 self._emit("transcription_error", {"message": "No speech detected"})
-                self._cleanup_spool(spool_path)
+                if recording_id and db is not None:
+                    db.mark_recording_status(recording_id, "failed", failure_reason="No speech detected")
+                elif spool_path is not None:
+                    self._cleanup_spool(spool_path)
                 return
 
             # Store in database
             duration_ms = int(len(audio_data) / 16000 * 1000)
             transcript = None
-            db = self._db_provider()
             if db:
                 transcript = db.add_transcript(
                     raw_text=text,
@@ -479,6 +582,21 @@ class RecordingSession:
                     db.add_system_tag_to_transcript(transcript.id, source_tag)
                     if source_tag == "Imported" and settings.output.exclude_imported_from_analytics:
                         db.set_analytics_inclusion(transcript.id, False)
+                if recording_id and transcript and spool_path is not None:
+                    size_bytes = spool_path.stat().st_size if spool_path.exists() else 0
+                    record = db.get_recording_session(recording_id)
+                    db.add_audio_asset(
+                        recording_id=recording_id,
+                        transcript_id=transcript.id,
+                        role="transcript_source",
+                        path=spool_path,
+                        duration_ms=duration_ms,
+                        size_bytes=size_bytes,
+                        encrypted=bool(record.encrypted) if record is not None else False,
+                        pinned=True,
+                    )
+                    db.set_audio_cached(transcript.id, True)
+                    db.mark_recording_status(recording_id, "completed", transcript_id=transcript.id, finalized=True)
 
             self._emit(
                 "transcription_complete",
@@ -512,8 +630,8 @@ class RecordingSession:
             if settings.output.auto_copy_to_clipboard and not settings.output.auto_refine:
                 _copy_to_system_clipboard(text)
 
-            # Cache audio WAV for crash recovery / future re-transcription
-            if spool_path is not None and transcript is not None and self._audio_cache is not None:
+            # Legacy PCM spools can still be promoted to WAV. Vault recordings are already the source asset.
+            if spool_path is not None and spool_path.suffix == ".pcm" and transcript is not None and self._audio_cache is not None:
                 try:
                     wav_path, evicted_ids = self._audio_cache.store(
                         transcript.id,
@@ -530,13 +648,19 @@ class RecordingSession:
                     logger.warning("Audio cache store failed", exc_info=True)
                     self._cleanup_spool(spool_path)
             else:
-                self._cleanup_spool(spool_path)
+                if recording_id is None:
+                    self._cleanup_spool(spool_path)
 
             logger.info("Transcription complete: %d chars, %dms", len(text), duration_ms)
 
         except Exception as e:
             logger.exception("Transcription failed")
-            self._cleanup_spool(spool_path)
+            if recording_id:
+                db = self._db_provider()
+                if db is not None:
+                    db.mark_recording_status(recording_id, "failed", failure_reason=normalize_engine_error(e))
+            else:
+                self._cleanup_spool(spool_path)
             self.last_asr_error = normalize_engine_error(e)
             self._emit("transcription_error", {"message": self.last_asr_error})
         finally:

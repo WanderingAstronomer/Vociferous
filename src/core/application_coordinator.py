@@ -76,6 +76,7 @@ class ApplicationCoordinator:
         self._uvicorn_server: Any = None  # uvicorn.Server for graceful shutdown
         self.insight_manager: Any = None  # InsightManager | None
         self.title_generator: Any = None  # TitleGenerator | None
+        self.recoverable_recordings: list[dict[str, Any]] = []
 
         # Recording session (created in start())
         self.recording_session: Any = None  # RecordingSession
@@ -114,6 +115,15 @@ class ApplicationCoordinator:
         self.db = TranscriptDB()
         logger.info("Database initialized (%d transcripts)", self.db.transcript_count())
         log_support_diagnostics_snapshot(self.settings, transcript_count=self.db.transcript_count())
+
+        # Recover interrupted durable recordings before any new recording can start.
+        from src.services.audio_vault import AudioVaultManager
+
+        recovered = AudioVaultManager(self.db).recover_interrupted_recordings()
+        self.recoverable_recordings = [record.to_dict() for record in recovered]
+        if recovered:
+            logger.warning("Recovered %d interrupted audio recording(s)", len(recovered))
+            self.event_bus.emit("audio_recovery_updated", {"count": len(recovered)})
 
         # 2. Recording session (created here; ASR model loaded after SLM init).
         init_recording_session(self)

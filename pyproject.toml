@@ -33,6 +33,8 @@ dependencies = [
     "platformdirs>=4.0",
     # System utilities
     "psutil>=6.0.0",
+    # Audio vault encryption
+    "cryptography>=46.0.0",
     # Input Handling
     "pynput>=1.8.0",
     "evdev>=1.9.0; sys_platform == 'linux'",

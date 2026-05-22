@@ -85,6 +85,56 @@ def has_provider_api_key(provider_id: str) -> bool:
     return get_provider_api_key(provider_id) is not None
 
 
+def store_audio_vault_key(recording_id: str, key: bytes) -> None:
+    """Store a per-recording audio encryption key in the platform secret backend."""
+    recording_id = _validate_recording_id(recording_id)
+    if not key:
+        raise ValueError("Audio vault key cannot be empty.")
+    value = base64.b64encode(key).decode("ascii")
+    backend = get_secret_backend()
+    if backend == "win32_dpapi":
+        _dpapi_store_audio_key(recording_id, value)
+    elif backend == "macos_keychain":
+        _security_store_account(_audio_account(recording_id), value)
+    elif backend == "libsecret":
+        _secret_tool_store_account(_audio_account(recording_id), f"Vociferous audio vault key {recording_id}", value)
+    else:
+        raise SecretStoreUnavailable("No supported local secret store is available for encrypted audio recordings.")
+
+
+def get_audio_vault_key(recording_id: str) -> bytes | None:
+    """Load a per-recording audio encryption key from the platform secret backend."""
+    recording_id = _validate_recording_id(recording_id)
+    backend = get_secret_backend()
+    if backend == "win32_dpapi":
+        value = _dpapi_get_audio_key(recording_id)
+    elif backend == "macos_keychain":
+        value = _security_get_account(_audio_account(recording_id))
+    elif backend == "libsecret":
+        value = _secret_tool_get_account(_audio_account(recording_id))
+    else:
+        return None
+    if not value:
+        return None
+    try:
+        return base64.b64decode(value.encode("ascii"))
+    except Exception:
+        return None
+
+
+def delete_audio_vault_key(recording_id: str) -> bool:
+    """Delete a stored per-recording audio encryption key."""
+    recording_id = _validate_recording_id(recording_id)
+    backend = get_secret_backend()
+    if backend == "win32_dpapi":
+        return _dpapi_delete_audio_key(recording_id)
+    if backend == "macos_keychain":
+        return _security_delete_account(_audio_account(recording_id))
+    if backend == "libsecret":
+        return _secret_tool_delete_account(_audio_account(recording_id))
+    return False
+
+
 def normalize_provider_api_key(provider_id: str, api_key: str | None) -> str | None:
     """Normalize user-pasted provider API keys without exposing them."""
     _validate_provider(provider_id)
@@ -125,6 +175,16 @@ def _validate_provider(provider_id: str) -> str:
 
 def _account(provider_id: str) -> str:
     return f"refinement:{provider_id}:api_key"
+
+
+def _audio_account(recording_id: str) -> str:
+    return f"audio:{recording_id}:key"
+
+
+def _validate_recording_id(recording_id: str) -> str:
+    if not recording_id or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for ch in recording_id):
+        raise ValueError("Invalid recording id.")
+    return recording_id
 
 
 def _secrets_path() -> Path:
@@ -199,6 +259,43 @@ def _dpapi_delete(provider_id: str) -> bool:
     return True
 
 
+def _dpapi_store_audio_key(recording_id: str, value: str) -> None:
+    store = _read_dpapi_store()
+    audio_keys = store.setdefault("audio_vault_keys", {})
+    if not isinstance(audio_keys, dict):
+        audio_keys = {}
+        store["audio_vault_keys"] = audio_keys
+    audio_keys[recording_id] = {"key": _dpapi_protect(value.encode("ascii"))}
+    _write_dpapi_store(store)
+
+
+def _dpapi_get_audio_key(recording_id: str) -> str | None:
+    store = _read_dpapi_store()
+    audio_keys = store.get("audio_vault_keys")
+    if not isinstance(audio_keys, dict):
+        return None
+    entry = audio_keys.get(recording_id)
+    if not isinstance(entry, dict):
+        return None
+    protected = entry.get("key")
+    if not isinstance(protected, str):
+        return None
+    try:
+        return _dpapi_unprotect(protected).decode("ascii")
+    except Exception:
+        return None
+
+
+def _dpapi_delete_audio_key(recording_id: str) -> bool:
+    store = _read_dpapi_store()
+    audio_keys = store.get("audio_vault_keys")
+    if not isinstance(audio_keys, dict) or recording_id not in audio_keys:
+        return False
+    del audio_keys[recording_id]
+    _write_dpapi_store(store)
+    return True
+
+
 class _DATA_BLOB(ctypes.Structure):
     _fields_ = [("cbData", ctypes.c_ulong), ("pbData", ctypes.POINTER(ctypes.c_ubyte))]
 
@@ -233,8 +330,12 @@ def _dpapi_unprotect(value: str) -> bytes:
 
 
 def _security_store(provider_id: str, api_key: str) -> None:
+    _security_store_account(_account(provider_id), api_key)
+
+
+def _security_store_account(account: str, value: str) -> None:
     subprocess.run(
-        ["security", "add-generic-password", "-U", "-s", _SERVICE, "-a", _account(provider_id), "-w", api_key],
+        ["security", "add-generic-password", "-U", "-s", _SERVICE, "-a", account, "-w", value],
         check=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -242,8 +343,12 @@ def _security_store(provider_id: str, api_key: str) -> None:
 
 
 def _security_get(provider_id: str) -> str | None:
+    return _security_get_account(_account(provider_id))
+
+
+def _security_get_account(account: str) -> str | None:
     result = subprocess.run(
-        ["security", "find-generic-password", "-s", _SERVICE, "-a", _account(provider_id), "-w"],
+        ["security", "find-generic-password", "-s", _SERVICE, "-a", account, "-w"],
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
@@ -255,8 +360,12 @@ def _security_get(provider_id: str) -> str | None:
 
 
 def _security_delete(provider_id: str) -> bool:
+    return _security_delete_account(_account(provider_id))
+
+
+def _security_delete_account(account: str) -> bool:
     result = subprocess.run(
-        ["security", "delete-generic-password", "-s", _SERVICE, "-a", _account(provider_id)],
+        ["security", "delete-generic-password", "-s", _SERVICE, "-a", account],
         check=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -265,9 +374,13 @@ def _security_delete(provider_id: str) -> bool:
 
 
 def _secret_tool_store(provider_id: str, api_key: str) -> None:
+    _secret_tool_store_account(_account(provider_id), f"Vociferous {provider_id} API key", api_key)
+
+
+def _secret_tool_store_account(account: str, label: str, value: str) -> None:
     subprocess.run(
-        ["secret-tool", "store", "--label", f"Vociferous {provider_id} API key", "service", _SERVICE, "account", _account(provider_id)],
-        input=api_key,
+        ["secret-tool", "store", "--label", label, "service", _SERVICE, "account", account],
+        input=value,
         check=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -276,8 +389,12 @@ def _secret_tool_store(provider_id: str, api_key: str) -> None:
 
 
 def _secret_tool_get(provider_id: str) -> str | None:
+    return _secret_tool_get_account(_account(provider_id))
+
+
+def _secret_tool_get_account(account: str) -> str | None:
     result = subprocess.run(
-        ["secret-tool", "lookup", "service", _SERVICE, "account", _account(provider_id)],
+        ["secret-tool", "lookup", "service", _SERVICE, "account", account],
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
@@ -289,8 +406,12 @@ def _secret_tool_get(provider_id: str) -> str | None:
 
 
 def _secret_tool_delete(provider_id: str) -> bool:
+    return _secret_tool_delete_account(_account(provider_id))
+
+
+def _secret_tool_delete_account(account: str) -> bool:
     result = subprocess.run(
-        ["secret-tool", "clear", "service", _SERVICE, "account", _account(provider_id)],
+        ["secret-tool", "clear", "service", _SERVICE, "account", account],
         check=False,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
