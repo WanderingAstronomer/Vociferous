@@ -7,7 +7,7 @@
      */
 
     import { Loader2, CheckCircle, AlertCircle, ChevronDown, Info } from "lucide-svelte";
-    import type { ModelInfo } from "../api";
+    import type { HealthInfo, ModelInfo } from "../api";
     import type { GetConfigValue, SetConfigValue, VociferousConfig } from "../config.svelte";
     import ToggleSwitch from "./ToggleSwitch.svelte";
     import CustomSelect from "./CustomSelect.svelte";
@@ -16,6 +16,7 @@
     interface Props {
         config: VociferousConfig;
         models: { slm: Record<string, ModelInfo> };
+        health: HealthInfo;
         downloadingModel: string | null;
         downloadMessage: string;
         downloadErrorSlm: string;
@@ -27,6 +28,7 @@
     let {
         config,
         models,
+        health,
         downloadingModel,
         downloadMessage,
         downloadErrorSlm,
@@ -37,15 +39,18 @@
 
     let advancedOpen = $state(false);
 
-    /* Map n_gpu_layers to a sane dropdown value */
+    /* n_gpu_layers is the stored runtime preference: -1 means prefer GPU with CPU fallback, 0 means force CPU. */
     let deviceValue = $derived(getSafe(config, "refinement.n_gpu_layers", -1) === 0 ? "cpu" : "gpu");
     let isCpu = $derived(deviceValue === "cpu");
+    let gpuWillFallbackToCpu = $derived(deviceValue === "gpu" && !health.gpu?.cuda_available);
+    let showsCpuRuntimeControls = $derived(isCpu || gpuWillFallbackToCpu);
 
     /* AWQ + CPU incompatibility check */
     let selectedModelQuant = $derived(
         models.slm[getSafe(config, "refinement.model_id", "qwen8b")]?.quant ?? "",
     );
     let awqCpuConflict = $derived(isCpu && selectedModelQuant === "awq");
+    let awqAutoFallback = $derived(gpuWillFallbackToCpu && selectedModelQuant === "awq");
 
     function setDevice(v: string) {
         setSafe("refinement.n_gpu_layers", v === "cpu" ? 0 : -1);
@@ -76,22 +81,22 @@
             <label
                 class="text-[var(--text-sm)] text-[var(--text-primary)]"
                 for="setting-refdevice"
-                data-tip="Where the refinement model runs. GPU is faster but requires CUDA. CPU works everywhere but is slower."
+                data-tip="Auto uses CUDA when available and falls back to CPU when it is not. Force CPU ignores CUDA."
                 >Refinement Device</label
             >
             <div class="w-full max-w-[460px]">
                 <CustomSelect
                     id="setting-refdevice"
                     options={[
-                        { value: "gpu", label: "GPU" },
-                        { value: "cpu", label: "CPU" },
+                        { value: "gpu", label: "Auto (GPU if available)" },
+                        { value: "cpu", label: "CPU only" },
                     ]}
                     value={deviceValue}
                     onchange={(v: string) => setDevice(v)}
                 />
             </div>
         </div>
-        {#if isCpu}
+        {#if showsCpuRuntimeControls}
             <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
                 <label
                     class="text-[var(--text-sm)] text-[var(--text-primary)]"
@@ -126,7 +131,7 @@
                         id="setting-refmodel"
                         options={Object.entries(models.slm).map(([id, m]) => ({
                             value: id,
-                            label: `${m.name} (${m.size_mb}MB)${m.downloaded ? "" : " ⬇"}${isCpu && m.quant === "awq" ? " — GPU only" : ""}`,
+                            label: `${m.name} (${m.size_mb}MB)${m.downloaded ? "" : " ⬇"}${showsCpuRuntimeControls && m.quant === "awq" ? " — GPU only" : ""}`,
                         }))}
                         value={getSafe(config, "refinement.model_id", "qwen8b")}
                         onchange={(v: string) => setSafe("refinement.model_id", v)}
@@ -167,15 +172,23 @@
             <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-warning, #e5a00d)] py-1">
                 <AlertCircle size={14} />
                 <span class="leading-[var(--leading-normal)]"
-                    >AWQ models require GPU. Switch to an int8 model for CPU inference.</span
+                    >AWQ models require GPU. Switch to Auto or choose the 4B int8 model for CPU inference.</span
                 >
             </div>
-        {:else if isCpu}
+        {:else if awqAutoFallback}
             <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--text-secondary)] py-1">
                 <Info size={14} class="shrink-0 mt-px" />
                 <span class="leading-[var(--leading-normal)]"
-                    >Only the 4B model (int8) supports CPU inference. The 8B and 14B are AWQ-quantized and require a
-                    GPU.</span
+                    >CUDA is not usable, so refinement will run on CPU. AWQ models cannot run on CPU; Vociferous will
+                    use the 4B int8 model if it is downloaded.</span
+                >
+            </div>
+        {:else if showsCpuRuntimeControls}
+            <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--text-secondary)] py-1">
+                <Info size={14} class="shrink-0 mt-px" />
+                <span class="leading-[var(--leading-normal)]"
+                    >CPU refinement uses the int8 model path. AWQ models require CUDA and will use the 4B int8 CPU
+                    fallback when Auto cannot use GPU.</span
                 >
             </div>
         {/if}

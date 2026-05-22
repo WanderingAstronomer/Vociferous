@@ -112,7 +112,7 @@ def normalize_engine_error(error: BaseException | str, *, model_name: str | None
     if "libcublas.so.12" in text or "libcudnn.so.9" in text or "libcudart.so.12" in text:
         return "CUDA runtime libraries are missing or unloadable. Install the CUDA 12 runtime plus cuDNN 9, then restart the engine."
     if "gpu inference requested" in text and "cuda" in text:
-        return "GPU inference is selected, but CUDA is not usable. Fix CUDA or switch the engine device to CPU."
+        return "GPU inference is selected, but CUDA is not usable. Vociferous will use CPU fallback when the selected model supports it."
     if "out of memory" in text or "oom" in text or ("cuda error" in text and "memory" in text):
         return f"Not enough GPU memory to load {model_label}. Free VRAM, choose a smaller model, or use CPU mode."
     if "awq" in text and "requires gpu" in text:
@@ -277,9 +277,13 @@ def _build_slm_status(
             detail = "Refinement runtime has not reported a state."
 
     device = _resolve_slm_device(settings, cuda_status)
-    if state == "ready" and device == "cpu" and settings.refinement.n_gpu_layers != 0 and cuda_status.driver_detected:
+    if runtime and isinstance(runtime.get("resolved_device"), str):
+        device = str(runtime["resolved_device"])
+    if state == "ready" and device in {"cpu", "cpu-fallback"} and settings.refinement.n_gpu_layers != 0 and cuda_status.driver_detected:
         state = "degraded_cpu"
         detail = "Refinement is ready on CPU because CUDA is not usable."
+    elif state == "ready" and device == "cpu-fallback":
+        detail = "Refinement is ready on CPU because CUDA is not available."
 
     return EngineComponentStatus(
         name="Refinement",

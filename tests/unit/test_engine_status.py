@@ -96,6 +96,49 @@ def test_build_engine_status_reports_ready_models(monkeypatch, tmp_path: Path) -
     reset_for_tests()
 
 
+def test_build_engine_status_reports_refinement_cpu_fallback(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("VOCIFEROUS_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setattr(
+        engine_status,
+        "detect_cuda_runtime",
+        lambda: _fake_cuda(driver_detected=False, cuda_available=False, cuda_device_count=0, gpu_name=""),
+    )
+    reset_for_tests()
+    settings = init_settings(config_path=tmp_path / "settings.json")
+
+    models_dir = tmp_path / "cache" / "models"
+    asr = ASR_MODELS[settings.model.model]
+    slm = SLM_MODELS[settings.refinement.model_id]
+    (models_dir / asr.repo.split("/")[-1]).mkdir(parents=True)
+    (models_dir / asr.repo.split("/")[-1] / asr.model_file).touch()
+    (models_dir / slm.repo.split("/")[-1]).mkdir(parents=True)
+    (models_dir / slm.repo.split("/")[-1] / slm.model_file).touch()
+
+    coordinator = types.SimpleNamespace(
+        settings=settings,
+        recording_session=types.SimpleNamespace(
+            is_asr_loaded=True,
+            is_transcribing=False,
+            last_asr_error=None,
+            get_asr_runtime_summary=lambda: {"resolved_device": "cpu"},
+        ),
+        slm_runtime=types.SimpleNamespace(
+            state=types.SimpleNamespace(name="READY"),
+            last_error=None,
+            get_runtime_summary=lambda: {"resolved_device": "cpu-fallback", "model_id": "qwen4b"},
+        ),
+        is_recording_active=lambda: False,
+    )
+
+    status = engine_status.build_engine_status(coordinator)
+
+    assert status["slm"]["state"] == "ready"
+    assert status["slm"]["ready"] is True
+    assert status["slm"]["device"] == "cpu-fallback"
+    assert "CPU" in status["slm"]["detail"]
+    reset_for_tests()
+
+
 def test_download_tracker_marks_idle_download_stalled(monkeypatch) -> None:
     engine_status._DOWNLOADS.clear()
     engine_status.track_download("asr", "large-v3", "started", "Starting")

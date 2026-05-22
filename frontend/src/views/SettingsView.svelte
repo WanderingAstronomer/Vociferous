@@ -317,7 +317,8 @@
             const loadedSlmDevice = (engine.slm.device ?? "").toLowerCase();
             if (loadedSlmDevice && engine.slm.ready) {
                 const loadedSlmCpu = loadedSlmDevice.includes("cpu");
-                if (cfgSlmCpu !== loadedSlmCpu) reasons.push("Refinement device");
+                if (cfgSlmCpu && !loadedSlmCpu) reasons.push("Refinement device");
+                else if (!cfgSlmCpu && loadedSlmCpu && health.gpu?.cuda_available) reasons.push("Refinement device");
             }
         }
 
@@ -787,6 +788,7 @@
                         <RefinementCard
                             {config}
                             {models}
+                            {health}
                             {downloadingModel}
                             {downloadMessage}
                             {downloadErrorSlm}

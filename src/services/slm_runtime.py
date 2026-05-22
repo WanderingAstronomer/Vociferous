@@ -10,10 +10,11 @@ Manages the lifecycle of a CTranslate2 Generator-based refinement model:
 import logging
 import threading
 import time
+from pathlib import Path
 from typing import Callable, Optional
 
 from src.core.cuda_runtime import CudaRuntimeStatus, detect_cuda_runtime
-from src.core.model_registry import get_slm_model
+from src.core.model_registry import SLMModel, get_slm_model, get_smallest_slm_id
 from src.core.resource_manager import ResourceManager
 from src.core.settings import VociferousSettings, update_settings
 from src.services.slm_types import SLMState
@@ -30,9 +31,14 @@ def describe_slm_runtime(
     settings: VociferousSettings,
     *,
     cuda_status: CudaRuntimeStatus | None = None,
+    model_id: str | None = None,
+    requested_model_id: str | None = None,
+    fallback_reason: str = "",
 ) -> dict[str, object]:
     """Return the resolved SLM runtime choices for support diagnostics."""
     status = cuda_status or detect_cuda_runtime()
+    requested = requested_model_id or settings.refinement.model_id
+    resolved_model = model_id or requested
     wants_gpu = settings.refinement.n_gpu_layers != 0
 
     if not settings.refinement.enabled or not settings.refinement.model_id:
@@ -46,13 +52,16 @@ def describe_slm_runtime(
 
     return {
         "enabled": settings.refinement.enabled,
-        "model_id": settings.refinement.model_id,
+        "model_id": resolved_model,
+        "requested_model_id": requested,
         "resolved_device": resolved_device,
-        "gpu_layers": settings.refinement.n_gpu_layers,
+        "gpu_layers": 0 if resolved_device == "cpu-fallback" else settings.refinement.n_gpu_layers,
+        "requested_gpu_layers": settings.refinement.n_gpu_layers,
         "cpu_threads": settings.refinement.n_threads,
         "compute_type": settings.model.compute_type,
         "use_thinking": settings.refinement.use_thinking,
         "cuda_detail": status.detail,
+        "fallback_reason": fallback_reason,
     }
 
 
@@ -129,7 +138,7 @@ class SLMRuntime:
         try:
             s = self._settings_provider()
             model_id = s.refinement.model_id
-            runtime_summary = describe_slm_runtime(s)
+            cuda_status = detect_cuda_runtime()
 
             if not model_id:
                 logger.info("No SLM model configured. SLM service disabled.")
@@ -140,35 +149,36 @@ class SLMRuntime:
             if slm_model is None:
                 raise ValueError(f"Unknown SLM model_id: {model_id}")
 
+            slm_model, fallback_reason = self._resolve_model_for_runtime(slm_model, s, cuda_status)
+            runtime_summary = describe_slm_runtime(
+                s,
+                cuda_status=cuda_status,
+                model_id=slm_model.id,
+                requested_model_id=model_id,
+                fallback_reason=fallback_reason,
+            )
+
             cache_dir = ResourceManager.get_user_cache_dir("models")
             # CT2 models are directories named after the repo slug
-            local_dir_name = slm_model.repo.split("/")[-1]
-            model_dir = cache_dir / local_dir_name
+            model_dir = self._model_dir(cache_dir, slm_model)
 
             if not (model_dir / slm_model.model_file).exists():
-                raise FileNotFoundError(
-                    f"CT2 model directory not found: {model_dir}. Please run provisioning to download the model."
-                )
+                if fallback_reason:
+                    raise FileNotFoundError(
+                        f"CPU fallback model {slm_model.name} is not downloaded. Download it in Settings before using refinement on this machine."
+                    )
+                raise FileNotFoundError(f"CT2 model directory not found: {model_dir}. Please run provisioning to download the model.")
 
             if not RefinementEngine:
                 raise ImportError("RefinementEngine not available (ctranslate2 missing).")
 
             # AWQ dequantization requires float16 GPU kernels — CPU can't do it.
-            if slm_model.quant == "awq":
-                will_use_cpu = s.refinement.n_gpu_layers == 0
-                if not will_use_cpu:
-                    try:
-                        import ctranslate2
-
-                        will_use_cpu = ctranslate2.get_cuda_device_count() == 0
-                    except Exception:
-                        will_use_cpu = True
-                if will_use_cpu:
-                    raise ValueError(
-                        f"{slm_model.name} uses AWQ quantization which requires GPU. "
-                        f"For CPU inference, switch to an int8 model (e.g. Qwen3 4B) "
-                        f"in Settings \u2192 Refinement."
-                    )
+            if slm_model.quant == "awq" and runtime_summary["resolved_device"] != "cuda":
+                raise ValueError(
+                    f"{slm_model.name} uses AWQ quantization which requires GPU. "
+                    f"For CPU inference, switch to an int8 model (e.g. Qwen3 4B) "
+                    f"in Settings -> Refinement."
+                )
 
             logger.info(
                 "Loading SLM from %s (model_id=%s, resolved_device=%s, gpu_layers=%s, cpu_threads=%s, compute_type=%s, use_thinking=%s)...",
@@ -186,7 +196,7 @@ class SLMRuntime:
                 model_path=model_dir,
                 system_prompt=s.refinement.system_prompt,
                 invariants=s.refinement.invariants,
-                n_gpu_layers=s.refinement.n_gpu_layers,
+                n_gpu_layers=int(runtime_summary["gpu_layers"]),
                 n_threads=s.refinement.n_threads,
                 compute_type=s.model.compute_type,
             )
@@ -210,6 +220,33 @@ class SLMRuntime:
             if self._on_error:
                 self._on_error(self.last_error)
             self.state = SLMState.ERROR
+
+    @staticmethod
+    def _model_dir(cache_dir: Path, model: SLMModel) -> Path:
+        return cache_dir / model.repo.split("/")[-1]
+
+    def _resolve_model_for_runtime(
+        self,
+        model: SLMModel,
+        settings: VociferousSettings,
+        cuda_status: CudaRuntimeStatus,
+    ) -> tuple[SLMModel, str]:
+        wants_gpu = settings.refinement.n_gpu_layers != 0
+        if model.quant != "awq":
+            return model, ""
+        if settings.refinement.n_gpu_layers == 0:
+            raise ValueError(
+                f"{model.name} uses AWQ quantization which requires GPU. Choose an int8 refinement model for CPU mode."
+            )
+        if wants_gpu and cuda_status.cuda_available:
+            return model, ""
+
+        fallback = get_slm_model(get_smallest_slm_id())
+        if fallback is None or fallback.quant == "awq":
+            raise ValueError(f"{model.name} requires GPU, and no CPU-compatible refinement model is registered.")
+        reason = f"{model.name} requires GPU, but CUDA is not usable; using {fallback.name} on CPU."
+        logger.warning(reason)
+        return fallback, reason
 
     def _unload_model(self) -> None:
         """Release the engine reference to free VRAM.

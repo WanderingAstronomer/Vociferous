@@ -15,6 +15,7 @@ import pytest
 
 from src.services.slm_runtime import SLMRuntime
 from src.services.slm_types import SLMState
+from src.core.cuda_runtime import CudaRuntimeStatus
 
 
 @pytest.fixture()
@@ -247,6 +248,59 @@ class TestLoadModelTask:
 
         assert runtime.state is SLMState.ERROR
         callbacks["on_error"].assert_called_once()
+
+    def test_awq_auto_gpu_falls_back_to_cpu_int8_model_when_cuda_unavailable(
+        self,
+        runtime,
+        fresh_settings,
+        callbacks,
+        tmp_path,
+    ):
+        fresh_settings.refinement.model_id = "qwen8b"
+        fresh_settings.refinement.n_gpu_layers = -1
+        runtime._state = SLMState.LOADING
+
+        from src.core.model_registry import SLM_MODELS
+
+        fallback = SLM_MODELS["qwen4b"]
+        fallback_dir = tmp_path / fallback.repo.split("/")[-1]
+        fallback_dir.mkdir(parents=True)
+        (fallback_dir / fallback.model_file).touch()
+
+        cuda_status = CudaRuntimeStatus(
+            driver_detected=False,
+            cuda_available=False,
+            cuda_device_count=0,
+            detail="CTranslate2 detected 0 CUDA devices",
+        )
+
+        with (
+            patch("src.services.slm_runtime.detect_cuda_runtime", return_value=cuda_status),
+            patch("src.core.resource_manager.ResourceManager.get_user_cache_dir", return_value=tmp_path),
+            patch("src.services.slm_runtime.RefinementEngine") as mock_engine,
+        ):
+            runtime._load_model_task()
+
+        assert runtime.state is SLMState.READY
+        mock_engine.assert_called_once()
+        assert mock_engine.call_args.kwargs["model_path"] == fallback_dir
+        assert mock_engine.call_args.kwargs["n_gpu_layers"] == 0
+        summary = runtime.get_runtime_summary()
+        assert summary is not None
+        assert summary["requested_model_id"] == "qwen8b"
+        assert summary["model_id"] == "qwen4b"
+        assert summary["resolved_device"] == "cpu-fallback"
+
+    def test_forced_cpu_rejects_awq_model(self, runtime, fresh_settings, callbacks):
+        fresh_settings.refinement.model_id = "qwen8b"
+        fresh_settings.refinement.n_gpu_layers = 0
+        runtime._state = SLMState.LOADING
+
+        runtime._load_model_task()
+
+        assert runtime.state is SLMState.ERROR
+        callbacks["on_error"].assert_called_once()
+        assert "requires GPU" in callbacks["on_error"].call_args[0][0]
 
 
 # ── refine_text_sync ──────────────────────────────────────────────────────
