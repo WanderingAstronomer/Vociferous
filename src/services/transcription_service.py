@@ -8,10 +8,13 @@ the faster-whisper library, which wraps CTranslate2 for inference.
 from __future__ import annotations
 
 import logging
+import io
+import os
 import re
 import time
+import wave
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -28,6 +31,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_EXTERNAL_ASR_PROVIDERS = frozenset({"groq"})
+
+
+class TranscriptionProviderRequestError(RuntimeError):
+    """Raised when an external transcription provider rejects or cannot serve a request."""
+
+    def __init__(self, message: str, *, status_code: int = 502) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
 
 def describe_asr_runtime(
     settings: VociferousSettings,
@@ -35,6 +48,23 @@ def describe_asr_runtime(
     cuda_status: CudaRuntimeStatus | None = None,
 ) -> dict[str, object]:
     """Return the resolved ASR runtime choices for support diagnostics."""
+    provider_id = settings.model.provider
+    if provider_id != "local_faster_whisper":
+        provider_settings = getattr(settings.model, provider_id)
+        return {
+            "provider": provider_id,
+            "model_id": provider_settings.model_id,
+            "requested_model_id": provider_settings.model_id,
+            "language": settings.model.language,
+            "device_preference": "external",
+            "resolved_device": "external",
+            "base_url": provider_settings.base_url,
+            "timeout_seconds": provider_settings.timeout_seconds,
+            "api_key_env": provider_settings.api_key_env,
+            "has_api_key": bool(provider_settings.api_key or _stored_api_key(provider_id) or _api_key_from_env(provider_id, provider_settings.api_key_env)),
+            "initial_prompt_enabled": bool(settings.model.initial_prompt),
+        }
+
     status = cuda_status or detect_cuda_runtime()
     device_pref = (settings.model.device or "auto").strip().lower()
 
@@ -54,6 +84,7 @@ def describe_asr_runtime(
         resolved_compute_type = raw_compute_type
 
     return {
+        "provider": "local_faster_whisper",
         "model_id": settings.model.model,
         "language": settings.model.language,
         "device_preference": device_pref,
@@ -95,6 +126,11 @@ def create_local_model(settings: VociferousSettings):
     faster-whisper wraps ctranslate2 and provides the full transcription
     pipeline: audio preprocessing, tokenization, and segment extraction.
     """
+    if settings.model.provider != "local_faster_whisper":
+        provider = OpenAICompatibleTranscriptionProvider(settings)
+        provider.load()
+        return provider
+
     from faster_whisper import WhisperModel
 
     model_dir = _resolve_model_path(settings)
@@ -167,6 +203,221 @@ def create_local_model(settings: VociferousSettings):
     return model
 
 
+class OpenAICompatibleTranscriptionProvider:
+    """OpenAI-compatible speech-to-text provider for Groq."""
+
+    def __init__(self, settings: VociferousSettings) -> None:
+        provider_id = settings.model.provider
+        if provider_id not in _EXTERNAL_ASR_PROVIDERS:
+            raise ValueError(f"Unknown external transcription provider: {provider_id}")
+        self._settings = settings
+        self._provider_id = provider_id
+        self._provider_settings = getattr(settings.model, provider_id)
+        self._client: Any | None = None
+        self._runtime_summary = describe_asr_runtime(settings)
+
+    @property
+    def provider_id(self) -> str:
+        return self._provider_id
+
+    @property
+    def _provider_label(self) -> str:
+        return "Groq"
+
+    @property
+    def _api_key(self) -> str | None:
+        from src.core.secret_store import normalize_provider_api_key
+
+        return (
+            normalize_provider_api_key(self._provider_id, self._provider_settings.api_key)
+            or _stored_api_key(self._provider_id)
+            or _api_key_from_env(self._provider_id, self._provider_settings.api_key_env)
+        )
+
+    def load(self) -> None:
+        if not self._provider_settings.base_url.strip():
+            raise ValueError(f"No base URL configured for {self._provider_label} transcription.")
+        if not self._provider_settings.model_id.strip():
+            raise ValueError(f"No model configured for {self._provider_label} transcription.")
+        if self._provider_id == "groq":
+            from src.core.secret_store import validate_provider_api_key
+
+            try:
+                validate_provider_api_key(self._provider_id, self._api_key)
+            except ValueError as exc:
+                if not self._api_key:
+                    raise ValueError("Groq API key is not configured. Set GROQ_API_KEY or save a local provider API key.") from exc
+                raise
+        if self._provider_settings.model_list_enabled:
+            self.list_models()
+
+    def get_runtime_summary(self) -> dict[str, object]:
+        return dict(self._runtime_summary)
+
+    def list_models(self) -> list[dict[str, object]]:
+        response = self._request("GET", "models")
+        data = response.json().get("data", [])
+        if not isinstance(data, list):
+            raise RuntimeError(f"{self._provider_label} returned an invalid model list.")
+        models: list[dict[str, object]] = []
+        for item in data:
+            if isinstance(item, dict) and isinstance(item.get("id"), str):
+                models.append({"id": item["id"], "object": item.get("object", "model")})
+        return models
+
+    def transcribe(self, audio: NDArray[np.float32], settings: VociferousSettings) -> tuple[str, int, int]:
+        start = time.perf_counter()
+        response = self._request(
+            "POST",
+            "audio/transcriptions",
+            data=self._transcription_data(settings),
+            files={"file": ("speech.wav", _wav_bytes(audio), "audio/wav")},
+        )
+        text, speech_duration_ms = _parse_external_transcription_response(response, len(audio))
+        elapsed = time.perf_counter() - start
+        transcription_time_ms = int(elapsed * 1000)
+        logger.info(
+            "External transcription completed in %.2fs (provider=%s, model_id=%s, chars=%d, speech=%dms)",
+            elapsed,
+            self._provider_id,
+            self._provider_settings.model_id,
+            len(text),
+            speech_duration_ms,
+        )
+        return post_process_transcription(text, settings), speech_duration_ms, transcription_time_ms
+
+    def _transcription_data(self, settings: VociferousSettings) -> dict[str, str]:
+        data = {
+            "model": self._provider_settings.model_id,
+            "response_format": "verbose_json",
+            "temperature": str(max(0.0, float(self._provider_settings.temperature))),
+        }
+        if settings.model.language:
+            data["language"] = settings.model.language
+        prompt = _transcription_prompt(settings.model.initial_prompt)
+        if prompt:
+            data["prompt"] = prompt
+        return data
+
+    @property
+    def _client_instance(self):
+        if self._client is None:
+            import httpx
+
+            self._client = httpx.Client(timeout=self._provider_settings.timeout_seconds)
+        return self._client
+
+    def _headers(self) -> dict[str, str]:
+        api_key = self._api_key
+        return {"Authorization": f"Bearer {api_key}"} if api_key else {}
+
+    def _url(self, endpoint: str) -> str:
+        base_url = self._provider_settings.base_url.rstrip("/")
+        return f"{base_url}/{endpoint.lstrip('/')}"
+
+    def _request(
+        self,
+        method: str,
+        endpoint: str,
+        *,
+        data: dict[str, str] | None = None,
+        files: dict[str, tuple[str, bytes, str]] | None = None,
+    ):
+        import httpx
+
+        if self._provider_id == "groq":
+            from src.core.secret_store import validate_provider_api_key
+
+            validate_provider_api_key(self._provider_id, self._api_key)
+
+        attempts = max(1, int(getattr(self._provider_settings, "max_retries", 0)) + 1)
+        for attempt in range(attempts):
+            try:
+                response = self._client_instance.request(
+                    method,
+                    self._url(endpoint),
+                    headers=self._headers(),
+                    data=data,
+                    files=files,
+                )
+                if response.status_code < 400:
+                    return response
+                if attempt < attempts - 1 and self._should_retry(response.status_code):
+                    time.sleep(float(getattr(self._provider_settings, "retry_backoff_seconds", 1.0)))
+                    continue
+                raise TranscriptionProviderRequestError(
+                    self._error_message(response),
+                    status_code=response.status_code,
+                )
+            except httpx.RequestError as exc:
+                if attempt < attempts - 1:
+                    time.sleep(float(getattr(self._provider_settings, "retry_backoff_seconds", 1.0)))
+                    continue
+                raise TranscriptionProviderRequestError(
+                    f"{self._provider_label} transcription is unreachable at {self._provider_settings.base_url}: {exc}",
+                    status_code=503,
+                ) from exc
+        raise TranscriptionProviderRequestError(f"{self._provider_label} transcription request failed")
+
+    def _should_retry(self, status_code: int) -> bool:
+        return self._provider_id == "groq" and status_code in {429, 498, 500, 502, 503}
+
+    def _error_message(self, response) -> str:
+        detail = response.text
+        try:
+            body = response.json()
+            error = body.get("error") if isinstance(body, dict) else None
+            if isinstance(error, dict) and isinstance(error.get("message"), str):
+                detail = error["message"]
+            elif isinstance(body, dict) and isinstance(body.get("message"), str):
+                detail = body["message"]
+        except ValueError:
+            pass
+
+        match response.status_code:
+            case 401:
+                return f"{self._provider_label} transcription authentication failed. Check the configured API key source in Settings."
+            case 403:
+                return f"{self._provider_label} rejected transcription. Check API key permissions and model access."
+            case 404:
+                return f"{self._provider_label} transcription endpoint or model was not found. Check base URL and model id."
+            case 413:
+                return f"{self._provider_label} rejected the audio because it is too large. Shorten the recording."
+            case 422:
+                return f"{self._provider_label} could not transcribe the audio: {detail}"
+            case 429:
+                return f"{self._provider_label} transcription rate limit exceeded."
+            case _:
+                return f"{self._provider_label} transcription failed with HTTP {response.status_code}: {detail}"
+
+
+def _settings_for_external_provider(
+    settings: VociferousSettings,
+    provider_id: str,
+) -> VociferousSettings:
+    if provider_id not in _EXTERNAL_ASR_PROVIDERS:
+        raise ValueError(f"Unknown external transcription provider: {provider_id}")
+    merged = settings.model_dump()
+    merged["model"]["provider"] = provider_id
+    return VociferousSettings(**merged)
+
+
+def list_external_transcription_provider_models(
+    settings: VociferousSettings,
+    provider_id: str,
+) -> list[dict[str, object]]:
+    provider = OpenAICompatibleTranscriptionProvider(_settings_for_external_provider(settings, provider_id))
+    provider.load()
+    return provider.list_models()
+
+
+def test_external_transcription_provider(settings: VociferousSettings, provider_id: str) -> dict[str, object]:
+    provider = OpenAICompatibleTranscriptionProvider(_settings_for_external_provider(settings, provider_id))
+    provider.load()
+    models = provider.list_models() if provider._provider_settings.model_list_enabled else []
+    return {"ok": True, "provider": provider_id, "models": models}
+
+
 def transcribe(
     audio_data: NDArray[np.int16] | None,
     settings: VociferousSettings,
@@ -191,10 +442,10 @@ def transcribe(
     if audio_data is None or len(audio_data) == 0:
         return "", 0, 0
 
+    language = settings.model.language or "en"
+
     if local_model is None:
         local_model = create_local_model(settings)
-
-    language = settings.model.language or "en"
 
     # ── Audio pre-processing: Silero VAD pipeline ──
     if audio_pipeline is None:
@@ -207,6 +458,9 @@ def transcribe(
     if clean_audio is None:
         logger.info("AudioPipeline detected no speech; skipping transcription")
         return "", 0, 0
+
+    if isinstance(local_model, OpenAICompatibleTranscriptionProvider):
+        return local_model.transcribe(clean_audio, settings)
 
     try:
         audio_float: NDArray[np.float32] = clean_audio
@@ -282,6 +536,75 @@ def transcribe(
         from src.core.engine_status import normalize_engine_error
 
         raise EngineError(normalize_engine_error(e, model_name=settings.model.model)) from e
+
+
+def _wav_bytes(audio: NDArray[np.float32]) -> bytes:
+    clipped = np.clip(audio, -1.0, 1.0)
+    pcm = (clipped * 32767.0).astype(np.int16)
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(AudioConfig.DEFAULT_SAMPLE_RATE)
+        wav.writeframes(pcm.tobytes())
+    return buffer.getvalue()
+
+
+def _transcription_prompt(prompt: str | None) -> str:
+    if not prompt:
+        return ""
+    # Groq documents a 224-token prompt limit. Words are a conservative enough
+    # boundary here; the prompt is guidance, not a payload transport.
+    return " ".join(prompt.split()[:160])
+
+
+def _parse_external_transcription_response(response: Any, audio_samples: int) -> tuple[str, int]:
+    content_type = response.headers.get("content-type", "")
+    fallback_duration_ms = int(audio_samples / AudioConfig.DEFAULT_SAMPLE_RATE * 1000)
+
+    if "application/json" not in content_type.lower():
+        return response.text.strip(), fallback_duration_ms
+
+    body = response.json()
+    if not isinstance(body, dict):
+        raise RuntimeError("External transcription provider returned an invalid response.")
+
+    text = body.get("text")
+    if not isinstance(text, str):
+        raise RuntimeError("External transcription provider returned no transcription text.")
+
+    segments = body.get("segments")
+    if isinstance(segments, list):
+        segment_ends = [item.get("end") for item in segments if isinstance(item, dict)]
+        numeric_ends = [float(end) for end in segment_ends if isinstance(end, int | float)]
+        if numeric_ends:
+            return text, int(max(numeric_ends) * 1000)
+
+    duration = body.get("duration")
+    if isinstance(duration, int | float):
+        return text, int(float(duration) * 1000)
+
+    return text, fallback_duration_ms
+
+
+def _api_key_from_env(provider_id: str, env_name: str | None) -> str | None:
+    if not env_name:
+        return None
+    try:
+        from src.core.secret_store import normalize_provider_api_key
+
+        return normalize_provider_api_key(provider_id, os.environ.get(env_name))
+    except Exception:
+        return os.environ.get(env_name) or None
+
+
+def _stored_api_key(provider_id: str) -> str | None:
+    try:
+        from src.core.secret_store import get_provider_api_key
+
+        return get_provider_api_key(provider_id)
+    except Exception:
+        return None
 
 
 def _collapse_repeated_phrases(text: str, min_phrase_words: int = 3, max_phrase_words: int = 30) -> str:

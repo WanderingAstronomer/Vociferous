@@ -34,6 +34,13 @@ from src.api.config import (
 )
 from src.api.deps import set_coordinator
 from src.api.models import download_model, list_models
+from src.api.refinement_providers import (
+    delete_refinement_provider_api_key,
+    get_refinement_provider_api_key_status,
+    list_refinement_provider_models,
+    save_refinement_provider_api_key,
+    test_refinement_provider,
+)
 from src.api.system import (
     cleanup_engine,
     engine_status,
@@ -44,6 +51,7 @@ from src.api.system import (
     stop_key_capture,
 )
 from src.api.tags import assign_tags, create_tag, list_tags, update_tag
+from src.api.transcription_providers import list_transcription_provider_models, test_transcription_provider
 from src.api.transcripts import (
     batch_refine_transcripts,
     batch_tag_toggle,
@@ -285,6 +293,13 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             set_default_refinement_prompt,
             clear_default_refinement_prompt,
             list_models,
+            list_refinement_provider_models,
+            test_refinement_provider,
+            list_transcription_provider_models,
+            test_transcription_provider,
+            get_refinement_provider_api_key_status,
+            save_refinement_provider_api_key,
+            delete_refinement_provider_api_key,
             download_model,
             restart_engine,
             get_insight,

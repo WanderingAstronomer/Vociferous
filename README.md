@@ -8,7 +8,7 @@
 
 # Vociferous
 
-**Cross-platform, offline speech-to-text with local AI refinement.**
+**Cross-platform speech-to-text with local transcription and optional AI refinement.**
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://python.org)
@@ -37,7 +37,7 @@ This program is a hallmark of what I've learned to do and what I'm capable of do
 
 ## What It Does
 
-Vociferous captures audio from your microphone, transcribes it in real-time using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2 Whisper backend), and optionally refines the output with a local Small Language Model powered by [CTranslate2](https://github.com/OpenNMT/CTranslate2). Everything runs on your hardware — no cloud, no API keys, no data leaves your machine.
+Vociferous captures audio from your microphone, transcribes it in real-time using [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (CTranslate2 Whisper backend), and optionally refines the output with a Small Language Model. By default, transcription and refinement run locally. Advanced users can point refinement at an OpenAI-compatible local server such as [LM Studio](https://lmstudio.ai/) and can optionally send transcription to Groq's Whisper-compatible API.
 
 Record. Transcribe. Refine. Copy. That's the core loop. The rest is infrastructure to make that loop fast, reliable, and pleasant to use every single day.
 
@@ -77,8 +77,8 @@ Record. Transcribe. Refine. Copy. That's the core loop. The rest is infrastructu
 ## Features
 
 ### Core Workflow
-- **Real-time speech-to-text** — Record via mic button or system-wide global hotkey. Transcription runs on a dedicated background thread using faster-whisper with int8 quantization.
-- **AI-powered refinement** — Local SLM cleans up grammar, removes filler words, and restructures sentences. Five levels from literal cleanup to full rewrite.
+- **Real-time speech-to-text** — Record via mic button or system-wide global hotkey. Transcription runs on a dedicated background thread using faster-whisper with int8 quantization, or through Groq when explicitly selected.
+- **AI-powered refinement** — SLM cleanup for grammar, filler words, and sentence structure. Run refinement locally through CTranslate2, through LM Studio's local OpenAI-compatible server, or through a configured external provider.
 - **Audio file import** — Drag in WAV, MP3, M4A, FLAC, OGG, or WEBM files for transcription.
 - **Continue recording** — Append new audio to any existing transcript. Pick up where you left off.
 - **Auto-refine** — Optionally refine every new transcription automatically, no clicks required.
@@ -101,7 +101,7 @@ Record. Transcribe. Refine. Copy. That's the core loop. The rest is infrastructu
 - **AI-generated insights** — SLM produces personalized observations about your usage patterns.
 
 ### Technical
-- **100% offline** — No network access required after initial model download. No cloud. No API keys. No telemetry.
+- **Offline by default** — Local ASR and local CTranslate2 refinement require no network access after model download. External transcription and refinement providers are opt-in and only used when explicitly selected in Settings.
 - **Cross-platform** — Linux, macOS, and Windows with native window shells.
 - **Audio caching** — Configurable on-disk audio buffer (0–480 minutes) for re-transcription after model upgrades.
 - **Auto-titling** — SLM generates descriptive titles for new transcripts.
@@ -126,8 +126,8 @@ Record. Transcribe. Refine. Copy. That's the core loop. The rest is infrastructu
 | Window Shell | [pywebview](https://pywebview.flowrl.com/) |
 | Frontend | Svelte 5 + Tailwind CSS v4 + Vite |
 | Backend API | Litestar (REST + WebSocket) |
-| ASR Engine | faster-whisper (CTranslate2 Whisper backend) |
-| SLM Engine | CTranslate2 Generator + tokenizers |
+| ASR Engine | faster-whisper (CTranslate2 Whisper backend), or Groq Whisper API |
+| Refinement Engine | CTranslate2 Generator + tokenizers, or OpenAI-compatible HTTP provider |
 | Database | SQLite with WAL mode + FTS5 |
 | Config | Pydantic Settings (JSON persistence, atomic writes) |
 
@@ -266,6 +266,62 @@ create/remove them manually:
 | Linux | `make install-desktop` | `make uninstall-desktop` |
 | macOS | `make install-shortcut-mac` | `make uninstall-shortcut-mac` |
 | Windows | `.\scripts\install_windows_shortcut.ps1` | `.\scripts\uninstall_windows_shortcut.ps1` |
+
+### Optional: LM Studio Refinement
+
+Vociferous can use [LM Studio](https://lmstudio.ai/) as a local OpenAI-compatible refinement backend. This is useful if you already manage local GGUF models in LM Studio, want to experiment with models outside Vociferous' bundled CTranslate2 registry, or do not want the app to own SLM model downloads.
+
+LM Studio's current OpenAI-compatible docs list `GET /v1/models` and `POST /v1/chat/completions` as supported endpoints, and their examples use `http://localhost:1234/v1` as the local base URL. Vociferous uses those two endpoints for model discovery and refinement calls.
+
+#### 1. Prepare LM Studio
+
+1. Install and open LM Studio.
+2. Download a chat/instruct model from LM Studio's Discover view. A 4-bit quantized model is usually the sane starting point unless your machine has plenty of RAM/VRAM.
+3. Load the model in LM Studio.
+4. Start LM Studio's local server on port `1234`. From the CLI, the equivalent is:
+
+```bash
+lms server start --port 1234
+```
+
+#### 2. Configure Vociferous
+
+1. Open **Settings** -> **Refinement**.
+2. Enable refinement if it is disabled.
+3. Set **Refinement Provider** to **LM Studio**.
+4. Set **Provider Base URL** to:
+
+```text
+http://localhost:1234/v1
+```
+
+5. Click the refresh button beside **Provider Model** to query LM Studio's `/v1/models` endpoint, then select or type the model ID LM Studio reports.
+6. Leave **API Key Env Var** empty unless you enabled authentication on the LM Studio server.
+7. Click **Test**. If the connection is ready, save settings and restart the engine when prompted.
+
+#### Troubleshooting
+
+- **Connection refused**: LM Studio's server is not running, is using a different port, or is bound somewhere other than `localhost`.
+- **No models returned**: Load a model in LM Studio first, then refresh the model list in Vociferous.
+- **404 or model not found**: The model ID in Vociferous must match the identifier returned by LM Studio's `/v1/models` endpoint.
+- **Slow refinement**: LM Studio is doing the inference. Pick a smaller quantized model, move the model to GPU in LM Studio if your hardware supports it, or switch Vociferous back to the local CTranslate2 provider.
+- **Privacy boundary**: LM Studio on `localhost` keeps refinement local. If you point the base URL at a remote LM Studio server, transcript text is sent to that machine.
+
+### Optional: External Transcription
+
+Vociferous can send speech recognition to Groq's OpenAI-compatible `audio/transcriptions` endpoint. Local faster-whisper remains the default. Groq transcription is opt-in from **Settings** -> **Speech Recognition**.
+
+Groq documents `POST https://api.groq.com/openai/v1/audio/transcriptions` with `whisper-large-v3` and `whisper-large-v3-turbo`. Vociferous uploads VAD-cleaned 16 kHz mono WAV audio, requests `verbose_json`, and uses segment timestamps when the provider returns them.
+
+Set **ASR Provider** to **Groq**, keep the base URL at:
+
+```text
+https://api.groq.com/openai/v1
+```
+
+Then set the model to `whisper-large-v3-turbo` or `whisper-large-v3`, and provide the API key through `GROQ_API_KEY` or the local stored-key field. Stored provider keys are kept in the platform secret backend and are not written to `settings.json`.
+
+Groq transcription sends audio to Groq's API. LM Studio is supported for refinement only; it does not natively expose Whisper transcription services.
 
 ### Docker (Linux only — requires X11/Wayland)
 

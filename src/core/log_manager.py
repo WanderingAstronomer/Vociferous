@@ -12,6 +12,7 @@ import os
 import platform
 import sys
 from logging.handlers import RotatingFileHandler
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from src.core.constants import APP_VERSION
@@ -31,6 +32,41 @@ BACKUP_COUNT = 3  # Keep 3 rotated log files
 
 # Module-level logger
 logger = logging.getLogger(__name__)
+
+_SENSITIVE_KEY_PARTS = ("api_key", "apikey", "authorization", "bearer", "password", "secret", "token")
+
+
+def _is_sensitive_key(key: str) -> bool:
+    normalized = key.lower().replace("-", "_")
+    return any(part in normalized for part in _SENSITIVE_KEY_PARTS)
+
+
+def _redact(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        redacted: dict[str, Any] = {}
+        for key, item in value.items():
+            key_text = str(key)
+            redacted[key_text] = "<redacted>" if _is_sensitive_key(key_text) else _redact(item)
+        return redacted
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        return [_redact(item) for item in value]
+    return value
+
+
+def _json_for_log(value: Any) -> str:
+    return json.dumps(_redact(value), ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _display_logger_name(name: str) -> str:
+    return name.removeprefix("src.")
+
+
+def _runtime_label(runtime: Mapping[str, Any]) -> str:
+    provider = runtime.get("provider", "unknown")
+    model = runtime.get("model_id") or runtime.get("requested_model_id") or "unset"
+    device = runtime.get("resolved_device") or runtime.get("device_preference") or "unknown"
+    key_state = "key=yes" if runtime.get("has_api_key") else "key=no"
+    return f"{provider}/{model} [{device}, {key_state}]"
 
 
 def _detect_cpu_details() -> dict[str, Any]:
@@ -111,7 +147,33 @@ def build_support_diagnostics_snapshot(
 def log_support_diagnostics_snapshot(settings: "VociferousSettings", *, transcript_count: int | None = None) -> None:
     """Emit a one-shot diagnostics snapshot to the persistent log."""
     snapshot = build_support_diagnostics_snapshot(settings, transcript_count=transcript_count)
-    logger.info("Support diagnostics snapshot", extra={"context": snapshot})
+    app = snapshot["app"]
+    platform_info = snapshot["platform"]
+    python_info = snapshot["python"]
+    cpu = snapshot["cpu"]
+    gpu = snapshot["gpu"]
+    transcript_info = snapshot.get("transcripts", {})
+    logger.info(
+        "Support snapshot: app=%s python=%s platform=%s-%s cpu=%s cores=%s/%s transcripts=%s",
+        app.get("version"),
+        python_info.get("version"),
+        platform_info.get("system"),
+        platform_info.get("release"),
+        cpu.get("model"),
+        cpu.get("physical_cores", "?"),
+        cpu.get("logical_cores", "?"),
+        transcript_info.get("count", "n/a"),
+    )
+    logger.info(
+        "Runtime snapshot: asr=%s slm=%s gpu=%s devices=%s vram=%s/%s MB",
+        _runtime_label(snapshot["asr"]),
+        _runtime_label(snapshot["slm"]),
+        "cuda" if gpu.get("cuda_available") else "unavailable",
+        gpu.get("cuda_device_count", 0),
+        gpu.get("vram_free_mb", "?"),
+        gpu.get("vram_total_mb", "?"),
+    )
+    logger.debug("Support snapshot detail", extra={"context": snapshot})
 
 
 class AgentFriendlyFormatter(logging.Formatter):
@@ -124,27 +186,29 @@ class AgentFriendlyFormatter(logging.Formatter):
         super().__init__()
 
     def format(self, record: logging.LogRecord) -> str:
+        context = getattr(record, "context", None)
         if self.structured:
             log_entry = {
                 "timestamp": self.formatTime(record),
                 "level": record.levelname,
-                "logger": record.name,
+                "logger": _display_logger_name(record.name),
                 "message": record.getMessage(),
                 "file": record.pathname,
                 "line": record.lineno,
             }
             if record.exc_info:
                 log_entry["exception"] = self.formatException(record.exc_info)
-            if hasattr(record, "context"):
-                log_entry["context"] = record.context
+            if context is not None:
+                log_entry["context"] = _redact(context)
 
-            return json.dumps(log_entry)
+            return json.dumps(log_entry, ensure_ascii=False, default=str)
         else:
             # Rich text format
             timestamp = self.formatTime(record, "%Y-%m-%d %H:%M:%S")
-            msg = f"{timestamp} | {record.levelname:<8} | {record.name}:{record.lineno} | {record.getMessage()}"
-            if hasattr(record, "context"):
-                msg += f" | Context: {record.context}"
+            logger_name = _display_logger_name(record.name)
+            msg = f"{timestamp} | {record.levelname:<7} | {logger_name}:{record.lineno} | {record.getMessage()}"
+            if context is not None:
+                msg += f" | context={_json_for_log(context)}"
             if record.exc_info:
                 # Indent tracebacks for readability
                 tb = self.formatException(record.exc_info)
@@ -234,18 +298,24 @@ class LogManager:
         for noisy_logger in (
             "httpx",
             "httpcore",
+            "httpcore.connection",
+            "httpcore.http11",
             "huggingface_hub.utils._http",
             "huggingface_hub.file_download",
             "huggingface_hub.repocard",
+            "multipart.multipart",
+            "PIL",
+            "numba",
+            "matplotlib",
         ):
             logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
         logger.info(
-            "LogManager initialized. Console level: %s, file level: DEBUG, Structured: %s",
-            console_level,
+            "Logging ready: console=%s file=DEBUG structured=%s path=%s",
+            logging.getLevelName(console_level),
             structured,
+            LOG_FILE,
         )
-        logger.info("Log file: %s", LOG_FILE)
 
     def set_console_level(self, level: int) -> None:
         """Override the console handler's log level (e.g. for --verbose flag)."""

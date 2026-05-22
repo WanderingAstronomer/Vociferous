@@ -10,19 +10,11 @@ Manages the lifecycle of a CTranslate2 Generator-based refinement model:
 import logging
 import threading
 import time
-from pathlib import Path
 from typing import Callable, Optional
 
-from src.core.cuda_runtime import CudaRuntimeStatus, detect_cuda_runtime
-from src.core.model_registry import SLMModel, get_slm_model, get_smallest_slm_id
-from src.core.resource_manager import ResourceManager
 from src.core.settings import VociferousSettings, update_settings
+from src.refinement.providers import RefinementProvider, describe_refinement_runtime, make_refinement_provider
 from src.services.slm_types import SLMState
-
-try:
-    from src.refinement.engine import RefinementEngine
-except ImportError:
-    RefinementEngine = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -30,39 +22,19 @@ logger = logging.getLogger(__name__)
 def describe_slm_runtime(
     settings: VociferousSettings,
     *,
-    cuda_status: CudaRuntimeStatus | None = None,
+    cuda_status=None,
     model_id: str | None = None,
     requested_model_id: str | None = None,
     fallback_reason: str = "",
 ) -> dict[str, object]:
     """Return the resolved SLM runtime choices for support diagnostics."""
-    status = cuda_status or detect_cuda_runtime()
-    requested = requested_model_id or settings.refinement.model_id
-    resolved_model = model_id or requested
-    wants_gpu = settings.refinement.n_gpu_layers != 0
-
-    if not settings.refinement.enabled or not settings.refinement.model_id:
-        resolved_device = "disabled"
-    elif wants_gpu and status.cuda_available:
-        resolved_device = "cuda"
-    elif wants_gpu and not status.cuda_available:
-        resolved_device = "cpu-fallback"
-    else:
-        resolved_device = "cpu"
-
-    return {
-        "enabled": settings.refinement.enabled,
-        "model_id": resolved_model,
-        "requested_model_id": requested,
-        "resolved_device": resolved_device,
-        "gpu_layers": 0 if resolved_device == "cpu-fallback" else settings.refinement.n_gpu_layers,
-        "requested_gpu_layers": settings.refinement.n_gpu_layers,
-        "cpu_threads": settings.refinement.n_threads,
-        "compute_type": settings.model.compute_type,
-        "use_thinking": settings.refinement.use_thinking,
-        "cuda_detail": status.detail,
-        "fallback_reason": fallback_reason,
-    }
+    return describe_refinement_runtime(
+        settings,
+        cuda_status=cuda_status,
+        model_id=model_id,
+        requested_model_id=requested_model_id,
+        fallback_reason=fallback_reason,
+    )
 
 
 class SLMRuntime:
@@ -84,7 +56,7 @@ class SLMRuntime:
         self._settings_provider = settings_provider
         self._settings_updater = settings_updater
         self._state = SLMState.DISABLED
-        self._engine: Optional[RefinementEngine] = None
+        self._engine: Optional[RefinementProvider] = None
         self._lock = threading.Lock()
         self._runtime_summary: dict[str, object] | None = None
         self.last_error: str | None = None
@@ -134,80 +106,39 @@ class SLMRuntime:
         self.state = SLMState.DISABLED
 
     def _load_model_task(self) -> None:
-        """Background task to load the CT2 Generator model."""
+        """Background task to initialize the configured refinement provider."""
         try:
             s = self._settings_provider()
-            model_id = s.refinement.model_id
-            cuda_status = detect_cuda_runtime()
-
-            if not model_id:
+            if not s.refinement.enabled or (s.refinement.provider == "local_ct2" and not s.refinement.model_id):
                 logger.info("No SLM model configured. SLM service disabled.")
                 self.state = SLMState.DISABLED
                 return
 
-            slm_model = get_slm_model(model_id)
-            if slm_model is None:
-                raise ValueError(f"Unknown SLM model_id: {model_id}")
-
-            slm_model, fallback_reason = self._resolve_model_for_runtime(slm_model, s, cuda_status)
-            runtime_summary = describe_slm_runtime(
-                s,
-                cuda_status=cuda_status,
-                model_id=slm_model.id,
-                requested_model_id=model_id,
-                fallback_reason=fallback_reason,
-            )
-
-            cache_dir = ResourceManager.get_user_cache_dir("models")
-            # CT2 models are directories named after the repo slug
-            model_dir = self._model_dir(cache_dir, slm_model)
-
-            if not (model_dir / slm_model.model_file).exists():
-                if fallback_reason:
-                    raise FileNotFoundError(
-                        f"CPU fallback model {slm_model.name} is not downloaded. Download it in Settings before using refinement on this machine."
-                    )
-                raise FileNotFoundError(f"CT2 model directory not found: {model_dir}. Please run provisioning to download the model.")
-
-            if not RefinementEngine:
-                raise ImportError("RefinementEngine not available (ctranslate2 missing).")
-
-            # AWQ dequantization requires float16 GPU kernels — CPU can't do it.
-            if slm_model.quant == "awq" and runtime_summary["resolved_device"] != "cuda":
-                raise ValueError(
-                    f"{slm_model.name} uses AWQ quantization which requires GPU. "
-                    f"For CPU inference, switch to an int8 model (e.g. Qwen3 4B) "
-                    f"in Settings -> Refinement."
-                )
-
+            provider = make_refinement_provider(s)
+            runtime_summary = provider.get_runtime_summary()
+            is_external = runtime_summary.get("resolved_device") == "external"
             logger.info(
-                "Loading SLM from %s (model_id=%s, resolved_device=%s, gpu_layers=%s, cpu_threads=%s, compute_type=%s, use_thinking=%s)...",
-                model_dir,
-                runtime_summary["model_id"],
-                runtime_summary["resolved_device"],
-                runtime_summary["gpu_layers"],
-                runtime_summary["cpu_threads"],
-                runtime_summary["compute_type"],
-                runtime_summary["use_thinking"],
+                "%s refinement provider (provider=%s, model_id=%s, resolved_device=%s)...",
+                "Initializing external" if is_external else "Loading local",
+                runtime_summary.get("provider"),
+                runtime_summary.get("model_id"),
+                runtime_summary.get("resolved_device"),
             )
             start = time.perf_counter()
 
-            self._engine = RefinementEngine(
-                model_path=model_dir,
-                system_prompt=s.refinement.system_prompt,
-                invariants=s.refinement.invariants,
-                n_gpu_layers=int(runtime_summary["gpu_layers"]),
-                n_threads=s.refinement.n_threads,
-                compute_type=s.model.compute_type,
-            )
+            provider.load()
 
-            self._runtime_summary = runtime_summary
+            self._engine = provider
+            self._runtime_summary = provider.get_runtime_summary()
             self.last_error = None
+            is_external = self._runtime_summary.get("resolved_device") == "external"
             logger.info(
-                "SLM loaded in %.2fs (model_id=%s, resolved_device=%s)",
+                "%s in %.2fs (provider=%s, model_id=%s, resolved_device=%s)",
+                "External refinement provider ready" if is_external else "Local refinement model loaded",
                 time.perf_counter() - start,
-                runtime_summary["model_id"],
-                runtime_summary["resolved_device"],
+                self._runtime_summary.get("provider"),
+                self._runtime_summary.get("model_id"),
+                self._runtime_summary.get("resolved_device"),
             )
 
             self.state = SLMState.READY
@@ -221,33 +152,6 @@ class SLMRuntime:
                 self._on_error(self.last_error)
             self.state = SLMState.ERROR
 
-    @staticmethod
-    def _model_dir(cache_dir: Path, model: SLMModel) -> Path:
-        return cache_dir / model.repo.split("/")[-1]
-
-    def _resolve_model_for_runtime(
-        self,
-        model: SLMModel,
-        settings: VociferousSettings,
-        cuda_status: CudaRuntimeStatus,
-    ) -> tuple[SLMModel, str]:
-        wants_gpu = settings.refinement.n_gpu_layers != 0
-        if model.quant != "awq":
-            return model, ""
-        if settings.refinement.n_gpu_layers == 0:
-            raise ValueError(
-                f"{model.name} uses AWQ quantization which requires GPU. Choose an int8 refinement model for CPU mode."
-            )
-        if wants_gpu and cuda_status.cuda_available:
-            return model, ""
-
-        fallback = get_slm_model(get_smallest_slm_id())
-        if fallback is None or fallback.quant == "awq":
-            raise ValueError(f"{model.name} requires GPU, and no CPU-compatible refinement model is registered.")
-        reason = f"{model.name} requires GPU, but CUDA is not usable; using {fallback.name} on CPU."
-        logger.warning(reason)
-        return fallback, reason
-
     def _unload_model(self) -> None:
         """Release the engine reference to free VRAM.
 
@@ -258,11 +162,11 @@ class SLMRuntime:
         """
         with self._lock:
             if self._engine is not None:
-                logger.info("Unloading SLM engine...")
+                logger.info("Unloading refinement provider...")
                 try:
-                    self._engine.generator.unload_model()
+                    self._engine.unload()
                 except Exception:
-                    logger.debug("CT2 Generator.unload_model() failed (non-fatal)")
+                    logger.debug("Refinement provider unload failed (non-fatal)")
                 self._engine = None
                 self._runtime_summary = None
 
@@ -356,7 +260,7 @@ class SLMRuntime:
             start = time.perf_counter()
             result = self._engine.refine(
                 text,
-                user_instructions=instructions,
+                instructions=instructions,
                 temperature=float(params["temperature"]),
                 top_p=float(params["top_p"]),
                 top_k=int(params["top_k"]),
@@ -422,7 +326,7 @@ class SLMRuntime:
                 start = time.perf_counter()
                 result = self._engine.refine(
                     text,
-                    user_instructions=instructions,
+                    instructions=instructions,
                     temperature=float(params["temperature"]),
                     top_p=float(params["top_p"]),
                     top_k=int(params["top_k"]),

@@ -19,9 +19,14 @@
             created_at?: string;
         }>;
         title?: string;
+        collapsed?: boolean;
+        onToggleCollapsed?: () => void;
     }
 
-    let { entries, title = "Activity Heatmap" }: Props = $props();
+    import { ChevronDown } from "lucide-svelte";
+    import { windowSize } from "../windowSize.svelte";
+
+    let { entries, title = "Activity Heatmap", collapsed = false, onToggleCollapsed }: Props = $props();
 
     /* ── Layout constants ── */
     const TARGET_CELL = 18;
@@ -38,8 +43,6 @@
     const EMPTY_COLOR = "var(--surface-tertiary)";
     const BLACKOUT_COLOR = "var(--gray-9)";
     const LEVEL_COLORS = [EMPTY_COLOR, "var(--blue-8)", "var(--blue-6)", "var(--blue-4)", "var(--blue-3)"];
-
-    import { windowSize } from "../windowSize.svelte";
 
     /* ── Resize tracking ── */
     let containerEl: HTMLDivElement | undefined = $state();
@@ -173,7 +176,7 @@
     }
 
     let layout = $derived.by((): GridLayout | null => {
-        if (containerWidth < 150 || entries.length === 0) return null;
+        if (collapsed || containerWidth < 150 || entries.length === 0) return null;
 
         const today = new Date();
         today.setHours(23, 59, 59, 999);
@@ -207,7 +210,11 @@
             const prevM = curM === 0 ? 11 : curM - 1;
             const nextY = curM === 11 ? year + 1 : year;
             const nextM = curM === 11 ? 0 : curM + 1;
-            candidateKeys = [[prevY, prevM], [year, curM], [nextY, nextM]];
+            candidateKeys = [
+                [prevY, prevM],
+                [year, curM],
+                [nextY, nextM],
+            ];
         } else {
             // Year: all 12 months of current year
             candidateKeys = Array.from({ length: 12 }, (_, m) => [year, m] as [number, number]);
@@ -219,7 +226,10 @@
         if (totalW(candidateCols, cellSize) > availableW) {
             // Shrink cell size first
             for (let cs = cellSize - 1; cs >= CELL_MIN; cs--) {
-                if (totalW(candidateCols, cs) <= availableW) { cellSize = cs; break; }
+                if (totalW(candidateCols, cs) <= availableW) {
+                    cellSize = cs;
+                    break;
+                }
                 cellSize = CELL_MIN;
             }
             // For Year view: trim centering on current month
@@ -273,15 +283,34 @@
     role="img"
     aria-label="Activity heatmap showing words transcribed per day"
 >
-    {#if layout}
-        {@const cs = layout.cellSize}
-        <div class="mx-auto" style="width: {layout.gridWidth}px;">
-            <!-- Title + timescale toggle -->
-            {#if title}
-                <div class="flex items-center justify-between mb-[var(--space-2)]">
+    <div class="mx-auto" style={layout ? `width: ${layout.gridWidth}px;` : "width: 100%;"}>
+        <!-- Title + timescale toggle -->
+        {#if title}
+            <div class="flex items-center justify-between mb-[var(--space-2)]">
+                {#if onToggleCollapsed}
+                    <button
+                        type="button"
+                        class="flex items-center gap-[var(--space-1)] bg-transparent border-none p-0 text-left cursor-pointer group"
+                        onclick={onToggleCollapsed}
+                        aria-expanded={!collapsed}
+                        title={collapsed ? `Show ${title}` : `Hide ${title}`}
+                    >
+                        <ChevronDown
+                            size={15}
+                            class="text-[var(--text-tertiary)] transition-transform duration-150 group-hover:text-[var(--text-primary)] {collapsed
+                                ? '-rotate-90'
+                                : ''}"
+                        />
+                        <span class="text-[13px] font-medium text-[var(--text-tertiary)] uppercase tracking-widest">
+                            {title}
+                        </span>
+                    </button>
+                {:else}
                     <div class="text-[13px] font-medium text-[var(--text-tertiary)] uppercase tracking-widest">
                         {title}
                     </div>
+                {/if}
+                {#if !collapsed}
                     <div class="flex items-center gap-[2px]">
                         {#each Object.entries(TIMESCALE_LABELS) as [ts, label]}
                             <button
@@ -289,12 +318,16 @@
                                 class="text-[11px] w-[18px] h-[18px] rounded-[var(--radius-sm)] transition-colors leading-none flex items-center justify-center"
                                 style={timescale === ts
                                     ? "color: var(--text-primary); background: var(--surface-tertiary);"
-                                    : "color: var(--text-tertiary); background: transparent;"}
-                            >{label}</button>
+                                    : "color: var(--text-tertiary); background: transparent;"}>{label}</button
+                            >
                         {/each}
                     </div>
-                </div>
-            {/if}
+                {/if}
+            </div>
+        {/if}
+
+        {#if layout}
+            {@const cs = layout.cellSize}
 
             <!-- Month labels row -->
             <div class="flex items-center" style="padding-left: {LABEL_W}px; height: {MONTH_LABEL_H}px;">
@@ -365,6 +398,6 @@
                 {/each}
                 <span class="text-[12px] text-[var(--text-tertiary)]">More</span>
             </div>
-        </div>
-    {/if}
+        {/if}
+    </div>
 </div>

@@ -57,6 +57,8 @@
     let gpuRuntimeMismatch = $derived(Boolean(health.gpu?.driver_detected) && !health.gpu?.cuda_available);
 
     let activeProvider = $derived(engineStatus?.providers.find((provider) => provider.active));
+    let refinementRuntime = $derived((engineStatus?.slm.runtime ?? {}) as Record<string, unknown>);
+    let refinementEndpoint = $derived(typeof refinementRuntime.base_url === "string" ? refinementRuntime.base_url : "");
     let packageEntries = $derived(engineStatus ? Object.entries(engineStatus.packages) : []);
 
     function formatStatus(value: string | undefined | null): string {
@@ -70,6 +72,7 @@
     function formatDevice(value: string | undefined | null): string {
         if (!value) return "—";
         const lower = value.toLowerCase();
+        if (lower === "external") return "External";
         if (lower === "cuda" || lower.includes("gpu")) return "GPU";
         if (lower === "cpu" || lower.includes("cpu")) return "CPU";
         return value.toUpperCase();
@@ -146,6 +149,7 @@
             `ASR: ${formatStatus(engineStatus.asr.state)} · ${engineStatus.asr.device ?? "-"} · ${engineStatus.asr.model_id ?? "-"}`,
             `Refinement: ${formatStatus(engineStatus.slm.state)} · ${engineStatus.slm.device ?? "-"} · ${engineStatus.slm.model_id ?? "-"}`,
             `Provider: ${activeProvider?.name ?? "-"} (${activeProvider?.kind ?? "-"})`,
+            `Provider endpoint: ${refinementEndpoint || "-"}`,
             `Hardware: ${engineStatus.hardware.backend.toUpperCase()}${engineStatus.hardware.gpu_name ? " · " + engineStatus.hardware.gpu_name : ""}`,
             `GPU detail: ${health.gpu?.detail ?? "-"}`,
             `Mic: ${health.mic?.device_name ?? "-"} (${health.mic?.supports_16k ? "16kHz ok" : "16kHz unknown"})`,
@@ -197,7 +201,8 @@
                 </span>
                 <div class="flex flex-col">
                     <div class="text-[var(--text-sm)] text-[var(--text-primary)]">
-                        Refinement: {formatStatus(engineStatus?.slm.state)}{#if engineStatus?.slm.model_name}
+                        Refinement: {formatStatus(engineStatus?.slm.state)}{#if activeProvider?.name}
+                            · {activeProvider.name}{/if}{#if engineStatus?.slm.model_name}
                             · {engineStatus.slm.model_name}{/if} · {slmLoadedDevice}
                     </div>
                     {#if engineStatus?.slm.detail}
@@ -421,7 +426,7 @@
                 <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)]">
                     <span class="text-[var(--text-sm)] text-[var(--text-primary)]">Provider</span>
                     <span class="text-[var(--text-sm)] text-[var(--text-secondary)]">
-                        {activeProvider?.name ?? "—"} · {activeProvider?.kind ?? "—"}
+                        {activeProvider?.name ?? "—"} · {activeProvider?.kind ?? "—"}{#if refinementEndpoint} · {refinementEndpoint}{/if}
                     </span>
                 </div>
                 {#if engineStatus}

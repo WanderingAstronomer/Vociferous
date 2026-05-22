@@ -18,6 +18,9 @@ from src.services.slm_types import SLMState
 from src.core.cuda_runtime import CudaRuntimeStatus
 
 
+VALID_GROQ_KEY = "gsk_test_secret_123456789012345678901234567890"
+
+
 @pytest.fixture()
 def callbacks():
     """Shared MagicMock callbacks for tracking state transitions."""
@@ -225,7 +228,7 @@ class TestLoadModelTask:
         fresh_settings.refinement.model_id = "nonexistent-model-v9"
         runtime._state = SLMState.LOADING
 
-        with patch("src.services.slm_runtime.get_slm_model", return_value=None):
+        with patch("src.refinement.providers.get_slm_model", return_value=None):
             runtime._load_model_task()
 
         assert runtime.state is SLMState.ERROR
@@ -241,7 +244,7 @@ class TestLoadModelTask:
         mock_model.model_file = "model.bin"
 
         with (
-            patch("src.services.slm_runtime.get_slm_model", return_value=mock_model),
+            patch("src.refinement.providers.get_slm_model", return_value=mock_model),
             patch("src.core.resource_manager.ResourceManager.get_user_cache_dir", return_value=tmp_path),
         ):
             runtime._load_model_task()
@@ -275,9 +278,9 @@ class TestLoadModelTask:
         )
 
         with (
-            patch("src.services.slm_runtime.detect_cuda_runtime", return_value=cuda_status),
+            patch("src.refinement.providers.detect_cuda_runtime", return_value=cuda_status),
             patch("src.core.resource_manager.ResourceManager.get_user_cache_dir", return_value=tmp_path),
-            patch("src.services.slm_runtime.RefinementEngine") as mock_engine,
+            patch("src.refinement.providers.RefinementEngine") as mock_engine,
         ):
             runtime._load_model_task()
 
@@ -301,6 +304,36 @@ class TestLoadModelTask:
         assert runtime.state is SLMState.ERROR
         callbacks["on_error"].assert_called_once()
         assert "requires GPU" in callbacks["on_error"].call_args[0][0]
+
+    def test_external_provider_does_not_load_local_refinement_engine(self, runtime, fresh_settings, callbacks):
+        fresh_settings.refinement.provider = "groq"
+        fresh_settings.refinement.groq.model_id = "llama-3.1-8b-instant"
+        fresh_settings.refinement.groq.api_key = VALID_GROQ_KEY
+        fresh_settings.refinement.groq.model_list_enabled = False
+        runtime._state = SLMState.LOADING
+
+        with patch("src.refinement.providers.RefinementEngine") as mock_engine:
+            runtime._load_model_task()
+
+        assert runtime.state is SLMState.READY
+        mock_engine.assert_not_called()
+        summary = runtime.get_runtime_summary()
+        assert summary is not None
+        assert summary["provider"] == "groq"
+        assert summary["resolved_device"] == "external"
+
+    def test_external_provider_logs_external_initialization_wording(self, runtime, fresh_settings, caplog):
+        fresh_settings.refinement.provider = "groq"
+        fresh_settings.refinement.groq.model_id = "llama-3.1-8b-instant"
+        fresh_settings.refinement.groq.api_key = VALID_GROQ_KEY
+        fresh_settings.refinement.groq.model_list_enabled = False
+        runtime._state = SLMState.LOADING
+        caplog.set_level(logging.INFO, logger="src.services.slm_runtime")
+
+        runtime._load_model_task()
+
+        assert "Initializing external refinement provider" in caplog.text
+        assert "External refinement provider ready" in caplog.text
 
 
 # ── refine_text_sync ──────────────────────────────────────────────────────

@@ -68,6 +68,7 @@ Output only the paragraph text."""
         user_text: str,
         user_instructions: str = "",
         use_thinking: bool = False,
+        thinking_directive: str = "/no_think",
     ) -> list[dict[str, str]]:
         """Build ChatML messages for the grammar-fix refinement pipeline.
 
@@ -93,7 +94,7 @@ Rules:
 - Output ONLY the corrected text. No explanations, no preamble.""".strip()
             task_directive = "Fix all grammar, spelling, punctuation, and capitalization errors."
 
-        think_directive = "" if use_thinking else "/no_think\n\n"
+        think_directive = "" if use_thinking or not thinking_directive else f"{thinking_directive}\n\n"
 
         user_content = f"""{think_directive}{task_directive}
 
@@ -112,9 +113,10 @@ Text:
         system_prompt: str,
         user_prompt: str,
         use_thinking: bool = False,
+        thinking_directive: str = "/no_think",
     ) -> list[dict[str, str]]:
         """Build ChatML messages for freeform generation (insight, MOTD, etc.)."""
-        think_directive = "" if use_thinking else "/no_think\n\n"
+        think_directive = "" if use_thinking or not thinking_directive else f"{thinking_directive}\n\n"
         return [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"{think_directive}{user_prompt}"},

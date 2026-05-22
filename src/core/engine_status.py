@@ -187,6 +187,9 @@ def _build_asr_status(
     settings: VociferousSettings,
     cuda_status: CudaRuntimeStatus,
 ) -> EngineComponentStatus:
+    if settings.model.provider != "local_faster_whisper":
+        return _build_external_asr_status(coordinator, settings, settings.model.provider)
+
     model = get_asr_model(settings.model.model)
     downloaded = _model_downloaded(model)
     recording_session = getattr(coordinator, "recording_session", None)
@@ -235,6 +238,53 @@ def _build_asr_status(
     )
 
 
+def _build_external_asr_status(
+    coordinator: Any,
+    settings: VociferousSettings,
+    provider_id: str,
+) -> EngineComponentStatus:
+    provider_settings = getattr(settings.model, provider_id)
+    recording_session = getattr(coordinator, "recording_session", None)
+    runtime = _safe_runtime_summary(recording_session, "get_asr_runtime_summary")
+    last_error = _safe_last_error(recording_session, "last_asr_error", provider_settings.model_id or provider_id)
+
+    if not provider_settings.base_url:
+        state: EngineState = "error"
+        detail = f"{_provider_display_name(provider_id)} transcription base URL is not configured."
+    elif not provider_settings.model_id:
+        state = "error"
+        detail = f"{_provider_display_name(provider_id)} transcription model is not configured."
+    elif getattr(recording_session, "is_transcribing", False):
+        state = "transcribing"
+        detail = "External transcription is running."
+    elif getattr(coordinator, "is_recording_active", lambda: False)():
+        state = "recording"
+        detail = "Recording audio."
+    elif getattr(recording_session, "is_asr_loaded", False):
+        state = "ready"
+        detail = f"{_provider_display_name(provider_id)} transcription provider is ready."
+    elif last_error:
+        state = "error"
+        detail = last_error
+    else:
+        state = "loading"
+        detail = f"{_provider_display_name(provider_id)} transcription provider has not connected yet."
+
+    return EngineComponentStatus(
+        name="Speech recognition",
+        state=state,
+        ready=state in {"ready", "recording", "transcribing"},
+        model_id=provider_settings.model_id or None,
+        model_name=provider_settings.model_id or _provider_display_name(provider_id),
+        selected=True,
+        downloaded=state in {"ready", "recording", "transcribing"},
+        device="external",
+        detail=detail,
+        error=last_error if state == "error" else None,
+        runtime=runtime,
+    )
+
+
 def _build_slm_status(
     coordinator: Any,
     settings: VociferousSettings,
@@ -242,6 +292,10 @@ def _build_slm_status(
 ) -> EngineComponentStatus:
     if not settings.refinement.enabled:
         return EngineComponentStatus(name="Refinement", state="disabled", ready=True, detail="Refinement is disabled.")
+
+    provider_id = settings.refinement.provider
+    if provider_id != "local_ct2":
+        return _build_external_refinement_status(coordinator, settings, provider_id)
 
     model = get_slm_model(settings.refinement.model_id)
     downloaded = _model_downloaded(model)
@@ -300,6 +354,51 @@ def _build_slm_status(
     )
 
 
+def _build_external_refinement_status(
+    coordinator: Any,
+    settings: VociferousSettings,
+    provider_id: str,
+) -> EngineComponentStatus:
+    provider_settings = getattr(settings.refinement, provider_id)
+    slm_runtime = getattr(coordinator, "slm_runtime", None)
+    runtime = _safe_runtime_summary(slm_runtime, "get_runtime_summary")
+    last_error = _safe_last_error(slm_runtime, "last_error", provider_settings.model_id or provider_id)
+    raw_state = getattr(getattr(slm_runtime, "state", None), "name", "UNKNOWN")
+
+    if raw_state == "READY":
+        state: EngineState = "ready"
+        detail = f"{_provider_display_name(provider_id)} provider is ready."
+    elif raw_state == "LOADING":
+        state = "loading"
+        detail = f"{_provider_display_name(provider_id)} provider is connecting."
+    elif raw_state == "INFERRING":
+        state = "refining"
+        detail = "External refinement is running."
+    elif raw_state == "ERROR" or last_error:
+        state = "error"
+        detail = last_error or f"{_provider_display_name(provider_id)} provider is in error state."
+    elif raw_state == "DISABLED":
+        state = "disabled"
+        detail = "Refinement runtime is disabled."
+    else:
+        state = "loading"
+        detail = f"{_provider_display_name(provider_id)} provider has not connected yet."
+
+    return EngineComponentStatus(
+        name="Refinement",
+        state=state,
+        ready=state in {"ready", "refining"},
+        model_id=provider_settings.model_id or None,
+        model_name=provider_settings.model_id or _provider_display_name(provider_id),
+        selected=True,
+        downloaded=state in {"ready", "refining"},
+        device="external",
+        detail=detail,
+        error=last_error if state == "error" else None,
+        runtime=runtime,
+    )
+
+
 def _readiness(components: Iterable[EngineComponentStatus]) -> str:
     states = {component.state for component in components}
     if "error" in states:
@@ -338,7 +437,10 @@ def _model_status(settings: VociferousSettings) -> dict[str, Any]:
         for model_id, info in catalog[category].items():
             model = get_asr_model(model_id) if category == "asr" else get_slm_model(model_id)
             info["downloaded"] = _model_downloaded(model)
-            info["selected"] = model_id == (settings.model.model if category == "asr" else settings.refinement.model_id)
+            if category == "asr":
+                info["selected"] = model_id == settings.model.model
+            else:
+                info["selected"] = settings.refinement.provider == "local_ct2" and model_id == settings.refinement.model_id
             info["min_vram_mb"] = _estimate_min_vram_mb(model)
             info["cpu_supported"] = not (isinstance(model, SLMModel) and model.quant == "awq")
             info["recommended_device"] = "gpu" if info["min_vram_mb"] >= 6000 or not info["cpu_supported"] else "cpu_or_gpu"
@@ -381,35 +483,44 @@ def _hardware_status(cuda_status: CudaRuntimeStatus) -> dict[str, Any]:
 
 
 def _provider_status(settings: VociferousSettings, slm: EngineComponentStatus) -> list[dict[str, Any]]:
-    local_ready = settings.refinement.enabled and slm.ready
+    active = settings.refinement.provider
+
+    def provider_row(provider_id: str, name: str, kind: str) -> dict[str, Any]:
+        is_active = settings.refinement.enabled and active == provider_id
+        provider_settings = getattr(settings.refinement, provider_id, None)
+        detail = slm.detail if is_active else "Available refinement provider."
+        if provider_settings is not None and not is_active:
+            detail = f"Configured endpoint: {provider_settings.base_url}"
+        return {
+            "id": provider_id,
+            "name": name,
+            "kind": kind,
+            "enabled": is_active,
+            "ready": bool(is_active and slm.ready),
+            "active": is_active,
+            "supports_streaming": provider_id != "local_ct2",
+            "supports_model_listing": True,
+            "detail": detail,
+        }
+
     return [
-        {
-            "id": "local_ct2",
-            "name": "Local CTranslate2",
-            "kind": "local",
-            "enabled": settings.refinement.enabled,
-            "ready": local_ready,
-            "active": True,
-            "supports_streaming": False,
-            "supports_model_listing": True,
-            "detail": slm.detail,
-        },
-        {
-            "id": "lm_studio",
-            "name": "LM Studio",
-            "kind": "openai_compatible",
-            "enabled": False,
-            "ready": False,
-            "active": False,
-            "supports_streaming": True,
-            "supports_model_listing": True,
-            "detail": "Provider contract reserved for external refinement backend integration.",
-        },
+        provider_row("local_ct2", "Local CTranslate2", "local"),
+        provider_row("lm_studio", "LM Studio", "openai_compatible"),
+        provider_row("groq", "Groq", "openai_compatible"),
     ]
 
 
+def _provider_display_name(provider_id: str) -> str:
+    return {
+        "lm_studio": "LM Studio",
+        "groq": "Groq",
+        "local_ct2": "Local CTranslate2",
+        "local_faster_whisper": "Local faster-whisper",
+    }.get(provider_id, provider_id)
+
+
 def _package_versions() -> dict[str, str | None]:
-    packages = ("ctranslate2", "faster-whisper", "tokenizers", "onnxruntime", "pywebview", "litestar")
+    packages = ("ctranslate2", "faster-whisper", "tokenizers", "onnxruntime", "pywebview", "litestar", "httpx")
     versions: dict[str, str | None] = {}
     for package in packages:
         try:

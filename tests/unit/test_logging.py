@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 
 from src.api import app as api_app
@@ -26,3 +27,44 @@ def test_create_app_preserves_log_manager_handlers(monkeypatch) -> None:
     assert handlers
     assert all(isinstance(handler.formatter, AgentFriendlyFormatter) for handler in handlers)
     assert all(type(handler).__name__ != "QueueHandler" for handler in handlers)
+
+
+def test_text_formatter_serializes_and_redacts_context() -> None:
+    formatter = AgentFriendlyFormatter(structured=False)
+    record = logging.LogRecord(
+        name="src.core.example",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=42,
+        msg="hello",
+        args=(),
+        exc_info=None,
+    )
+    record.context = {"provider": "groq", "api_key": "gsk_secret", "nested": {"token": "abc"}}
+
+    formatted = formatter.format(record)
+
+    assert "core.example:42" in formatted
+    assert "context=" in formatted
+    assert "gsk_secret" not in formatted
+    assert '"api_key": "<redacted>"' in formatted
+    assert '"token": "<redacted>"' in formatted
+
+
+def test_structured_formatter_redacts_context() -> None:
+    formatter = AgentFriendlyFormatter(structured=True)
+    record = logging.LogRecord(
+        name="src.core.example",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=42,
+        msg="hello",
+        args=(),
+        exc_info=None,
+    )
+    record.context = {"authorization": "Bearer nope"}
+
+    payload = json.loads(formatter.format(record))
+
+    assert payload["logger"] == "core.example"
+    assert payload["context"] == {"authorization": "<redacted>"}
