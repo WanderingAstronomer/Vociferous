@@ -1,5 +1,106 @@
 # Vociferous Changelog
 
+## v6.6.0 — External Providers, Smart Refinement & Transcriptions Workflow Polish
+
+**Date:** 2026-05-22
+**Status:** Feature release
+
+This release completes the external-provider feature branch. The big architectural move is that transcription and refinement can now run against local models or OpenAI-compatible remote providers without punching holes through the command/event model. The final polish pass also cleaned up several workflow annoyances found while dogfooding the branch.
+
+### Added
+- **External transcription providers** — Added Groq-backed transcription support alongside local faster-whisper, including provider settings, model listing/testing routes, runtime summaries, and API-key handling.
+- **External refinement providers** — Added OpenAI-compatible refinement providers for LM Studio and Groq. Provider selection, base URLs, model IDs, timeouts, API-key sources, and model-list validation are now first-class settings instead of ad hoc wiring.
+- **Provider API-key management** — Added local provider secret storage plus save/delete/test routes for refinement and transcription provider keys. Logging and diagnostics redact sensitive fields so support snapshots do not spray credentials into files like a busted fire hose.
+- **Smart Refinement toggle** — Settings -> Refinement exposes Smart Refinement, defaulting off. When enabled, refinement may skip transcripts with minimal errors; when disabled, manual, automatic, and bulk refinement always call the configured provider.
+- **Bulk refinement prompt picker** — Multi-transcript refinement now lets the user choose an existing Prompt-tagged transcript in the bulk confirmation dialog, then passes that text through the existing queued bulk-refine path.
+- **Top-level retitle action** — Transcriptions selection overflow now includes a magic-wand retitle action for one or many selected transcripts.
+
+### Changed
+- **Provider-aware engine status** — Engine status now reports external ASR/SLM runtime details, requested/resolved model IDs, key availability, rate-limit usage, and provider-specific readiness instead of pretending every runtime is local CT2.
+- **Settings cards for remote providers** — ASR and Refinement settings now expose provider-specific controls while preserving the local-model path. Runtime-affecting changes are compared against the loaded runtime, not whatever happens to be typed into the form.
+- **Recording visibility** — The active recording button has a stronger audio-reactive treatment with outward glow, brighter idle pulse, and clearer mic emphasis.
+- **Toast placement** — Toast notifications are centered on the x-axis and bottom-aligned with minimal y padding.
+- **Transcription library cards** — Transcript cards are taller, with a larger preview area for scanning longer captured text.
+
+### Fixed
+- **Restart-required banner false positives** — Settings no longer treats startup/loading provider state as proof that the engine is running an old runtime. Runtime comparisons require comparable loaded runtime data.
+- **Groq Qwen retitle returning empty titles** — External Qwen custom-generation now gets the no-thinking directive when thinking is disabled, preventing short title generations from spending their tiny token budget on hidden reasoning and returning no visible content.
+- **LM Studio false-ready state** — External refinement providers now validate provider connectivity during load even when model-list UI is disabled. A stopped LM Studio server reports unreachable instead of getting marked ready. Revolutionary stuff: a server that is down is not up.
+- **Searched transcript tag staleness** — Tag changes, retitles, and WebSocket updates refresh the active search result set when the user is searching, so tag chips no longer vanish until the search is cleared.
+- **Smart Refinement consistency** — Manual, automatic, and bulk refinement all respect the same Smart Refinement setting instead of quietly using different skip behavior.
+
+### Tests
+- Added and updated unit coverage for external provider payloads, provider connectivity failures, Groq key validation, Qwen no-thinking custom generation, Smart Refinement skip behavior, retitle scheduling, and refinement handlers.
+- Frontend production build verified after the final UI and workflow changes.
+
+## v6.5.5 — Model Fallback Clarity, Protected Prompt Hygiene & Editor Polish
+
+**Date:** 2026-05-21
+**Status:** Feature / Polish
+
+### Added
+- **Protected prompt filtering** — Transcript listing/counting paths now exclude shipped protected prompt records where appropriate, keeping user history and prompt library data from contaminating each other.
+- **Prompt tag filtering for shipped prompts** — Prompt-tagged shipped content can be queried cleanly without leaking into ordinary transcript workflows.
+- **Markdown editing surface** — Added a Markdown editor path in Edit view and cleaned up refinement/editing layout around the new `RefinePane` component.
+- **Retitle integration in Edit view** — Edit workflows gained direct transcript retitling support.
+
+### Changed
+- **CPU fallback model resolution** — Refinement runtime handling now resolves CPU fallback choices explicitly, surfaces the resolved model/device in status, and gives the UI clearer wording about device usage.
+- **Refine and Transcribe navigation polish** — Refine and Transcribe surfaces were streamlined, with dashboard navigation moved into the common navigation system instead of duplicated action buttons.
+
+### Tests
+- Added coverage for protected prompt filtering, migration behavior, engine status model resolution, and SLM runtime fallback cases.
+
+## v6.5.4 — Command Bars, Settings Surfaces & Native Clipboard
+
+**Date:** 2026-05-21
+**Status:** Feature / Refactor
+
+### Added
+- **Data-driven command bars** — Transcript and transcribe actions now use `CommandNode`, `CommandBar`, and `CommandMenu` rather than bespoke button piles. Overflow actions, nested menus, and action visibility now have one local model.
+- **Split safety and diagnostics settings** — The old maintenance surface was broken into focused diagnostics, safety/data, export, confirmation, and toast components. The result is less monolithic UI state and fewer places for destructive actions to hide.
+- **Platform-native clipboard helper** — Clipboard writes now route through a shared helper, with recording and refinement handlers using the same platform-aware path.
+
+### Changed
+- **Transcribe recording surface** — The recording view was tightened around a clearer recording control, reusable header/action components, and less duplicated navigation state.
+- **Destructive actions through intents** — Delete/clear/tag mutations moved back behind the command bus where they belong instead of letting API routes mutate shared state directly.
+- **Frontend build assets** — Windows build scripts and desktop template locations were cleaned up so packaged assets stay current.
+
+### Tests
+- Updated lifecycle registration expectations and added coordinator/API coverage for intent-routed destructive actions.
+
+## v6.5.3 — Windows CUDA Runtime Hardening & Engine Status
+
+**Date:** 2026-05-20
+**Status:** Feature / Hotfix
+
+### Added
+- **Windows CUDA DLL validation** — Runtime detection now validates the CUDA 12 DLL chain from vendored NVIDIA wheels, including cudart, cublas, cublasLt, and cudnn. Driver presence alone no longer counts as GPU readiness.
+- **Engine status contract** — Added the canonical `/api/engine/status` surface, cleanup endpoint, normalized user-facing errors, download stall detection, runtime/device/package details, and model lifecycle state.
+- **Windows CUDA requirements file** — Added pinned Windows CUDA wheel requirements and installer checks so setup can diagnose missing runtime pieces instead of letting CTranslate2 explode later.
+
+### Fixed
+- **Litestar logging takeover** — Litestar no longer replaces the application logging configuration, preserving the app's file/console logger behavior.
+- **Vendored CUDA path wording** — CUDA diagnostics now describe vendored Windows DLL paths accurately.
+- **Transcript timestamp schema** — Removed an invalid uniqueness assumption around transcript timestamps and added migration coverage for rebuilding existing tables.
+
+### Tests
+- Added CUDA runtime, engine status, download stall, cleanup artifact, and logging regression coverage.
+
+## v6.5.2 — Runtime Decomposition, Transcript View Split & Linux CUDA Verification
+
+**Date:** 2026-04-29
+**Status:** Refactor / Platform support
+
+### Added
+- **Linux CUDA runtime verification** — Added optional CUDA dependencies and runtime verification for Linux installs, with installer support and unit coverage.
+- **Transcript view components** — Split Transcribe and Transcripts views into reusable headers, action bars, metric panels, selection bars, and list panes.
+- **Coordinator runtime modules** — Extracted lifecycle, services, and server/window plumbing from the application coordinator. The coordinator is still the composition root; it is just no longer pretending one file should be a landfill.
+
+### Changed
+- **Transcribe action bar alignment** — Unified Transcribe action styling with Transcripts selection actions, promoted Refine as the primary action, and removed redundant dashboard navigation from the action bar.
+- **Frontend imports** — Simplified Transcribe action imports after the component split.
+
 ## v6.5.1 — Test Suite Quality Audit (MRP Framework)
 
 **Date:** 2026-04-20

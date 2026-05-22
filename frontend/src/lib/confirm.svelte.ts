@@ -1,3 +1,8 @@
+export interface ConfirmSelectOption {
+    value: string;
+    label: string;
+}
+
 export interface ConfirmOptions {
     title: string;
     message: string;
@@ -7,6 +12,9 @@ export interface ConfirmOptions {
     checkboxLabel?: string;
     checkboxDefault?: boolean;
     alternativeLabel?: string;
+    selectLabel?: string;
+    selectOptions?: ConfirmSelectOption[];
+    selectDefault?: string;
 }
 
 export interface ConfirmItem extends ConfirmOptions {
@@ -18,6 +26,7 @@ let nextId = 0;
 let queue = $state<ConfirmItem[]>([]);
 let lastCheckboxValue = $state(false);
 let lastConfirmWasAlternative = $state(false);
+let lastSelectValue = $state("");
 
 function confirm(options: ConfirmOptions): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
@@ -48,6 +57,12 @@ export const confirmDialog = {
     },
     setLastConfirmWasAlternative(value: boolean): void {
         lastConfirmWasAlternative = value;
+    },
+    get lastSelectValue(): string {
+        return lastSelectValue;
+    },
+    setLastSelectValue(value: string): void {
+        lastSelectValue = value;
     },
     confirm,
     resolve,

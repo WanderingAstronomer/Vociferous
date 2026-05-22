@@ -571,6 +571,28 @@
                 }
             />
         </div>
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[36px]">
+            <label
+                id="setting-smart-refinement-label"
+                class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                for="setting-smart-refinement"
+                data-tip="Enable to intelligently skip refinement for transcripts with minimal errors."
+                >Smart Refinement</label
+            >
+            <div class="flex flex-col gap-1">
+                <ToggleSwitch
+                    id="setting-smart-refinement"
+                    ariaLabelledby="setting-smart-refinement-label"
+                    bind:checked={
+                        () => getSafe(config, "refinement.smart_refinement", false),
+                        (checked: boolean) => setSafe("refinement.smart_refinement", checked)
+                    }
+                />
+                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] leading-[var(--leading-normal)]">
+                    Enable to intelligently skip refinement for transcripts with minimal errors.
+                </span>
+            </div>
+        </div>
         <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
             <label
                 id="setting-retitle-refine-label"

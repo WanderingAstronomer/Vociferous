@@ -82,6 +82,92 @@ def test_groq_chat_payload_uses_groq_token_field_and_omits_local_knobs(fresh_set
     assert "repeat_penalty" not in captured
 
 
+def test_qwen_external_custom_generation_sends_no_think_when_thinking_disabled(fresh_settings) -> None:
+    fresh_settings.refinement.provider = "groq"
+    fresh_settings.refinement.groq.model_id = "qwen/qwen3-32b"
+    fresh_settings.refinement.groq.api_key = VALID_GROQ_KEY
+
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content.decode("utf-8")))
+        return _json_response({"choices": [{"message": {"content": "Useful Title"}}]})
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "groq")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    result = provider.generate_custom(
+        system_prompt="title this",
+        user_prompt="transcript text",
+        max_tokens=30,
+        temperature=0.4,
+        use_thinking=False,
+    )
+
+    assert result.content == "Useful Title"
+    assert "/no_think" in str(captured["messages"])
+
+
+def test_qwen_external_custom_generation_omits_no_think_when_thinking_enabled(fresh_settings) -> None:
+    fresh_settings.refinement.provider = "groq"
+    fresh_settings.refinement.groq.model_id = "qwen/qwen3-32b"
+    fresh_settings.refinement.groq.api_key = VALID_GROQ_KEY
+
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content.decode("utf-8")))
+        return _json_response({"choices": [{"message": {"content": "Useful Title"}}]})
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "groq")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    provider.generate_custom(
+        system_prompt="title this",
+        user_prompt="transcript text",
+        max_tokens=30,
+        temperature=0.4,
+        use_thinking=True,
+    )
+
+    assert "/no_think" not in str(captured["messages"])
+
+
+def test_external_load_validates_connectivity_even_when_model_listing_disabled(fresh_settings) -> None:
+    fresh_settings.refinement.provider = "lm_studio"
+    fresh_settings.refinement.lm_studio.model_id = "local-model"
+    fresh_settings.refinement.lm_studio.model_list_enabled = False
+
+    requested_paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_paths.append(request.url.path)
+        return _json_response({"data": [{"id": "local-model"}]})
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "lm_studio")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    provider.load()
+
+    assert requested_paths == ["/v1/models"]
+
+
+def test_lm_studio_load_surfaces_server_unreachable(fresh_settings) -> None:
+    fresh_settings.refinement.provider = "lm_studio"
+    fresh_settings.refinement.lm_studio.model_id = "local-model"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "lm_studio")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    import pytest
+
+    with pytest.raises(Exception, match="LM Studio is unreachable"):
+        provider.load()
+
+
 def test_list_models_parses_openai_compatible_response(fresh_settings) -> None:
     fresh_settings.refinement.lm_studio.model_id = "local-model"
 

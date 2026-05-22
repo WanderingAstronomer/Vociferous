@@ -74,13 +74,16 @@
         justify-content: center;
         color: var(--orange-4);
         border-radius: var(--radius-xl);
-        border: 2px solid var(--orange-4);
+        border: 3px solid var(--orange-4);
+        background: rgba(255, 128, 32, calc(0.05 + var(--recording-intensity, 0) * 0.08));
         box-shadow:
-            0 0 calc(14px + var(--recording-intensity, 0) * 28px)
-                rgba(255, 160, 60, calc(0.2 + var(--recording-intensity, 0) * 0.48)),
-            inset 0 0 calc(12px + var(--recording-intensity, 0) * 22px)
-                rgba(255, 183, 51, calc(0.06 + var(--recording-intensity, 0) * 0.18));
-        transition: box-shadow 120ms ease-out;
+            0 0 0 calc(5px + var(--recording-intensity, 0) * 11px)
+                rgba(255, 196, 88, calc(0.18 + var(--recording-intensity, 0) * 0.2)),
+            0 0 calc(34px + var(--recording-intensity, 0) * 76px)
+                rgba(255, 160, 60, calc(0.42 + var(--recording-intensity, 0) * 0.46)),
+            0 0 calc(86px + var(--recording-intensity, 0) * 116px)
+                rgba(255, 96, 40, calc(0.2 + var(--recording-intensity, 0) * 0.3));
+        transition: background 120ms ease-out, box-shadow 120ms ease-out;
         animation: recording-breathe 4s ease-in-out infinite;
         will-change: box-shadow, border-color;
     }
@@ -95,19 +98,21 @@
         100% {
             border-color: var(--orange-4);
             box-shadow:
-                0 0 14px rgba(255, 160, 60, 0.2),
-                inset 0 0 12px rgba(255, 183, 51, 0.06);
+                0 0 0 5px rgba(255, 196, 88, 0.18),
+                0 0 34px rgba(255, 160, 60, 0.42),
+                0 0 86px rgba(255, 96, 40, 0.2);
         }
         50% {
-            border-color: rgba(255, 183, 51, 0.65);
+            border-color: rgba(255, 210, 96, 0.92);
             box-shadow:
-                0 0 24px rgba(255, 160, 60, 0.32),
-                inset 0 0 20px rgba(255, 183, 51, 0.14);
+                0 0 0 14px rgba(255, 196, 88, 0.28),
+                0 0 64px rgba(255, 160, 60, 0.7),
+                0 0 126px rgba(255, 96, 40, 0.36);
         }
     }
 
     :global(.recording-mic) {
         display: block;
-        filter: drop-shadow(0 0 8px rgba(255, 183, 51, 0.55));
+        filter: drop-shadow(0 0 14px rgba(255, 210, 96, 0.86));
     }
 </style>

@@ -331,8 +331,7 @@ class OpenAICompatibleRefinementProvider:
             raise ValueError(f"No model configured for {self._provider_label}.")
         if self._provider_id == "groq" and not self._api_key:
             raise ValueError("Groq API key is not configured. Set GROQ_API_KEY or save a local provider API key.")
-        if self._provider_settings.model_list_enabled:
-            self.list_models()
+        self.list_models()
         self._runtime_summary = describe_refinement_runtime(self._settings)
 
     def unload(self) -> None:
@@ -390,8 +389,8 @@ class OpenAICompatibleRefinementProvider:
         messages = prompt_builder.build_refinement_messages(
             text,
             instructions,
-            use_thinking=False,
-            thinking_directive="",
+            use_thinking=use_thinking,
+            thinking_directive=self._thinking_directive(use_thinking),
         )
         result = self._chat_completion(
             messages=messages,
@@ -419,8 +418,8 @@ class OpenAICompatibleRefinementProvider:
         messages = prompt_builder.build_custom_messages(
             system_prompt,
             user_prompt,
-            use_thinking=False,
-            thinking_directive="",
+            use_thinking=use_thinking,
+            thinking_directive=self._thinking_directive(use_thinking),
         )
         return self._chat_completion(
             messages=messages,
@@ -434,6 +433,12 @@ class OpenAICompatibleRefinementProvider:
     @property
     def _provider_label(self) -> str:
         return "LM Studio" if self._provider_id == "lm_studio" else "Groq"
+
+    def _thinking_directive(self, use_thinking: bool) -> str:
+        if use_thinking:
+            return ""
+        model_id = self._provider_settings.model_id.lower()
+        return "/no_think" if "qwen" in model_id else ""
 
     @property
     def _api_key(self) -> str | None:

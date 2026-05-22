@@ -204,6 +204,7 @@ class RefinementSettings(BaseModel):
     model_id: str = "qwen4b"
     n_gpu_layers: int = -1  # -1 = full GPU (CT2 device="cuda"), 0 = CPU only
     n_threads: int = Field(default_factory=_auto_cpu_threads)  # CPU threads (CPU mode only)
+    smart_refinement: bool = False
     use_thinking: bool = False  # Allow model to reason in <think> blocks before output
     temperature: float = 0.3
     top_p: float = 0.9

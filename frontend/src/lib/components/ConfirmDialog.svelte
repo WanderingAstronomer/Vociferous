@@ -4,11 +4,15 @@
     import ToggleSwitch from "./ToggleSwitch.svelte";
 
     let checkboxChecked = $state(false);
+    let selectValue = $state("");
     let dialogEl: HTMLDivElement | undefined = $state();
 
     $effect(() => {
         const active = confirmDialog.active;
-        if (active) checkboxChecked = active.checkboxDefault ?? false;
+        if (active) {
+            checkboxChecked = active.checkboxDefault ?? false;
+            selectValue = active.selectDefault ?? active.selectOptions?.[0]?.value ?? "";
+        }
     });
 
     $effect(() => {
@@ -18,6 +22,7 @@
     function resolveWith(id: number, value: boolean, alternative = false): void {
         confirmDialog.setLastCheckboxValue(checkboxChecked);
         confirmDialog.setLastConfirmWasAlternative(alternative);
+        confirmDialog.setLastSelectValue(selectValue);
         confirmDialog.resolve(id, value);
     }
 
@@ -68,6 +73,20 @@
                         <ToggleSwitch bind:checked={checkboxChecked} />
                         <span class="text-[var(--text-sm)] text-[var(--text-secondary)]">{active.checkboxLabel}</span>
                     </div>
+                {/if}
+
+                {#if active.selectOptions?.length}
+                    <label class="flex flex-col gap-[var(--space-1)] text-[var(--text-sm)] text-[var(--text-secondary)]">
+                        <span>{active.selectLabel ?? "Choose an option"}</span>
+                        <select
+                            class="h-9 w-full rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] outline-none transition-colors focus:border-[var(--accent)]"
+                            bind:value={selectValue}
+                        >
+                            {#each active.selectOptions as option (option.value)}
+                                <option value={option.value}>{option.label}</option>
+                            {/each}
+                        </select>
+                    </label>
                 {/if}
 
                 <div class="flex justify-end gap-[var(--space-2)] pt-[var(--space-1)]">

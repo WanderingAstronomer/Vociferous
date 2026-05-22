@@ -10,6 +10,7 @@
         Sparkles,
         Tag as TagIcon,
         Trash2,
+        WandSparkles,
         X,
     } from "lucide-svelte";
 
@@ -42,6 +43,7 @@
         onOpenTagAssign: (event?: MouseEvent) => void;
         onToggleExportPopover: (event?: MouseEvent) => void;
         onBulkRefine: () => void;
+        onRetitleSelection: () => void;
         onExportAnchorChange: (element: HTMLElement | undefined) => void;
     }
 
@@ -67,6 +69,7 @@
         onOpenTagAssign,
         onToggleExportPopover,
         onBulkRefine,
+        onRetitleSelection,
         onExportAnchorChange,
     }: Props = $props();
 
@@ -168,6 +171,17 @@
                 priority: 120,
                 visibleWhen: () => selection.count === 1 && Boolean(selectedEntry?.has_audio_cached),
                 run: onRetranscribeSelected,
+            },
+            {
+                id: "retitle-selection",
+                label: selection.isMulti ? `Retitle ${selection.count}` : "Retitle",
+                icon: WandSparkles,
+                variant: "secondary",
+                group: "edit",
+                placement: "overflow",
+                priority: 125,
+                title: selection.isMulti ? `Retitle ${selection.count} transcripts` : "Retitle selected transcript",
+                run: onRetitleSelection,
             },
             {
                 id: "prompt-actions",
