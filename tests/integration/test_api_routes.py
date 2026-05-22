@@ -116,7 +116,7 @@ class TestHealthEndpoint:
         body = resp.json()
         assert body["status"] == "ok"
         assert "version" in body
-        assert body["transcripts"] == 1  # v9 seeds 1 protected prompt transcript
+        assert body["transcripts"] == 0
 
     def test_health_reflects_transcript_count(self, api):
         client, coord, _ = api
@@ -124,7 +124,7 @@ class TestHealthEndpoint:
         coord.db.add_transcript(raw_text="two", duration_ms=200)
 
         resp = client.get("/api/health")
-        assert resp.json()["transcripts"] == 3  # 2 added + 1 seeded
+        assert resp.json()["transcripts"] == 2
 
     def test_health_reports_driver_without_cuda_runtime(self, api):
         client, _, _ = api
@@ -158,13 +158,29 @@ class TestHealthEndpoint:
 
 class TestTranscriptRoutes:
     def test_list_empty(self, api):
-        """Fresh DB has only the seeded system prompt transcript."""
+        """Fresh DB has no user transcript data in the default list."""
         client, _, _ = api
         resp = client.get("/api/transcripts")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total"] == 1  # v9 seeds 1 protected prompt transcript
-        assert len(data["items"]) == 1
+        assert data["total"] == 0
+        assert data["items"] == []
+
+    def test_prompt_tag_filter_lists_shipped_prompt_records(self, api):
+        client, coord, _ = api
+        prompt_tag = next(tag for tag in coord.db.get_tags() if tag.name == "Prompt")
+
+        resp = client.get("/api/transcripts", params={"tag_ids": str(prompt_tag.id)})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert {item["display_name"] for item in data["items"]} == {
+            "Small Model Markdown Refinement Prompt",
+            "Large Model Structured Markdown Prompt",
+        }
+        assert all(item["created_at"] == "" for item in data["items"])
+        assert all(item["include_in_analytics"] is False for item in data["items"])
 
     def test_list_returns_transcripts(self, api):
         client, coord, _ = api
@@ -173,8 +189,8 @@ class TestTranscriptRoutes:
 
         resp = client.get("/api/transcripts")
         data = resp.json()
-        assert len(data["items"]) == 3  # 2 added + 1 seeded
-        assert data["total"] == 3
+        assert len(data["items"]) == 2
+        assert data["total"] == 2
         assert all("id" in t and "raw_text" in t for t in data["items"])
 
     def test_list_with_limit(self, api):
@@ -185,7 +201,7 @@ class TestTranscriptRoutes:
         resp = client.get("/api/transcripts", params={"limit": 3})
         data = resp.json()
         assert len(data["items"]) == 3
-        assert data["total"] == 6  # 5 added + 1 seeded
+        assert data["total"] == 5
 
     def test_append_intent_preserves_source_but_keeps_default_list_count_stable(self, api):
         client, coord, _ = api
@@ -205,7 +221,7 @@ class TestTranscriptRoutes:
         assert resp.json()["dispatched"] is True
 
         listing = client.get("/api/transcripts").json()
-        assert listing["total"] == 2  # seeded prompt + visible root
+        assert listing["total"] == 1
         assert source.id not in {item["id"] for item in listing["items"]}
 
         source_detail = client.get(f"/api/transcripts/{source.id}")
@@ -213,7 +229,7 @@ class TestTranscriptRoutes:
         assert source_detail.json()["raw_text"] == "Source text"
 
         health = client.get("/api/health").json()
-        assert health["transcripts"] == 2
+        assert health["transcripts"] == 1
 
     def test_list_rejects_invalid_tag_ids(self, api):
         client, _, _ = api
@@ -277,7 +293,7 @@ class TestTranscriptRoutes:
         assert data["dispatched"] is True
         assert "deleted" in data
         assert data["deleted"] == 2  # only non-protected transcripts deleted
-        assert coord.db.transcript_count() == 1  # protected prompt transcript survives
+        assert coord.db.transcript_count() == 0
 
     def test_delete_default_prompt_transcript_clears_setting(self, api):
         client, coord, events = api

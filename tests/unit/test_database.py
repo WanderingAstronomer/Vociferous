@@ -50,13 +50,25 @@ class TestTranscriptCRUD:
             db.add_transcript(raw_text=f"Transcript {i}", duration_ms=100)
         recent, total = db.recent(limit=3)
         assert len(recent) == 3
-        assert total == 6  # 5 added + 1 seeded
+        assert total == 5
 
     def test_transcript_count(self, db: TranscriptDB):
-        assert db.transcript_count() == 1  # v9 seeds 1 protected prompt transcript
+        assert db.transcript_count() == 0
         db.add_transcript(raw_text="One", duration_ms=100)
         db.add_transcript(raw_text="Two", duration_ms=100)
-        assert db.transcript_count() == 3
+        assert db.transcript_count() == 2
+
+    def test_shipped_prompts_are_prompt_records_not_transcript_data(self, db: TranscriptDB):
+        prompt_tag = next(tag for tag in db.get_tags() if tag.name == "Prompt")
+        prompts, total = db.recent(tag_ids=[prompt_tag.id], include_protected=True)
+
+        assert total == 2
+        assert {prompt.display_name for prompt in prompts} == {
+            "Small Model Markdown Refinement Prompt",
+            "Large Model Structured Markdown Prompt",
+        }
+        assert all(prompt.created_at == "" for prompt in prompts)
+        assert all(not prompt.include_in_analytics for prompt in prompts)
 
     def test_search(self, db: TranscriptDB):
         db.add_transcript(raw_text="Python programming", duration_ms=100)
@@ -89,9 +101,9 @@ class TestTranscriptCRUD:
         visible_ids = {item.id for item in visible_items}
         assert root.id in visible_ids
         assert source.id not in visible_ids
-        assert visible_total == 2  # seeded prompt + visible root
-        assert db.transcript_count() == 2
-        assert db.transcript_count(include_compound_children=True) == 3
+        assert visible_total == 1
+        assert db.transcript_count() == 1
+        assert db.transcript_count(include_compound_children=True) == 2
 
     def test_search_excludes_hidden_compound_children_by_default(self, db: TranscriptDB):
         root = db.add_transcript(raw_text="Alpha", duration_ms=100)

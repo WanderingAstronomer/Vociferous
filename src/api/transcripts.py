@@ -17,6 +17,14 @@ from src.api.deps import get_coordinator, require_db, validate_pagination
 logger = logging.getLogger(__name__)
 
 
+def _includes_prompt_tag(tag_ids: list[int] | None) -> bool:
+    if not tag_ids:
+        return False
+    db = require_db()
+    prompt_tag_ids = {tag.id for tag in db.get_tags() if tag.id is not None and tag.name == "Prompt" and tag.is_system}
+    return bool(prompt_tag_ids.intersection(tag_ids))
+
+
 @get("/api/transcripts", sync_to_thread=True)
 def list_transcripts(
     limit: int = 50,
@@ -46,6 +54,7 @@ def list_transcripts(
         sort_dir=sort_dir,
         tag_ids=parsed_tag_ids,
         tag_mode=tag_mode,
+        include_protected=_includes_prompt_tag(parsed_tag_ids),
     )
     return {"items": [t.to_dict() for t in transcripts], "total": total}
 

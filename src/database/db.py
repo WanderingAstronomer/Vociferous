@@ -292,6 +292,7 @@ class TranscriptDB:
         tag_ids: list[int] | None = None,
         tag_mode: str = "any",
         include_compound_children: bool = False,
+        include_protected: bool = False,
     ) -> tuple[list[Transcript], int]:
         """Get transcripts with pagination and sorting.
 
@@ -312,10 +313,18 @@ class TranscriptDB:
         order_clause = f"ORDER BY {expr} {direction}"
 
         with self._write_lock:
+            visibility_conditions: list[str] = []
+            if not include_compound_children:
+                visibility_conditions.append("t.compound_root_id IS NULL")
+            if not include_protected:
+                visibility_conditions.append("t.is_protected = 0")
+
             if tag_ids:
                 placeholders = ",".join("?" * len(tag_ids))
                 if tag_mode == "all":
-                    visibility = "" if include_compound_children else "t.compound_root_id IS NULL AND "
+                    visibility = ""
+                    if visibility_conditions:
+                        visibility = " AND ".join(visibility_conditions) + " AND "
                     where = f"""WHERE {visibility}t.id IN (
                                SELECT transcript_id FROM transcript_tags
                                WHERE tag_id IN ({placeholders})
@@ -329,7 +338,9 @@ class TranscriptDB:
                         (*tag_ids, len(tag_ids), limit, offset),
                     )
                 else:
-                    visibility = "" if include_compound_children else "AND t.compound_root_id IS NULL"
+                    visibility = ""
+                    if visibility_conditions:
+                        visibility = "AND " + " AND ".join(visibility_conditions)
                     where = f"""INNER JOIN transcript_tags tt ON t.id = tt.transcript_id
                            WHERE tt.tag_id IN ({placeholders})
                              {visibility}"""
@@ -340,7 +351,9 @@ class TranscriptDB:
                         (*tag_ids, limit, offset),
                     )
             else:
-                visibility_where = "" if include_compound_children else "WHERE t.compound_root_id IS NULL "
+                visibility_where = ""
+                if visibility_conditions:
+                    visibility_where = "WHERE " + " AND ".join(visibility_conditions) + " "
                 total, rows = self._paginate(
                     f"SELECT COUNT(*) FROM transcripts t {visibility_where}",
                     f"SELECT t.* FROM transcripts t {visibility_where}{order_clause} LIMIT ? OFFSET ?",
@@ -357,6 +370,7 @@ class TranscriptDB:
         offset: int = 0,
         *,
         include_compound_children: bool = False,
+        include_protected: bool = False,
     ) -> list[Transcript]:
         """Full-text search across transcript text using FTS5.
 
@@ -366,14 +380,26 @@ class TranscriptDB:
         "Python programming".
         """
         if not query.strip():
-            items, _ = self.recent(limit=limit, offset=offset, include_compound_children=include_compound_children)
+            items, _ = self.recent(
+                limit=limit,
+                offset=offset,
+                include_compound_children=include_compound_children,
+                include_protected=include_protected,
+            )
             return items
         tokens = query.split()
         # Wrap each token as an FTS5 phrase with prefix wildcard.
         # Inner double-quotes are escaped by doubling them per FTS5 syntax.
         fts_terms = " ".join(f'"{token.replace(chr(34), chr(34) * 2)}"*' for token in tokens)
         with self._write_lock:
-            visibility = "" if include_compound_children else "AND t.compound_root_id IS NULL"
+            visibility_conditions: list[str] = []
+            if not include_compound_children:
+                visibility_conditions.append("t.compound_root_id IS NULL")
+            if not include_protected:
+                visibility_conditions.append("t.is_protected = 0")
+            visibility = ""
+            if visibility_conditions:
+                visibility = "AND " + " AND ".join(visibility_conditions)
             rows = self._conn.execute(
                 f"""SELECT t.*
                    FROM transcripts t
@@ -386,26 +412,32 @@ class TranscriptDB:
             self._enrich_transcripts_with_tags(transcripts)
         return transcripts
 
-    def search_count(self, query: str, *, include_compound_children: bool = False) -> int:
+    def search_count(
+        self,
+        query: str,
+        *,
+        include_compound_children: bool = False,
+        include_protected: bool = False,
+    ) -> int:
         """Return the total number of transcripts matching *query* (for pagination)."""
         if not query.strip():
-            return self.transcript_count(include_compound_children=include_compound_children)
+            return self.transcript_count(
+                include_compound_children=include_compound_children,
+                include_protected=include_protected,
+            )
         tokens = query.split()
         fts_terms = " ".join(f'"{t.replace(chr(34), chr(34) * 2)}"*' for t in tokens)
         with self._write_lock:
-            if include_compound_children:
-                row = self._conn.execute(
-                    "SELECT COUNT(*) FROM transcripts_fts WHERE transcripts_fts MATCH ?",
-                    (fts_terms,),
-                ).fetchone()
-            else:
-                row = self._conn.execute(
-                    """SELECT COUNT(*)
-                       FROM transcripts t
-                       WHERE t.compound_root_id IS NULL
-                         AND t.id IN (SELECT rowid FROM transcripts_fts WHERE transcripts_fts MATCH ?)""",
-                    (fts_terms,),
-                ).fetchone()
+            visibility_conditions = ["t.id IN (SELECT rowid FROM transcripts_fts WHERE transcripts_fts MATCH ?)"]
+            if not include_compound_children:
+                visibility_conditions.append("t.compound_root_id IS NULL")
+            if not include_protected:
+                visibility_conditions.append("t.is_protected = 0")
+            where = " AND ".join(visibility_conditions)
+            row = self._conn.execute(
+                f"SELECT COUNT(*) FROM transcripts t WHERE {where}",
+                (fts_terms,),
+            ).fetchone()
         return row[0] if row else 0
 
     def delete_transcript(self, transcript_id: int) -> bool:
@@ -843,10 +875,13 @@ class TranscriptDB:
         self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         shutil.copy2(self._path, dest)
 
-    def transcript_count(self, *, include_compound_children: bool = False) -> int:
+    def transcript_count(self, *, include_compound_children: bool = False, include_protected: bool = False) -> int:
         with self._write_lock:
-            if include_compound_children:
-                row = self._conn.execute("SELECT COUNT(*) FROM transcripts").fetchone()
-            else:
-                row = self._conn.execute("SELECT COUNT(*) FROM transcripts WHERE compound_root_id IS NULL").fetchone()
+            conditions: list[str] = []
+            if not include_compound_children:
+                conditions.append("compound_root_id IS NULL")
+            if not include_protected:
+                conditions.append("is_protected = 0")
+            where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+            row = self._conn.execute(f"SELECT COUNT(*) FROM transcripts{where}").fetchone()
         return row[0] if row else 0

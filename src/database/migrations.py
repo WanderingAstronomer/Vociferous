@@ -409,12 +409,29 @@ def _v12_timestamp_not_unique(conn: sqlite3.Connection) -> None:
             compound_root_id, compound_order
         FROM transcripts_old;
 
-        DROP TABLE transcripts_old;
+                DROP TABLE transcripts_old;
+
+                ALTER TABLE transcript_tags RENAME TO transcript_tags_old;
+
+                CREATE TABLE transcript_tags (
+                        transcript_id INTEGER NOT NULL REFERENCES transcripts(id) ON DELETE CASCADE,
+                        tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+                        UNIQUE(transcript_id, tag_id)
+                );
+
+                INSERT OR IGNORE INTO transcript_tags (transcript_id, tag_id)
+                SELECT transcript_id, tag_id FROM transcript_tags_old
+                WHERE transcript_id IN (SELECT id FROM transcripts)
+                    AND tag_id IN (SELECT id FROM tags);
+
+                DROP TABLE transcript_tags_old;
 
         CREATE INDEX IF NOT EXISTS idx_transcripts_timestamp ON transcripts(timestamp);
         CREATE INDEX IF NOT EXISTS idx_transcripts_compound_root ON transcripts(compound_root_id);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_transcripts_compound_member_order
             ON transcripts(compound_root_id, compound_order);
+        CREATE INDEX IF NOT EXISTS idx_transcript_tags_transcript ON transcript_tags(transcript_id);
+        CREATE INDEX IF NOT EXISTS idx_transcript_tags_tag ON transcript_tags(tag_id);
 
         CREATE TRIGGER IF NOT EXISTS transcripts_ai AFTER INSERT ON transcripts BEGIN
             INSERT INTO transcripts_fts(rowid, raw_text, normalized_text)
@@ -436,6 +453,158 @@ def _v12_timestamp_not_unique(conn: sqlite3.Connection) -> None:
     logger.info("v12 migration: transcript timestamp uniqueness removed")
 
 
+_SMALL_MODEL_MARKDOWN_PROMPT = """\
+Rewrite the following text as clean, well-structured Markdown.
+
+Rules:
+
+Never include # headings; these are made by default whenever a transcription is complete.
+
+Use ## only for genuinely distinct major sections. Use ### sparingly beneath those.
+
+Break continuous text into paragraphs. Each paragraph gets one idea.
+
+**bold** for key terms on first use. *italic* for titles and introduced technical terms. Backtick code for all technical tokens, commands, filenames, and values.
+
+Numbered lists for sequential steps. Bullet lists for four or more enumerable, non-sequential items. Everything else is prose.
+
+Do not add information. Do not remove meaning. Preserve the author's voice and phrasing.
+
+Output only the Markdown. No commentary.
+"""
+
+
+_LARGE_MODEL_MARKDOWN_PROMPT = """\
+Rewrite the following text as polished, well-structured Markdown. Execute each step in order.
+
+STEP 1 — CLASSIFY (silent)
+Identify the single best class: NARRATIVE, TECHNICAL, NOTES, ANALYTICAL, INSTRUCTIONAL, CORRESPONDENCE, or REFERENCE. Do not output this classification.
+
+STEP 2 — HEADINGS
+
+- Never include `#` headings; these are made by default whenever a transcription is complete.
+- `##` — Major named sections with meaningful thematic separation only.
+- `###` — Sub-sections within a `##` block. Use sparingly.
+  Derive all heading text from the content. Never invent titles.
+
+STEP 3 — PARAGRAPHS
+Each paragraph: topic sentence, 2–5 supporting sentences, closing or transition. No walls of continuous text. Blank line between all block-level elements.
+
+STEP 4 — INLINE FORMATTING
+
+- `**bold**` — key terms on first significant use, or critical emphasis
+- `*italic*` — titles of works, technical terms being introduced, soft emphasis
+- Backtick `code` — all technical tokens, commands, filenames, values, identifiers without exception
+- `> blockquote` — direct quotes or key statements warranting visual separation
+- `- bullet` — genuinely enumerable, non-sequential items only
+- `1. numbered` — sequential steps or ranked items only
+
+STEP 5 — CLASS-SPECIFIC RULES
+NARRATIVE/BLOG: Flowing prose throughout. Lists almost never appropriate. Preserve anecdotes, asides, humor, and personal voice intact.
+TECHNICAL: Numbered lists for sequential steps, bullets for options/features. Inline code on every technical token.
+NOTES: Identify the central thesis; use it as `##`. Group related thoughts into `##` sections. Preserve tentative or exploratory tone — do not manufacture false precision.
+ANALYTICAL: `##` for the central claim, `##` for each major argument, `###` for sub-points. Preserve every hedge, qualification, and uncertainty exactly as written. Never strengthen claims beyond the author's intent.
+INSTRUCTIONAL: `##` for procedure name, `##` for major phases, `###` for steps. Number all sequential steps. Code blocks for all commands and values.
+CORRESPONDENCE: Preserve greeting and closing structure unaltered. `##` only to separate distinct subjects in long messages. Do not restructure conversational flow or change formality register.
+REFERENCE: `##` for collection title, `##` for categories, `###` for individual entries.
+
+INVARIANTS — NEVER BREAK
+
+- Preserve the author's voice, idioms, characteristic phrasing, and rhetorical patterns.
+- Restructure for clarity only. Add no new information. Remove no existing meaning.
+- Output only the refined Markdown. No preamble, no commentary.
+"""
+
+
+def _v13_seed_markdown_refinement_prompts(conn: sqlite3.Connection) -> None:
+    """v13 — Replace the generic shipped prompt with two Markdown prompt templates.
+
+    Shipped prompts are protected prompt-library records, not user transcript
+    data. They intentionally carry blank timestamps and analytics exclusion so
+    every count/date/stat path has to work hard to accidentally include them.
+    """
+    conn.executescript(
+        """
+        DROP TRIGGER IF EXISTS transcripts_ai;
+        DROP TRIGGER IF EXISTS transcripts_ad;
+        DROP TRIGGER IF EXISTS transcripts_au;
+        DROP TABLE IF EXISTS transcripts_fts;
+        """
+    )
+
+    existing_tag = conn.execute("SELECT id FROM tags WHERE name = 'Prompt' AND is_system = 1").fetchone()
+    if existing_tag:
+        prompt_tag_id = existing_tag[0]
+    else:
+        cur = conn.execute("INSERT INTO tags (name, color, is_system) VALUES ('Prompt', NULL, 1)")
+        prompt_tag_id = cur.lastrowid
+
+    shipped_prompts = (
+        ("Small Model Markdown Refinement Prompt", _SMALL_MODEL_MARKDOWN_PROMPT),
+        ("Large Model Structured Markdown Prompt", _LARGE_MODEL_MARKDOWN_PROMPT),
+    )
+
+    old_default = conn.execute(
+        "SELECT id FROM transcripts WHERE display_name = 'Default Refinement Prompt' AND is_protected = 1"
+    ).fetchone()
+    small_existing = conn.execute(
+        "SELECT id FROM transcripts WHERE display_name = ? AND is_protected = 1",
+        (shipped_prompts[0][0],),
+    ).fetchone()
+
+    if old_default and not small_existing:
+        conn.execute(
+            """UPDATE transcripts
+               SET timestamp = '', created_at = '', raw_text = ?, normalized_text = ?, display_name = ?,
+                   duration_ms = 0, speech_duration_ms = 0, transcription_time_ms = 0,
+                   refinement_time_ms = 0, include_in_analytics = 0,
+                   has_audio_cached = 0, is_protected = 1
+               WHERE id = ?""",
+            (shipped_prompts[0][1], shipped_prompts[0][1], shipped_prompts[0][0], old_default[0]),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO transcript_tags (transcript_id, tag_id) VALUES (?, ?)",
+            (old_default[0], prompt_tag_id),
+        )
+
+    for title, prompt_text in shipped_prompts:
+        existing = conn.execute(
+            "SELECT id FROM transcripts WHERE display_name = ? AND is_protected = 1",
+            (title,),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                """UPDATE transcripts
+                   SET timestamp = '', created_at = '', include_in_analytics = 0,
+                       duration_ms = 0, speech_duration_ms = 0, transcription_time_ms = 0,
+                       refinement_time_ms = 0, has_audio_cached = 0, is_protected = 1
+                   WHERE id = ?""",
+                (existing[0],),
+            )
+            conn.execute(
+                "INSERT OR IGNORE INTO transcript_tags (transcript_id, tag_id) VALUES (?, ?)",
+                (existing[0], prompt_tag_id),
+            )
+            continue
+
+        cur = conn.execute(
+            """INSERT INTO transcripts
+               (timestamp, raw_text, normalized_text, display_name,
+                duration_ms, speech_duration_ms, transcription_time_ms,
+                refinement_time_ms, created_at, include_in_analytics,
+                has_audio_cached, is_protected)
+               VALUES ('', ?, ?, ?, 0, 0, 0, 0, '', 0, 0, 1)""",
+            (prompt_text, prompt_text, title),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO transcript_tags (transcript_id, tag_id) VALUES (?, ?)",
+            (cur.lastrowid, prompt_tag_id),
+        )
+
+    _v2_add_fts5(conn)
+    logger.info("v13 migration: shipped Markdown refinement prompts seeded outside analytics")
+
+
 #: Ordered list of (human-readable description, migration function) pairs.
 #: Append here to add future migrations; do not edit existing entries.
 MIGRATIONS: list[tuple[str, object]] = [
@@ -450,6 +619,8 @@ MIGRATIONS: list[tuple[str, object]] = [
     ("v9 prompt system — Prompt tag + is_protected column + default system prompt transcript", _v9_prompt_system),
     ("v10 processing timing — transcription_time_ms + refinement_time_ms columns", _v10_processing_timing),
     ("v11 compound membership — preserve non-destructive append members", _v11_compound_membership),
+    ("v12 timestamp not unique — preserve rapid transcript inserts", _v12_timestamp_not_unique),
+    ("v13 shipped Markdown refinement prompts — prompt-library records only", _v13_seed_markdown_refinement_prompts),
 ]
 
 

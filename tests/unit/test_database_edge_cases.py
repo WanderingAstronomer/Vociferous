@@ -62,7 +62,7 @@ class TestSearchEdgeCases:
         db.add_transcript(raw_text="anything", duration_ms=100)
         # Empty query falls back to recent() — returns all transcripts
         results = db.search("")
-        assert len(results) == 2  # 1 added + 1 seeded
+        assert len(results) == 1
 
     def test_search_no_match(self, db: TranscriptDB) -> None:
         db.add_transcript(raw_text="hello world", duration_ms=100)
@@ -98,15 +98,15 @@ class TestTranscriptCount:
     def test_count_after_delete(self, db: TranscriptDB) -> None:
         t1 = db.add_transcript(raw_text="one", duration_ms=100)
         db.add_transcript(raw_text="two", duration_ms=100)
-        assert db.transcript_count() == 3  # 2 added + 1 seeded
+        assert db.transcript_count() == 2
 
         db.delete_transcript(t1.id)
-        assert db.transcript_count() == 2
+        assert db.transcript_count() == 1
 
     def test_count_after_bulk_insert(self, db: TranscriptDB) -> None:
         for i in range(25):
             db.add_transcript(raw_text=f"bulk {i}", duration_ms=100)
-        assert db.transcript_count() == 26  # 25 added + 1 seeded
+        assert db.transcript_count() == 25
 
 
 # ── WAL & Connection ─────────────────────────────────────────────────────
@@ -202,7 +202,7 @@ class TestConcurrentReads:
         db.close()
 
         assert not errors, f"Concurrent read errors: {errors}"
-        assert all(c == 11 for c in results)  # 10 added + 1 seeded
+        assert all(c == 12 for c in results)  # 10 user transcripts + 2 protected prompt records
 
 
 # ── Boundary Inputs ───────────────────────────────────────────────────────
@@ -254,7 +254,7 @@ class TestExportBackup:
 
         # Open backup and verify data
         backup_db = TranscriptDB(db_path=backup_path)
-        assert backup_db.transcript_count() == 2  # 1 added + 1 seeded
+        assert backup_db.transcript_count() == 1
         recent_items = backup_db.recent()[0]
         assert any(t.raw_text == "verify backup" for t in recent_items)
         backup_db.close()
