@@ -93,6 +93,78 @@ class Transcript:
         }
 
 
+@dataclass(slots=True)
+class RecordingSessionRecord:
+    id: str
+    status: str
+    started_at: str
+    updated_at: str
+    finalized_at: str | None
+    sample_rate: int
+    channels: int
+    sample_width_bytes: int
+    duration_ms: int
+    frame_count: int
+    byte_count: int
+    last_durable_chunk: int
+    audio_path: str
+    encrypted: bool = False
+    encryption_key_id: str | None = None
+    transcript_id: int | None = None
+    failure_reason: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "status": self.status,
+            "started_at": self.started_at,
+            "updated_at": self.updated_at,
+            "finalized_at": self.finalized_at,
+            "sample_rate": self.sample_rate,
+            "channels": self.channels,
+            "sample_width_bytes": self.sample_width_bytes,
+            "duration_ms": self.duration_ms,
+            "frame_count": self.frame_count,
+            "byte_count": self.byte_count,
+            "last_durable_chunk": self.last_durable_chunk,
+            "audio_path": self.audio_path,
+            "encrypted": self.encrypted,
+            "encryption_key_id": self.encryption_key_id,
+            "transcript_id": self.transcript_id,
+            "failure_reason": self.failure_reason,
+        }
+
+
+@dataclass(slots=True)
+class AudioAsset:
+    id: int | None = None
+    recording_id: str | None = None
+    transcript_id: int | None = None
+    role: str = "transcript_source"
+    path: str = ""
+    duration_ms: int = 0
+    size_bytes: int = 0
+    encrypted: bool = False
+    pinned: bool = False
+    retain_until: str | None = None
+    created_at: str = ""
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "recording_id": self.recording_id,
+            "transcript_id": self.transcript_id,
+            "role": self.role,
+            "path": self.path,
+            "duration_ms": self.duration_ms,
+            "size_bytes": self.size_bytes,
+            "encrypted": self.encrypted,
+            "pinned": self.pinned,
+            "retain_until": self.retain_until,
+            "created_at": self.created_at,
+        }
+
+
 # --- Database ---
 
 
@@ -137,6 +209,60 @@ CREATE INDEX IF NOT EXISTS idx_transcript_tags_tag ON transcript_tags(tag_id);
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS recording_sessions (
+    id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finalized_at TEXT,
+    sample_rate INTEGER NOT NULL,
+    channels INTEGER NOT NULL,
+    sample_width_bytes INTEGER NOT NULL,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    frame_count INTEGER NOT NULL DEFAULT 0,
+    byte_count INTEGER NOT NULL DEFAULT 0,
+    last_durable_chunk INTEGER NOT NULL DEFAULT -1,
+    audio_path TEXT NOT NULL,
+    encrypted INTEGER NOT NULL DEFAULT 0,
+    encryption_key_id TEXT,
+    transcript_id INTEGER REFERENCES transcripts(id) ON DELETE SET NULL,
+    failure_reason TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_recording_sessions_status ON recording_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_recording_sessions_transcript ON recording_sessions(transcript_id);
+
+CREATE TABLE IF NOT EXISTS recording_chunks (
+    recording_id TEXT NOT NULL REFERENCES recording_sessions(id) ON DELETE CASCADE,
+    chunk_index INTEGER NOT NULL,
+    start_frame INTEGER NOT NULL,
+    frame_count INTEGER NOT NULL,
+    byte_offset INTEGER NOT NULL,
+    byte_count INTEGER NOT NULL,
+    sha256 TEXT NOT NULL,
+    written_at TEXT NOT NULL,
+    fsynced_at TEXT NOT NULL,
+    PRIMARY KEY (recording_id, chunk_index)
+);
+
+CREATE TABLE IF NOT EXISTS audio_assets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recording_id TEXT REFERENCES recording_sessions(id) ON DELETE SET NULL,
+    transcript_id INTEGER REFERENCES transcripts(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    path TEXT NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    encrypted INTEGER NOT NULL DEFAULT 0,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    retain_until TEXT,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_audio_assets_recording ON audio_assets(recording_id);
+CREATE INDEX IF NOT EXISTS idx_audio_assets_transcript ON audio_assets(transcript_id);
+CREATE INDEX IF NOT EXISTS idx_audio_assets_role ON audio_assets(role);
 """
 
 
@@ -768,6 +894,44 @@ class TranscriptDB:
             compound_order=row["compound_order"],
         )
 
+    @staticmethod
+    def _row_to_recording_session(row: sqlite3.Row) -> RecordingSessionRecord:
+        return RecordingSessionRecord(
+            id=row["id"],
+            status=row["status"],
+            started_at=row["started_at"],
+            updated_at=row["updated_at"],
+            finalized_at=row["finalized_at"],
+            sample_rate=row["sample_rate"],
+            channels=row["channels"],
+            sample_width_bytes=row["sample_width_bytes"],
+            duration_ms=row["duration_ms"],
+            frame_count=row["frame_count"],
+            byte_count=row["byte_count"],
+            last_durable_chunk=row["last_durable_chunk"],
+            audio_path=row["audio_path"],
+            encrypted=bool(row["encrypted"]),
+            encryption_key_id=row["encryption_key_id"],
+            transcript_id=row["transcript_id"],
+            failure_reason=row["failure_reason"],
+        )
+
+    @staticmethod
+    def _row_to_audio_asset(row: sqlite3.Row) -> AudioAsset:
+        return AudioAsset(
+            id=row["id"],
+            recording_id=row["recording_id"],
+            transcript_id=row["transcript_id"],
+            role=row["role"],
+            path=row["path"],
+            duration_ms=row["duration_ms"],
+            size_bytes=row["size_bytes"],
+            encrypted=bool(row["encrypted"]),
+            pinned=bool(row["pinned"]),
+            retain_until=row["retain_until"],
+            created_at=row["created_at"],
+        )
+
     def append_to_transcript(
         self,
         transcript_id: int,
@@ -867,6 +1031,193 @@ class TranscriptDB:
                 (1 if cached else 0, transcript_id),
             )
             self._conn.commit()
+
+    # --- Durable audio recordings ---
+
+    def create_recording_session(
+        self,
+        *,
+        recording_id: str,
+        audio_path: Path | str,
+        sample_rate: int,
+        channels: int = 1,
+        sample_width_bytes: int = 2,
+        encrypted: bool = False,
+        encryption_key_id: str | None = None,
+    ) -> RecordingSessionRecord:
+        """Create the durable manifest row before microphone capture starts."""
+        now = utc_now()
+        with self._write_lock, self._conn:
+            self._conn.execute(
+                """INSERT INTO recording_sessions
+                   (id, status, started_at, updated_at, sample_rate, channels,
+                    sample_width_bytes, audio_path, encrypted, encryption_key_id)
+                   VALUES (?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    recording_id,
+                    now,
+                    now,
+                    int(sample_rate),
+                    int(channels),
+                    int(sample_width_bytes),
+                    str(audio_path),
+                    1 if encrypted else 0,
+                    encryption_key_id,
+                ),
+            )
+        record = self.get_recording_session(recording_id)
+        assert record is not None
+        return record
+
+    def add_recording_chunk(
+        self,
+        *,
+        recording_id: str,
+        chunk_index: int,
+        start_frame: int,
+        frame_count: int,
+        byte_offset: int,
+        byte_count: int,
+        sha256: str,
+    ) -> None:
+        """Record that a chunk is flushed to disk and update session counters."""
+        now = utc_now()
+        duration_ms = int(((start_frame + frame_count) / 16000) * 1000)
+        with self._write_lock, self._conn:
+            row = self._conn.execute(
+                "SELECT sample_rate FROM recording_sessions WHERE id = ?",
+                (recording_id,),
+            ).fetchone()
+            if row is not None and int(row["sample_rate"] or 0) > 0:
+                duration_ms = int(((start_frame + frame_count) / int(row["sample_rate"])) * 1000)
+            self._conn.execute(
+                """INSERT OR REPLACE INTO recording_chunks
+                   (recording_id, chunk_index, start_frame, frame_count,
+                    byte_offset, byte_count, sha256, written_at, fsynced_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    recording_id,
+                    int(chunk_index),
+                    int(start_frame),
+                    int(frame_count),
+                    int(byte_offset),
+                    int(byte_count),
+                    sha256,
+                    now,
+                    now,
+                ),
+            )
+            self._conn.execute(
+                """UPDATE recording_sessions
+                   SET updated_at = ?, duration_ms = ?, frame_count = ?, byte_count = ?,
+                       last_durable_chunk = MAX(last_durable_chunk, ?)
+                   WHERE id = ?""",
+                (
+                    now,
+                    duration_ms,
+                    int(start_frame + frame_count),
+                    int(byte_offset + byte_count),
+                    int(chunk_index),
+                    recording_id,
+                ),
+            )
+
+    def mark_recording_status(
+        self,
+        recording_id: str,
+        status: str,
+        *,
+        transcript_id: int | None = None,
+        failure_reason: str | None = None,
+        finalized: bool = False,
+    ) -> None:
+        """Update a durable recording session's lifecycle state."""
+        now = utc_now()
+        assignments = ["status = ?", "updated_at = ?"]
+        params: list[object] = [status, now]
+        if finalized:
+            assignments.append("finalized_at = ?")
+            params.append(now)
+        if transcript_id is not None:
+            assignments.append("transcript_id = ?")
+            params.append(transcript_id)
+        if failure_reason is not None:
+            assignments.append("failure_reason = ?")
+            params.append(failure_reason)
+        params.append(recording_id)
+        with self._write_lock, self._conn:
+            self._conn.execute(
+                f"UPDATE recording_sessions SET {', '.join(assignments)} WHERE id = ?",
+                tuple(params),
+            )
+
+    def get_recording_session(self, recording_id: str) -> RecordingSessionRecord | None:
+        with self._write_lock:
+            row = self._conn.execute(
+                "SELECT * FROM recording_sessions WHERE id = ?",
+                (recording_id,),
+            ).fetchone()
+        return self._row_to_recording_session(row) if row is not None else None
+
+    def list_recording_sessions(self, statuses: tuple[str, ...] | None = None) -> list[RecordingSessionRecord]:
+        with self._write_lock:
+            if statuses:
+                placeholders = ",".join("?" * len(statuses))
+                rows = self._conn.execute(
+                    f"SELECT * FROM recording_sessions WHERE status IN ({placeholders}) ORDER BY started_at DESC",
+                    statuses,
+                ).fetchall()
+            else:
+                rows = self._conn.execute("SELECT * FROM recording_sessions ORDER BY started_at DESC").fetchall()
+        return [self._row_to_recording_session(row) for row in rows]
+
+    def list_recoverable_recordings(self) -> list[RecordingSessionRecord]:
+        """Return recordings that still need user-visible recovery handling."""
+        return self.list_recording_sessions(("active", "stopping", "recorded", "transcribing", "recovered", "failed"))
+
+    def add_audio_asset(
+        self,
+        *,
+        recording_id: str | None,
+        transcript_id: int | None,
+        role: str,
+        path: Path | str,
+        duration_ms: int,
+        size_bytes: int,
+        encrypted: bool = False,
+        pinned: bool = False,
+        retain_until: str | None = None,
+    ) -> AudioAsset:
+        with self._write_lock, self._conn:
+            cur = self._conn.execute(
+                """INSERT INTO audio_assets
+                   (recording_id, transcript_id, role, path, duration_ms, size_bytes,
+                    encrypted, pinned, retain_until)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    recording_id,
+                    transcript_id,
+                    role,
+                    str(path),
+                    int(duration_ms),
+                    int(size_bytes),
+                    1 if encrypted else 0,
+                    1 if pinned else 0,
+                    retain_until,
+                ),
+            )
+            asset_id = cur.lastrowid
+            assert asset_id is not None
+            row = self._conn.execute("SELECT * FROM audio_assets WHERE id = ?", (asset_id,)).fetchone()
+        return self._row_to_audio_asset(row)
+
+    def get_audio_assets_for_transcript(self, transcript_id: int) -> list[AudioAsset]:
+        with self._write_lock:
+            rows = self._conn.execute(
+                "SELECT * FROM audio_assets WHERE transcript_id = ? ORDER BY created_at DESC",
+                (transcript_id,),
+            ).fetchall()
+        return [self._row_to_audio_asset(row) for row in rows]
 
     def export_backup(self, dest: Path) -> None:
         """Export a full database backup to dest path."""

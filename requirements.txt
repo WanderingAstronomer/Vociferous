@@ -33,6 +33,8 @@ colorama==0.4.6 ; sys_platform == 'win32'
     #   click
     #   rich-click
     #   tqdm
+cryptography==46.0.5
+    # via vociferous
 ctranslate2==4.7.1
     # via
     #   faster-whisper

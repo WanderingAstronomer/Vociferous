@@ -55,11 +55,14 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
     from src.api.transcription_providers import list_transcription_provider_models, test_transcription_provider
     from src.api.transcripts import (
         batch_tag_toggle,
+        delete_recovered_recording,
         get_transcript,
+        list_recoverable_recordings,
         list_transcripts,
         refine_transcript,
         rename_transcript,
         search_transcripts,
+        transcribe_recovered_recording,
     )
 
     ALL_EVENTS = [
@@ -75,6 +78,7 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
         "tag_created",
         "tag_updated",
         "tag_deleted",
+        "audio_recovery_updated",
     ]
     event_collector.subscribe_all(coordinator.event_bus, ALL_EVENTS)
 
@@ -90,6 +94,9 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
             search_transcripts,
             batch_tag_toggle,
             rename_transcript,
+            list_recoverable_recordings,
+            transcribe_recovered_recording,
+            delete_recovered_recording,
             get_config,
             update_config,
             set_default_refinement_prompt,
@@ -207,6 +214,38 @@ class TestTranscriptRoutes:
         assert len(data["items"]) == 2
         assert data["total"] == 2
         assert all("id" in t and "raw_text" in t for t in data["items"])
+
+    def test_recoverable_audio_routes(self, api, tmp_path: Path):
+        client, coord, _ = api
+        audio_path = tmp_path / "recovered.vocaud"
+        audio_path.write_bytes(b"VOCAUD1\n")
+        coord.db.create_recording_session(
+            recording_id="rec_api",
+            audio_path=audio_path,
+            sample_rate=16000,
+        )
+        coord.db.mark_recording_status("rec_api", "recovered", finalized=True)
+
+        listing = client.get("/api/audio/recoverable")
+        assert listing.status_code == 200
+        body = listing.json()
+        assert body["total"] == 1
+        assert body["items"][0]["id"] == "rec_api"
+
+        dispatched = []
+        coord.command_bus.dispatch = lambda intent: dispatched.append(intent) or True
+
+        queued = client.post("/api/audio/recoverable/rec_api/transcribe")
+        assert queued.status_code == 200
+        assert queued.json()["status"] == "queued"
+
+        deleted = client.delete("/api/audio/recoverable/rec_api")
+        assert deleted.status_code == 200
+        assert deleted.json()["deleted"] is True
+        assert [type(intent).__name__ for intent in dispatched] == [
+            "TranscribeRecoveredRecordingIntent",
+            "DeleteRecoveredRecordingIntent",
+        ]
 
     def test_list_with_limit(self, api):
         client, coord, _ = api

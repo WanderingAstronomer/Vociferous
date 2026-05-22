@@ -199,3 +199,19 @@ class RetranscribeIntent(InteractionIntent):
 
     transcript_id: int = 0
     source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class TranscribeRecoveredRecordingIntent(InteractionIntent):
+    """Transcribe a crash-recovered durable recording."""
+
+    recording_id: str = ""
+    source: IntentSource = IntentSource.API
+
+
+@dataclass(frozen=True, slots=True)
+class DeleteRecoveredRecordingIntent(InteractionIntent):
+    """Delete a crash-recovered durable recording."""
+
+    recording_id: str = ""
+    source: IntentSource = IntentSource.API

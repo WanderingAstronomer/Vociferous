@@ -122,6 +122,56 @@ class TestWALMode:
         assert fk == 1
 
 
+class TestAudioVaultTables:
+    def test_recording_session_chunk_and_asset_roundtrip(self, db: TranscriptDB, tmp_path: Path) -> None:
+        audio_path = tmp_path / "rec.vocaud"
+        record = db.create_recording_session(
+            recording_id="rec_db",
+            audio_path=audio_path,
+            sample_rate=16000,
+            encrypted=True,
+            encryption_key_id="rec_db",
+        )
+        assert record.status == "active"
+        assert record.encrypted is True
+
+        db.add_recording_chunk(
+            recording_id="rec_db",
+            chunk_index=0,
+            start_frame=0,
+            frame_count=16000,
+            byte_offset=32,
+            byte_count=32000,
+            sha256="abc123",
+        )
+        updated = db.get_recording_session("rec_db")
+        assert updated is not None
+        assert updated.duration_ms == 1000
+        assert updated.last_durable_chunk == 0
+
+        transcript = db.add_transcript(raw_text="hello", duration_ms=1000)
+        asset = db.add_audio_asset(
+            recording_id="rec_db",
+            transcript_id=transcript.id,
+            role="transcript_source",
+            path=audio_path,
+            duration_ms=1000,
+            size_bytes=32032,
+            encrypted=True,
+            pinned=True,
+        )
+        assert asset.id is not None
+        assets = db.get_audio_assets_for_transcript(transcript.id)
+        assert len(assets) == 1
+        assert assets[0].recording_id == "rec_db"
+
+        db.mark_recording_status("rec_db", "completed", transcript_id=transcript.id, finalized=True)
+        completed = db.get_recording_session("rec_db")
+        assert completed is not None
+        assert completed.status == "completed"
+        assert completed.transcript_id == transcript.id
+
+
 class TestLegacySchemaBootstrap:
     def test_pre_v11_database_bootstraps_and_migrates(self, tmp_path: Path) -> None:
         db_path = tmp_path / "legacy_v10.db"

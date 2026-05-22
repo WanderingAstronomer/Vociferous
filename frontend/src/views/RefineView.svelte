@@ -372,7 +372,18 @@
 
         // Reload the saved-prompts list whenever a prompt transcript is edited
         // or whenever a transcript is tagged/untagged as a Prompt.
-        unsubTranscriptUpdated = ws.on("transcript_updated", (data) => {
+        // Also refresh originalText if the currently-selected transcript was
+        // changed externally (e.g. reverted or edited in another view).
+        unsubTranscriptUpdated = ws.on("transcript_updated", async (data) => {
+            if (data.id === selectedId) {
+                try {
+                    const t = await getTranscript(data.id);
+                    originalText = t.text || t.normalized_text || t.raw_text || "";
+                    transcriptName = t.display_name?.trim() || `Transcript #${data.id}`;
+                } catch (e) {
+                    console.error("Failed to reload transcript after external update:", e);
+                }
+            }
             if (savedPrompts.some((p) => p.id === data.id) || data.tags?.some((t) => t.name === "Prompt")) {
                 void loadPrompts();
             }
