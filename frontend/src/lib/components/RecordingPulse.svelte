@@ -1,12 +1,10 @@
 <script lang="ts">
     /**
-     * RecordingPulse — Fills its container with a rounded-rect pulse treatment.
+     * RecordingPulse — Fills the record button with a horizontal pulse treatment.
      *
-     * The shape mirrors the WorkspacePanel's `rounded-xl` so the recording state
-     * reads as "this whole region is active" rather than "a circle in a void."
      * Sizing is intrinsic: `width: 100%; height: 100%`. The mic icon scales with
-     * the container's smaller dimension. Glow intensity and border vividness
-     * track the smoothed audio level.
+     * the button's smaller dimension. Glow intensity and border vividness track
+     * the smoothed audio level.
      */
 
     import { Mic } from "lucide-svelte";
@@ -20,13 +18,13 @@
     let { audioLevel = 0 }: Props = $props();
 
     let containerEl: HTMLDivElement | undefined = $state();
-    let micIconSize = $state(96);
+    let micIconSize = $state(30);
 
     $effect(() => {
         if (!containerEl) return;
         const ro = new ResizeObserver(([e]) => {
             const side = Math.min(e.contentRect.width, e.contentRect.height);
-            micIconSize = Math.max(72, Math.min(200, Math.round(side * 0.35)));
+            micIconSize = Math.max(26, Math.min(34, Math.round(side * 0.48)));
         });
         ro.observe(containerEl);
         return () => ro.disconnect();
@@ -62,12 +60,7 @@
     let speaking = $derived(smooth > 0.05);
 </script>
 
-<div
-    bind:this={containerEl}
-    class="recording-display"
-    class:speaking
-    style:--recording-intensity={smooth.toFixed(3)}
->
+<div bind:this={containerEl} class="recording-display" class:speaking style:--recording-intensity={smooth.toFixed(3)}>
     <Mic class="recording-mic" size={micIconSize} strokeWidth={1.5} />
 </div>
 
@@ -80,13 +73,13 @@
         align-items: center;
         justify-content: center;
         color: var(--orange-4);
-        border-radius: var(--radius-lg);
+        border-radius: var(--radius-xl);
         border: 2px solid var(--orange-4);
         box-shadow:
-            0 0 calc(24px + var(--recording-intensity, 0) * 48px)
-                rgba(255, 160, 60, calc(0.20 + var(--recording-intensity, 0) * 0.55)),
-            inset 0 0 calc(24px + var(--recording-intensity, 0) * 36px)
-                rgba(255, 183, 51, calc(0.06 + var(--recording-intensity, 0) * 0.20));
+            0 0 calc(14px + var(--recording-intensity, 0) * 28px)
+                rgba(255, 160, 60, calc(0.2 + var(--recording-intensity, 0) * 0.48)),
+            inset 0 0 calc(12px + var(--recording-intensity, 0) * 22px)
+                rgba(255, 183, 51, calc(0.06 + var(--recording-intensity, 0) * 0.18));
         transition: box-shadow 120ms ease-out;
         animation: recording-breathe 4s ease-in-out infinite;
         will-change: box-shadow, border-color;
@@ -102,19 +95,19 @@
         100% {
             border-color: var(--orange-4);
             box-shadow:
-                0 0 22px rgba(255, 160, 60, 0.20),
-                inset 0 0 22px rgba(255, 183, 51, 0.06);
+                0 0 14px rgba(255, 160, 60, 0.2),
+                inset 0 0 12px rgba(255, 183, 51, 0.06);
         }
         50% {
             border-color: rgba(255, 183, 51, 0.65);
             box-shadow:
-                0 0 36px rgba(255, 160, 60, 0.32),
-                inset 0 0 28px rgba(255, 183, 51, 0.14);
+                0 0 24px rgba(255, 160, 60, 0.32),
+                inset 0 0 20px rgba(255, 183, 51, 0.14);
         }
     }
 
     :global(.recording-mic) {
         display: block;
-        filter: drop-shadow(0 0 12px rgba(255, 183, 51, 0.55));
+        filter: drop-shadow(0 0 8px rgba(255, 183, 51, 0.55));
     }
 </style>

@@ -6,9 +6,20 @@
      * parent-supplied `setSafe`.
      */
 
-    import { Loader2, CheckCircle, AlertCircle } from "lucide-svelte";
-    import type { ModelInfo } from "../api";
+    import { Loader2, CheckCircle, AlertCircle, RefreshCw, PlugZap } from "lucide-svelte";
+    import {
+        deleteRefinementProviderApiKey,
+        getRefinementProviderApiKeyStatus,
+        getTranscriptionProviderModels,
+        saveRefinementProviderApiKey,
+        testTranscriptionProvider,
+        type ExternalProviderModel,
+        type ModelInfo,
+        type RefinementProviderApiKeyStatus,
+        type TranscriptionProviderId,
+    } from "../api";
     import type { GetConfigValue, SetConfigValue, VociferousConfig } from "../config.svelte";
+    import { toast } from "../toast.svelte";
     import CustomSelect from "./CustomSelect.svelte";
     import DownloadButton from "./DownloadButton.svelte";
 
@@ -34,9 +45,199 @@
         handleDownload,
     }: Props = $props();
 
+    let provider = $derived(getSafe(config, "model.provider", "local_faster_whisper"));
+    let externalModels: ExternalProviderModel[] = $state([]);
+    let externalModelsLoading = $state(false);
+    let providerTestMessage = $state("");
+    let providerTestOk = $state<boolean | null>(null);
+    let apiKeyDraft = $state("");
+    let apiKeyBusy = $state(false);
+    let apiKeyStatus = $state<RefinementProviderApiKeyStatus | null>(null);
+    let apiKeyStatusProvider = $state("");
+
+    function isExternalProvider(value: string): value is TranscriptionProviderId {
+        return value === "groq";
+    }
+
+    function setProvider(value: string) {
+        setSafe("model.provider", value as "local_faster_whisper" | "groq");
+        externalModels = [];
+        providerTestMessage = "";
+        providerTestOk = null;
+        apiKeyDraft = "";
+    }
+
+    function providerPath(providerId: TranscriptionProviderId, key: string) {
+        return `model.${providerId}.${key}` as Parameters<SetConfigValue>[0];
+    }
+
+    function providerPayload(providerId: TranscriptionProviderId) {
+        return {
+            base_url: getSafe(config, providerPath(providerId, "base_url") as never) as string,
+            model_id: getSafe(config, providerPath(providerId, "model_id") as never) as string,
+            api_key_env: getSafe(config, providerPath(providerId, "api_key_env") as never) as string | null,
+            api_key: apiKeyDraft.trim() || undefined,
+            timeout_seconds: getSafe(config, providerPath(providerId, "timeout_seconds") as never) as number,
+            model_list_enabled: getSafe(config, providerPath(providerId, "model_list_enabled") as never) as boolean,
+            max_retries: providerId === "groq" ? (getSafe(config, "model.groq.max_retries", 2) as number) : undefined,
+            retry_backoff_seconds:
+                providerId === "groq" ? (getSafe(config, "model.groq.retry_backoff_seconds", 1) as number) : undefined,
+        };
+    }
+
+    function setApiKeyEnv(providerId: TranscriptionProviderId, value: string) {
+        const trimmed = value.trim();
+        if (providerId === "groq" && trimmed.startsWith("gsk_")) {
+            apiKeyDraft = trimmed;
+            setSafe("model.groq.api_key_env", "GROQ_API_KEY");
+            toast.error("Paste Groq key values into Stored API Key, not API Key Env Var");
+            return;
+        }
+        setSafe(providerPath(providerId, "api_key_env"), (trimmed || null) as never);
+    }
+
+    $effect(() => {
+        const currentProvider = provider;
+        if (isExternalProvider(currentProvider) && currentProvider !== apiKeyStatusProvider) {
+            apiKeyStatusProvider = currentProvider;
+            void refreshApiKeyStatus(currentProvider);
+        }
+    });
+
+    async function refreshApiKeyStatus(providerId: TranscriptionProviderId) {
+        try {
+            apiKeyStatus = await getRefinementProviderApiKeyStatus(providerId);
+        } catch {
+            apiKeyStatus = null;
+        }
+    }
+
+    function providerHasUsableApiKey(providerId: TranscriptionProviderId): boolean {
+        return Boolean(apiKeyDraft.trim() || apiKeyStatus?.source_valid);
+    }
+
+    function apiKeyStatusText(providerId: TranscriptionProviderId): string {
+        if (apiKeyStatus?.source === "stored" && apiKeyStatus.source_valid) return `Stored local key available via ${apiKeyStatus.backend}.`;
+        if (apiKeyStatus?.source === "stored") return "Stored Groq key looks invalid. Replace it with the full key from Groq.";
+        if (apiKeyStatus?.source === "environment" && apiKeyStatus.source_valid) return `Using ${apiKeyStatus.api_key_env ?? "environment"} from the process environment.`;
+        if (apiKeyStatus?.source === "environment") return `${apiKeyStatus.api_key_env ?? "Environment key"} is set but does not look like a valid Groq key.`;
+        if (apiKeyStatus?.backend === "unavailable") return "No local secret backend is available; use an environment variable instead.";
+        return "No Groq API key configured.";
+    }
+
+    function providerHasStoredKey(providerId: TranscriptionProviderId): boolean {
+        return apiKeyStatusProvider === providerId && Boolean(apiKeyStatus?.has_stored_key);
+    }
+
+    async function saveApiKey(providerId: TranscriptionProviderId) {
+        const apiKey = apiKeyDraft.trim();
+        if (!apiKey) {
+            toast.error("Paste an API key before saving it");
+            return;
+        }
+        apiKeyBusy = true;
+        try {
+            await saveRefinementProviderApiKey(providerId, apiKey);
+            apiKeyDraft = "";
+            await refreshApiKeyStatus(providerId);
+            toast.success("Provider API key saved locally");
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : String(e));
+        } finally {
+            apiKeyBusy = false;
+        }
+    }
+
+    async function removeApiKey(providerId: TranscriptionProviderId) {
+        apiKeyBusy = true;
+        try {
+            await deleteRefinementProviderApiKey(providerId);
+            await refreshApiKeyStatus(providerId);
+            toast.success("Stored provider API key removed");
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : String(e));
+        } finally {
+            apiKeyBusy = false;
+        }
+    }
+
+    async function refreshExternalModels(providerId: TranscriptionProviderId) {
+        externalModelsLoading = true;
+        providerTestMessage = "";
+        providerTestOk = null;
+        if (!providerHasUsableApiKey(providerId)) {
+            externalModelsLoading = false;
+            providerTestOk = false;
+            providerTestMessage = "API key required";
+            toast.error("Groq requires an API key before models can be listed");
+            return;
+        }
+        try {
+            const result = await getTranscriptionProviderModels(providerId);
+            externalModels = result.models;
+            providerTestOk = true;
+            providerTestMessage = `${result.models.length} models found`;
+            toast.success(providerTestMessage);
+        } catch (e) {
+            providerTestOk = false;
+            providerTestMessage = e instanceof Error ? e.message : String(e);
+            toast.error(providerTestMessage);
+        } finally {
+            externalModelsLoading = false;
+        }
+    }
+
+    async function testExternalConnection(providerId: TranscriptionProviderId) {
+        externalModelsLoading = true;
+        providerTestMessage = "";
+        providerTestOk = null;
+        if (!providerHasUsableApiKey(providerId)) {
+            externalModelsLoading = false;
+            providerTestOk = false;
+            providerTestMessage = "API key required";
+            toast.error("Groq requires an API key before testing transcription");
+            return;
+        }
+        try {
+            const result = await testTranscriptionProvider(providerId, providerPayload(providerId));
+            providerTestOk = result.ok;
+            providerTestMessage = result.ok ? "Connection ready" : result.error || "Connection failed";
+            if (result.models) externalModels = result.models;
+            result.ok ? toast.success(providerTestMessage) : toast.error(providerTestMessage);
+        } catch (e) {
+            providerTestOk = false;
+            providerTestMessage = e instanceof Error ? e.message : String(e);
+            toast.error(providerTestMessage);
+        } finally {
+            externalModelsLoading = false;
+        }
+    }
+
 </script>
 
 <div class="flex flex-col gap-[var(--space-3)]">
+    <!-- ASR Provider -->
+    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+        <label
+            class="text-[var(--text-sm)] text-[var(--text-primary)]"
+            for="setting-asr-provider"
+            data-tip="Choose where speech recognition inference runs. Groq sends audio to Groq; local faster-whisper stays on this machine."
+            >ASR Provider</label
+        >
+        <div class="w-full max-w-[460px]">
+            <CustomSelect
+                id="setting-asr-provider"
+                options={[
+                    { value: "local_faster_whisper", label: "Local faster-whisper" },
+                    { value: "groq", label: "Groq" },
+                ]}
+                value={String(provider)}
+                onchange={setProvider}
+            />
+        </div>
+    </div>
+
+    {#if provider === "local_faster_whisper"}
     <!-- Whisper Architecture -->
     <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
         <label
@@ -131,6 +332,153 @@
             }}
         />
     </div>
+
+    {:else if isExternalProvider(provider)}
+        {@const providerId = provider}
+        <!-- Provider Base URL -->
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+            <label
+                class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                for="setting-asr-provider-base-url"
+                data-tip="OpenAI-compatible base URL for speech-to-text requests."
+                >Provider Base URL</label
+            >
+            <input
+                id="setting-asr-provider-base-url"
+                class="h-9 w-full max-w-[460px] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                type="text"
+                value={getSafe(config, providerPath(providerId, "base_url") as never) as string}
+                oninput={(e) => setSafe(providerPath(providerId, "base_url"), (e.target as HTMLInputElement).value as never)}
+            />
+        </div>
+
+        <!-- Provider Model -->
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+            <label
+                class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                for="setting-asr-provider-model"
+                data-tip="Speech-to-text model id sent to the provider."
+                >Provider Model</label
+            >
+            <div class="flex items-center gap-[var(--space-2)] max-w-[480px]">
+                <input
+                    id="setting-asr-provider-model"
+                    class="h-9 flex-1 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                    type="text"
+                    value={getSafe(config, providerPath(providerId, "model_id") as never) as string}
+                    oninput={(e) => setSafe(providerPath(providerId, "model_id"), (e.target as HTMLInputElement).value as never)}
+                />
+                <button
+                    type="button"
+                    class="h-9 w-9 inline-flex items-center justify-center rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] text-[var(--accent)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
+                    title="Refresh available models"
+                    disabled={externalModelsLoading || !providerHasUsableApiKey(providerId)}
+                    onclick={() => refreshExternalModels(providerId)}
+                >
+                    <RefreshCw size={15} class={externalModelsLoading ? "spin" : ""} />
+                </button>
+            </div>
+        </div>
+
+        {#if externalModels.length > 0}
+            <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                <label class="text-[var(--text-sm)] text-[var(--text-primary)]" for="setting-asr-provider-model-list"
+                    >Available Models</label
+                >
+                <div class="w-full max-w-[460px]">
+                    <CustomSelect
+                        id="setting-asr-provider-model-list"
+                        options={externalModels.map((m) => ({ value: m.id, label: m.id }))}
+                        value={getSafe(config, providerPath(providerId, "model_id") as never) as string}
+                        onchange={(v: string) => setSafe(providerPath(providerId, "model_id"), v as never)}
+                    />
+                </div>
+            </div>
+        {/if}
+
+        {#if !providerHasStoredKey(providerId)}
+            <!-- API Key Env Var -->
+            <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                <label class="text-[var(--text-sm)] text-[var(--text-primary)]" for="setting-asr-api-key-env">API Key Env Var</label>
+                <input
+                    id="setting-asr-api-key-env"
+                    class="h-9 w-56 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                    type="text"
+                    value={(getSafe(config, providerPath(providerId, "api_key_env") as never) as string | null) ?? ""}
+                    oninput={(e) => setApiKeyEnv(providerId, (e.target as HTMLInputElement).value)}
+                />
+            </div>
+        {/if}
+
+        <!-- Stored API Key -->
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+            <label class="text-[var(--text-sm)] text-[var(--text-primary)]" for="setting-asr-provider-api-key">Stored API Key</label>
+            <div class="flex items-center gap-[var(--space-2)] max-w-[480px]">
+                <input
+                    id="setting-asr-provider-api-key"
+                    class="h-9 flex-1 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                    type="password"
+                    autocomplete="off"
+                    placeholder={apiKeyStatus?.has_stored_key ? "Stored locally" : "Optional"}
+                    value={apiKeyDraft}
+                    oninput={(e) => (apiKeyDraft = (e.target as HTMLInputElement).value)}
+                />
+                <button
+                    type="button"
+                    class="h-9 px-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] text-[var(--text-sm)] text-[var(--text-primary)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
+                    disabled={apiKeyBusy || !apiKeyDraft.trim()}
+                    onclick={() => saveApiKey(providerId)}
+                >Save</button>
+                <button
+                    type="button"
+                    class="h-9 px-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] text-[var(--text-sm)] text-[var(--text-secondary)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
+                    disabled={apiKeyBusy || !apiKeyStatus?.has_stored_key}
+                    onclick={() => removeApiKey(providerId)}
+                >Remove</button>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[24px]">
+            <div></div>
+            <div class="text-[var(--text-xs)] text-[var(--text-tertiary)]">{apiKeyStatusText(providerId)}</div>
+        </div>
+
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+            <label class="text-[var(--text-sm)] text-[var(--text-primary)]" for="setting-asr-provider-timeout">Timeout Seconds</label>
+            <input
+                id="setting-asr-provider-timeout"
+                class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                type="number"
+                min="5"
+                max="600"
+                value={getSafe(config, providerPath(providerId, "timeout_seconds") as never) as number}
+                oninput={(e) => {
+                    const value = parseFloat((e.target as HTMLInputElement).value);
+                    if (!isNaN(value) && value >= 5 && value <= 600) setSafe(providerPath(providerId, "timeout_seconds"), value as never);
+                }}
+            />
+        </div>
+
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+            <div></div>
+            <div class="flex items-center gap-[var(--space-2)]">
+                <button
+                    type="button"
+                    class="h-9 inline-flex items-center gap-[var(--space-2)] px-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] text-[var(--text-sm)] text-[var(--text-primary)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
+                    disabled={externalModelsLoading || !providerHasUsableApiKey(providerId)}
+                    onclick={() => testExternalConnection(providerId)}
+                >
+                    <PlugZap size={15} />
+                    Test Connection
+                </button>
+                {#if providerTestMessage}
+                    <span class="text-[var(--text-xs)] {providerTestOk ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}">
+                        {providerTestMessage}
+                    </span>
+                {/if}
+            </div>
+        </div>
+    {/if}
 
     <!-- Language -->
     <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">

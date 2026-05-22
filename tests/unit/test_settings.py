@@ -147,3 +147,47 @@ class TestSerialization:
         assert loaded.model.model == original.model.model
         assert loaded.safety.confirm_delete is original.safety.confirm_delete
         assert loaded.refinement.system_prompt == original.refinement.system_prompt
+
+    def test_provider_api_key_is_never_serialized(self):
+        s = VociferousSettings(
+            model={"groq": {"api_key": "gsk_transcription_secret"}},
+            refinement={"groq": {"api_key": "gsk_secret_value"}},
+        )
+
+        assert s.model.groq.api_key == "gsk_transcription_secret"
+        assert s.refinement.groq.api_key == "gsk_secret_value"
+        dumped = s.model_dump()
+        dumped_json = s.model_dump_json()
+
+        assert "api_key" not in dumped["model"]["groq"]
+        assert "api_key" not in dumped["refinement"]["groq"]
+        assert "gsk_transcription_secret" not in dumped_json
+        assert "gsk_secret_value" not in dumped_json
+
+    def test_legacy_plaintext_provider_key_migrates_to_secret_store(self, monkeypatch, tmp_path: Path):
+        from src.core import secret_store
+
+        migrated: list[tuple[str, str]] = []
+        monkeypatch.setattr(secret_store, "store_provider_api_key", lambda provider_id, api_key: migrated.append((provider_id, api_key)))
+
+        config_file = tmp_path / "settings.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "model": {"groq": {"api_key": "gsk_legacy_transcription_secret"}},
+                    "refinement": {"groq": {"api_key": "gsk_legacy_secret"}},
+                }
+            )
+        )
+
+        init_settings(config_path=config_file)
+
+        assert migrated == [("groq", "gsk_legacy_transcription_secret"), ("groq", "gsk_legacy_secret")]
+        saved = json.loads(config_file.read_text())
+        assert "api_key" not in saved["model"]["groq"]
+        assert "api_key" not in saved["refinement"]["groq"]
+
+    def test_removed_lm_studio_transcription_provider_falls_back_to_local(self):
+        s = VociferousSettings(model={"provider": "lm_studio", "lm_studio": {"model_id": "not-real"}})
+
+        assert s.model.provider == "local_faster_whisper"

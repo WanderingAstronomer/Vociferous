@@ -421,13 +421,17 @@
 <div class="flex flex-col h-full bg-[var(--surface-primary)] overflow-hidden">
     {#if selectedId === null}
         <!-- No transcript selected — show helpful empty state -->
-        <div class="flex-1 flex items-center justify-center">
+        <div class="flex-1 min-h-0 overflow-y-auto" style="scrollbar-gutter: stable;">
+        <div class="min-h-full flex items-center justify-center">
             <EmptyState
                 icon={Sparkles}
                 message="Navigate here from Transcribe or Transcriptions to refine a transcript"
             />
         </div>
+        </div>
     {:else}
+        <div class="flex-1 min-h-0 overflow-y-auto" style="scrollbar-gutter: stable;">
+        <div class="min-h-full flex flex-col">
         <!-- Analytics Delta (visible after refinement) -->
         {#if hasRefined && refinedText}
             <div
@@ -527,7 +531,7 @@
             refined). Edits to the refined draft propagate back to
             refinedText so Accept commits whatever is on screen.
         -->
-        <div class="flex-1 flex flex-col p-[var(--space-4)] min-h-0 overflow-hidden">
+        <div class="flex-1 flex flex-col p-[var(--space-4)] min-h-[320px] overflow-hidden">
             <RefinePane title={hasRefined ? "Refined Draft" : "Transcript"}>
                 {#snippet headerStart()}
                     {#if hasRefined ? refinedText : originalText}
@@ -748,6 +752,8 @@
                     ></textarea>
                 {/if}
             </div>
+        </div>
+        </div>
         </div>
 
         <!-- Action Bar -->

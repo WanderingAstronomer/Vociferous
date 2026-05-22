@@ -11,7 +11,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     });
     if (!res.ok) {
         const body = await res.text();
-        throw new Error(`API ${res.status}: ${body}`);
+        let detail = body;
+        try {
+            const parsed = JSON.parse(body) as { error?: unknown; message?: unknown; detail?: unknown };
+            if (typeof parsed.error === "string") detail = parsed.error;
+            else if (typeof parsed.message === "string") detail = parsed.message;
+            else if (typeof parsed.detail === "string") detail = parsed.detail;
+        } catch {
+            // Keep raw body.
+        }
+        throw new Error(`API ${res.status}: ${detail}`);
     }
     return res.json();
 }
@@ -249,6 +258,95 @@ export interface ModelInfo {
 
 export function getModels(): Promise<{ asr: Record<string, ModelInfo>; slm: Record<string, ModelInfo> }> {
     return request("/models");
+}
+
+export type ExternalProviderId = "lm_studio" | "groq";
+export type RefinementProviderId = ExternalProviderId;
+export type TranscriptionProviderId = "groq";
+
+export interface ExternalProviderModel {
+    id: string;
+    object?: string;
+}
+
+export function getRefinementProviderModels(
+    providerId: RefinementProviderId,
+): Promise<{ provider: RefinementProviderId; models: ExternalProviderModel[] }> {
+    return request(`/refinement/providers/${providerId}/models`);
+}
+
+export function getTranscriptionProviderModels(
+    providerId: TranscriptionProviderId,
+): Promise<{ provider: TranscriptionProviderId; models: ExternalProviderModel[] }> {
+    return request(`/transcription/providers/${providerId}/models`);
+}
+
+export interface RefinementProviderTestPayload {
+    base_url?: string;
+    model_id?: string;
+    api_key_env?: string | null;
+    api_key?: string | null;
+    timeout_seconds?: number;
+    max_output_tokens?: number;
+    model_list_enabled?: boolean;
+    max_retries?: number;
+    retry_backoff_seconds?: number;
+}
+
+export function testRefinementProvider(
+    providerId: RefinementProviderId,
+    payload: RefinementProviderTestPayload = {},
+): Promise<{ ok: boolean; provider: RefinementProviderId; models?: ExternalProviderModel[]; error?: string }> {
+    return request(`/refinement/providers/${providerId}/test`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export type TranscriptionProviderTestPayload = Omit<RefinementProviderTestPayload, "max_output_tokens">;
+
+export function testTranscriptionProvider(
+    providerId: TranscriptionProviderId,
+    payload: TranscriptionProviderTestPayload = {},
+): Promise<{ ok: boolean; provider: TranscriptionProviderId; models?: ExternalProviderModel[]; error?: string }> {
+    return request(`/transcription/providers/${providerId}/test`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export interface RefinementProviderApiKeyStatus {
+    provider: RefinementProviderId;
+    backend: "win32_dpapi" | "macos_keychain" | "libsecret" | "unavailable";
+    has_env_key: boolean;
+    has_env_key_valid: boolean;
+    has_stored_key: boolean;
+    has_stored_key_valid: boolean;
+    source: "environment" | "stored" | "none";
+    source_valid: boolean;
+    api_key_env: string | null;
+}
+
+export function getRefinementProviderApiKeyStatus(
+    providerId: RefinementProviderId,
+): Promise<RefinementProviderApiKeyStatus> {
+    return request(`/refinement/providers/${providerId}/api-key`);
+}
+
+export function saveRefinementProviderApiKey(
+    providerId: RefinementProviderId,
+    apiKey: string,
+): Promise<{ provider: RefinementProviderId; stored: boolean; backend: RefinementProviderApiKeyStatus["backend"] }> {
+    return request(`/refinement/providers/${providerId}/api-key`, {
+        method: "PUT",
+        body: JSON.stringify({ api_key: apiKey }),
+    });
+}
+
+export function deleteRefinementProviderApiKey(
+    providerId: RefinementProviderId,
+): Promise<{ provider: RefinementProviderId; deleted: boolean; backend: RefinementProviderApiKeyStatus["backend"] }> {
+    return request(`/refinement/providers/${providerId}/api-key`, { method: "DELETE" });
 }
 
 // --- Health ---

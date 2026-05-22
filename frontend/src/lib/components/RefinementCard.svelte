@@ -6,9 +6,21 @@
      * auto-refine / auto-retitle toggles, and advanced sampling collapsible.
      */
 
-    import { Loader2, CheckCircle, AlertCircle, ChevronDown, Info } from "lucide-svelte";
-    import type { HealthInfo, ModelInfo } from "../api";
+    import { Loader2, CheckCircle, AlertCircle, ChevronDown, Info, RefreshCw, PlugZap } from "lucide-svelte";
+    import {
+        deleteRefinementProviderApiKey,
+        getRefinementProviderApiKeyStatus,
+        getRefinementProviderModels,
+        saveRefinementProviderApiKey,
+        testRefinementProvider,
+        type ExternalProviderModel,
+        type HealthInfo,
+        type ModelInfo,
+        type RefinementProviderApiKeyStatus,
+        type RefinementProviderId,
+    } from "../api";
     import type { GetConfigValue, SetConfigValue, VociferousConfig } from "../config.svelte";
+    import { toast } from "../toast.svelte";
     import ToggleSwitch from "./ToggleSwitch.svelte";
     import CustomSelect from "./CustomSelect.svelte";
     import DownloadButton from "./DownloadButton.svelte";
@@ -38,7 +50,16 @@
     }: Props = $props();
 
     let advancedOpen = $state(false);
+    let externalModels: ExternalProviderModel[] = $state([]);
+    let externalModelsLoading = $state(false);
+    let providerTestMessage = $state("");
+    let providerTestOk = $state<boolean | null>(null);
+    let apiKeyDraft = $state("");
+    let apiKeyBusy = $state(false);
+    let apiKeyStatus = $state<RefinementProviderApiKeyStatus | null>(null);
+    let apiKeyStatusProvider = $state("");
 
+    let provider = $derived(getSafe(config, "refinement.provider", "local_ct2"));
     /* n_gpu_layers is the stored runtime preference: -1 means prefer GPU with CPU fallback, 0 means force CPU. */
     let deviceValue = $derived(getSafe(config, "refinement.n_gpu_layers", -1) === 0 ? "cpu" : "gpu");
     let isCpu = $derived(deviceValue === "cpu");
@@ -54,6 +75,173 @@
 
     function setDevice(v: string) {
         setSafe("refinement.n_gpu_layers", v === "cpu" ? 0 : -1);
+    }
+
+    function setProvider(v: string) {
+        setSafe("refinement.provider", v as "local_ct2" | "lm_studio" | "groq");
+        providerTestMessage = "";
+        providerTestOk = null;
+        externalModels = [];
+        apiKeyDraft = "";
+    }
+
+    function isExternalProvider(value: string): value is RefinementProviderId {
+        return value === "lm_studio" || value === "groq";
+    }
+
+    function providerPath(providerId: RefinementProviderId, key: string) {
+        return `refinement.${providerId}.${key}` as Parameters<SetConfigValue>[0];
+    }
+
+    function providerPayload(providerId: RefinementProviderId) {
+        return {
+            base_url: getSafe(config, providerPath(providerId, "base_url") as never) as string,
+            model_id: getSafe(config, providerPath(providerId, "model_id") as never) as string,
+            api_key_env: getSafe(config, providerPath(providerId, "api_key_env") as never) as string | null,
+            api_key: apiKeyDraft.trim() || undefined,
+            timeout_seconds: getSafe(config, providerPath(providerId, "timeout_seconds") as never) as number,
+            max_output_tokens: getSafe(config, providerPath(providerId, "max_output_tokens") as never) as number,
+            model_list_enabled: getSafe(config, providerPath(providerId, "model_list_enabled") as never) as boolean,
+            max_retries:
+                providerId === "groq"
+                    ? (getSafe(config, "refinement.groq.max_retries", 2) as number)
+                    : undefined,
+            retry_backoff_seconds:
+                providerId === "groq"
+                    ? (getSafe(config, "refinement.groq.retry_backoff_seconds", 1) as number)
+                    : undefined,
+        };
+    }
+
+    function setApiKeyEnv(providerId: RefinementProviderId, value: string) {
+        const trimmed = value.trim();
+        if (providerId === "groq" && trimmed.startsWith("gsk_")) {
+            apiKeyDraft = trimmed;
+            setSafe("refinement.groq.api_key_env", "GROQ_API_KEY");
+            toast.error("Paste Groq key values into Stored API Key, not API Key Env Var");
+            return;
+        }
+        setSafe(providerPath(providerId, "api_key_env"), (trimmed || null) as never);
+    }
+
+    $effect(() => {
+        const currentProvider = provider;
+        if (isExternalProvider(currentProvider) && currentProvider !== apiKeyStatusProvider) {
+            apiKeyStatusProvider = currentProvider;
+            void refreshApiKeyStatus(currentProvider);
+        }
+    });
+
+    async function refreshApiKeyStatus(providerId: RefinementProviderId) {
+        try {
+            apiKeyStatus = await getRefinementProviderApiKeyStatus(providerId);
+        } catch {
+            apiKeyStatus = null;
+        }
+    }
+
+    function providerHasUsableApiKey(providerId: RefinementProviderId): boolean {
+        if (providerId === "lm_studio") return true;
+        return Boolean(apiKeyDraft.trim() || apiKeyStatus?.source_valid);
+    }
+
+    function apiKeyStatusText(providerId: RefinementProviderId): string {
+        if (providerId === "lm_studio") return "LM Studio usually does not require an API key.";
+        if (apiKeyStatus?.source === "stored" && apiKeyStatus.source_valid) return `Stored local key available via ${apiKeyStatus.backend}.`;
+        if (apiKeyStatus?.source === "stored") return "Stored Groq key looks invalid. Replace it with the full key from Groq.";
+        if (apiKeyStatus?.source === "environment" && apiKeyStatus.source_valid) return `Using ${apiKeyStatus.api_key_env ?? "environment"} from the process environment.`;
+        if (apiKeyStatus?.source === "environment") return `${apiKeyStatus.api_key_env ?? "Environment key"} is set but does not look like a valid Groq key.`;
+        if (apiKeyStatus?.backend === "unavailable") return "No local secret backend is available; use an environment variable instead.";
+        return "No Groq API key configured.";
+    }
+
+    function providerHasStoredKey(providerId: RefinementProviderId): boolean {
+        return apiKeyStatusProvider === providerId && Boolean(apiKeyStatus?.has_stored_key);
+    }
+
+    async function saveApiKey(providerId: RefinementProviderId) {
+        const apiKey = apiKeyDraft.trim();
+        if (!apiKey) {
+            toast.error("Paste an API key before saving it");
+            return;
+        }
+        apiKeyBusy = true;
+        try {
+            await saveRefinementProviderApiKey(providerId, apiKey);
+            apiKeyDraft = "";
+            await refreshApiKeyStatus(providerId);
+            toast.success("Provider API key saved locally");
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : String(e));
+        } finally {
+            apiKeyBusy = false;
+        }
+    }
+
+    async function removeApiKey(providerId: RefinementProviderId) {
+        apiKeyBusy = true;
+        try {
+            await deleteRefinementProviderApiKey(providerId);
+            await refreshApiKeyStatus(providerId);
+            toast.success("Stored provider API key removed");
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : String(e));
+        } finally {
+            apiKeyBusy = false;
+        }
+    }
+
+    async function refreshExternalModels(providerId: RefinementProviderId) {
+        externalModelsLoading = true;
+        providerTestMessage = "";
+        providerTestOk = null;
+        if (!providerHasUsableApiKey(providerId)) {
+            externalModelsLoading = false;
+            providerTestOk = false;
+            providerTestMessage = "API key required";
+            toast.error("Groq requires an API key before models can be listed");
+            return;
+        }
+        try {
+            const result = await getRefinementProviderModels(providerId);
+            externalModels = result.models;
+            providerTestOk = true;
+            providerTestMessage = `${result.models.length} models found`;
+            toast.success(providerTestMessage);
+        } catch (e) {
+            providerTestOk = false;
+            providerTestMessage = e instanceof Error ? e.message : String(e);
+            toast.error(providerTestMessage);
+        } finally {
+            externalModelsLoading = false;
+        }
+    }
+
+    async function testExternalConnection(providerId: RefinementProviderId) {
+        externalModelsLoading = true;
+        providerTestMessage = "";
+        providerTestOk = null;
+        if (!providerHasUsableApiKey(providerId)) {
+            externalModelsLoading = false;
+            providerTestOk = false;
+            providerTestMessage = "API key required";
+            toast.error("Groq requires an API key before testing the connection");
+            return;
+        }
+        try {
+            const result = await testRefinementProvider(providerId, providerPayload(providerId));
+            externalModels = result.models ?? externalModels;
+            providerTestOk = result.ok;
+            providerTestMessage = result.ok ? "Connection ready" : result.error || "Connection failed";
+            if (result.ok) toast.success(providerTestMessage);
+            else toast.error(providerTestMessage);
+        } catch (e) {
+            providerTestOk = false;
+            providerTestMessage = e instanceof Error ? e.message : String(e);
+            toast.error(providerTestMessage);
+        } finally {
+            externalModelsLoading = false;
+        }
     }
 </script>
 
@@ -77,6 +265,28 @@
     </div>
 
     {#if getSafe(config, "refinement.enabled", false)}
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+            <label
+                class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                for="setting-refprovider"
+                data-tip="Choose where refinement inference runs. Local keeps text on this machine; Groq sends text to Groq's cloud API."
+                >Refinement Provider</label
+            >
+            <div class="w-full max-w-[460px]">
+                <CustomSelect
+                    id="setting-refprovider"
+                    options={[
+                        { value: "local_ct2", label: "Local CTranslate2" },
+                        { value: "lm_studio", label: "LM Studio" },
+                        { value: "groq", label: "Groq" },
+                    ]}
+                    value={provider}
+                    onchange={setProvider}
+                />
+            </div>
+        </div>
+
+        {#if provider === "local_ct2"}
         <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
             <label
                 class="text-[var(--text-sm)] text-[var(--text-primary)]"
@@ -192,6 +402,158 @@
                 >
             </div>
         {/if}
+            {:else if isExternalProvider(provider)}
+                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                    <label
+                        class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                        for="setting-provider-url"
+                        data-tip="OpenAI-compatible base URL. LM Studio usually uses http://localhost:1234/v1; Groq uses https://api.groq.com/openai/v1."
+                        >Provider Base URL</label
+                    >
+                    <input
+                        id="setting-provider-url"
+                        class="h-9 w-full max-w-[460px] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                        type="text"
+                        value={getSafe(config, providerPath(provider, "base_url") as never) as string}
+                        oninput={(e) => setSafe(providerPath(provider, "base_url"), (e.target as HTMLInputElement).value as never)}
+                    />
+                </div>
+                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                    <label
+                        class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                        for="setting-provider-model"
+                        data-tip="Model identifier sent to the provider's chat completions endpoint."
+                        >Provider Model</label
+                    >
+                    <div class="flex items-center gap-[var(--space-2)]">
+                        <input
+                            id="setting-provider-model"
+                            class="h-9 w-full max-w-[460px] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                            type="text"
+                            value={getSafe(config, providerPath(provider, "model_id") as never) as string}
+                            oninput={(e) => setSafe(providerPath(provider, "model_id"), (e.target as HTMLInputElement).value as never)}
+                        />
+                        <button
+                            type="button"
+                            class="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] text-[var(--accent)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
+                            aria-label="Refresh provider models"
+                            disabled={externalModelsLoading || !providerHasUsableApiKey(provider)}
+                            onclick={() => refreshExternalModels(provider)}
+                        >
+                            {#if externalModelsLoading}
+                                <Loader2 size={15} class="spin" />
+                            {:else}
+                                <RefreshCw size={15} />
+                            {/if}
+                        </button>
+                    </div>
+                </div>
+                {#if externalModels.length > 0}
+                    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                        <label
+                            class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                            for="setting-provider-model-list"
+                            data-tip="Models returned by the provider's /models endpoint."
+                            >Available Models</label
+                        >
+                        <div class="w-full max-w-[460px]">
+                            <CustomSelect
+                                id="setting-provider-model-list"
+                                options={externalModels.map((model) => ({ value: model.id, label: model.id }))}
+                                value={getSafe(config, providerPath(provider, "model_id") as never) as string}
+                                onchange={(v: string) => setSafe(providerPath(provider, "model_id"), v as never)}
+                            />
+                        </div>
+                    </div>
+                {/if}
+                {#if !providerHasStoredKey(provider)}
+                    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                        <label
+                            class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                            for="setting-provider-key-env"
+                            data-tip="Environment variable containing the provider API key. Groq defaults to GROQ_API_KEY. The key value itself is never stored in normal settings."
+                            >API Key Env Var</label
+                        >
+                        <input
+                            id="setting-provider-key-env"
+                            class="h-9 w-56 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                            type="text"
+                            value={(getSafe(config, providerPath(provider, "api_key_env") as never) as string | null) ?? ""}
+                            oninput={(e) => setApiKeyEnv(provider, (e.target as HTMLInputElement).value)}
+                        />
+                    </div>
+                {/if}
+                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                    <label
+                        class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                        for="setting-provider-api-key"
+                        data-tip="Paste a provider API key to test it or save it into the local OS-backed secret store. The key is not written to settings.json."
+                        >Stored API Key</label
+                    >
+                    <div class="flex min-w-0 flex-wrap items-center gap-[var(--space-2)]">
+                        <input
+                            id="setting-provider-api-key"
+                            class="h-9 w-full max-w-[320px] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                            type="password"
+                            autocomplete="off"
+                            placeholder={apiKeyStatus?.has_stored_key ? "Saved key present" : provider === "groq" ? "Paste Groq key" : "Optional local-server key"}
+                            value={apiKeyDraft}
+                            oninput={(e) => (apiKeyDraft = (e.target as HTMLInputElement).value)}
+                        />
+                        <button
+                            type="button"
+                            class="inline-flex h-9 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-3)] text-[var(--text-sm)] text-[var(--accent)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
+                            disabled={apiKeyBusy || !apiKeyDraft.trim()}
+                            onclick={() => saveApiKey(provider)}
+                        >
+                            {#if apiKeyBusy}<Loader2 size={15} class="spin" />{/if}
+                            Save Key
+                        </button>
+                        <button
+                            type="button"
+                            class="inline-flex h-9 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-3)] text-[var(--text-sm)] text-[var(--text-secondary)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
+                            disabled={apiKeyBusy || !apiKeyStatus?.has_stored_key}
+                            onclick={() => removeApiKey(provider)}
+                        >
+                            Remove
+                        </button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[24px]">
+                    <span></span>
+                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] leading-[var(--leading-normal)]">
+                        {apiKeyStatusText(provider)}
+                    </span>
+                </div>
+                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                    <span class="text-[var(--text-sm)] text-[var(--text-primary)]" data-tip="Checks provider connectivity and authentication using the current draft settings.">Provider Check</span>
+                    <div class="flex items-center gap-[var(--space-2)]">
+                        <button
+                            type="button"
+                            class="inline-flex h-9 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-3)] text-[var(--text-sm)] text-[var(--accent)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
+                            disabled={externalModelsLoading || !providerHasUsableApiKey(provider)}
+                            onclick={() => testExternalConnection(provider)}
+                        >
+                            {#if externalModelsLoading}<Loader2 size={15} class="spin" />{:else}<PlugZap size={15} />{/if}
+                            Test
+                        </button>
+                        {#if providerTestMessage}
+                            <span class="text-[var(--text-xs)] {providerTestOk ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}">{providerTestMessage}</span>
+                        {/if}
+                    </div>
+                </div>
+                {#if provider === "groq"}
+                    <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-warning, #e5a00d)] py-1">
+                        <AlertCircle size={14} />
+                        <span class="leading-[var(--leading-normal)]">Groq refinement sends transcript text to Groq's cloud API for inference.</span>
+                    </div>
+                {:else}
+                    <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--text-secondary)] py-1">
+                        <Info size={14} class="shrink-0 mt-px" />
+                        <span class="leading-[var(--leading-normal)]">LM Studio must be running its local server, usually from the Developer tab or lms server start.</span>
+                    </div>
+                {/if}
+            {/if}
         <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
             <label
                 id="setting-autorefine-label"
@@ -284,7 +646,8 @@
                         }}
                     />
                 </div>
-                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                {#if provider === "local_ct2" || provider === "lm_studio"}
+                    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
                     <label
                         class="text-[var(--text-sm)] text-[var(--text-primary)]"
                         for="setting-top-k"
@@ -304,8 +667,8 @@
                             if (!isNaN(v) && v >= 1 && v <= 200) setSafe("refinement.top_k", v);
                         }}
                     />
-                </div>
-                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                    </div>
+                    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
                     <label
                         class="text-[var(--text-sm)] text-[var(--text-primary)]"
                         for="setting-repetition-penalty"
@@ -325,8 +688,10 @@
                             if (!isNaN(v) && v >= 1.0 && v <= 2.0) setSafe("refinement.repetition_penalty", v);
                         }}
                     />
-                </div>
-                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                    </div>
+                {/if}
+                {#if provider === "local_ct2"}
+                    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
                     <label
                         id="setting-use-thinking-label"
                         class="text-[var(--text-sm)] text-[var(--text-primary)]"
@@ -342,7 +707,8 @@
                             (checked: boolean) => setSafe("refinement.use_thinking", checked)
                         }
                     />
-                </div>
+                    </div>
+                {/if}
             </div>
         {/if}
     {/if}

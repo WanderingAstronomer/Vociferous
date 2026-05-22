@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from src.core.cuda_runtime import CudaRuntimeStatus
-from src.core.log_manager import build_support_diagnostics_snapshot
+from src.core.log_manager import build_support_diagnostics_snapshot, log_support_diagnostics_snapshot
 
 
 class TestSupportDiagnosticsSnapshot:
@@ -40,3 +40,13 @@ class TestSupportDiagnosticsSnapshot:
         assert "system_prompt" not in serialized
         assert "invariants" not in serialized
         assert "HOME" not in serialized
+
+    def test_log_snapshot_emits_compact_info_and_debug_detail(self, fresh_settings, caplog):
+        caplog.set_level("DEBUG", logger="src.core.log_manager")
+
+        log_support_diagnostics_snapshot(fresh_settings, transcript_count=3)
+
+        assert "Support snapshot: app=" in caplog.text
+        assert "Runtime snapshot: asr=" in caplog.text
+        assert "Support snapshot detail" in caplog.text
+        assert "Context:" not in caplog.text

@@ -136,22 +136,7 @@
         });
 
         unsubEngineStatus = ws.on("engine_status", (data: EngineStatusData) => {
-            if (data?.asr === "ready") {
-                if (restartPending) toast.success("Engine restarted — ASR ready");
-                restartPending = false;
-                getHealth()
-                    .then((h) => (health = h))
-                    .catch(() => {});
-                getEngineStatus()
-                    .then((s) => (engineStatus = s))
-                    .catch(() => {});
-            } else if (data?.asr === "unavailable") {
-                if (restartPending) toast.error("Engine restart failed — ASR model unavailable");
-                restartPending = false;
-                getEngineStatus()
-                    .then((s) => (engineStatus = s))
-                    .catch(() => {});
-            }
+            void handleEngineStatusEvent(data);
         });
 
         try {
@@ -198,6 +183,34 @@
             engineStatus = s;
         } catch {
             // best-effort
+        }
+    }
+
+    async function handleEngineStatusEvent(data: EngineStatusData): Promise<void> {
+        if (!data?.asr && !data?.slm) return;
+        try {
+            const [h, s] = await Promise.all([getHealth(), getEngineStatus()]);
+            health = h;
+            engineStatus = s;
+            if (!restartPending) return;
+
+            const reasons = detectRestartRequired(JSON.parse(originalConfig || "{}"), s);
+            if (reasons.length === 0) {
+                toast.success("Engine restarted");
+                restartPending = false;
+                return;
+            }
+
+            const failed = data.asr === "unavailable" || data.slm === "Error";
+            if (failed) {
+                toast.error(`Engine restart still needs attention: ${reasons.join(", ")}`);
+                restartPending = false;
+            }
+        } catch (e: unknown) {
+            if (restartPending) {
+                toast.error(errorMessage(e) || "Engine status refresh failed");
+                restartPending = false;
+            }
         }
     }
 
@@ -279,25 +292,39 @@
         if (!engine) return [];
         const reasons: string[] = [];
 
-        const cfgAsrModel = saved.model?.model ?? "";
-        const loadedAsrModel = engine.asr.model_id ?? "";
-        if (cfgAsrModel && loadedAsrModel && cfgAsrModel !== loadedAsrModel) {
-            reasons.push("ASR model");
-        }
+        const runtimeAsr = engine.asr.runtime as Record<string, unknown> | undefined;
+        const cfgAsrProvider = saved.model?.provider ?? "local_faster_whisper";
+        const loadedAsrProvider = (runtimeAsr?.provider ?? "local_faster_whisper") as string;
+        if (cfgAsrProvider !== loadedAsrProvider) reasons.push("ASR provider");
 
-        const cfgAsrDevice = (saved.model?.device ?? "auto").toLowerCase();
-        const loadedAsrDevice = (engine.asr.device ?? "").toLowerCase();
-        if (loadedAsrDevice && engine.asr.ready) {
-            const loadedIsCpu = loadedAsrDevice.includes("cpu");
-            if (cfgAsrDevice === "cpu" && !loadedIsCpu) reasons.push("ASR device");
-            else if (cfgAsrDevice === "gpu" && loadedIsCpu) reasons.push("ASR device");
-        }
+        if (cfgAsrProvider === "local_faster_whisper") {
+            const cfgAsrModel = saved.model?.model ?? "";
+            const loadedAsrModel = engine.asr.model_id ?? "";
+            if (cfgAsrModel && loadedAsrModel && cfgAsrModel !== loadedAsrModel) {
+                reasons.push("ASR model");
+            }
 
-        const cfgAsrThreads = saved.model?.n_threads;
-        const runtimeThreadsRaw = engine.asr.runtime?.n_threads;
-        const loadedAsrThreads = typeof runtimeThreadsRaw === "number" ? runtimeThreadsRaw : undefined;
-        if (cfgAsrThreads !== undefined && loadedAsrThreads !== undefined && cfgAsrThreads !== loadedAsrThreads) {
-            reasons.push("ASR threads");
+            const cfgAsrDevice = (saved.model?.device ?? "auto").toLowerCase();
+            const loadedAsrDevice = (engine.asr.device ?? "").toLowerCase();
+            if (loadedAsrDevice && engine.asr.ready) {
+                const loadedIsCpu = loadedAsrDevice.includes("cpu");
+                if (cfgAsrDevice === "cpu" && !loadedIsCpu) reasons.push("ASR device");
+                else if (cfgAsrDevice === "gpu" && loadedIsCpu) reasons.push("ASR device");
+            }
+
+            const cfgAsrThreads = saved.model?.n_threads;
+            const runtimeThreadsRaw = engine.asr.runtime?.n_threads;
+            const loadedAsrThreads = typeof runtimeThreadsRaw === "number" ? runtimeThreadsRaw : undefined;
+            if (cfgAsrThreads !== undefined && loadedAsrThreads !== undefined && cfgAsrThreads !== loadedAsrThreads) {
+                reasons.push("ASR threads");
+            }
+        } else if (cfgAsrProvider === "groq") {
+            if ((saved.model?.groq?.model_id ?? "") !== (runtimeAsr?.model_id as string | undefined)) {
+                reasons.push("Groq ASR model");
+            }
+            if ((saved.model?.groq?.base_url ?? "") !== (runtimeAsr?.base_url as string | undefined)) {
+                reasons.push("Groq ASR base URL");
+            }
         }
 
         const cfgSlmEnabled = saved.refinement?.enabled ?? false;
@@ -308,17 +335,38 @@
         }
 
         if (cfgSlmEnabled && loadedSlmActive) {
-            const cfgSlmModel = saved.refinement?.model_id ?? "";
-            const loadedSlmModel = engine.slm.model_id ?? "";
-            if (cfgSlmModel && loadedSlmModel && cfgSlmModel !== loadedSlmModel) {
-                reasons.push("Refinement model");
-            }
-            const cfgSlmCpu = (saved.refinement?.n_gpu_layers ?? -1) === 0;
-            const loadedSlmDevice = (engine.slm.device ?? "").toLowerCase();
-            if (loadedSlmDevice && engine.slm.ready) {
-                const loadedSlmCpu = loadedSlmDevice.includes("cpu");
-                if (cfgSlmCpu && !loadedSlmCpu) reasons.push("Refinement device");
-                else if (!cfgSlmCpu && loadedSlmCpu && health.gpu?.cuda_available) reasons.push("Refinement device");
+            const runtime = engine.slm.runtime as Record<string, unknown> | undefined;
+            const cfgSlmProvider = saved.refinement?.provider ?? "local_ct2";
+            const loadedProvider = (runtime?.provider ?? "local_ct2") as string;
+            if (cfgSlmProvider !== loadedProvider) reasons.push("Refinement provider");
+
+            if (cfgSlmProvider === "local_ct2") {
+                const cfgSlmModel = saved.refinement?.model_id ?? "";
+                const loadedSlmModel = engine.slm.model_id ?? "";
+                if (cfgSlmModel && loadedSlmModel && cfgSlmModel !== loadedSlmModel) {
+                    reasons.push("Refinement model");
+                }
+                const cfgSlmCpu = (saved.refinement?.n_gpu_layers ?? -1) === 0;
+                const loadedSlmDevice = (engine.slm.device ?? "").toLowerCase();
+                if (loadedSlmDevice && engine.slm.ready) {
+                    const loadedSlmCpu = loadedSlmDevice.includes("cpu");
+                    if (cfgSlmCpu && !loadedSlmCpu) reasons.push("Refinement device");
+                    else if (!cfgSlmCpu && loadedSlmCpu && health.gpu?.cuda_available) reasons.push("Refinement device");
+                }
+            } else if (cfgSlmProvider === "lm_studio") {
+                if ((saved.refinement?.lm_studio?.model_id ?? "") !== (runtime?.model_id as string | undefined)) {
+                    reasons.push("LM Studio model");
+                }
+                if ((saved.refinement?.lm_studio?.base_url ?? "") !== (runtime?.base_url as string | undefined)) {
+                    reasons.push("LM Studio base URL");
+                }
+            } else if (cfgSlmProvider === "groq") {
+                if ((saved.refinement?.groq?.model_id ?? "") !== (runtime?.model_id as string | undefined)) {
+                    reasons.push("Groq model");
+                }
+                if ((saved.refinement?.groq?.base_url ?? "") !== (runtime?.base_url as string | undefined)) {
+                    reasons.push("Groq base URL");
+                }
             }
         }
 

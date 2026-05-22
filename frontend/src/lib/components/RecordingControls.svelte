@@ -1,11 +1,9 @@
 <script lang="ts">
     /**
-     * RecordingControls — Single button that IS the visual surface.
+     * RecordingControls — Horizontal mic surface for starting/stopping recording.
      *
-     * Click target equals the visual rounded-rect (no oversized invisible wrapper).
-     * Idle and recording share the same rounded-rect at 60% of the parent's width
-     * and height so the surface doesn't shift when you click record. The label
-     * "Click to record" is gone — the hover tooltip carries the affordance.
+     * This is the visible surface; it should not be nested inside another faux
+     * recording panel.
      */
 
     import { Mic } from "lucide-svelte";
@@ -20,23 +18,16 @@
 
     let { isRecording, audioLevel, onstart, onstop }: Props = $props();
 
-    let btnEl: HTMLButtonElement | undefined = $state();
-    let micIconSize = $state(80);
-
-    $effect(() => {
-        if (!btnEl) return;
-        const ro = new ResizeObserver(([e]) => {
-            const side = Math.min(e.contentRect.width, e.contentRect.height);
-            micIconSize = Math.max(56, Math.min(180, Math.round(side * 0.35)));
-        });
-        ro.observe(btnEl);
-        return () => ro.disconnect();
-    });
+    const idleClasses =
+        "border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--surface-secondary))] text-[var(--accent)] shadow-[0_0_18px_rgba(90,159,212,0.10)] hover:border-[var(--accent-hover)] hover:bg-[color-mix(in_srgb,var(--accent)_11%,var(--surface-secondary))] hover:text-[var(--accent-hover)]";
+    const recordingClasses =
+        "border-transparent bg-transparent text-[var(--orange-4)] shadow-[0_0_18px_rgba(255,160,60,0.12)]";
 </script>
 
 <button
-    bind:this={btnEl}
-    class="w-3/5 h-3/5 shrink-0 p-0 border-none bg-transparent cursor-pointer rounded-[var(--radius-lg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+    class="grid h-full min-h-[156px] max-h-[320px] w-full shrink-0 place-items-center overflow-hidden rounded-[var(--radius-xl)] border p-0 cursor-pointer transition-[background,border-color,color,box-shadow,transform] duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] active:scale-[0.995] {isRecording
+        ? recordingClasses
+        : idleClasses}"
     onclick={isRecording ? onstop : onstart}
     aria-label={isRecording ? "Stop recording" : "Start recording"}
     title={isRecording ? "Stop recording and transcribe" : "Start recording"}
@@ -44,10 +35,6 @@
     {#if isRecording}
         <RecordingPulse {audioLevel} />
     {:else}
-        <div
-            class="flex items-center justify-center w-full h-full rounded-[var(--radius-lg)] border-2 border-[var(--accent)] text-[var(--accent)] transition-colors duration-300 hover:bg-[var(--hover-overlay-blue)] hover:border-[var(--accent-hover)] hover:text-[var(--accent-hover)]"
-        >
-            <Mic size={micIconSize} strokeWidth={1.5} />
-        </div>
+        <Mic size={44} strokeWidth={1.45} />
     {/if}
 </button>

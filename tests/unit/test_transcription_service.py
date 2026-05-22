@@ -12,6 +12,7 @@ from src.core.cuda_runtime import CudaRuntimeStatus
 from src.core.exceptions import EngineError
 from src.core.settings import ModelSettings, get_settings
 from src.services.transcription_service import (
+    OpenAICompatibleTranscriptionProvider,
     _merge_segment_texts,
     create_local_model,
     post_process_transcription,
@@ -207,6 +208,89 @@ class TestTranscribeKwargs:
         defaults = ModelSettings()
         prompt = defaults.initial_prompt
         assert len(prompt) > 20, "Prompt should be set for CTranslate2 quality"
+
+
+class TestExternalTranscriptionProvider:
+    VALID_GROQ_KEY = "gsk_test_secret_123456789012345678901234567890"
+
+    @staticmethod
+    def _settings_with_provider(fresh_settings, provider: str = "groq"):
+        provider_settings = getattr(fresh_settings.model, provider).model_copy(
+            update={"model_id": "whisper-large-v3-turbo", "model_list_enabled": False, "api_key": TestExternalTranscriptionProvider.VALID_GROQ_KEY}
+        )
+        return fresh_settings.model_copy(
+            update={
+                "model": fresh_settings.model.model_copy(
+                    update={
+                        "provider": provider,
+                        provider: provider_settings,
+                    }
+                )
+            }
+        )
+
+    def test_external_provider_posts_wav_to_audio_transcriptions(self, fresh_settings):
+        settings = self._settings_with_provider(fresh_settings)
+        captured: dict[str, object] = {}
+
+        class DummyResponse:
+            status_code = 200
+            headers = {"content-type": "application/json"}
+            text = '{"text":"hello world"}'
+
+            def json(self):
+                return {"text": "hello world", "segments": [{"end": 1.25}]}
+
+        class DummyClient:
+            def request(self, method, url, **kwargs):
+                captured["method"] = method
+                captured["url"] = url
+                captured["kwargs"] = kwargs
+                return DummyResponse()
+
+        provider = OpenAICompatibleTranscriptionProvider(settings)
+        provider._client = DummyClient()
+        provider.load()
+
+        text, speech_duration_ms, transcription_time_ms = provider.transcribe(
+            np.zeros(16_000, dtype=np.float32),
+            settings,
+        )
+
+        assert text == "Hello world "
+        assert speech_duration_ms == 1250
+        assert transcription_time_ms >= 0
+        assert captured["method"] == "POST"
+        assert str(captured["url"]).endswith("/audio/transcriptions")
+        request_kwargs = captured["kwargs"]
+        assert request_kwargs["data"]["model"] == "whisper-large-v3-turbo"
+        assert request_kwargs["data"]["response_format"] == "verbose_json"
+        assert request_kwargs["files"]["file"][1].startswith(b"RIFF")
+
+    def test_groq_key_shape_is_validated_before_transcription_request(self, fresh_settings):
+        settings = self._settings_with_provider(fresh_settings)
+        provider_settings = settings.model.groq.model_copy(update={"api_key": "gsk_too_short"})
+        settings = settings.model_copy(update={"model": settings.model.model_copy(update={"groq": provider_settings})})
+
+        provider = OpenAICompatibleTranscriptionProvider(settings)
+
+        with pytest.raises(ValueError, match="Groq API key looks invalid"):
+            provider.load()
+
+    def test_create_local_model_returns_external_provider_without_faster_whisper(self, fresh_settings):
+        settings = self._settings_with_provider(fresh_settings, provider="groq")
+        original_import = __import__
+
+        with (
+            patch.object(OpenAICompatibleTranscriptionProvider, "list_models", return_value=[]),
+            patch("builtins.__import__") as mock_import,
+        ):
+            mock_import.side_effect = original_import
+            model = create_local_model(settings)
+
+        assert isinstance(model, OpenAICompatibleTranscriptionProvider)
+        assert model.provider_id == "groq"
+        assert not any(call.args and call.args[0] == "faster_whisper" for call in mock_import.call_args_list)
 
 
 class TestCreateLocalModelRuntimeResolution:

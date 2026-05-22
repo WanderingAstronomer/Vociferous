@@ -1638,9 +1638,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ctranslate2", specifier = "==4.7.1" },
+    { name = "ctranslate2", specifier = ">=4.5.0" },
     { name = "evdev", marker = "sys_platform == 'linux'", specifier = ">=1.9.0" },
-    { name = "faster-whisper", specifier = "==1.2.1" },
+    { name = "faster-whisper", specifier = ">=1.1.0" },
     { name = "filelock", specifier = ">=3.20.0" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "huggingface-hub", specifier = ">=0.26.0" },
@@ -1664,7 +1664,7 @@ requires-dist = [
     { name = "pywebview", specifier = ">=5.0" },
     { name = "pywebview", extras = ["gtk"], marker = "sys_platform == 'linux'", specifier = ">=5.0" },
     { name = "sounddevice", specifier = ">=0.5.0" },
-    { name = "tokenizers", specifier = "==0.22.2" },
+    { name = "tokenizers", specifier = ">=0.20.0" },
     { name = "tqdm", specifier = ">=4.67.0" },
     { name = "typer", specifier = ">=0.12.0" },
     { name = "uvicorn", specifier = ">=0.30.0" },

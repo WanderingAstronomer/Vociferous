@@ -192,17 +192,18 @@ class RecordingSession:
             from src.core.resource_manager import ResourceManager
 
             settings = self._settings_provider()
-            model_id = settings.model.model
-            asr_model = get_asr_model(model_id) or ASR_MODELS.get("large-v3-turbo-int8")
-            if asr_model:
-                local_dir_name = asr_model.repo.split("/")[-1]
-                model_path = ResourceManager.get_user_cache_dir("models") / local_dir_name / asr_model.model_file
-                if not model_path.exists():
-                    self._emit(
-                        "transcription_error",
-                        {"message": "No ASR model downloaded. Go to Settings to download a speech recognition model."},
-                    )
-                    return
+            if settings.model.provider == "local_faster_whisper":
+                model_id = settings.model.model
+                asr_model = get_asr_model(model_id) or ASR_MODELS.get("large-v3-turbo-int8")
+                if asr_model:
+                    local_dir_name = asr_model.repo.split("/")[-1]
+                    model_path = ResourceManager.get_user_cache_dir("models") / local_dir_name / asr_model.model_file
+                    if not model_path.exists():
+                        self._emit(
+                            "transcription_error",
+                            {"message": "No ASR model downloaded. Go to Settings to download a speech recognition model."},
+                        )
+                        return
 
             # Pre-check: is a working microphone available?
             from src.services.audio_service import AudioService
@@ -352,7 +353,6 @@ class RecordingSession:
 
                 db = self._db_provider()
                 if db:
-                    duration_ms = int(len(int16_audio) / 16000 * 1000)
                     db.update_normalized_text(transcript_id, text)
                     self._emit("transcript_updated", {"id": transcript_id})
 

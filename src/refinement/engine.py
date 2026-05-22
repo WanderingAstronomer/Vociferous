@@ -7,23 +7,13 @@ enforcement. Tokenization is handled by the HuggingFace `tokenizers` library.
 """
 
 import logging
-import re
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
+from src.refinement.output_parser import GenerationResult, parse_generation_output
 from src.refinement.prompt_builder import PromptBuilder
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(slots=True, frozen=True)
-class GenerationResult:
-    """Holds the separated content and reasoning from a model generation."""
-
-    content: str
-    reasoning: str | None = None
-
 
 class RefinementEngine:
     """
@@ -142,44 +132,7 @@ class RefinementEngine:
 
     def _parse_output(self, text: str) -> GenerationResult:
         """Separate <think>...</think> blocks and strip prompt artifacts from model output."""
-        if not text:
-            return GenerationResult(content="")
-
-        reasoning = None
-        content = text
-
-        # Extract complete think blocks
-        match = re.search(r"<think>(.*?)</think>", text, flags=re.DOTALL)
-        if match:
-            reasoning = match.group(1).strip()
-            content = text.replace(match.group(0), "")
-        elif "<think>" in text:
-            parts = text.split("<think>", 1)
-            content = parts[0]
-            reasoning = parts[1].strip() + " [REASONING TRUNCATED]"
-
-        # Strip transcript markers
-        content = content.replace("<<<BEGIN TRANSCRIPT>>>", "").replace("<<<END TRANSCRIPT>>>", "")
-
-        # Truncate at leaked end tokens
-        for marker in [
-            "<|im_end|>",
-            "<|eot_id|>",
-            "<|endoftext|>",
-            "</s>",
-            "<|im_start|>",
-        ]:
-            if marker in content:
-                content = content.split(marker)[0]
-
-        # Strip leaked ChatML role markers (e.g. "system\n..." or "assistant\n...")
-        # that survive after the <|im_start|> token itself was already removed.
-        content = re.sub(r"^(system|user|assistant)\s*\n", "", content, count=1)
-
-        # Strip /no_think directive if model echoed it back
-        content = re.sub(r"^/no_think\s*", "", content)
-
-        return GenerationResult(content=content.strip(), reasoning=reasoning)
+        return parse_generation_output(text)
 
     def _format_prompt(
         self,

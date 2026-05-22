@@ -96,6 +96,94 @@ def test_build_engine_status_reports_ready_models(monkeypatch, tmp_path: Path) -
     reset_for_tests()
 
 
+def test_build_engine_status_reports_external_refinement_provider(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("VOCIFEROUS_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setattr(engine_status, "detect_cuda_runtime", lambda: _fake_cuda())
+    reset_for_tests()
+
+
+def test_build_engine_status_reports_external_transcription_provider(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("VOCIFEROUS_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setattr(engine_status, "detect_cuda_runtime", lambda: _fake_cuda())
+    reset_for_tests()
+    settings = init_settings(config_path=tmp_path / "settings.json")
+    settings = settings.model_copy(
+        update={
+            "model": settings.model.model_copy(
+                update={
+                    "provider": "groq",
+                    "groq": settings.model.groq.model_copy(update={"model_id": "whisper-large-v3-turbo"}),
+                }
+            ),
+            "refinement": settings.refinement.model_copy(update={"enabled": False}),
+        }
+    )
+
+    coordinator = types.SimpleNamespace(
+        settings=settings,
+        recording_session=types.SimpleNamespace(
+            is_asr_loaded=True,
+            is_transcribing=False,
+            last_asr_error=None,
+            get_asr_runtime_summary=lambda: {
+                "provider": "groq",
+                "model_id": "whisper-large-v3-turbo",
+                "resolved_device": "external",
+                "base_url": "https://api.groq.com/openai/v1",
+            },
+        ),
+        slm_runtime=None,
+        is_recording_active=lambda: False,
+    )
+
+    status = engine_status.build_engine_status(coordinator)
+
+    assert status["status"] == "ready"
+    assert status["asr"]["ready"] is True
+    assert status["asr"]["device"] == "external"
+    assert status["asr"]["model_id"] == "whisper-large-v3-turbo"
+    reset_for_tests()
+    settings = init_settings(config_path=tmp_path / "settings.json")
+    settings.refinement.provider = "groq"
+    settings.refinement.groq.model_id = "llama-3.1-8b-instant"
+
+    models_dir = tmp_path / "cache" / "models"
+    asr = ASR_MODELS[settings.model.model]
+    (models_dir / asr.repo.split("/")[-1]).mkdir(parents=True)
+    (models_dir / asr.repo.split("/")[-1] / asr.model_file).touch()
+
+    coordinator = types.SimpleNamespace(
+        settings=settings,
+        recording_session=types.SimpleNamespace(
+            is_asr_loaded=True,
+            is_transcribing=False,
+            last_asr_error=None,
+            get_asr_runtime_summary=lambda: {"resolved_device": "cuda"},
+        ),
+        slm_runtime=types.SimpleNamespace(
+            state=types.SimpleNamespace(name="READY"),
+            last_error=None,
+            get_runtime_summary=lambda: {
+                "provider": "groq",
+                "model_id": "llama-3.1-8b-instant",
+                "resolved_device": "external",
+                "base_url": "https://api.groq.com/openai/v1",
+            },
+        ),
+        is_recording_active=lambda: False,
+    )
+
+    status = engine_status.build_engine_status(coordinator)
+
+    assert status["status"] == "ready"
+    assert status["slm"]["ready"] is True
+    assert status["slm"]["device"] == "external"
+    assert status["slm"]["model_id"] == "llama-3.1-8b-instant"
+    assert [provider["id"] for provider in status["providers"]] == ["local_ct2", "lm_studio", "groq"]
+    assert status["providers"][2]["active"] is True
+    reset_for_tests()
+
+
 def test_build_engine_status_reports_refinement_cpu_fallback(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("VOCIFEROUS_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setattr(

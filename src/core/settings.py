@@ -13,9 +13,9 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import BaseSettings
 
 from src.core.exceptions import ConfigError
@@ -27,11 +27,42 @@ logger = logging.getLogger(__name__)
 # --- Sub-models (frozen sections) ---
 
 
+class OpenAICompatibleTranscriptionProviderSettings(BaseModel):
+    """OpenAI-compatible speech-to-text provider configuration."""
+
+    base_url: str = ""
+    model_id: str = ""
+    api_key_env: str | None = None
+    api_key: str | None = Field(default=None, exclude=True)
+    timeout_seconds: float = 120.0
+    model_list_enabled: bool = True
+    temperature: float = 0.0
+
+
+class GroqTranscriptionProviderSettings(OpenAICompatibleTranscriptionProviderSettings):
+    """Groq OpenAI-compatible transcription endpoint configuration."""
+
+    base_url: str = "https://api.groq.com/openai/v1"
+    model_id: str = "whisper-large-v3-turbo"
+    api_key_env: str | None = "GROQ_API_KEY"
+    max_retries: int = 2
+    retry_backoff_seconds: float = 1.0
+
+
 class ModelSettings(BaseModel):
     """ASR model configuration."""
 
     model_config = ConfigDict(frozen=True)
 
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_removed_lm_studio_transcription_provider(cls, value: Any) -> Any:
+        if isinstance(value, dict) and value.get("provider") == "lm_studio":
+            value = dict(value)
+            value["provider"] = "local_faster_whisper"
+        return value
+
+    provider: Literal["local_faster_whisper", "groq"] = "local_faster_whisper"
     model: str = "large-v3-turbo-int8"
     device: str = "auto"  # faster-whisper resolves device at model load time
     language: str = "en"
@@ -53,6 +84,7 @@ class ModelSettings(BaseModel):
         "transcription. The speaker is clear, and the text should include "
         "commas, periods, and question marks where appropriate."
     )
+    groq: GroqTranscriptionProviderSettings = Field(default_factory=GroqTranscriptionProviderSettings)
 
 
 class RecordingSettings(BaseModel):
@@ -135,10 +167,40 @@ def _auto_cpu_threads() -> int:
     return min(max(2, logical // 3), 10)
 
 
+class OpenAICompatibleProviderSettings(BaseModel):
+    """OpenAI-compatible HTTP refinement provider configuration."""
+
+    base_url: str = ""
+    model_id: str = ""
+    api_key_env: str | None = None
+    api_key: str | None = Field(default=None, exclude=True)
+    timeout_seconds: float = 120.0
+    max_output_tokens: int = 4096
+    model_list_enabled: bool = True
+
+
+class LMStudioProviderSettings(OpenAICompatibleProviderSettings):
+    """LM Studio OpenAI-compatible endpoint configuration."""
+
+    base_url: str = "http://localhost:1234/v1"
+    api_key_env: str | None = "LM_STUDIO_API_KEY"
+
+
+class GroqProviderSettings(OpenAICompatibleProviderSettings):
+    """Groq OpenAI-compatible endpoint configuration."""
+
+    base_url: str = "https://api.groq.com/openai/v1"
+    model_id: str = "llama-3.1-8b-instant"
+    api_key_env: str | None = "GROQ_API_KEY"
+    max_retries: int = 2
+    retry_backoff_seconds: float = 1.0
+
+
 class RefinementSettings(BaseModel):
     """SLM refinement configuration."""
 
     enabled: bool = True
+    provider: Literal["local_ct2", "lm_studio", "groq"] = "local_ct2"
     model_id: str = "qwen4b"
     n_gpu_layers: int = -1  # -1 = full GPU (CT2 device="cuda"), 0 = CPU only
     n_threads: int = Field(default_factory=_auto_cpu_threads)  # CPU threads (CPU mode only)
@@ -158,6 +220,8 @@ class RefinementSettings(BaseModel):
         ]
     )
     default_prompt_transcript_id: int | None = None
+    lm_studio: LMStudioProviderSettings = Field(default_factory=LMStudioProviderSettings)
+    groq: GroqProviderSettings = Field(default_factory=GroqProviderSettings)
 
 
 # --- Main Settings ---
@@ -220,10 +284,10 @@ def init_settings(config_path: Path | str | None = None) -> VociferousSettings:
     else:
         _settings = VociferousSettings()
 
-    # Migrate removed SLM models to the smallest available model.
+    # Migrate removed local SLM models to the smallest available model.
     from src.core.model_registry import SLM_MODELS, get_smallest_slm_id
 
-    if _settings.refinement.model_id not in SLM_MODELS:
+    if _settings.refinement.provider == "local_ct2" and _settings.refinement.model_id not in SLM_MODELS:
         fallback = get_smallest_slm_id()
         logger.warning(
             "SLM model '%s' no longer available; falling back to '%s'.",
@@ -235,7 +299,46 @@ def init_settings(config_path: Path | str | None = None) -> VociferousSettings:
         _settings = VociferousSettings(**merged)
         save_settings(_settings)
 
+    _migrate_provider_api_keys_to_secret_store()
+
     return _settings
+
+
+def _migrate_provider_api_keys_to_secret_store() -> None:
+    """Move any legacy plaintext provider API keys out of settings.json."""
+    global _settings
+    if _settings is None:
+        return
+
+    changed = False
+    provider_sections = {"model": ("groq",), "refinement": ("lm_studio", "groq")}
+    for section_name, provider_ids in provider_sections.items():
+        section = getattr(_settings, section_name)
+        for provider_id in provider_ids:
+            provider_settings = getattr(section, provider_id)
+            if not provider_settings.api_key:
+                continue
+            try:
+                from src.core.secret_store import store_provider_api_key
+
+                store_provider_api_key(provider_id, provider_settings.api_key)
+                logger.info(
+                    "Migrated %s %s API key from settings.json to local secret store.",
+                    section_name,
+                    provider_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Could not migrate %s %s API key to local secret store; remove the plaintext key from settings.json and use an environment variable. Error: %s",
+                    section_name,
+                    provider_id,
+                    exc,
+                )
+            changed = True
+
+    if changed:
+        _settings = VociferousSettings(**_settings.model_dump())
+        save_settings(_settings)
 
 
 def get_settings() -> VociferousSettings:

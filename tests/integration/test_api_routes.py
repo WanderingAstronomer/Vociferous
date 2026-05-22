@@ -44,7 +44,15 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
     )
     from src.api.deps import set_coordinator
     from src.api.models import download_model, list_models
+    from src.api.refinement_providers import (
+        delete_refinement_provider_api_key,
+        get_refinement_provider_api_key_status,
+        list_refinement_provider_models,
+        save_refinement_provider_api_key,
+        test_refinement_provider,
+    )
     from src.api.system import health
+    from src.api.transcription_providers import list_transcription_provider_models, test_transcription_provider
     from src.api.transcripts import (
         batch_tag_toggle,
         get_transcript,
@@ -90,6 +98,13 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
             download_model,
             health,
             dispatch_intent,
+            get_refinement_provider_api_key_status,
+            save_refinement_provider_api_key,
+            delete_refinement_provider_api_key,
+            list_refinement_provider_models,
+            test_refinement_provider,
+            list_transcription_provider_models,
+            test_transcription_provider,
         ],
         cors_config=CORSConfig(
             allow_origins=["http://localhost:5173"],
@@ -458,6 +473,111 @@ class TestConfigRoutes:
         assert coord.settings.refinement.default_prompt_transcript_id is None
         updated = events.of_type("config_updated")
         assert updated[-1]["refinement"]["default_prompt_transcript_id"] is None
+
+
+# ── Refinement Provider Secrets ───────────────────────────────────────────
+
+
+class TestRefinementProviderSecretRoutes:
+    def test_provider_model_and_connection_routes_use_current_settings(self, api, monkeypatch):
+        from src.api import refinement_providers
+
+        client, _, _ = api
+
+        monkeypatch.setattr(
+            refinement_providers,
+            "list_external_provider_models",
+            lambda _settings, provider_id: [{"id": f"{provider_id}-model", "object": "model"}],
+        )
+        monkeypatch.setattr(
+            refinement_providers,
+            "test_external_provider",
+            lambda _settings, provider_id: {"ok": True, "provider": provider_id},
+        )
+
+        models = client.get("/api/refinement/providers/lm_studio/models")
+        assert models.status_code == 200
+        assert models.json() == {
+            "provider": "lm_studio",
+            "models": [{"id": "lm_studio-model", "object": "model"}],
+        }
+
+        result = client.post("/api/refinement/providers/lm_studio/test", json={"model_id": "draft-model"})
+        assert result.status_code == 200
+        assert result.json() == {"ok": True, "provider": "lm_studio"}
+
+    def test_provider_api_key_round_trip_never_exposes_secret(self, api, monkeypatch):
+        from src.api import refinement_providers
+
+        client, _, _ = api
+        stored: dict[str, str] = {}
+
+        monkeypatch.delenv("GROQ_API_KEY", raising=False)
+        monkeypatch.setattr(refinement_providers, "get_secret_backend", lambda: "test_secret")
+        monkeypatch.setattr(refinement_providers, "get_provider_api_key", lambda provider_id: stored.get(provider_id))
+        monkeypatch.setattr(refinement_providers, "store_provider_api_key", lambda provider_id, api_key: stored.__setitem__(provider_id, api_key))
+        monkeypatch.setattr(refinement_providers, "delete_provider_api_key", lambda provider_id: stored.pop(provider_id, None) is not None)
+
+        status = client.get("/api/refinement/providers/groq/api-key")
+        assert status.status_code == 200
+        assert status.json()["source"] == "none"
+
+        saved = client.put("/api/refinement/providers/groq/api-key", json={"api_key": "gsk_test_secret_123456789012345678901234567890"})
+        assert saved.status_code == 200
+        assert saved.json() == {"provider": "groq", "stored": True, "backend": "test_secret"}
+        assert "gsk_test_secret_123456789012345678901234567890" not in saved.text
+
+        status = client.get("/api/refinement/providers/groq/api-key")
+        assert status.status_code == 200
+        assert status.json()["has_stored_key"] is True
+        assert status.json()["has_stored_key_valid"] is True
+        assert status.json()["source"] == "stored"
+        assert status.json()["source_valid"] is True
+        assert "gsk_test_secret_123456789012345678901234567890" not in status.text
+
+        deleted = client.delete("/api/refinement/providers/groq/api-key")
+        assert deleted.status_code == 200
+        assert deleted.json() == {"provider": "groq", "deleted": True, "backend": "test_secret"}
+
+        status = client.get("/api/refinement/providers/groq/api-key")
+        assert status.status_code == 200
+        assert status.json()["source"] == "none"
+
+    def test_transcription_provider_model_and_connection_routes_use_current_settings(self, api, monkeypatch):
+        from src.api import transcription_providers
+
+        client, _, _ = api
+
+        monkeypatch.setattr(
+            transcription_providers,
+            "list_external_transcription_provider_models",
+            lambda _settings, provider_id: [{"id": f"{provider_id}-whisper", "object": "model"}],
+        )
+        monkeypatch.setattr(
+            transcription_providers,
+            "test_external_transcription_provider",
+            lambda _settings, provider_id: {"ok": True, "provider": provider_id},
+        )
+
+        models = client.get("/api/transcription/providers/groq/models")
+        assert models.status_code == 200
+        assert models.json() == {
+            "provider": "groq",
+            "models": [{"id": "groq-whisper", "object": "model"}],
+        }
+
+        result = client.post("/api/transcription/providers/groq/test", json={"model_id": "draft-whisper"})
+        assert result.status_code == 200
+        assert result.json() == {"ok": True, "provider": "groq"}
+
+    def test_lm_studio_is_not_a_transcription_provider(self, api):
+        client, _, _ = api
+
+        models = client.get("/api/transcription/providers/lm_studio/models")
+        assert models.status_code == 400
+
+        result = client.post("/api/transcription/providers/lm_studio/test", json={"model_id": "draft-whisper"})
+        assert result.status_code == 400
 
 
 # ── Refinement via API ────────────────────────────────────────────────────

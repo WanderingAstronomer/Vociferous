@@ -76,6 +76,7 @@
     let speechDurationMs = $state(0);
     let hasAudioCached = $state(false);
     let copied = $state(false);
+    let heatmapCollapsed = $state(false);
     let refinementEnabled = $derived(appConfig.current?.refinement?.enabled ?? true);
     let autoRefine = $derived(appConfig.current?.output?.auto_refine ?? false);
     let username = $derived(appConfig.current?.user?.name ?? "");
@@ -238,6 +239,12 @@
     let isRecording = $derived(viewState === "recording");
     let isTranscribing = $derived(viewState === "transcribing");
     let hasText = $derived(Boolean(transcriptText) && viewState !== "idle");
+    let isRecordingSurface = $derived(viewState === "idle" || viewState === "recording");
+    let mainStackClasses = $derived.by(() => {
+        const base = "w-full min-h-full mx-auto flex flex-col gap-[var(--minor-gap)] px-[var(--space-4)]";
+        if (isRecordingSurface) return `${base} max-w-[min(92vw,1920px)] py-[var(--space-3)]`;
+        return `${base} max-w-[min(92vw,1920px)] py-[var(--space-4)]`;
+    });
 
     /* ===== Greeting ===== */
     let greeting = $derived.by(() => {
@@ -659,195 +666,211 @@
     }
 </script>
 
-<div class="flex flex-col h-full overflow-hidden bg-[var(--surface-primary)] p-[var(--space-4)] gap-[var(--minor-gap)]">
-    <TranscribeHeader
-        {viewState}
-        {greeting}
-        {refinementEnabled}
-        {sessionStats}
-        {transcriptTitle}
-        {transcriptTimestamp}
-    />
+<div class="flex flex-col h-full overflow-hidden bg-[var(--surface-primary)]">
+    <div class="flex-1 min-h-0 overflow-y-auto" style="scrollbar-gutter: stable;">
+    <div class={mainStackClasses}>
+        <TranscribeHeader
+            {viewState}
+            {greeting}
+            {refinementEnabled}
+            {sessionStats}
+            {transcriptTitle}
+            {transcriptTimestamp}
+        />
 
-    <TranscribeTranscriptMetrics {hasText} {durationMs} {speechDurationMs} {wordCount} />
+        <TranscribeTranscriptMetrics {hasText} {durationMs} {speechDurationMs} {wordCount} />
 
-    <!-- Append mode banner -->
-    {#if appendTargetId !== null && (viewState === "idle" || viewState === "recording")}
-        <div
-            class="shrink-0 flex items-center gap-[var(--space-2)] px-[var(--space-2)] py-[var(--space-1)] rounded-[var(--radius-md)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] border border-[var(--accent-muted)]"
-        >
-            <PlusCircle size={13} class="text-[var(--accent)] shrink-0" />
-            <span class="text-[var(--text-sm)] text-[var(--text-secondary)] flex-1 truncate">
-                Appending to: <span class="font-semibold text-[var(--text-primary)]"
-                    >{appendTargetTitle || `Transcript #${appendTargetId}`}</span
-                >
-            </span>
-            <button
-                class="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] bg-transparent border-none cursor-pointer p-0 leading-none transition-colors"
-                onclick={cancelAppendMode}
-                title="Cancel append mode"
+        <!-- Append mode banner -->
+        {#if appendTargetId !== null && (viewState === "idle" || viewState === "recording")}
+            <div
+                class="shrink-0 flex items-center gap-[var(--space-2)] px-[var(--space-2)] py-[var(--space-1)] rounded-[var(--radius-md)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] border border-[var(--accent-muted)]"
             >
-                <X size={13} />
-            </button>
-        </div>
-    {/if}
-
-    <!-- Session tag bar (idle/recording — selects tags auto-applied to every new transcript) -->
-    {#if (viewState === "idle" || viewState === "recording") && allTags.filter((t) => !t.is_system).length > 0}
-        <div
-            class="shrink-0 flex flex-col items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)]"
-            title="Selected tags are auto-applied to every new recording until cleared"
-        >
-            <div class="flex items-center gap-[var(--space-1)]">
-                <Bookmark
-                    size={13}
-                    class={sessionTagIds.size > 0
-                        ? "text-[var(--accent)] shrink-0"
-                        : "text-[var(--text-tertiary)] shrink-0"}
-                />
-                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] shrink-0 select-none">Session tags</span>
-            </div>
-            <TagBar
-                tags={allTags.filter((t) => !t.is_system)}
-                activeIds={sessionTagIds}
-                ontoggle={toggleSessionTag}
-                oncreate={handleSessionTagCreate}
-                ondelete={handleSessionTagDelete}
-                oncolorchange={handleSessionTagColorChange}
-            />
-        </div>
-    {/if}
-
-    <!-- Quick-tag strip (visible when a transcript is loaded) -->
-    {#if transcriptId != null && allTags.length > 0 && (viewState === "ready" || viewState === "viewing")}
-        <div class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)] shrink-0 flex-wrap">
-            <TagIcon size={14} class="text-[var(--text-tertiary)] shrink-0 mr-1" />
-            {#each allTags as tag (tag.id)}
-                {@const active = assignedTagIds.has(tag.id)}
+                <PlusCircle size={13} class="text-[var(--accent)] shrink-0" />
+                <span class="text-[var(--text-sm)] text-[var(--text-secondary)] flex-1 truncate">
+                    Appending to: <span class="font-semibold text-[var(--text-primary)]"
+                        >{appendTargetTitle || `Transcript #${appendTargetId}`}</span
+                    >
+                </span>
                 <button
-                    class="inline-flex items-center gap-1 h-6 px-2 rounded-full text-[var(--text-xs)] font-[var(--weight-emphasis)] border cursor-pointer transition-all duration-150 {active
-                        ? 'border-transparent text-white'
-                        : 'border-[var(--shell-border)] text-[var(--text-secondary)] bg-transparent hover:bg-[var(--hover-overlay)]'}"
-                    style={active && tag.color ? `background: ${tag.color}` : active ? "background: var(--accent)" : ""}
-                    onclick={() => toggleTag(tag.id)}
-                    title={active ? `Remove "${tag.name}" tag` : `Add "${tag.name}" tag`}
+                    class="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] bg-transparent border-none cursor-pointer p-0 leading-none transition-colors"
+                    onclick={cancelAppendMode}
+                    title="Cancel append mode"
                 >
-                    {tag.name}
+                    <X size={13} />
                 </button>
-            {/each}
-        </div>
-    {/if}
-
-    <!-- Content panel -->
-    <WorkspacePanel editing={viewState === "editing"} recording={isRecording || isTranscribing}>
-        <!-- IDLE + RECORDING: the panel hosts only the mic surface. The import
-             affordance, heatmap, and other dashboard context live outside the
-             panel so the panel can size itself purely around recording. -->
-        {#if viewState === "idle" || viewState === "recording"}
-            <div class="flex-1 min-h-0 flex flex-col items-center justify-center">
-                <RecordingControls {isRecording} {audioLevel} onstart={startRecording} onstop={stopRecording} />
-            </div>
-
-            <!-- TRANSCRIBING: spinner -->
-        {:else if viewState === "transcribing"}
-            <div class="flex-1 flex flex-col items-center justify-center gap-[var(--space-3)]">
-                <Loader2 size={40} strokeWidth={1.5} class="spin" />
-                <p class="text-[var(--text-sm)] text-[var(--text-tertiary)]">Transcribing audio…</p>
-            </div>
-
-            <!-- EDITING: editable textarea -->
-        {:else if viewState === "editing"}
-            <div class="flex-1 overflow-y-auto">
-                <textarea
-                    class="w-full h-full min-h-[200px] bg-transparent text-[var(--text-primary)] border-none outline-none resize-none font-[var(--font-family)] text-[var(--text-base)] leading-[var(--leading-relaxed)] p-0 placeholder:text-[var(--text-tertiary)]"
-                    bind:value={editText}
-                    spellcheck="true"
-                ></textarea>
-            </div>
-
-            <!-- READY / VIEWING: display transcript text -->
-        {:else}
-            <div class="flex-1 overflow-y-auto">
-                <MarkdownBody text={transcriptText} className="text-[var(--text-base)] text-[var(--text-primary)]" />
             </div>
         {/if}
-    </WorkspacePanel>
 
-    <!-- Import Audio File — secondary recording path. Lives outside the panel so the
-         panel can size itself purely around the mic surface. Idle-only. -->
-    {#if viewState === "idle"}
-        <input
-            bind:this={fileInput}
-            type="file"
-            accept={AUDIO_ACCEPT}
-            class="hidden"
-            onchange={handleFileSelected}
-        />
-        <div class="shrink-0 flex justify-center py-[var(--space-1)]">
-            <StyledButton variant="ghost" size="sm" onclick={importAudio}>
-                <FileAudio size={14} /> Import Audio File
-            </StyledButton>
-        </div>
-    {/if}
-
-    <!-- Heatmap lives outside the WorkspacePanel so the panel can size itself purely around
-         the recording surface. Idle-only — during recording, the dashboard recedes. -->
-    {#if viewState === "idle" && recentSessions.length > 0}
-        <div class="shrink-0 flex flex-col gap-[var(--space-2)] px-[var(--space-1)]">
-            <ActivityHeatmap entries={recentSessions} />
-        </div>
-    {/if}
-
-    <!-- Recording status bar (cancel + status + timer) — below the panel during active recording.
-         3-column grid: Cancel, status, timer each get equal width so the middle status text is
-         geometrically centered regardless of the side elements' widths. -->
-    {#if isRecording}
-        <div class="grid grid-cols-3 items-center gap-[var(--space-2)] py-[var(--space-1)] shrink-0">
-            <div class="justify-self-start">
-                <StyledButton
-                    variant="danger-outline"
-                    size="sm"
-                    onclick={cancelRecording}
-                    ariaLabel="Cancel recording and discard audio"
-                    title="Cancel recording and discard captured audio"
-                >
-                    <X size={15} /> Cancel
-                </StyledButton>
-            </div>
-
-            <div class="flex items-center justify-center gap-[var(--space-2)]">
-                <span
-                    class="w-2 h-2 rounded-full bg-[var(--color-danger)] shrink-0 animate-[pulse-dot_1.2s_ease-in-out_infinite]"
-                ></span>
-                <span class="text-[var(--text-sm)] text-[var(--color-danger)] whitespace-nowrap"
-                    >Recording in progress…</span
-                >
-            </div>
-
-            <span
-                class="justify-self-end text-[var(--text-sm)] font-[var(--font-mono)] text-[var(--text-tertiary)] tabular-nums whitespace-nowrap"
-                >{formatElapsed(recordingElapsedMs)}</span
+        <!-- Session tag bar (idle/recording — selects tags auto-applied to every new transcript) -->
+        {#if (viewState === "idle" || viewState === "recording") && allTags.filter((t) => !t.is_system).length > 0}
+            <div
+                class="shrink-0 flex flex-col items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)]"
+                title="Selected tags are auto-applied to every new recording until cleared"
             >
-        </div>
-    {/if}
-
-    <!-- Session tags applied confirmation (ready state only) -->
-    {#if viewState === "ready" && sessionTagIds.size > 0}
-        {@const appliedTags = allTags.filter((t) => sessionTagIds.has(t.id))}
-        {#if appliedTags.length > 0}
-            <div class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)] shrink-0">
-                <Bookmark size={12} class="text-[var(--accent)] shrink-0" />
-                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">Session tags applied:</span>
-                {#each appliedTags as tag (tag.id)}
-                    <span
-                        class="inline-flex items-center h-5 px-1.5 rounded-full text-[10px] font-medium"
-                        style="background: color-mix(in srgb, {tag.color ??
-                            'var(--accent)'} 25%, transparent); color: var(--text-primary);">{tag.name}</span
+                <div class="flex items-center gap-[var(--space-1)]">
+                    <Bookmark
+                        size={13}
+                        class={sessionTagIds.size > 0
+                            ? "text-[var(--accent)] shrink-0"
+                            : "text-[var(--text-tertiary)] shrink-0"}
+                    />
+                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] shrink-0 select-none"
+                        >Session tags</span
                     >
+                </div>
+                <TagBar
+                    tags={allTags.filter((t) => !t.is_system)}
+                    activeIds={sessionTagIds}
+                    ontoggle={toggleSessionTag}
+                    oncreate={handleSessionTagCreate}
+                    ondelete={handleSessionTagDelete}
+                    oncolorchange={handleSessionTagColorChange}
+                />
+            </div>
+        {/if}
+
+        <!-- Quick-tag strip (visible when a transcript is loaded) -->
+        {#if transcriptId != null && allTags.length > 0 && (viewState === "ready" || viewState === "viewing")}
+            <div
+                class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)] shrink-0 flex-wrap"
+            >
+                <TagIcon size={14} class="text-[var(--text-tertiary)] shrink-0 mr-1" />
+                {#each allTags as tag (tag.id)}
+                    {@const active = assignedTagIds.has(tag.id)}
+                    <button
+                        class="inline-flex items-center gap-1 h-6 px-2 rounded-full text-[var(--text-xs)] font-[var(--weight-emphasis)] border cursor-pointer transition-all duration-150 {active
+                            ? 'border-transparent text-white'
+                            : 'border-[var(--shell-border)] text-[var(--text-secondary)] bg-transparent hover:bg-[var(--hover-overlay)]'}"
+                        style={active && tag.color
+                            ? `background: ${tag.color}`
+                            : active
+                              ? "background: var(--accent)"
+                              : ""}
+                        onclick={() => toggleTag(tag.id)}
+                        title={active ? `Remove "${tag.name}" tag` : `Add "${tag.name}" tag`}
+                    >
+                        {tag.name}
+                    </button>
                 {/each}
             </div>
         {/if}
-    {/if}
+
+        <!-- Recording surface -->
+        {#if viewState === "idle" || viewState === "recording"}
+            <div class="flex-1 min-h-[190px] flex items-center py-[var(--space-3)]">
+                <RecordingControls {isRecording} {audioLevel} onstart={startRecording} onstop={stopRecording} />
+            </div>
+        {:else}
+            <!-- Content panel -->
+            <WorkspacePanel editing={viewState === "editing"} recording={isTranscribing}>
+                {#if viewState === "transcribing"}
+                    <div class="flex-1 flex flex-col items-center justify-center gap-[var(--space-3)]">
+                        <Loader2 size={40} strokeWidth={1.5} class="spin" />
+                        <p class="text-[var(--text-sm)] text-[var(--text-tertiary)]">Transcribing audio…</p>
+                    </div>
+
+                    <!-- EDITING: editable textarea -->
+                {:else if viewState === "editing"}
+                    <div class="flex-1 overflow-y-auto">
+                        <textarea
+                            class="w-full h-full min-h-[200px] bg-transparent text-[var(--text-primary)] border-none outline-none resize-none font-[var(--font-family)] text-[var(--text-base)] leading-[var(--leading-relaxed)] p-0 placeholder:text-[var(--text-tertiary)]"
+                            bind:value={editText}
+                            spellcheck="true"
+                        ></textarea>
+                    </div>
+
+                    <!-- READY / VIEWING: display transcript text -->
+                {:else}
+                    <div class="flex-1 overflow-y-auto">
+                        <MarkdownBody
+                            text={transcriptText}
+                            className="text-[var(--text-base)] text-[var(--text-primary)]"
+                        />
+                    </div>
+                {/if}
+            </WorkspacePanel>
+        {/if}
+
+        <!-- Import Audio File — secondary recording path. Lives outside the panel so the
+         panel can size itself purely around the mic surface. Idle-only. -->
+        {#if viewState === "idle"}
+            <input
+                bind:this={fileInput}
+                type="file"
+                accept={AUDIO_ACCEPT}
+                class="hidden"
+                onchange={handleFileSelected}
+            />
+            <div class="shrink-0 flex justify-center py-[var(--space-1)]">
+                <StyledButton variant="ghost" size="sm" onclick={importAudio}>
+                    <FileAudio size={14} /> Import Audio File
+                </StyledButton>
+            </div>
+        {/if}
+
+        <!-- Heatmap is collapsible so the record button remains the primary surface. -->
+        {#if viewState === "idle" && recentSessions.length > 0}
+            <div class="shrink-0 flex flex-col gap-[var(--space-2)] px-[var(--space-1)]">
+                <ActivityHeatmap
+                    entries={recentSessions}
+                    collapsed={heatmapCollapsed}
+                    onToggleCollapsed={() => (heatmapCollapsed = !heatmapCollapsed)}
+                />
+            </div>
+        {/if}
+
+        <!-- Recording status bar (cancel + status + timer) — below the panel during active recording.
+         3-column grid: Cancel, status, timer each get equal width so the middle status text is
+         geometrically centered regardless of the side elements' widths. -->
+        {#if isRecording}
+            <div class="grid grid-cols-3 items-center gap-[var(--space-2)] py-[var(--space-1)] shrink-0">
+                <div class="justify-self-start">
+                    <StyledButton
+                        variant="danger-outline"
+                        size="sm"
+                        onclick={cancelRecording}
+                        ariaLabel="Cancel recording and discard audio"
+                        title="Cancel recording and discard captured audio"
+                    >
+                        <X size={15} /> Cancel
+                    </StyledButton>
+                </div>
+
+                <div class="flex items-center justify-center gap-[var(--space-2)]">
+                    <span
+                        class="w-2 h-2 rounded-full bg-[var(--color-danger)] shrink-0 animate-[pulse-dot_1.2s_ease-in-out_infinite]"
+                    ></span>
+                    <span class="text-[var(--text-sm)] text-[var(--color-danger)] whitespace-nowrap"
+                        >Recording in progress…</span
+                    >
+                </div>
+
+                <span
+                    class="justify-self-end text-[var(--text-sm)] font-[var(--font-mono)] text-[var(--text-tertiary)] tabular-nums whitespace-nowrap"
+                    >{formatElapsed(recordingElapsedMs)}</span
+                >
+            </div>
+        {/if}
+
+        <!-- Session tags applied confirmation (ready state only) -->
+        {#if viewState === "ready" && sessionTagIds.size > 0}
+            {@const appliedTags = allTags.filter((t) => sessionTagIds.has(t.id))}
+            {#if appliedTags.length > 0}
+                <div class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)] shrink-0">
+                    <Bookmark size={12} class="text-[var(--accent)] shrink-0" />
+                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">Session tags applied:</span>
+                    {#each appliedTags as tag (tag.id)}
+                        <span
+                            class="inline-flex items-center h-5 px-1.5 rounded-full text-[10px] font-medium"
+                            style="background: color-mix(in srgb, {tag.color ??
+                                'var(--accent)'} 25%, transparent); color: var(--text-primary);">{tag.name}</span
+                        >
+                    {/each}
+                </div>
+            {/if}
+        {/if}
+    </div>
+    </div>
 
     <TranscribeActionBar
         {viewState}
