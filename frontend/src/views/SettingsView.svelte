@@ -9,8 +9,19 @@
      * actions (export, cleanup, restart) emit toasts instead.
      */
 
-    import { getConfig, updateConfig, getModels, getHealth, getEngineStatus, downloadModel, restartEngine } from "../lib/api";
-    import type { EngineStatusInfo, HealthInfo, ModelInfo } from "../lib/api";
+    import {
+        getConfig,
+        updateConfig,
+        getModels,
+        getHealth,
+        getEngineStatus,
+        downloadModel,
+        restartEngine,
+        getRecoverableRecordings,
+        transcribeRecoveredRecording,
+        deleteRecoveredRecording,
+    } from "../lib/api";
+    import type { EngineStatusInfo, HealthInfo, ModelInfo, RecoverableRecording } from "../lib/api";
     import { appConfig } from "../lib/config.svelte";
     import type { ConfigPath, ConfigValue, VociferousConfig } from "../lib/config.svelte";
     import { confirmDialog } from "../lib/confirm.svelte";
@@ -31,6 +42,9 @@
         Sparkles,
         TriangleAlert,
         ShieldCheck,
+        RefreshCw,
+        Trash2,
+        Lock,
     } from "lucide-svelte";
     import CustomSelect from "../lib/components/CustomSelect.svelte";
     import KeyBindCapture from "../lib/components/KeyBindCapture.svelte";
@@ -79,6 +93,7 @@
         transcripts: 0,
     });
     let engineStatus: EngineStatusInfo | null = $state(null);
+    let recoverableRecordings: RecoverableRecording[] = $state([]);
     let loading = $state(true);
     let saving = $state(false);
     let restartPromptArmed = $state(false);
@@ -108,6 +123,7 @@
 
     let unsubDownload: (() => void) | null = null;
     let unsubEngineStatus: (() => void) | null = null;
+    let unsubAudioRecovery: (() => void) | null = null;
     let unregisterNavigationBlocker: (() => void) | null = null;
 
     onMount(async () => {
@@ -142,8 +158,18 @@
             void handleEngineStatusEvent(data);
         });
 
+        unsubAudioRecovery = ws.on("audio_recovery_updated", () => {
+            void refreshRecoverableRecordings();
+        });
+
         try {
-            const [c, m, h, s] = await Promise.all([getConfig(), getModels(), getHealth(), getEngineStatus()]);
+            const [c, m, h, s, r] = await Promise.all([
+                getConfig(),
+                getModels(),
+                getHealth(),
+                getEngineStatus(),
+                getRecoverableRecordings(),
+            ]);
             appConfig.apply(c);
             config = cloneConfig(c);
             const validRecordingModes = ["press_to_toggle", "hold_to_record"];
@@ -154,6 +180,7 @@
             models = m;
             health = h;
             engineStatus = s;
+            recoverableRecordings = r.items;
         } catch (e: unknown) {
             toast.error(`Failed to load settings: ${errorMessage(e)}`);
             originalConfig = JSON.stringify(config);
@@ -167,6 +194,7 @@
     onDestroy(() => {
         unsubDownload?.();
         unsubEngineStatus?.();
+        unsubAudioRecovery?.();
         unregisterNavigationBlocker?.();
     });
 
@@ -186,6 +214,42 @@
             engineStatus = s;
         } catch {
             // best-effort
+        }
+    }
+
+    async function refreshRecoverableRecordings(): Promise<void> {
+        try {
+            const result = await getRecoverableRecordings();
+            recoverableRecordings = result.items;
+        } catch {
+            // best-effort
+        }
+    }
+
+    async function handleTranscribeRecovered(recordingId: string): Promise<void> {
+        try {
+            await transcribeRecoveredRecording(recordingId);
+            toast.info("Recovered recording queued");
+            await refreshRecoverableRecordings();
+        } catch (e: unknown) {
+            toast.error(`Recovery failed: ${errorMessage(e)}`);
+        }
+    }
+
+    async function handleDeleteRecovered(recordingId: string): Promise<void> {
+        const ok = await confirmDialog.confirm({
+            title: "Delete recovered audio?",
+            message: "This deletes the recovered source audio and cannot be undone.",
+            confirmLabel: "Delete Audio",
+            danger: true,
+        });
+        if (!ok) return;
+        try {
+            await deleteRecoveredRecording(recordingId);
+            toast.success("Recovered audio deleted");
+            await refreshRecoverableRecordings();
+        } catch (e: unknown) {
+            toast.error(`Delete failed: ${errorMessage(e)}`);
         }
     }
 
@@ -892,6 +956,98 @@
                                     </button>
                                 </div>
                             </div>
+                            <div
+                                class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
+                            >
+                                <label
+                                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                    for="setting-durability-interval"
+                                    data-tip="Maximum active-recording audio window at risk during a hard crash. Lower values write more often."
+                                    >Durability Interval (seconds)</label
+                                >
+                                <input
+                                    id="setting-durability-interval"
+                                    type="number"
+                                    min="1"
+                                    max="30"
+                                    step="1"
+                                    class="h-9 w-20 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    value={getSafe(config, "recording.durability_interval_seconds", 5)}
+                                    oninput={(e) => {
+                                        const v = parseFloat((e.target as HTMLInputElement).value);
+                                        if (!isNaN(v) && v >= 1 && v <= 30)
+                                            setSafe("recording.durability_interval_seconds", v);
+                                    }}
+                                />
+                            </div>
+                            <div
+                                class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]"
+                            >
+                                <label
+                                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                                    for="setting-audio-vault-encryption"
+                                    data-tip="Encrypt source audio with a per-recording key stored in the platform secret backend."
+                                    >Audio Vault Encryption</label
+                                >
+                                <div class="w-full max-w-[260px]">
+                                    <CustomSelect
+                                        id="setting-audio-vault-encryption"
+                                        options={[
+                                            { value: "off", label: "Off" },
+                                            { value: "required", label: "Required" },
+                                        ]}
+                                        value={getSafe(config, "recording.audio_vault_encryption", "off")}
+                                        onchange={(v: string) => setSafe("recording.audio_vault_encryption", v)}
+                                    />
+                                </div>
+                            </div>
+                            {#if recoverableRecordings.length > 0}
+                                <div class="mt-[var(--space-3)] border-t border-[var(--shell-border)] pt-[var(--space-3)]">
+                                    <div class="flex items-center gap-[var(--space-2)] mb-[var(--space-2)]">
+                                        <TriangleAlert size={15} class="text-[var(--color-warning)]" />
+                                        <h3 class="text-[var(--text-sm)] font-semibold text-[var(--text-primary)]">
+                                            Recoverable Recordings
+                                        </h3>
+                                    </div>
+                                    <div class="flex flex-col gap-[var(--space-2)]">
+                                        {#each recoverableRecordings as recording}
+                                            <div
+                                                class="flex items-center gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-3)] py-[var(--space-2)]"
+                                            >
+                                                <div class="min-w-0 flex-1">
+                                                    <div class="flex items-center gap-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]">
+                                                        <span class="font-medium">{formatDuration(recording.duration_ms)}</span>
+                                                        <span class="text-[var(--text-tertiary)]">{recording.status}</span>
+                                                        {#if recording.encrypted}
+                                                            <Lock size={13} class="text-[var(--accent)]" />
+                                                        {/if}
+                                                    </div>
+                                                    <div class="truncate text-[var(--text-xs)] text-[var(--text-tertiary)]">
+                                                        {recording.started_at || recording.id}
+                                                        {#if recording.failure_reason} · {recording.failure_reason}{/if}
+                                                    </div>
+                                                </div>
+                                                <StyledButton
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    disabled={recording.status === "transcribing"}
+                                                    onclick={() => handleTranscribeRecovered(recording.id)}
+                                                >
+                                                    <RefreshCw size={13} /> Transcribe
+                                                </StyledButton>
+                                                <StyledButton
+                                                    size="sm"
+                                                    variant="destructive"
+                                                    disabled={recording.status === "transcribing"}
+                                                    onclick={() => handleDeleteRecovered(recording.id)}
+                                                >
+                                                    <Trash2 size={13} /> Delete
+                                                </StyledButton>
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </div>
+                            {/if}
                         </div>
                     {:else if activeSection === "output"}
                         <OutputCard {config} {getSafe} {setSafe} />

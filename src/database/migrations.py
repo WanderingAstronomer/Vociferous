@@ -605,6 +605,68 @@ def _v13_seed_markdown_refinement_prompts(conn: sqlite3.Connection) -> None:
     logger.info("v13 migration: shipped Markdown refinement prompts seeded outside analytics")
 
 
+def _v14_audio_vault(conn: sqlite3.Connection) -> None:
+    """v14 — Add durable audio vault tables for crash-recoverable recordings."""
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS recording_sessions (
+            id TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            finalized_at TEXT,
+            sample_rate INTEGER NOT NULL,
+            channels INTEGER NOT NULL,
+            sample_width_bytes INTEGER NOT NULL,
+            duration_ms INTEGER NOT NULL DEFAULT 0,
+            frame_count INTEGER NOT NULL DEFAULT 0,
+            byte_count INTEGER NOT NULL DEFAULT 0,
+            last_durable_chunk INTEGER NOT NULL DEFAULT -1,
+            audio_path TEXT NOT NULL,
+            encrypted INTEGER NOT NULL DEFAULT 0,
+            encryption_key_id TEXT,
+            transcript_id INTEGER REFERENCES transcripts(id) ON DELETE SET NULL,
+            failure_reason TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_recording_sessions_status ON recording_sessions(status);
+        CREATE INDEX IF NOT EXISTS idx_recording_sessions_transcript ON recording_sessions(transcript_id);
+
+        CREATE TABLE IF NOT EXISTS recording_chunks (
+            recording_id TEXT NOT NULL REFERENCES recording_sessions(id) ON DELETE CASCADE,
+            chunk_index INTEGER NOT NULL,
+            start_frame INTEGER NOT NULL,
+            frame_count INTEGER NOT NULL,
+            byte_offset INTEGER NOT NULL,
+            byte_count INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            written_at TEXT NOT NULL,
+            fsynced_at TEXT NOT NULL,
+            PRIMARY KEY (recording_id, chunk_index)
+        );
+
+        CREATE TABLE IF NOT EXISTS audio_assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recording_id TEXT REFERENCES recording_sessions(id) ON DELETE SET NULL,
+            transcript_id INTEGER REFERENCES transcripts(id) ON DELETE CASCADE,
+            role TEXT NOT NULL,
+            path TEXT NOT NULL,
+            duration_ms INTEGER NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            encrypted INTEGER NOT NULL DEFAULT 0,
+            pinned INTEGER NOT NULL DEFAULT 0,
+            retain_until TEXT,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_audio_assets_recording ON audio_assets(recording_id);
+        CREATE INDEX IF NOT EXISTS idx_audio_assets_transcript ON audio_assets(transcript_id);
+        CREATE INDEX IF NOT EXISTS idx_audio_assets_role ON audio_assets(role);
+        """
+    )
+    logger.info("v14 migration: durable audio vault tables ensured")
+
+
 #: Ordered list of (human-readable description, migration function) pairs.
 #: Append here to add future migrations; do not edit existing entries.
 MIGRATIONS: list[tuple[str, object]] = [
@@ -621,6 +683,7 @@ MIGRATIONS: list[tuple[str, object]] = [
     ("v11 compound membership — preserve non-destructive append members", _v11_compound_membership),
     ("v12 timestamp not unique — preserve rapid transcript inserts", _v12_timestamp_not_unique),
     ("v13 shipped Markdown refinement prompts — prompt-library records only", _v13_seed_markdown_refinement_prompts),
+    ("v14 audio vault — durable recording manifests and assets", _v14_audio_vault),
 ]
 
 

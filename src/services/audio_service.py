@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from queue import Empty, Queue
-from typing import TYPE_CHECKING, Callable
+from typing import Callable, Protocol
 
 import numpy as np
 import sounddevice as sd
@@ -23,8 +23,10 @@ from src.core.constants import FlowTiming
 from src.core.exceptions import AudioError
 from src.core.settings import VociferousSettings
 
-if TYPE_CHECKING:
-    from src.services.audio_spool import AudioSpoolWriter
+class AudioFrameWriter(Protocol):
+    """Minimal sink used by the recording loop for durable frame writes."""
+
+    def write_frames(self, frames: NDArray[np.int16]) -> None: ...
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +182,7 @@ class AudioService:
     def record_audio(
         self,
         should_stop: Callable[[], bool],
-        spool_writer: AudioSpoolWriter | None = None,
+        spool_writer: AudioFrameWriter | None = None,
     ) -> NDArray[np.int16] | None:
         """
         Record audio until should_stop() returns True.

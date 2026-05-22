@@ -152,6 +152,38 @@ export function retitleTranscript(id: number): Promise<{ status: string }> {
     return request(`/transcripts/${id}/retitle`, { method: "POST" });
 }
 
+export interface RecoverableRecording {
+    id: string;
+    status: string;
+    started_at: string;
+    updated_at: string;
+    finalized_at: string | null;
+    sample_rate: number;
+    channels: number;
+    sample_width_bytes: number;
+    duration_ms: number;
+    frame_count: number;
+    byte_count: number;
+    last_durable_chunk: number;
+    audio_path: string;
+    encrypted: boolean;
+    encryption_key_id: string | null;
+    transcript_id: number | null;
+    failure_reason: string | null;
+}
+
+export function getRecoverableRecordings(): Promise<PaginatedResult<RecoverableRecording>> {
+    return request("/audio/recoverable");
+}
+
+export function transcribeRecoveredRecording(recordingId: string): Promise<{ status: string; recording_id: string }> {
+    return request(`/audio/recoverable/${encodeURIComponent(recordingId)}/transcribe`, { method: "POST" });
+}
+
+export function deleteRecoveredRecording(recordingId: string): Promise<{ deleted: boolean; recording_id: string }> {
+    return request(`/audio/recoverable/${encodeURIComponent(recordingId)}`, { method: "DELETE" });
+}
+
 // --- Tags ---
 
 export function getTags(): Promise<Tag[]> {

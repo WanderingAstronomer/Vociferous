@@ -154,6 +154,8 @@ async def dispatch_intent(data: dict) -> Response:
         "update_config": defs.UpdateConfigIntent,
         "restart_engine": defs.RestartEngineIntent,
         "import_audio_file": defs.ImportAudioFileIntent,
+        "transcribe_recovered_recording": defs.TranscribeRecoveredRecordingIntent,
+        "delete_recovered_recording": defs.DeleteRecoveredRecordingIntent,
     }
 
     intent_cls = intent_map.get(intent_type_name)
