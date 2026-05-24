@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
+from src.core import secret_store
 from src.core.resource_manager import ResourceManager
 from src.core.secret_store import (
+    SecretStoreUnavailable,
     delete_provider_api_key,
     get_provider_api_key,
     get_secret_backend,
@@ -11,7 +15,6 @@ from src.core.secret_store import (
     provider_api_key_is_valid,
     store_provider_api_key,
 )
-
 
 VALID_GROQ_KEY = "gsk_test_secret_123456789012345678901234567890"
 
@@ -35,6 +38,36 @@ def test_groq_key_validation_rejects_obviously_bad_values() -> None:
 
 def test_provider_key_normalization_strips_bearer_prefix() -> None:
     assert normalize_provider_api_key("groq", f"Bearer {VALID_GROQ_KEY}") == VALID_GROQ_KEY
+
+
+def test_linux_secret_backend_requires_secret_tool(monkeypatch) -> None:
+    monkeypatch.setattr(secret_store.sys, "platform", "linux")
+    monkeypatch.setattr(secret_store.shutil, "which", lambda _name: None)
+    assert get_secret_backend() == "unavailable"
+
+    monkeypatch.setattr(
+        secret_store.shutil,
+        "which",
+        lambda name: "/usr/bin/secret-tool" if name == "secret-tool" else None,
+    )
+    assert get_secret_backend() == "libsecret"
+
+
+def test_linux_secret_tool_store_failure_raises_secret_store_unavailable(monkeypatch) -> None:
+    monkeypatch.setattr(secret_store.sys, "platform", "linux")
+    monkeypatch.setattr(
+        secret_store.shutil,
+        "which",
+        lambda name: "/usr/bin/secret-tool" if name == "secret-tool" else None,
+    )
+
+    def fake_run(*_args, **_kwargs):
+        raise subprocess.CalledProcessError(returncode=1, cmd=["secret-tool", "store"])
+
+    monkeypatch.setattr(secret_store.subprocess, "run", fake_run)
+
+    with pytest.raises(SecretStoreUnavailable, match="libsecret-tools"):
+        store_provider_api_key("groq", VALID_GROQ_KEY)
 
 
 def test_windows_dpapi_roundtrip(monkeypatch, tmp_path) -> None:

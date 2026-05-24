@@ -25,6 +25,28 @@ class SecretStoreUnavailable(RuntimeError):
     """Raised when the current platform has no supported local secret backend."""
 
 
+def _provider_secret_store_unavailable_message() -> str:
+    if sys.platform.startswith("linux"):
+        return (
+            "Linux secret storage is unavailable. Install libsecret-tools (`secret-tool`) and ensure a Secret "
+            "Service/keyring session is running and unlocked, or set the provider API key through an environment "
+            "variable instead."
+        )
+    return (
+        "No supported local secret store is available. "
+        "Set the provider API key through an environment variable instead."
+    )
+
+
+def _audio_vault_secret_store_unavailable_message() -> str:
+    if sys.platform.startswith("linux"):
+        return (
+            "Linux secret storage is unavailable for encrypted audio recordings. Install libsecret-tools "
+            "(`secret-tool`) and ensure a Secret Service/keyring session is running and unlocked."
+        )
+    return "No supported local secret store is available for encrypted audio recordings."
+
+
 def get_secret_backend() -> SecretBackend:
     """Return the supported secret backend for this host."""
     if sys.platform == "win32":
@@ -49,9 +71,7 @@ def store_provider_api_key(provider_id: str, api_key: str) -> None:
     elif backend == "libsecret":
         _secret_tool_store(provider_id, value)
     else:
-        raise SecretStoreUnavailable(
-            "No supported local secret store is available. Set the provider API key through an environment variable instead."
-        )
+        raise SecretStoreUnavailable(_provider_secret_store_unavailable_message())
 
 
 def get_provider_api_key(provider_id: str) -> str | None:
@@ -97,9 +117,14 @@ def store_audio_vault_key(recording_id: str, key: bytes) -> None:
     elif backend == "macos_keychain":
         _security_store_account(_audio_account(recording_id), value)
     elif backend == "libsecret":
-        _secret_tool_store_account(_audio_account(recording_id), f"Vociferous audio vault key {recording_id}", value)
+        _secret_tool_store_account(
+            _audio_account(recording_id),
+            f"Vociferous audio vault key {recording_id}",
+            value,
+            unavailable_message=_audio_vault_secret_store_unavailable_message(),
+        )
     else:
-        raise SecretStoreUnavailable("No supported local secret store is available for encrypted audio recordings.")
+        raise SecretStoreUnavailable(_audio_vault_secret_store_unavailable_message())
 
 
 def get_audio_vault_key(recording_id: str) -> bytes | None:
@@ -154,7 +179,9 @@ def validate_provider_api_key(provider_id: str, api_key: str | None) -> str:
     if not value:
         raise ValueError("API key cannot be empty.")
     if provider_id == "groq" and (not value.startswith("gsk_") or len(value) < 32):
-        raise ValueError("Groq API key looks invalid. Paste the full key value from Groq; it should start with 'gsk_' and be much longer.")
+        raise ValueError(
+            "Groq API key looks invalid. Paste the full key value from Groq; it should start with 'gsk_' and be much longer."
+        )
     return value
 
 
@@ -182,7 +209,9 @@ def _audio_account(recording_id: str) -> str:
 
 
 def _validate_recording_id(recording_id: str) -> str:
-    if not recording_id or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for ch in recording_id):
+    if not recording_id or any(
+        ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for ch in recording_id
+    ):
         raise ValueError("Invalid recording id.")
     return recording_id
 
@@ -308,7 +337,9 @@ def _dpapi_blob(data: bytes) -> tuple[_DATA_BLOB, ctypes.Array[ctypes.c_ubyte]]:
 def _dpapi_protect(data: bytes) -> str:
     in_blob, _buffer = _dpapi_blob(data)
     out_blob = _DATA_BLOB()
-    if not ctypes.windll.crypt32.CryptProtectData(ctypes.byref(in_blob), None, None, None, None, 0, ctypes.byref(out_blob)):
+    if not ctypes.windll.crypt32.CryptProtectData(
+        ctypes.byref(in_blob), None, None, None, None, 0, ctypes.byref(out_blob)
+    ):
         raise ctypes.WinError()
     try:
         encrypted = ctypes.string_at(out_blob.pbData, out_blob.cbData)
@@ -321,7 +352,9 @@ def _dpapi_unprotect(value: str) -> bytes:
     encrypted = base64.b64decode(value.encode("ascii"))
     in_blob, _buffer = _dpapi_blob(encrypted)
     out_blob = _DATA_BLOB()
-    if not ctypes.windll.crypt32.CryptUnprotectData(ctypes.byref(in_blob), None, None, None, None, 0, ctypes.byref(out_blob)):
+    if not ctypes.windll.crypt32.CryptUnprotectData(
+        ctypes.byref(in_blob), None, None, None, None, 0, ctypes.byref(out_blob)
+    ):
         raise ctypes.WinError()
     try:
         return ctypes.string_at(out_blob.pbData, out_blob.cbData)
@@ -374,18 +407,26 @@ def _security_delete_account(account: str) -> bool:
 
 
 def _secret_tool_store(provider_id: str, api_key: str) -> None:
-    _secret_tool_store_account(_account(provider_id), f"Vociferous {provider_id} API key", api_key)
-
-
-def _secret_tool_store_account(account: str, label: str, value: str) -> None:
-    subprocess.run(
-        ["secret-tool", "store", "--label", label, "service", _SERVICE, "account", account],
-        input=value,
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        text=True,
+    _secret_tool_store_account(
+        _account(provider_id),
+        f"Vociferous {provider_id} API key",
+        api_key,
+        unavailable_message=_provider_secret_store_unavailable_message(),
     )
+
+
+def _secret_tool_store_account(account: str, label: str, value: str, *, unavailable_message: str) -> None:
+    try:
+        subprocess.run(
+            ["secret-tool", "store", "--label", label, "service", _SERVICE, "account", account],
+            input=value,
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        raise SecretStoreUnavailable(unavailable_message) from exc
 
 
 def _secret_tool_get(provider_id: str) -> str | None:
@@ -393,13 +434,16 @@ def _secret_tool_get(provider_id: str) -> str | None:
 
 
 def _secret_tool_get_account(account: str) -> str | None:
-    result = subprocess.run(
-        ["secret-tool", "lookup", "service", _SERVICE, "account", account],
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["secret-tool", "lookup", "service", _SERVICE, "account", account],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except FileNotFoundError:
+        return None
     if result.returncode != 0:
         return None
     return result.stdout.strip() or None
@@ -410,11 +454,14 @@ def _secret_tool_delete(provider_id: str) -> bool:
 
 
 def _secret_tool_delete_account(account: str) -> bool:
-    result = subprocess.run(
-        ["secret-tool", "clear", "service", _SERVICE, "account", account],
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["secret-tool", "clear", "service", _SERVICE, "account", account],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except FileNotFoundError:
+        return False
     return result.returncode == 0

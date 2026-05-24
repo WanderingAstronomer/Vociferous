@@ -146,7 +146,8 @@ Record. Transcribe. Refine. Copy. That's the core loop. The rest is infrastructu
 
 - Python 3.12+
 - Node.js 18+ and npm
-- System audio packages (`libportaudio2`, `xclip` on Linux)
+- System packages (`libportaudio2`, `xclip`, `libsecret-tools` on Linux)
+- On Linux, stored provider API keys and encrypted audio vault keys require a working Secret Service backend such as GNOME Keyring, KWallet, or another compatible keyring provider.
 - **For Windows GPU acceleration**: an NVIDIA driver is not enough by itself. You also need a usable CUDA 12 runtime for CTranslate2. The Windows installer can install the pinned Python CUDA runtime wheels into the app venv when it detects a driver but cannot load the CUDA DLL stack.
 
 ### Linux (Debian/Ubuntu)
@@ -160,6 +161,8 @@ bash scripts/install.sh
 ```
 
 The install script handles everything including interactive model provisioning. If you prefer manual control:
+
+It also verifies that `secret-tool` is installed and probes Linux secret-store readiness when run interactively. If your desktop session does not expose an unlocked Secret Service backend, environment variables such as `GROQ_API_KEY` still work, but stored provider keys and encrypted audio vault keys will not.
 
 ```bash
 bash scripts/install.sh    # System deps + venv + frontend build
