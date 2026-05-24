@@ -219,6 +219,72 @@ class TestLegacySchemaBootstrap:
 
         db.close()
 
+    def test_audio_vault_foreign_keys_repaired_after_transcripts_rebuild(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "legacy_v11_audio_vault_fk.db"
+
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript(
+            """
+            CREATE TABLE transcripts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT UNIQUE NOT NULL,
+                raw_text TEXT NOT NULL,
+                normalized_text TEXT NOT NULL,
+                display_name TEXT,
+                duration_ms INTEGER DEFAULT 0,
+                speech_duration_ms INTEGER DEFAULT 0,
+                transcription_time_ms INTEGER DEFAULT 0,
+                refinement_time_ms INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
+                include_in_analytics INTEGER NOT NULL DEFAULT 1,
+                has_audio_cached INTEGER NOT NULL DEFAULT 0,
+                is_protected INTEGER NOT NULL DEFAULT 0,
+                compound_root_id INTEGER REFERENCES transcripts(id) ON DELETE CASCADE,
+                compound_order INTEGER
+            );
+
+            CREATE UNIQUE INDEX idx_transcripts_timestamp_unique ON transcripts(timestamp);
+
+            INSERT INTO transcripts (
+                timestamp, raw_text, normalized_text, display_name, created_at
+            ) VALUES (
+                '2026-01-01T00:00:00.000000+00:00', 'legacy raw', 'legacy normalized', 'Legacy',
+                '2026-01-01T00:00:00.000000+00:00'
+            );
+
+            CREATE TABLE schema_version (
+                version INTEGER NOT NULL
+            );
+
+            INSERT INTO schema_version (version) VALUES (11);
+            """
+        )
+        conn.commit()
+        conn.close()
+
+        db = TranscriptDB(db_path=db_path)
+        try:
+            recording_fks = {
+                (row[3], row[2]) for row in db._conn.execute("PRAGMA foreign_key_list(recording_sessions)").fetchall()
+            }
+            asset_fks = {
+                (row[3], row[2]) for row in db._conn.execute("PRAGMA foreign_key_list(audio_assets)").fetchall()
+            }
+
+            assert ("transcript_id", "transcripts") in recording_fks
+            assert ("transcript_id", "transcripts") in asset_fks
+            assert all(target != "transcripts_old" for _column, target in recording_fks | asset_fks)
+
+            record = db.create_recording_session(
+                recording_id="rec_after_migration",
+                audio_path=tmp_path / "rec_after_migration.pcm",
+                sample_rate=16000,
+            )
+            assert record.id == "rec_after_migration"
+            assert db._conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        finally:
+            db.close()
+
 
 class TestConcurrentReads:
     """Multiple threads can read simultaneously under WAL."""
