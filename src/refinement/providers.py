@@ -196,7 +196,9 @@ class LocalCT2RefinementProvider:
                 raise FileNotFoundError(
                     f"CPU fallback model {slm_model.name} is not downloaded. Download it in Settings before using refinement on this machine."
                 )
-            raise FileNotFoundError(f"CT2 model directory not found: {model_dir}. Please run provisioning to download the model.")
+            raise FileNotFoundError(
+                f"CT2 model directory not found: {model_dir}. Please run provisioning to download the model."
+            )
 
         if slm_model.quant == "awq" and runtime_summary["resolved_device"] != "cuda":
             raise ValueError(
@@ -296,7 +298,9 @@ class LocalCT2RefinementProvider:
         if model.quant != "awq":
             return model, ""
         if settings.refinement.n_gpu_layers == 0:
-            raise ValueError(f"{model.name} uses AWQ quantization which requires GPU. Choose an int8 refinement model for CPU mode.")
+            raise ValueError(
+                f"{model.name} uses AWQ quantization which requires GPU. Choose an int8 refinement model for CPU mode."
+            )
         if wants_gpu and cuda_status.cuda_available:
             return model, ""
 
@@ -401,8 +405,10 @@ class OpenAICompatibleRefinementProvider:
             repetition_penalty=repetition_penalty,
         )
         if not result.content.strip():
-            logger.warning("External refinement returned empty content. Returning original text.")
-            return GenerationResult(content=text, reasoning=result.reasoning)
+            raise ProviderRequestError(
+                f"{self._provider_label} returned empty refinement output. Try again or reduce output token limit.",
+                status_code=502,
+            )
         return result
 
     def generate_custom(
@@ -454,7 +460,9 @@ class OpenAICompatibleRefinementProvider:
                 validate_provider_api_key(self._provider_id, self._api_key)
             except ValueError as exc:
                 if not self._api_key:
-                    raise ValueError("Groq API key is not configured. Set GROQ_API_KEY or save a local provider API key.") from exc
+                    raise ValueError(
+                        "Groq API key is not configured. Set GROQ_API_KEY or save a local provider API key."
+                    ) from exc
                 raise
 
     @property
@@ -493,6 +501,15 @@ class OpenAICompatibleRefinementProvider:
                     time.sleep(self._retry_delay(response))
                     continue
                 raise ProviderRequestError(self._error_message(response), status_code=response.status_code)
+            except httpx.TimeoutException as exc:
+                last_error = exc
+                if attempt < attempts - 1:
+                    time.sleep(self._retry_delay(None))
+                    continue
+                raise ProviderRequestError(
+                    f"{self._provider_label} did not respond within {self._provider_settings.timeout_seconds:g}s at {self._provider_settings.base_url}. The server may be busy or stalled.",
+                    status_code=504,
+                ) from exc
             except httpx.RequestError as exc:
                 last_error = exc
                 if attempt < attempts - 1:
@@ -568,23 +585,40 @@ class OpenAICompatibleRefinementProvider:
         top_k: int,
         repetition_penalty: float,
     ) -> GenerationResult:
-        payload: dict[str, object] = {
-            "model": self._provider_settings.model_id,
-            "messages": messages,
-            "temperature": max(0.01, temperature),
-            "top_p": top_p,
-            "stream": False,
-        }
-        if self._provider_id == "groq":
-            payload["max_completion_tokens"] = max_tokens
-        else:
-            payload["max_tokens"] = max_tokens
-            if top_k > 0:
-                payload["top_k"] = top_k
-            if repetition_penalty != 1.0:
-                payload["repeat_penalty"] = repetition_penalty
+        request_tokens = max(1, max_tokens)
+        while True:
+            payload: dict[str, object] = {
+                "model": self._provider_settings.model_id,
+                "messages": messages,
+                "temperature": max(0.01, temperature),
+                "top_p": top_p,
+                "stream": False,
+            }
+            if self._provider_id == "groq":
+                payload["max_completion_tokens"] = request_tokens
+            else:
+                payload["max_tokens"] = request_tokens
+                if top_k > 0:
+                    payload["top_k"] = top_k
+                if repetition_penalty != 1.0:
+                    payload["repeat_penalty"] = repetition_penalty
 
-        response = self._request("POST", "chat/completions", json_payload=payload)
+            try:
+                response = self._request("POST", "chat/completions", json_payload=payload)
+                break
+            except ProviderRequestError as exc:
+                next_tokens = self._smaller_retry_budget(request_tokens, exc)
+                if next_tokens is None:
+                    raise
+                logger.warning(
+                    "%s rejected completion budget %d (HTTP %d). Retrying with %d.",
+                    self._provider_label,
+                    request_tokens,
+                    exc.status_code,
+                    next_tokens,
+                )
+                request_tokens = next_tokens
+
         body = response.json()
         self._last_usage = body.get("usage") if isinstance(body.get("usage"), dict) else None
         try:
@@ -594,6 +628,13 @@ class OpenAICompatibleRefinementProvider:
         if not isinstance(content, str):
             raise RuntimeError(f"{self._provider_label} returned non-text chat completion content.")
         return parse_generation_output(content)
+
+    def _smaller_retry_budget(self, current_tokens: int, exc: ProviderRequestError) -> int | None:
+        if exc.status_code != 413:
+            return None
+        if current_tokens <= 128:
+            return None
+        return max(128, current_tokens // 2)
 
     def _refinement_max_tokens(self, text: str) -> int:
         words = max(1, len(text.split()))
