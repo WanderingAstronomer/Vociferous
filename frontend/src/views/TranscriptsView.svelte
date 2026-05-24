@@ -20,6 +20,7 @@
         exportFile,
         type Transcript,
         type Tag,
+        type TagFilterMode,
         type SearchResult,
     } from "../lib/api";
     import { buildExportPayload, type ExportFormat } from "../lib/exportUtils";
@@ -86,7 +87,8 @@
     // Tags
     let allTags: Tag[] = $state([]);
     let activeTagIds: Set<number> = $state(new Set());
-    let tagFilterMode: "any" | "all" = $state("any");
+    const TAG_FILTER_MODES: readonly TagFilterMode[] = ["or", "and", "not", "nand", "xor"];
+    let tagFilterMode: TagFilterMode = $state("or");
 
     // Tag assignment popover
     let tagAssignOpen = $state(false);
@@ -133,12 +135,9 @@
         if (isSearching) {
             // Search doesn't support server-side tag filtering — filter client-side
             if (activeTagIds.size === 0) return searchResults;
+            const selectedTagIds = [...activeTagIds];
             return searchResults.filter((e) => {
-                const entryTagIds = new Set(e.tags.map((t) => t.id));
-                if (tagFilterMode === "all") {
-                    return [...activeTagIds].every((id) => entryTagIds.has(id));
-                }
-                return [...activeTagIds].some((id) => entryTagIds.has(id));
+                return matchesTagFilter(e, selectedTagIds, tagFilterMode);
             });
         }
         // Browse mode: entries already filtered/sorted/paginated server-side
@@ -168,6 +167,16 @@
 
     function tagColor(tag: Tag): string {
         return tag.color ?? "var(--accent)";
+    }
+
+    function matchesTagFilter(entry: Transcript, selectedTagIds: number[], mode: TagFilterMode): boolean {
+        const entryTagIds = new Set(entry.tags.map((tag) => tag.id));
+        const matchCount = selectedTagIds.filter((tagId) => entryTagIds.has(tagId)).length;
+        if (mode === "and") return matchCount === selectedTagIds.length;
+        if (mode === "not") return matchCount === 0;
+        if (mode === "nand") return matchCount !== selectedTagIds.length;
+        if (mode === "xor") return matchCount === 1;
+        return matchCount > 0;
     }
 
     /* ===== Data Loading ===== */
@@ -211,7 +220,12 @@
         if (allTags.length === 0) allTags = tags;
         const promptTag = tags.find((tag) => tag.name === "Prompt" && tag.is_system);
         if (!promptTag) return [];
-        const result = await getTranscripts({ limit: 100, tag_ids: [promptTag.id], sort_by: "display_name", sort_dir: "asc" });
+        const result = await getTranscripts({
+            limit: 100,
+            tag_ids: [promptTag.id],
+            sort_by: "display_name",
+            sort_dir: "asc",
+        });
         return result.items;
     }
 
@@ -330,7 +344,9 @@
         const spotCheckCount = Math.min(SPOT_CHECK_SIZE, total);
         const offerSpotCheck = total > spotCheckCount;
         const promptTranscripts = await loadPromptTranscripts();
-        const defaultPrompt = defaultPromptId ? promptTranscripts.find((prompt) => prompt.id === defaultPromptId) : null;
+        const defaultPrompt = defaultPromptId
+            ? promptTranscripts.find((prompt) => prompt.id === defaultPromptId)
+            : null;
         const promptOptions = [
             defaultPrompt
                 ? {
@@ -498,8 +514,8 @@
         loadTranscripts();
     }
 
-    function cycleFilterMode() {
-        tagFilterMode = tagFilterMode === "any" ? "all" : "any";
+    function setFilterMode(mode: TagFilterMode) {
+        tagFilterMode = mode;
         currentPage = 1;
         loadTranscripts();
     }
@@ -708,7 +724,8 @@
 
     onMount(() => {
         // Load page_size from user settings, then load data
-        appConfig.ensureLoaded()
+        appConfig
+            .ensureLoaded()
             .then((cfg) => {
                 const savedSize = Number(cfg.user?.page_size);
                 if ([25, 50, 100].includes(savedSize)) pageSize = savedSize;
@@ -799,6 +816,7 @@
             {allTags}
             {activeTagIds}
             {tagFilterMode}
+            tagFilterModes={TAG_FILTER_MODES}
             {sortBy}
             {sortDir}
             sortOptions={SORT_OPTIONS}
@@ -812,7 +830,7 @@
             onCreateTag={handleCreateTag}
             onDeleteTag={handleDeleteTag}
             onTagColorChange={handleTagColorChange}
-            onCycleFilterMode={cycleFilterMode}
+            onSetFilterMode={setFilterMode}
             onClearTagFilters={clearTagFilters}
             onSetSort={setSort}
             onGoToPage={goToPage}

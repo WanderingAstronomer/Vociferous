@@ -89,13 +89,15 @@ export interface PaginatedResult<T> {
     total: number;
 }
 
+export type TagFilterMode = "or" | "and" | "not" | "nand" | "xor";
+
 export interface TranscriptListParams {
     limit?: number;
     offset?: number;
     sort_by?: string;
     sort_dir?: "asc" | "desc";
     tag_ids?: number[];
-    tag_mode?: "any" | "all";
+    tag_mode?: TagFilterMode;
 }
 
 export function getTranscripts(params: TranscriptListParams = {}): Promise<PaginatedResult<Transcript>> {

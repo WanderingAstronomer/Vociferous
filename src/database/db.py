@@ -20,6 +20,24 @@ from src.core.resource_manager import ResourceManager
 
 logger = logging.getLogger(__name__)
 
+TAG_FILTER_MODE_ALIASES: dict[str, str] = {
+    "any": "or",
+    "all": "and",
+    "or": "or",
+    "and": "and",
+    "not": "not",
+    "nand": "nand",
+    "xor": "xor",
+}
+
+
+def normalize_tag_filter_mode(tag_mode: str) -> str:
+    """Normalize supported tag filter modes, preserving legacy any/all aliases."""
+    normalized = TAG_FILTER_MODE_ALIASES.get(tag_mode.strip().lower())
+    if normalized is None:
+        raise ValueError("tag_mode must be one of: or, and, not, nand, xor")
+    return normalized
+
 
 # --- Dataclass Models ---
 
@@ -553,11 +571,13 @@ class TranscriptDB:
             sort_by: Column to sort by (created_at, duration_ms, speech_duration_ms, display_name).
             sort_dir: "asc" or "desc".
             tag_ids: Filter to transcripts having these tags.
-            tag_mode: "any" = match any tag, "all" = must have all tags.
+            tag_mode: "or"/"any", "and"/"all", "not", "nand", or "xor".
 
         Returns:
             Tuple of (transcripts, total_count).
         """
+        mode = normalize_tag_filter_mode(tag_mode)
+        selected_tag_ids = list(dict.fromkeys(tag_ids or []))
         col = sort_by if sort_by in self._SORT_COLUMNS else "created_at"
         expr = self._SORT_EXPRESSIONS[col]
         direction = "ASC" if sort_dir.lower() == "asc" else "DESC"
@@ -570,46 +590,62 @@ class TranscriptDB:
             if not include_protected:
                 visibility_conditions.append("t.is_protected = 0")
 
-            if tag_ids:
-                placeholders = ",".join("?" * len(tag_ids))
-                if tag_mode == "all":
-                    visibility = ""
-                    if visibility_conditions:
-                        visibility = " AND ".join(visibility_conditions) + " AND "
-                    where = f"""WHERE {visibility}t.id IN (
+            query_conditions = [*visibility_conditions]
+            query_params: list[int] = []
+            if selected_tag_ids:
+                placeholders = ",".join("?" * len(selected_tag_ids))
+                if mode == "or":
+                    query_conditions.append(
+                        f"t.id IN (SELECT transcript_id FROM transcript_tags WHERE tag_id IN ({placeholders}))"
+                    )
+                    query_params.extend(selected_tag_ids)
+                elif mode == "and":
+                    query_conditions.append(
+                        f"""t.id IN (
                                SELECT transcript_id FROM transcript_tags
                                WHERE tag_id IN ({placeholders})
                                GROUP BY transcript_id
                                HAVING COUNT(DISTINCT tag_id) = ?
                            )"""
-                    total, rows = self._paginate(
-                        f"SELECT COUNT(*) FROM transcripts t {where}",
-                        f"SELECT t.* FROM transcripts t {where} {order_clause} LIMIT ? OFFSET ?",
-                        (*tag_ids, len(tag_ids)),
-                        (*tag_ids, len(tag_ids), limit, offset),
                     )
+                    query_params.extend((*selected_tag_ids, len(selected_tag_ids)))
+                elif mode == "not":
+                    query_conditions.append(
+                        f"""NOT EXISTS (
+                               SELECT 1 FROM transcript_tags tt
+                               WHERE tt.transcript_id = t.id
+                                 AND tt.tag_id IN ({placeholders})
+                           )"""
+                    )
+                    query_params.extend(selected_tag_ids)
+                elif mode == "nand":
+                    query_conditions.append(
+                        f"""t.id NOT IN (
+                               SELECT transcript_id FROM transcript_tags
+                               WHERE tag_id IN ({placeholders})
+                               GROUP BY transcript_id
+                               HAVING COUNT(DISTINCT tag_id) = ?
+                           )"""
+                    )
+                    query_params.extend((*selected_tag_ids, len(selected_tag_ids)))
                 else:
-                    visibility = ""
-                    if visibility_conditions:
-                        visibility = "AND " + " AND ".join(visibility_conditions)
-                    where = f"""INNER JOIN transcript_tags tt ON t.id = tt.transcript_id
-                           WHERE tt.tag_id IN ({placeholders})
-                             {visibility}"""
-                    total, rows = self._paginate(
-                        f"SELECT COUNT(DISTINCT t.id) FROM transcripts t {where}",
-                        f"SELECT DISTINCT t.* FROM transcripts t {where} {order_clause} LIMIT ? OFFSET ?",
-                        tuple(tag_ids),
-                        (*tag_ids, limit, offset),
+                    query_conditions.append(
+                        f"""t.id IN (
+                               SELECT transcript_id FROM transcript_tags
+                               WHERE tag_id IN ({placeholders})
+                               GROUP BY transcript_id
+                               HAVING COUNT(DISTINCT tag_id) = 1
+                           )"""
                     )
-            else:
-                visibility_where = ""
-                if visibility_conditions:
-                    visibility_where = "WHERE " + " AND ".join(visibility_conditions) + " "
-                total, rows = self._paginate(
-                    f"SELECT COUNT(*) FROM transcripts t {visibility_where}",
-                    f"SELECT t.* FROM transcripts t {visibility_where}{order_clause} LIMIT ? OFFSET ?",
-                    rows_params=(limit, offset),
-                )
+                    query_params.extend(selected_tag_ids)
+
+            where_clause = f"WHERE {' AND '.join(query_conditions)} " if query_conditions else ""
+            total, rows = self._paginate(
+                f"SELECT COUNT(*) FROM transcripts t {where_clause}",
+                f"SELECT t.* FROM transcripts t {where_clause}{order_clause} LIMIT ? OFFSET ?",
+                tuple(query_params),
+                (*query_params, limit, offset),
+            )
             transcripts = [self._row_to_transcript(r) for r in rows]
             self._enrich_transcripts_with_tags(transcripts)
         return transcripts, total

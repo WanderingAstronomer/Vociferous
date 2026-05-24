@@ -1,7 +1,7 @@
 <script lang="ts">
     import { ArrowUpDown, ChevronLeft, ChevronRight, Search, X } from "lucide-svelte";
 
-    import type { Tag } from "../../api";
+    import type { Tag, TagFilterMode } from "../../api";
     import TagBar from "../TagBar.svelte";
 
     type SortDirection = "asc" | "desc";
@@ -19,7 +19,8 @@
         isSearching: boolean;
         allTags: Tag[];
         activeTagIds: Set<number>;
-        tagFilterMode: "any" | "all";
+        tagFilterMode: TagFilterMode;
+        tagFilterModes: readonly TagFilterMode[];
         sortBy: string;
         sortDir: SortDirection;
         sortOptions: readonly SortOption[];
@@ -33,7 +34,7 @@
         onCreateTag: (name: string, color: string) => void;
         onDeleteTag: (tagId: number) => void;
         onTagColorChange: (tagId: number, color: string) => void;
-        onCycleFilterMode: () => void;
+        onSetFilterMode: (mode: TagFilterMode) => void;
         onClearTagFilters: () => void;
         onSetSort: (value: string) => void;
         onGoToPage: (page: number) => void;
@@ -49,6 +50,7 @@
         allTags,
         activeTagIds,
         tagFilterMode,
+        tagFilterModes,
         sortBy,
         sortDir,
         sortOptions,
@@ -62,7 +64,7 @@
         onCreateTag,
         onDeleteTag,
         onTagColorChange,
-        onCycleFilterMode,
+        onSetFilterMode,
         onClearTagFilters,
         onSetSort,
         onGoToPage,
@@ -104,13 +106,16 @@
         oncolorchange={onTagColorChange}
     >
         {#if activeTagIds.size > 0}
-            <button
-                class="h-6 px-2 rounded-full text-xs font-semibold border border-[var(--accent-muted)] bg-transparent text-[var(--accent)] cursor-pointer transition-colors hover:bg-[var(--hover-overlay)]"
-                onclick={onCycleFilterMode}
-                title="Toggle between matching ANY or ALL selected tags"
+            <select
+                class="h-6 pl-2 pr-6 rounded-full text-xs font-semibold border border-[var(--accent-muted)] bg-[var(--surface-primary)] text-[var(--accent)] cursor-pointer outline-none transition-colors hover:bg-[var(--hover-overlay)]"
+                value={tagFilterMode}
+                onchange={(event) => onSetFilterMode((event.currentTarget as HTMLSelectElement).value as TagFilterMode)}
+                title="Tag boolean operator"
             >
-                {tagFilterMode === "any" ? "ANY" : "ALL"}
-            </button>
+                {#each tagFilterModes as mode (mode)}
+                    <option value={mode}>{mode.toUpperCase()}</option>
+                {/each}
+            </select>
             <button
                 class="h-6 px-1.5 rounded-full text-xs text-[var(--text-tertiary)] bg-transparent border-none cursor-pointer hover:text-[var(--text-primary)] transition-colors"
                 onclick={onClearTagFilters}

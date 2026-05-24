@@ -13,6 +13,7 @@ from litestar.exceptions import HTTPException
 
 from src.api.config import clear_default_refinement_prompt_if_matches
 from src.api.deps import get_coordinator, require_db, validate_pagination
+from src.database.db import normalize_tag_filter_mode
 
 logger = logging.getLogger(__name__)
 
@@ -47,13 +48,18 @@ def list_transcripts(
         except ValueError:
             raise HTTPException(status_code=400, detail="tag_ids must be a comma-separated list of integers")
 
+    try:
+        normalized_tag_mode = normalize_tag_filter_mode(tag_mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     transcripts, total = coordinator.db.recent(
         limit=limit,
         offset=offset,
         sort_by=sort_by,
         sort_dir=sort_dir,
         tag_ids=parsed_tag_ids,
-        tag_mode=tag_mode,
+        tag_mode=normalized_tag_mode,
         include_protected=_includes_prompt_tag(parsed_tag_ids),
     )
     return {"items": [t.to_dict() for t in transcripts], "total": total}

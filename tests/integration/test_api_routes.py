@@ -204,6 +204,23 @@ class TestTranscriptRoutes:
         assert all(item["created_at"] == "" for item in data["items"])
         assert all(item["include_in_analytics"] is False for item in data["items"])
 
+    def test_list_supports_not_tag_filter_mode(self, api):
+        client, coord, _ = api
+        work_tag = coord.db.add_tag("Work")
+        personal_tag = coord.db.add_tag("Personal")
+        assert work_tag.id is not None
+        assert personal_tag.id is not None
+        coord.db.add_transcript(raw_text="work item", tag_ids=[work_tag.id])
+        coord.db.add_transcript(raw_text="personal item", tag_ids=[personal_tag.id])
+        coord.db.add_transcript(raw_text="untagged item")
+
+        resp = client.get("/api/transcripts", params={"tag_ids": str(work_tag.id), "tag_mode": "not"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert {item["raw_text"] for item in data["items"]} == {"personal item", "untagged item"}
+
     def test_list_returns_transcripts(self, api):
         client, coord, _ = api
         coord.db.add_transcript(raw_text="hello world", duration_ms=1000)
@@ -292,6 +309,14 @@ class TestTranscriptRoutes:
         assert resp.status_code == 400
         message = resp.json().get("error") or resp.json().get("detail", "")
         assert "tag_ids" in message
+
+    def test_list_rejects_invalid_tag_mode(self, api):
+        client, _, _ = api
+
+        resp = client.get("/api/transcripts", params={"tag_ids": "1", "tag_mode": "nor"})
+        assert resp.status_code == 400
+        message = resp.json().get("error") or resp.json().get("detail", "")
+        assert "tag_mode" in message
 
     def test_list_rejects_negative_offset(self, api):
         client, _, _ = api

@@ -153,6 +153,36 @@ class TestTranscriptCRUD:
         assert len(recent) == 3
         assert total == 5
 
+    def test_recent_supports_boolean_tag_modes(self, db: TranscriptDB):
+        work_tag = db.add_tag("Work")
+        urgent_tag = db.add_tag("Urgent")
+        personal_tag = db.add_tag("Personal")
+        assert work_tag.id is not None
+        assert urgent_tag.id is not None
+        assert personal_tag.id is not None
+
+        db.add_transcript(raw_text="work only", tag_ids=[work_tag.id])
+        db.add_transcript(raw_text="urgent only", tag_ids=[urgent_tag.id])
+        db.add_transcript(raw_text="work urgent", tag_ids=[work_tag.id, urgent_tag.id])
+        db.add_transcript(raw_text="personal only", tag_ids=[personal_tag.id])
+        db.add_transcript(raw_text="untagged")
+
+        def texts_for_mode(mode: str) -> set[str]:
+            transcripts, total = db.recent(tag_ids=[work_tag.id, urgent_tag.id], tag_mode=mode, limit=20)
+            assert total == len(transcripts)
+            return {transcript.raw_text for transcript in transcripts}
+
+        assert texts_for_mode("or") == {"work only", "urgent only", "work urgent"}
+        assert texts_for_mode("any") == {"work only", "urgent only", "work urgent"}
+        assert texts_for_mode("and") == {"work urgent"}
+        assert texts_for_mode("all") == {"work urgent"}
+        assert texts_for_mode("not") == {"personal only", "untagged"}
+        assert texts_for_mode("nand") == {"work only", "urgent only", "personal only", "untagged"}
+        assert texts_for_mode("xor") == {"work only", "urgent only"}
+
+        with pytest.raises(ValueError, match="tag_mode"):
+            db.recent(tag_ids=[work_tag.id], tag_mode="nor")
+
     def test_transcript_count(self, db: TranscriptDB):
         assert db.transcript_count() == 0
         db.add_transcript(raw_text="One", duration_ms=100)
