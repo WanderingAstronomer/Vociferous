@@ -312,6 +312,75 @@ class TestTranscriptRoutes:
         assert body["id"] == t.id
         assert "tags" in body  # Detail view includes tags
 
+    def test_get_transcript_exposes_processing_provenance(self, api):
+        client, coord, _ = api
+        transcript = coord.db.add_transcript(
+            raw_text="original text",
+            duration_ms=20_000,
+            transcription_time_ms=5_000,
+            transcription_provider="groq",
+            transcription_model_id="whisper-large-v3-turbo",
+            transcription_resolved_device="external_api",
+            transcription_compute_type="api",
+            transcription_cpu_threads=0,
+            transcription_prompt_text="Use medical terminology.",
+            transcription_prompt_chars=24,
+            transcription_prompt_words=3,
+        )
+        coord.db.update_retranscription_processing_context(
+            transcript.id,
+            normalized_text="retranscribed text",
+            retranscription_time_ms=10_000,
+            retranscription_provider="local_faster_whisper",
+            retranscription_model_id="large-v3",
+            retranscription_resolved_device="cuda",
+            retranscription_compute_type="float16",
+            retranscription_cpu_threads=6,
+            retranscription_prompt_text="Prefer names.",
+            retranscription_prompt_chars=13,
+            retranscription_prompt_words=2,
+        )
+        coord.db.update_refinement_processing_context(
+            transcript.id,
+            refinement_time_ms=4_000,
+            refinement_provider="lm_studio",
+            refinement_model_id="qwen3.5-27b",
+            refinement_resolved_device="cuda",
+            refinement_compute_type="float16",
+            refinement_cpu_threads=8,
+            refinement_gpu_layers=99,
+            refinement_use_thinking=False,
+            refinement_prompt_text="Fix grammar.",
+            refinement_prompt_chars=12,
+            refinement_prompt_words=2,
+            refinement_prompt_tokens=80,
+            refinement_completion_tokens=40,
+            refinement_total_tokens=120,
+        )
+
+        resp = client.get(f"/api/transcripts/{transcript.id}")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["transcription_provider"] == "groq"
+        assert body["transcription_model_id"] == "whisper-large-v3-turbo"
+        assert body["transcription_resolved_device"] == "external_api"
+        assert body["transcription_prompt_text"] == "Use medical terminology."
+        assert body["retranscription_count"] == 1
+        assert body["last_retranscription_provider"] == "local_faster_whisper"
+        assert body["last_retranscription_model_id"] == "large-v3"
+        assert body["last_retranscription_resolved_device"] == "cuda"
+        assert body["last_retranscription_prompt_text"] == "Prefer names."
+        assert body["refinement_provider"] == "lm_studio"
+        assert body["refinement_model_id"] == "qwen3.5-27b"
+        assert body["refinement_resolved_device"] == "cuda"
+        assert body["refinement_gpu_layers"] == 99
+        assert body["refinement_use_thinking"] is False
+        assert body["refinement_prompt_text"] == "Fix grammar."
+        assert body["refinement_prompt_tokens"] == 80
+        assert body["refinement_completion_tokens"] == 40
+        assert body["refinement_total_tokens"] == 120
+
     def test_get_transcript_not_found(self, api):
         client, _, _ = api
         resp = client.get("/api/transcripts/99999")
@@ -554,14 +623,24 @@ class TestRefinementProviderSecretRoutes:
         monkeypatch.delenv("GROQ_API_KEY", raising=False)
         monkeypatch.setattr(refinement_providers, "get_secret_backend", lambda: "test_secret")
         monkeypatch.setattr(refinement_providers, "get_provider_api_key", lambda provider_id: stored.get(provider_id))
-        monkeypatch.setattr(refinement_providers, "store_provider_api_key", lambda provider_id, api_key: stored.__setitem__(provider_id, api_key))
-        monkeypatch.setattr(refinement_providers, "delete_provider_api_key", lambda provider_id: stored.pop(provider_id, None) is not None)
+        monkeypatch.setattr(
+            refinement_providers,
+            "store_provider_api_key",
+            lambda provider_id, api_key: stored.__setitem__(provider_id, api_key),
+        )
+        monkeypatch.setattr(
+            refinement_providers,
+            "delete_provider_api_key",
+            lambda provider_id: stored.pop(provider_id, None) is not None,
+        )
 
         status = client.get("/api/refinement/providers/groq/api-key")
         assert status.status_code == 200
         assert status.json()["source"] == "none"
 
-        saved = client.put("/api/refinement/providers/groq/api-key", json={"api_key": "gsk_test_secret_123456789012345678901234567890"})
+        saved = client.put(
+            "/api/refinement/providers/groq/api-key", json={"api_key": "gsk_test_secret_123456789012345678901234567890"}
+        )
         assert saved.status_code == 200
         assert saved.json() == {"provider": "groq", "stored": True, "backend": "test_secret"}
         assert "gsk_test_secret_123456789012345678901234567890" not in saved.text

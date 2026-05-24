@@ -804,6 +804,60 @@ def _v15_repair_audio_vault_transcript_foreign_keys(conn: sqlite3.Connection) ->
     )
 
 
+def _v16_processing_provenance(conn: sqlite3.Connection) -> None:
+    """v16 — Persist ASR/SLM provider, model, and prompt provenance on transcripts."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(transcripts)").fetchall()}
+    additions = (
+        ("transcription_provider", "TEXT NOT NULL DEFAULT ''"),
+        ("transcription_model_id", "TEXT NOT NULL DEFAULT ''"),
+        ("transcription_prompt_text", "TEXT NOT NULL DEFAULT ''"),
+        ("transcription_prompt_chars", "INTEGER NOT NULL DEFAULT 0"),
+        ("transcription_prompt_words", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_provider", "TEXT NOT NULL DEFAULT ''"),
+        ("refinement_model_id", "TEXT NOT NULL DEFAULT ''"),
+        ("refinement_prompt_text", "TEXT NOT NULL DEFAULT ''"),
+        ("refinement_prompt_chars", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_prompt_words", "INTEGER NOT NULL DEFAULT 0"),
+    )
+    for column_name, column_sql in additions:
+        if column_name not in cols:
+            conn.execute(f"ALTER TABLE transcripts ADD COLUMN {column_name} {column_sql}")
+    logger.info("v16 migration: transcript processing provenance columns added")
+
+
+def _v17_processing_runtime_context(conn: sqlite3.Connection) -> None:
+    """v17 — Persist runtime context, refinement token counts, and separate re-transcription metadata."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(transcripts)").fetchall()}
+    additions = (
+        ("transcription_resolved_device", "TEXT NOT NULL DEFAULT ''"),
+        ("transcription_compute_type", "TEXT NOT NULL DEFAULT ''"),
+        ("transcription_cpu_threads", "INTEGER NOT NULL DEFAULT 0"),
+        ("retranscription_count", "INTEGER NOT NULL DEFAULT 0"),
+        ("last_retranscription_at", "TEXT NOT NULL DEFAULT ''"),
+        ("last_retranscription_time_ms", "INTEGER NOT NULL DEFAULT 0"),
+        ("last_retranscription_provider", "TEXT NOT NULL DEFAULT ''"),
+        ("last_retranscription_model_id", "TEXT NOT NULL DEFAULT ''"),
+        ("last_retranscription_resolved_device", "TEXT NOT NULL DEFAULT ''"),
+        ("last_retranscription_compute_type", "TEXT NOT NULL DEFAULT ''"),
+        ("last_retranscription_cpu_threads", "INTEGER NOT NULL DEFAULT 0"),
+        ("last_retranscription_prompt_text", "TEXT NOT NULL DEFAULT ''"),
+        ("last_retranscription_prompt_chars", "INTEGER NOT NULL DEFAULT 0"),
+        ("last_retranscription_prompt_words", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_resolved_device", "TEXT NOT NULL DEFAULT ''"),
+        ("refinement_compute_type", "TEXT NOT NULL DEFAULT ''"),
+        ("refinement_cpu_threads", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_gpu_layers", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_use_thinking", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_prompt_tokens", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_completion_tokens", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_total_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    )
+    for column_name, column_sql in additions:
+        if column_name not in cols:
+            conn.execute(f"ALTER TABLE transcripts ADD COLUMN {column_name} {column_sql}")
+    logger.info("v17 migration: runtime context, refinement token counts, and retranscription columns added")
+
+
 #: Ordered list of (human-readable description, migration function) pairs.
 #: Append here to add future migrations; do not edit existing entries.
 MIGRATIONS: list[tuple[str, object]] = [
@@ -824,6 +878,11 @@ MIGRATIONS: list[tuple[str, object]] = [
     (
         "v15 audio vault FK repair — remove stale transcripts_old references",
         _v15_repair_audio_vault_transcript_foreign_keys,
+    ),
+    ("v16 processing provenance — provider/model/prompt metadata on transcripts", _v16_processing_provenance),
+    (
+        "v17 processing runtime context — resolved device, refinement tokens, and retranscription metadata",
+        _v17_processing_runtime_context,
     ),
 ]
 

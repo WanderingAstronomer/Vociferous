@@ -1,5 +1,25 @@
 # Vociferous Changelog
 
+## v6.6.1 — Processing Provenance & Forecasting Metadata
+
+**Date:** 2026-05-23
+**Status:** Feature / Data model
+
+### Added
+- **Transcript processing provenance** — Transcripts now persist original transcription provider, model, prompt, resolved device, compute type, and CPU thread context.
+- **Separate re-transcription provenance** — Re-transcription updates no longer overwrite original transcription metadata. The database now tracks re-transcription count, latest re-transcription timing, provider/model, runtime context, and prompt metadata independently.
+- **Refinement runtime and token metadata** — Refinement persistence now records provider/model, resolved device, compute type, CPU threads, GPU layers, thinking mode, prompt metadata, and prompt/completion/total token counts.
+- **Forecasting analytics aggregates** — Backend usage stats now summarize provider/model counts, re-transcription throughput, refinement token throughput, and average refinement prompt/completion token counts.
+
+### Changed
+- **Live refinement runtime summaries** — SLM runtime summaries refresh from the active provider/engine so token usage reflects the last completed inference instead of stale startup data.
+- **Transcript API contract** — Transcript JSON responses now expose processing provenance and runtime metadata to frontend and analytics consumers.
+- **Frontend transcript typing** — The TypeScript `Transcript` interface now includes the full processing provenance contract.
+
+### Tests
+- Added focused database, migration, handler, usage-stats, and API coverage for transcription provenance, re-transcription provenance, runtime context, refinement token counts, and transcript JSON exposure.
+- Verified focused Python tests, Ruff, whitespace checks, and Svelte/TypeScript checks.
+
 ## v6.6.0 — External Providers, Smart Refinement & Transcriptions Workflow Polish
 
 **Date:** 2026-05-22

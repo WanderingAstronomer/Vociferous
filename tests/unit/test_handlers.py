@@ -294,6 +294,59 @@ class TestRefinementHandlersHappyPath:
 
         assert mock_slm.refine_text_sync.call_args.kwargs["allow_skip"] is True
 
+    def test_single_refine_persists_processing_provenance(self, db, events):
+        from src.core.handlers.refinement_handlers import RefinementHandlers
+        from src.core.settings import VociferousSettings
+
+        transcript = db.add_transcript(raw_text="original text to refine", duration_ms=5000)
+        settings = VociferousSettings()
+
+        mock_slm = MagicMock()
+        mock_slm.state = SLMState.READY
+        mock_slm.refine_text_sync.return_value = "refined version"
+        mock_slm.get_runtime_summary.return_value = {
+            "provider": "lm_studio",
+            "model_id": "qwen3.5-27b",
+            "resolved_device": "cuda",
+            "compute_type": "float16",
+            "cpu_threads": 8,
+            "gpu_layers": 99,
+            "use_thinking": False,
+            "last_usage": {
+                "prompt_tokens": 72,
+                "completion_tokens": 38,
+                "total_tokens": 110,
+            },
+        }
+
+        handler = RefinementHandlers(
+            db_provider=lambda: db,
+            slm_runtime_provider=lambda: mock_slm,
+            settings_provider=lambda: settings,
+            event_bus_emit=_emit_to(events),
+        )
+
+        handler.handle_refine(
+            SimpleNamespace(transcript_id=transcript.id, level=2, instructions="Preserve bullet points.")
+        )
+        _wait_for_threads("refine")
+
+        refreshed = db.get_transcript(transcript.id)
+        assert refreshed is not None
+        assert refreshed.refinement_provider == "lm_studio"
+        assert refreshed.refinement_model_id == "qwen3.5-27b"
+        assert refreshed.refinement_resolved_device == "cuda"
+        assert refreshed.refinement_compute_type == "float16"
+        assert refreshed.refinement_cpu_threads == 8
+        assert refreshed.refinement_gpu_layers == 99
+        assert refreshed.refinement_use_thinking is False
+        assert "Preserve bullet points." in refreshed.refinement_prompt_text
+        assert refreshed.refinement_prompt_chars == len(refreshed.refinement_prompt_text)
+        assert refreshed.refinement_prompt_words > 0
+        assert refreshed.refinement_prompt_tokens == 72
+        assert refreshed.refinement_completion_tokens == 38
+        assert refreshed.refinement_total_tokens == 110
+
     def test_commit_refinement_persists_text(self, db, events):
         from src.core.handlers.refinement_handlers import RefinementHandlers
         from src.core.settings import VociferousSettings
@@ -373,9 +426,14 @@ class TestBulkRefinementHappyPath:
         mock_slm.refine_text_sync.side_effect = lambda text, **kw: f"refined: {text}"
 
         handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
-        handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(t1.id, t2.id, t3.id), level=2, instructions="", skip_refined=False,
-        ))
+        handler.handle_bulk_refine(
+            SimpleNamespace(
+                transcript_ids=(t1.id, t2.id, t3.id),
+                level=2,
+                instructions="",
+                skip_refined=False,
+            )
+        )
         _wait_for_threads("bulk-refine")
 
         # All three should be auto-committed
@@ -415,9 +473,14 @@ class TestBulkRefinementHappyPath:
 
         handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
         handler._settings_provider = lambda: settings
-        handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(t.id,), level=2, instructions="", skip_refined=False,
-        ))
+        handler.handle_bulk_refine(
+            SimpleNamespace(
+                transcript_ids=(t.id,),
+                level=2,
+                instructions="",
+                skip_refined=False,
+            )
+        )
         _wait_for_threads("bulk-refine")
 
         assert mock_slm.refine_text_sync.call_args.kwargs["allow_skip"] is True
@@ -430,9 +493,14 @@ class TestBulkRefinementHappyPath:
         mock_slm.refine_text_sync.return_value = "refined"
 
         handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
-        handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(t1.id, 99999), level=2, instructions="", skip_refined=False,
-        ))
+        handler.handle_bulk_refine(
+            SimpleNamespace(
+                transcript_ids=(t1.id, 99999),
+                level=2,
+                instructions="",
+                skip_refined=False,
+            )
+        )
         _wait_for_threads("bulk-refine")
 
         complete = _events_of(ev, "bulk_refinement_complete")
@@ -451,9 +519,14 @@ class TestBulkRefinementHappyPath:
         ]
 
         handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
-        handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(t1.id, t2.id), level=2, instructions="", skip_refined=False,
-        ))
+        handler.handle_bulk_refine(
+            SimpleNamespace(
+                transcript_ids=(t1.id, t2.id),
+                level=2,
+                instructions="",
+                skip_refined=False,
+            )
+        )
         _wait_for_threads("bulk-refine")
 
         # t1 should not be modified, t2 should be refined
@@ -484,9 +557,14 @@ class TestBulkRefinementHappyPath:
 
         mock_slm.refine_text_sync.side_effect = refine_and_cancel
 
-        handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(t1.id, t2.id), level=2, instructions="", skip_refined=False,
-        ))
+        handler.handle_bulk_refine(
+            SimpleNamespace(
+                transcript_ids=(t1.id, t2.id),
+                level=2,
+                instructions="",
+                skip_refined=False,
+            )
+        )
         _wait_for_threads("bulk-refine")
 
         complete = _events_of(ev, "bulk_refinement_complete")
@@ -501,9 +579,14 @@ class TestBulkRefinementHappyPath:
         handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
         handler._bulk_active = True
 
-        handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(1,), level=2, instructions="", skip_refined=False,
-        ))
+        handler.handle_bulk_refine(
+            SimpleNamespace(
+                transcript_ids=(1,),
+                level=2,
+                instructions="",
+                skip_refined=False,
+            )
+        )
 
         errors = _events_of(ev, "bulk_refinement_error")
         assert len(errors) == 1
@@ -527,9 +610,14 @@ class TestBulkRefinementHappyPath:
         mock_slm.state = SLMState.READY
 
         handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
-        handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(), level=2, instructions="", skip_refined=False,
-        ))
+        handler.handle_bulk_refine(
+            SimpleNamespace(
+                transcript_ids=(),
+                level=2,
+                instructions="",
+                skip_refined=False,
+            )
+        )
 
         errors = _events_of(ev, "bulk_refinement_error")
         assert len(errors) == 1
@@ -543,9 +631,14 @@ class TestBulkRefinementHappyPath:
         mock_slm.refine_text_sync.return_value = "polished"
 
         handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
-        handler.handle_bulk_refine(SimpleNamespace(
-            transcript_ids=(t1.id, t2.id), level=2, instructions="", skip_refined=False,
-        ))
+        handler.handle_bulk_refine(
+            SimpleNamespace(
+                transcript_ids=(t1.id, t2.id),
+                level=2,
+                instructions="",
+                skip_refined=False,
+            )
+        )
         _wait_for_threads("bulk-refine")
 
         updated = _events_of(ev, "transcript_updated")
@@ -614,6 +707,100 @@ class TestRecordingSessionLifecycle:
         session.handle_stop(SimpleNamespace())
 
         assert not session._recording_stop.is_set()
+
+    def test_transcribe_and_store_persists_transcription_provenance(self, db, events):
+        from src.core.settings import VociferousSettings
+
+        session = self._make_session(events_list=events, db=db)
+        settings = VociferousSettings()
+        settings = settings.model_copy(
+            update={"model": settings.model.model_copy(update={"initial_prompt": "Use medical terminology."})}
+        )
+        session._settings_provider = lambda: settings
+
+        mock_model = MagicMock()
+        mock_model._vociferous_runtime_summary = {
+            "provider": "groq",
+            "model_id": "whisper-large-v3-turbo",
+            "resolved_device": "external_api",
+            "compute_type": "api",
+            "cpu_threads": 0,
+        }
+        session._asr_model = mock_model
+
+        with patch("src.services.transcription_service.transcribe", return_value=("transcribed text", 800, 1200)):
+            session._transcribe_and_store([0] * 16000, display_name="Clip")
+
+        recent, total = db.recent(limit=1)
+        assert total == 1
+        assert len(recent) == 1
+        transcript = recent[0]
+        assert transcript.transcription_provider == "groq"
+        assert transcript.transcription_model_id == "whisper-large-v3-turbo"
+        assert transcript.transcription_resolved_device == "external_api"
+        assert transcript.transcription_compute_type == "api"
+        assert transcript.transcription_cpu_threads == 0
+        assert transcript.transcription_prompt_text == "Use medical terminology."
+        assert transcript.transcription_prompt_chars == len("Use medical terminology.")
+        assert transcript.transcription_prompt_words == 3
+
+    def test_handle_retranscribe_persists_separate_retranscription_provenance(self, db, events):
+        from src.core.settings import VociferousSettings
+
+        session = self._make_session(events_list=events, db=db)
+        settings = VociferousSettings()
+        settings = settings.model_copy(
+            update={"model": settings.model.model_copy(update={"initial_prompt": "Prefer proper nouns."})}
+        )
+        session._settings_provider = lambda: settings
+
+        transcript = db.add_transcript(
+            raw_text="original raw",
+            normalized_text="original normalized",
+            duration_ms=1000,
+            transcription_provider="groq",
+            transcription_model_id="whisper-large-v3-turbo",
+            transcription_resolved_device="external_api",
+            transcription_compute_type="api",
+            transcription_prompt_text="Use medical terminology.",
+            transcription_prompt_chars=24,
+            transcription_prompt_words=3,
+        )
+
+        mock_model = MagicMock()
+        mock_model._vociferous_runtime_summary = {
+            "provider": "local_faster_whisper",
+            "model_id": settings.model.model,
+            "resolved_device": "cuda",
+            "compute_type_resolved": "float16",
+            "cpu_threads": 6,
+        }
+        session._asr_model = mock_model
+        session._audio_cache = MagicMock()
+        session._audio_cache.get_path.return_value = Path("/tmp/cached.wav")
+
+        with (
+            patch("src.core.handlers.recording_handlers._decode_audio_file_to_int16", return_value=[0] * 16000),
+            patch("src.services.transcription_service.transcribe", return_value=("retranscribed text", 800, 1400)),
+        ):
+            session.handle_retranscribe(SimpleNamespace(transcript_id=transcript.id))
+            _wait_for_threads("retranscribe")
+
+        refreshed = db.get_transcript(transcript.id)
+        assert refreshed is not None
+        assert refreshed.normalized_text == "retranscribed text"
+        assert refreshed.transcription_provider == "groq"
+        assert refreshed.transcription_model_id == "whisper-large-v3-turbo"
+        assert refreshed.retranscription_count == 1
+        assert refreshed.last_retranscription_time_ms == 1400
+        assert refreshed.last_retranscription_provider == "local_faster_whisper"
+        assert refreshed.last_retranscription_model_id == settings.model.model
+        assert refreshed.last_retranscription_resolved_device == "cuda"
+        assert refreshed.last_retranscription_compute_type == "float16"
+        assert refreshed.last_retranscription_cpu_threads == 6
+        assert refreshed.last_retranscription_prompt_text == "Prefer proper nouns."
+        assert refreshed.last_retranscription_prompt_chars == len("Prefer proper nouns.")
+        assert refreshed.last_retranscription_prompt_words == 3
 
     def test_handle_toggle_idle_no_audio_service_is_noop(self, events):
         """Toggle from idle with no audio service: dispatches BeginRecording but it

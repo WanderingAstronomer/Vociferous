@@ -163,6 +163,7 @@ class LocalCT2RefinementProvider:
         self._settings = settings
         self._engine: RefinementEngine | None = None
         self._runtime_summary: dict[str, object] | None = None
+        self._last_usage: dict[str, int] | None = None
 
     @property
     def provider_id(self) -> str:
@@ -236,9 +237,13 @@ class LocalCT2RefinementProvider:
             logger.debug("CT2 Generator.unload_model() failed (non-fatal)")
         self._engine = None
         self._runtime_summary = None
+        self._last_usage = None
 
     def get_runtime_summary(self) -> dict[str, object]:
-        return dict(self._runtime_summary or describe_refinement_runtime(self._settings))
+        summary = dict(self._runtime_summary or describe_refinement_runtime(self._settings))
+        if self._last_usage:
+            summary["last_usage"] = dict(self._last_usage)
+        return summary
 
     def refine(
         self,
@@ -254,7 +259,7 @@ class LocalCT2RefinementProvider:
     ) -> GenerationResult:
         if self._engine is None:
             raise RuntimeError("Engine not loaded.")
-        return self._engine.refine(
+        result = self._engine.refine(
             text,
             user_instructions=instructions,
             temperature=temperature,
@@ -264,6 +269,12 @@ class LocalCT2RefinementProvider:
             use_thinking=use_thinking,
             allow_skip=allow_skip,
         )
+        self._last_usage = {
+            "prompt_tokens": result.prompt_tokens,
+            "completion_tokens": result.completion_tokens,
+            "total_tokens": result.total_tokens,
+        }
+        return result
 
     def generate_custom(
         self,
@@ -314,6 +325,15 @@ class LocalCT2RefinementProvider:
 
 class OpenAICompatibleRefinementProvider:
     """OpenAI-compatible HTTP refinement provider for LM Studio and Groq."""
+
+    _CONNECT_TIMEOUT_SECONDS = 5.0
+    _POOL_TIMEOUT_SECONDS = 5.0
+    _WRITE_TIMEOUT_SECONDS = 30.0
+    _LM_STUDIO_LONG_PROMPT_WORD_THRESHOLD = 600
+    _LM_STUDIO_LONG_COMPLETION_TOKEN_THRESHOLD = 1024
+    _LM_STUDIO_PROMPT_WORDS_PER_SECOND = 40.0
+    _LM_STUDIO_GENERATION_TOKENS_PER_SECOND = 12.0
+    _LM_STUDIO_MAX_READ_TIMEOUT_SECONDS = 900.0
 
     def __init__(self, settings: VociferousSettings, provider_id: str) -> None:
         if provider_id not in {"lm_studio", "groq"}:
@@ -468,8 +488,71 @@ class OpenAICompatibleRefinementProvider:
     @property
     def _client_instance(self) -> httpx.Client:
         if self._client is None:
-            self._client = httpx.Client(timeout=self._provider_settings.timeout_seconds)
+            self._client = httpx.Client()
         return self._client
+
+    def _request_timeout(self, endpoint: str, *, json_payload: dict[str, object] | None = None) -> httpx.Timeout:
+        read_timeout = max(1.0, float(self._provider_settings.timeout_seconds))
+        if endpoint == "chat/completions":
+            read_timeout = self._chat_completion_read_timeout(read_timeout, json_payload)
+        return httpx.Timeout(
+            connect=self._CONNECT_TIMEOUT_SECONDS,
+            read=read_timeout,
+            write=self._WRITE_TIMEOUT_SECONDS,
+            pool=self._POOL_TIMEOUT_SECONDS,
+        )
+
+    def _chat_completion_read_timeout(
+        self,
+        baseline_timeout: float,
+        json_payload: dict[str, object] | None,
+    ) -> float:
+        if self._provider_id != "lm_studio" or not isinstance(json_payload, dict):
+            return baseline_timeout
+
+        messages = json_payload.get("messages")
+        if not isinstance(messages, list):
+            return baseline_timeout
+
+        prompt_words = sum(
+            len(str(message.get("content", "")).split()) for message in messages if isinstance(message, dict)
+        )
+        requested_tokens = self._requested_completion_tokens(json_payload)
+
+        if (
+            prompt_words < self._LM_STUDIO_LONG_PROMPT_WORD_THRESHOLD
+            and requested_tokens <= self._LM_STUDIO_LONG_COMPLETION_TOKEN_THRESHOLD
+        ):
+            return baseline_timeout
+
+        estimated_output_tokens = max(512, prompt_words * 2)
+        if requested_tokens > 0:
+            estimated_output_tokens = min(requested_tokens, estimated_output_tokens)
+
+        estimated_timeout = max(
+            baseline_timeout,
+            15.0
+            + (prompt_words / self._LM_STUDIO_PROMPT_WORDS_PER_SECOND)
+            + (estimated_output_tokens / self._LM_STUDIO_GENERATION_TOKENS_PER_SECOND),
+        )
+        scaled_timeout = min(self._LM_STUDIO_MAX_READ_TIMEOUT_SECONDS, estimated_timeout)
+        if scaled_timeout > baseline_timeout:
+            logger.debug(
+                "LM Studio read timeout scaled from %.1fs to %.1fs (prompt_words=%d, requested_tokens=%d)",
+                baseline_timeout,
+                scaled_timeout,
+                prompt_words,
+                requested_tokens,
+            )
+        return scaled_timeout
+
+    @staticmethod
+    def _requested_completion_tokens(json_payload: dict[str, object]) -> int:
+        raw_value = json_payload.get("max_tokens", json_payload.get("max_completion_tokens", 0))
+        try:
+            return max(0, int(raw_value))
+        except (TypeError, ValueError):
+            return 0
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -486,6 +569,7 @@ class OpenAICompatibleRefinementProvider:
         self._require_api_key_if_needed()
         attempts = max(1, self._max_retries + 1)
         last_error: Exception | None = None
+        timeout = self._request_timeout(endpoint, json_payload=json_payload)
         for attempt in range(attempts):
             try:
                 response = self._client_instance.request(
@@ -493,6 +577,7 @@ class OpenAICompatibleRefinementProvider:
                     self._url(endpoint),
                     headers=self._headers(),
                     json=json_payload,
+                    timeout=timeout,
                 )
                 self._capture_rate_limits(response)
                 if response.status_code < 400:
@@ -507,7 +592,7 @@ class OpenAICompatibleRefinementProvider:
                     time.sleep(self._retry_delay(None))
                     continue
                 raise ProviderRequestError(
-                    f"{self._provider_label} did not respond within {self._provider_settings.timeout_seconds:g}s at {self._provider_settings.base_url}. The server may be busy or stalled.",
+                    f"{self._provider_label} did not respond within {timeout.read:g}s at {self._provider_settings.base_url}. The server may be busy or stalled.",
                     status_code=504,
                 ) from exc
             except httpx.RequestError as exc:
@@ -627,7 +712,18 @@ class OpenAICompatibleRefinementProvider:
             raise RuntimeError(f"{self._provider_label} returned an invalid chat completion response.") from exc
         if not isinstance(content, str):
             raise RuntimeError(f"{self._provider_label} returned non-text chat completion content.")
-        return parse_generation_output(content)
+        parsed = parse_generation_output(content)
+        usage = self._last_usage or {}
+        prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        completion_tokens = int(usage.get("completion_tokens") or 0)
+        total_tokens = int(usage.get("total_tokens") or (prompt_tokens + completion_tokens))
+        return GenerationResult(
+            content=parsed.content,
+            reasoning=parsed.reasoning,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
 
     def _smaller_retry_budget(self, current_tokens: int, exc: ProviderRequestError) -> int | None:
         if exc.status_code != 413:

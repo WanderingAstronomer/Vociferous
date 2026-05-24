@@ -192,6 +192,38 @@ def test_lm_studio_refine_surfaces_timeout_as_stalled_server(fresh_settings) -> 
         )
 
 
+def test_lm_studio_large_refine_scales_read_timeout(fresh_settings) -> None:
+    fresh_settings.refinement.provider = "lm_studio"
+    fresh_settings.refinement.lm_studio.model_id = "local-model"
+    fresh_settings.refinement.lm_studio.timeout_seconds = 120.0
+
+    captured_timeout: dict[str, float] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        timeout = request.extensions.get("timeout", {})
+        captured_timeout.update(timeout)
+        return _json_response({"choices": [{"message": {"content": "Corrected text"}}]})
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "lm_studio")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    result = provider.refine(
+        "word " * 2000,
+        temperature=0.2,
+        top_p=0.9,
+        top_k=40,
+        repetition_penalty=1.15,
+        use_thinking=False,
+        allow_skip=False,
+    )
+
+    assert result.content == "Corrected text"
+    assert captured_timeout["read"] > 120.0
+    assert captured_timeout["connect"] == 5.0
+    assert captured_timeout["write"] == 30.0
+    assert captured_timeout["pool"] == 5.0
+
+
 def test_list_models_parses_openai_compatible_response(fresh_settings) -> None:
     fresh_settings.refinement.lm_studio.model_id = "local-model"
 

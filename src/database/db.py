@@ -58,6 +58,38 @@ class Transcript:
     speech_duration_ms: int = 0
     transcription_time_ms: int = 0
     refinement_time_ms: int = 0
+    transcription_provider: str = ""
+    transcription_model_id: str = ""
+    transcription_resolved_device: str = ""
+    transcription_compute_type: str = ""
+    transcription_cpu_threads: int = 0
+    transcription_prompt_text: str = ""
+    transcription_prompt_chars: int = 0
+    transcription_prompt_words: int = 0
+    retranscription_count: int = 0
+    last_retranscription_at: str = ""
+    last_retranscription_time_ms: int = 0
+    last_retranscription_provider: str = ""
+    last_retranscription_model_id: str = ""
+    last_retranscription_resolved_device: str = ""
+    last_retranscription_compute_type: str = ""
+    last_retranscription_cpu_threads: int = 0
+    last_retranscription_prompt_text: str = ""
+    last_retranscription_prompt_chars: int = 0
+    last_retranscription_prompt_words: int = 0
+    refinement_provider: str = ""
+    refinement_model_id: str = ""
+    refinement_resolved_device: str = ""
+    refinement_compute_type: str = ""
+    refinement_cpu_threads: int = 0
+    refinement_gpu_layers: int = 0
+    refinement_use_thinking: bool = False
+    refinement_prompt_text: str = ""
+    refinement_prompt_chars: int = 0
+    refinement_prompt_words: int = 0
+    refinement_prompt_tokens: int = 0
+    refinement_completion_tokens: int = 0
+    refinement_total_tokens: int = 0
     created_at: str = ""
     include_in_analytics: bool = True
     has_audio_cached: bool = False
@@ -85,6 +117,38 @@ class Transcript:
             "speech_duration_ms": self.speech_duration_ms,
             "transcription_time_ms": self.transcription_time_ms,
             "refinement_time_ms": self.refinement_time_ms,
+            "transcription_provider": self.transcription_provider,
+            "transcription_model_id": self.transcription_model_id,
+            "transcription_resolved_device": self.transcription_resolved_device,
+            "transcription_compute_type": self.transcription_compute_type,
+            "transcription_cpu_threads": self.transcription_cpu_threads,
+            "transcription_prompt_text": self.transcription_prompt_text,
+            "transcription_prompt_chars": self.transcription_prompt_chars,
+            "transcription_prompt_words": self.transcription_prompt_words,
+            "retranscription_count": self.retranscription_count,
+            "last_retranscription_at": self.last_retranscription_at,
+            "last_retranscription_time_ms": self.last_retranscription_time_ms,
+            "last_retranscription_provider": self.last_retranscription_provider,
+            "last_retranscription_model_id": self.last_retranscription_model_id,
+            "last_retranscription_resolved_device": self.last_retranscription_resolved_device,
+            "last_retranscription_compute_type": self.last_retranscription_compute_type,
+            "last_retranscription_cpu_threads": self.last_retranscription_cpu_threads,
+            "last_retranscription_prompt_text": self.last_retranscription_prompt_text,
+            "last_retranscription_prompt_chars": self.last_retranscription_prompt_chars,
+            "last_retranscription_prompt_words": self.last_retranscription_prompt_words,
+            "refinement_provider": self.refinement_provider,
+            "refinement_model_id": self.refinement_model_id,
+            "refinement_resolved_device": self.refinement_resolved_device,
+            "refinement_compute_type": self.refinement_compute_type,
+            "refinement_cpu_threads": self.refinement_cpu_threads,
+            "refinement_gpu_layers": self.refinement_gpu_layers,
+            "refinement_use_thinking": self.refinement_use_thinking,
+            "refinement_prompt_text": self.refinement_prompt_text,
+            "refinement_prompt_chars": self.refinement_prompt_chars,
+            "refinement_prompt_words": self.refinement_prompt_words,
+            "refinement_prompt_tokens": self.refinement_prompt_tokens,
+            "refinement_completion_tokens": self.refinement_completion_tokens,
+            "refinement_total_tokens": self.refinement_total_tokens,
             "created_at": self.created_at,
             "include_in_analytics": self.include_in_analytics,
             "has_audio_cached": self.has_audio_cached,
@@ -179,6 +243,38 @@ CREATE TABLE IF NOT EXISTS transcripts (
     speech_duration_ms INTEGER DEFAULT 0,
     transcription_time_ms INTEGER DEFAULT 0,
     refinement_time_ms INTEGER DEFAULT 0,
+    transcription_provider TEXT NOT NULL DEFAULT '',
+    transcription_model_id TEXT NOT NULL DEFAULT '',
+    transcription_resolved_device TEXT NOT NULL DEFAULT '',
+    transcription_compute_type TEXT NOT NULL DEFAULT '',
+    transcription_cpu_threads INTEGER NOT NULL DEFAULT 0,
+    transcription_prompt_text TEXT NOT NULL DEFAULT '',
+    transcription_prompt_chars INTEGER NOT NULL DEFAULT 0,
+    transcription_prompt_words INTEGER NOT NULL DEFAULT 0,
+    retranscription_count INTEGER NOT NULL DEFAULT 0,
+    last_retranscription_at TEXT NOT NULL DEFAULT '',
+    last_retranscription_time_ms INTEGER NOT NULL DEFAULT 0,
+    last_retranscription_provider TEXT NOT NULL DEFAULT '',
+    last_retranscription_model_id TEXT NOT NULL DEFAULT '',
+    last_retranscription_resolved_device TEXT NOT NULL DEFAULT '',
+    last_retranscription_compute_type TEXT NOT NULL DEFAULT '',
+    last_retranscription_cpu_threads INTEGER NOT NULL DEFAULT 0,
+    last_retranscription_prompt_text TEXT NOT NULL DEFAULT '',
+    last_retranscription_prompt_chars INTEGER NOT NULL DEFAULT 0,
+    last_retranscription_prompt_words INTEGER NOT NULL DEFAULT 0,
+    refinement_provider TEXT NOT NULL DEFAULT '',
+    refinement_model_id TEXT NOT NULL DEFAULT '',
+    refinement_resolved_device TEXT NOT NULL DEFAULT '',
+    refinement_compute_type TEXT NOT NULL DEFAULT '',
+    refinement_cpu_threads INTEGER NOT NULL DEFAULT 0,
+    refinement_gpu_layers INTEGER NOT NULL DEFAULT 0,
+    refinement_use_thinking INTEGER NOT NULL DEFAULT 0,
+    refinement_prompt_text TEXT NOT NULL DEFAULT '',
+    refinement_prompt_chars INTEGER NOT NULL DEFAULT 0,
+    refinement_prompt_words INTEGER NOT NULL DEFAULT 0,
+    refinement_prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    refinement_completion_tokens INTEGER NOT NULL DEFAULT 0,
+    refinement_total_tokens INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now')),
     include_in_analytics INTEGER NOT NULL DEFAULT 1,
     has_audio_cached INTEGER NOT NULL DEFAULT 0,
@@ -305,6 +401,14 @@ class TranscriptDB:
         duration_ms: int = 0,
         speech_duration_ms: int = 0,
         transcription_time_ms: int = 0,
+        transcription_provider: str = "",
+        transcription_model_id: str = "",
+        transcription_resolved_device: str = "",
+        transcription_compute_type: str = "",
+        transcription_cpu_threads: int = 0,
+        transcription_prompt_text: str = "",
+        transcription_prompt_chars: int = 0,
+        transcription_prompt_words: int = 0,
         display_name: str | None = None,
         tag_ids: list[int] | None = None,
     ) -> Transcript:
@@ -315,8 +419,13 @@ class TranscriptDB:
             cur = self._conn.execute(
                 """INSERT INTO transcripts
                    (timestamp, raw_text, normalized_text, display_name,
-                    duration_ms, speech_duration_ms, transcription_time_ms, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    duration_ms, speech_duration_ms, transcription_time_ms,
+                    transcription_provider, transcription_model_id,
+                    transcription_resolved_device, transcription_compute_type,
+                    transcription_cpu_threads,
+                    transcription_prompt_text, transcription_prompt_chars,
+                    transcription_prompt_words, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     ts,
                     raw_text,
@@ -325,6 +434,14 @@ class TranscriptDB:
                     duration_ms,
                     speech_duration_ms,
                     transcription_time_ms,
+                    transcription_provider,
+                    transcription_model_id,
+                    transcription_resolved_device,
+                    transcription_compute_type,
+                    transcription_cpu_threads,
+                    transcription_prompt_text,
+                    transcription_prompt_chars,
+                    transcription_prompt_words,
                     ts,
                 ),
             )
@@ -350,6 +467,14 @@ class TranscriptDB:
             duration_ms=duration_ms,
             speech_duration_ms=speech_duration_ms,
             transcription_time_ms=transcription_time_ms,
+            transcription_provider=transcription_provider,
+            transcription_model_id=transcription_model_id,
+            transcription_resolved_device=transcription_resolved_device,
+            transcription_compute_type=transcription_compute_type,
+            transcription_cpu_threads=transcription_cpu_threads,
+            transcription_prompt_text=transcription_prompt_text,
+            transcription_prompt_chars=transcription_prompt_chars,
+            transcription_prompt_words=transcription_prompt_words,
             created_at=ts,
             tags=tags,
         )
@@ -625,6 +750,114 @@ class TranscriptDB:
             )
             self._conn.commit()
 
+    def update_refinement_processing_context(
+        self,
+        transcript_id: int,
+        *,
+        refinement_time_ms: int,
+        refinement_provider: str,
+        refinement_model_id: str,
+        refinement_resolved_device: str,
+        refinement_compute_type: str,
+        refinement_cpu_threads: int,
+        refinement_gpu_layers: int,
+        refinement_use_thinking: bool,
+        refinement_prompt_text: str,
+        refinement_prompt_chars: int,
+        refinement_prompt_words: int,
+        refinement_prompt_tokens: int,
+        refinement_completion_tokens: int,
+        refinement_total_tokens: int,
+    ) -> None:
+        """Persist refinement timing plus provider/model/prompt provenance."""
+        with self._write_lock:
+            self._conn.execute(
+                """UPDATE transcripts
+                   SET refinement_time_ms = ?,
+                       refinement_provider = ?,
+                       refinement_model_id = ?,
+                       refinement_resolved_device = ?,
+                       refinement_compute_type = ?,
+                       refinement_cpu_threads = ?,
+                       refinement_gpu_layers = ?,
+                       refinement_use_thinking = ?,
+                       refinement_prompt_text = ?,
+                       refinement_prompt_chars = ?,
+                       refinement_prompt_words = ?,
+                       refinement_prompt_tokens = ?,
+                       refinement_completion_tokens = ?,
+                       refinement_total_tokens = ?
+                   WHERE id = ?""",
+                (
+                    refinement_time_ms,
+                    refinement_provider,
+                    refinement_model_id,
+                    refinement_resolved_device,
+                    refinement_compute_type,
+                    refinement_cpu_threads,
+                    refinement_gpu_layers,
+                    int(refinement_use_thinking),
+                    refinement_prompt_text,
+                    refinement_prompt_chars,
+                    refinement_prompt_words,
+                    refinement_prompt_tokens,
+                    refinement_completion_tokens,
+                    refinement_total_tokens,
+                    transcript_id,
+                ),
+            )
+            self._conn.commit()
+
+    def update_retranscription_processing_context(
+        self,
+        transcript_id: int,
+        *,
+        normalized_text: str,
+        retranscription_time_ms: int,
+        retranscription_provider: str,
+        retranscription_model_id: str,
+        retranscription_resolved_device: str,
+        retranscription_compute_type: str,
+        retranscription_cpu_threads: int,
+        retranscription_prompt_text: str,
+        retranscription_prompt_chars: int,
+        retranscription_prompt_words: int,
+    ) -> None:
+        """Persist the latest re-transcription result without overwriting original transcription provenance."""
+        retr_timestamp = utc_now()
+        with self._write_lock:
+            self._conn.execute(
+                """UPDATE transcripts
+                   SET normalized_text = ?,
+                       retranscription_count = retranscription_count + 1,
+                       last_retranscription_at = ?,
+                       last_retranscription_time_ms = ?,
+                       last_retranscription_provider = ?,
+                       last_retranscription_model_id = ?,
+                       last_retranscription_resolved_device = ?,
+                       last_retranscription_compute_type = ?,
+                       last_retranscription_cpu_threads = ?,
+                       last_retranscription_prompt_text = ?,
+                       last_retranscription_prompt_chars = ?,
+                       last_retranscription_prompt_words = ?
+                   WHERE id = ?""",
+                (
+                    normalized_text,
+                    retr_timestamp,
+                    retranscription_time_ms,
+                    retranscription_provider,
+                    retranscription_model_id,
+                    retranscription_resolved_device,
+                    retranscription_compute_type,
+                    retranscription_cpu_threads,
+                    retranscription_prompt_text,
+                    retranscription_prompt_chars,
+                    retranscription_prompt_words,
+                    transcript_id,
+                ),
+            )
+            self._conn.commit()
+
     # --- Tags ---
 
     def add_tag(self, name: str, *, color: str | None = None, is_system: bool = False) -> Tag:
@@ -886,6 +1119,38 @@ class TranscriptDB:
             speech_duration_ms=row["speech_duration_ms"],
             transcription_time_ms=row["transcription_time_ms"],
             refinement_time_ms=row["refinement_time_ms"],
+            transcription_provider=row["transcription_provider"],
+            transcription_model_id=row["transcription_model_id"],
+            transcription_resolved_device=row["transcription_resolved_device"],
+            transcription_compute_type=row["transcription_compute_type"],
+            transcription_cpu_threads=row["transcription_cpu_threads"],
+            transcription_prompt_text=row["transcription_prompt_text"],
+            transcription_prompt_chars=row["transcription_prompt_chars"],
+            transcription_prompt_words=row["transcription_prompt_words"],
+            retranscription_count=row["retranscription_count"],
+            last_retranscription_at=row["last_retranscription_at"],
+            last_retranscription_time_ms=row["last_retranscription_time_ms"],
+            last_retranscription_provider=row["last_retranscription_provider"],
+            last_retranscription_model_id=row["last_retranscription_model_id"],
+            last_retranscription_resolved_device=row["last_retranscription_resolved_device"],
+            last_retranscription_compute_type=row["last_retranscription_compute_type"],
+            last_retranscription_cpu_threads=row["last_retranscription_cpu_threads"],
+            last_retranscription_prompt_text=row["last_retranscription_prompt_text"],
+            last_retranscription_prompt_chars=row["last_retranscription_prompt_chars"],
+            last_retranscription_prompt_words=row["last_retranscription_prompt_words"],
+            refinement_provider=row["refinement_provider"],
+            refinement_model_id=row["refinement_model_id"],
+            refinement_resolved_device=row["refinement_resolved_device"],
+            refinement_compute_type=row["refinement_compute_type"],
+            refinement_cpu_threads=row["refinement_cpu_threads"],
+            refinement_gpu_layers=row["refinement_gpu_layers"],
+            refinement_use_thinking=bool(row["refinement_use_thinking"]),
+            refinement_prompt_text=row["refinement_prompt_text"],
+            refinement_prompt_chars=row["refinement_prompt_chars"],
+            refinement_prompt_words=row["refinement_prompt_words"],
+            refinement_prompt_tokens=row["refinement_prompt_tokens"],
+            refinement_completion_tokens=row["refinement_completion_tokens"],
+            refinement_total_tokens=row["refinement_total_tokens"],
             created_at=row["created_at"],
             include_in_analytics=bool(row["include_in_analytics"]),
             has_audio_cached=bool(row["has_audio_cached"]),

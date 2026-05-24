@@ -12,6 +12,9 @@ class GenerationResult:
 
     content: str
     reasoning: str | None = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
 
 
 def parse_generation_output(text: str) -> GenerationResult:

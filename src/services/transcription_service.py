@@ -7,8 +7,8 @@ the faster-whisper library, which wraps CTranslate2 for inference.
 
 from __future__ import annotations
 
-import logging
 import io
+import logging
 import os
 import re
 import time
@@ -61,7 +61,11 @@ def describe_asr_runtime(
             "base_url": provider_settings.base_url,
             "timeout_seconds": provider_settings.timeout_seconds,
             "api_key_env": provider_settings.api_key_env,
-            "has_api_key": bool(provider_settings.api_key or _stored_api_key(provider_id) or _api_key_from_env(provider_id, provider_settings.api_key_env)),
+            "has_api_key": bool(
+                provider_settings.api_key
+                or _stored_api_key(provider_id)
+                or _api_key_from_env(provider_id, provider_settings.api_key_env)
+            ),
             "initial_prompt_enabled": bool(settings.model.initial_prompt),
         }
 
@@ -246,7 +250,9 @@ class OpenAICompatibleTranscriptionProvider:
                 validate_provider_api_key(self._provider_id, self._api_key)
             except ValueError as exc:
                 if not self._api_key:
-                    raise ValueError("Groq API key is not configured. Set GROQ_API_KEY or save a local provider API key.") from exc
+                    raise ValueError(
+                        "Groq API key is not configured. Set GROQ_API_KEY or save a local provider API key."
+                    ) from exc
                 raise
         if self._provider_settings.model_list_enabled:
             self.list_models()
@@ -267,6 +273,7 @@ class OpenAICompatibleTranscriptionProvider:
 
     def transcribe(self, audio: NDArray[np.float32], settings: VociferousSettings) -> tuple[str, int, int]:
         start = time.perf_counter()
+        prompt = _transcription_prompt(settings.model.initial_prompt)
         response = self._request(
             "POST",
             "audio/transcriptions",
@@ -277,12 +284,14 @@ class OpenAICompatibleTranscriptionProvider:
         elapsed = time.perf_counter() - start
         transcription_time_ms = int(elapsed * 1000)
         logger.info(
-            "External transcription completed in %.2fs (provider=%s, model_id=%s, chars=%d, speech=%dms)",
+            "External transcription completed in %.2fs (provider=%s, model_id=%s, resolved_device=%s, chars=%d, speech=%dms, prompt_words=%d)",
             elapsed,
             self._provider_id,
             self._provider_settings.model_id,
+            self._runtime_summary.get("resolved_device"),
             len(text),
             speech_duration_ms,
+            len(prompt.split()),
         )
         return post_process_transcription(text, settings), speech_duration_ms, transcription_time_ms
 
@@ -509,12 +518,17 @@ def transcribe(
         transcription_time_ms = int(elapsed * 1000)
         realtime_multiplier = estimated_audio_seconds / elapsed if elapsed > 0 else 0.0
         logger.info(
-            "Transcription completed in %.2fs (audio=%.2fs, realtime=%.2fx, segments=%d, speech=%dms)",
+            "Transcription completed in %.2fs (audio=%.2fs, realtime=%.2fx, segments=%d, speech=%dms, model=%s, resolved_device=%s, compute_type=%s, cpu_threads=%s, prompt_words=%d)",
             elapsed,
             estimated_audio_seconds,
             realtime_multiplier,
             len(segment_texts),
             speech_duration_ms,
+            (runtime_summary or {}).get("model_id", settings.model.model),
+            (runtime_summary or {}).get("resolved_device", settings.model.device),
+            (runtime_summary or {}).get("compute_type_resolved", settings.model.compute_type),
+            (runtime_summary or {}).get("cpu_threads", settings.model.n_threads),
+            len((initial_prompt or "").split()),
         )
 
         if estimated_audio_seconds >= 5.0 and realtime_multiplier <= 1.0:
@@ -536,6 +550,41 @@ def transcribe(
         from src.core.engine_status import normalize_engine_error
 
         raise EngineError(normalize_engine_error(e, model_name=settings.model.model)) from e
+
+
+def describe_transcription_capture(settings: VociferousSettings, *, local_model=None) -> dict[str, object]:
+    """Return the ASR provider/model plus the exact prompt text sent for this run."""
+    runtime_summary: dict[str, object] | None = None
+    if isinstance(local_model, OpenAICompatibleTranscriptionProvider):
+        runtime_summary = local_model.get_runtime_summary()
+    else:
+        candidate = getattr(local_model, "_vociferous_runtime_summary", None)
+        if isinstance(candidate, dict):
+            runtime_summary = candidate
+    if runtime_summary is None:
+        runtime_summary = describe_asr_runtime(settings)
+
+    provider = str(runtime_summary.get("provider") or settings.model.provider)
+    model_id = str(runtime_summary.get("model_id") or settings.model.model)
+    resolved_device = str(runtime_summary.get("resolved_device") or "")
+    compute_type = str(runtime_summary.get("compute_type_resolved") or runtime_summary.get("compute_type") or "")
+    cpu_threads = int(runtime_summary.get("cpu_threads") or 0)
+    prompt_text = (
+        _transcription_prompt(settings.model.initial_prompt)
+        if provider != "local_faster_whisper"
+        else (settings.model.initial_prompt or "")
+    )
+
+    return {
+        "transcription_provider": provider,
+        "transcription_model_id": model_id,
+        "transcription_resolved_device": resolved_device,
+        "transcription_compute_type": compute_type,
+        "transcription_cpu_threads": cpu_threads,
+        "transcription_prompt_text": prompt_text,
+        "transcription_prompt_chars": len(prompt_text),
+        "transcription_prompt_words": len(prompt_text.split()),
+    }
 
 
 def _wav_bytes(audio: NDArray[np.float32]) -> bytes:

@@ -15,6 +15,7 @@ from src.refinement.prompt_builder import PromptBuilder
 
 logger = logging.getLogger(__name__)
 
+
 class RefinementEngine:
     """
     Refinement Engine using CTranslate2 Generator.
@@ -219,6 +220,9 @@ class RefinementEngine:
         output_ids = results[0].sequences_ids[0]
         output_text = self.tokenizer.decode(output_ids)
         result = self._parse_output(output_text)
+        prompt_token_count = len(prompt_tokens)
+        completion_token_count = len(output_ids)
+        total_token_count = prompt_token_count + completion_token_count
 
         # Fallback: if model emitted only <think> reasoning with no final content,
         # return the original text rather than an empty string.
@@ -227,9 +231,21 @@ class RefinementEngine:
                 "Refinement produced empty content (model may have exhausted tokens in reasoning). "
                 "Returning original text."
             )
-            return GenerationResult(content=text, reasoning=result.reasoning)
+            return GenerationResult(
+                content=text,
+                reasoning=result.reasoning,
+                prompt_tokens=prompt_token_count,
+                completion_tokens=completion_token_count,
+                total_tokens=total_token_count,
+            )
 
-        return result
+        return GenerationResult(
+            content=result.content,
+            reasoning=result.reasoning,
+            prompt_tokens=prompt_token_count,
+            completion_tokens=completion_token_count,
+            total_tokens=total_token_count,
+        )
 
     def generate_custom(
         self,
