@@ -31,6 +31,9 @@ export interface VociferousConfig {
         min_duration_ms?: number;
         max_recording_minutes?: number;
         audio_cache_minutes?: number;
+        durability_enabled?: boolean;
+        durability_interval_seconds?: number;
+        audio_vault_encryption?: "off" | "required";
         vad_sensitivity?: string;
     };
     user?: {
@@ -119,6 +122,9 @@ export interface ConfigValueByPath {
     "output.exclude_imported_from_analytics": boolean;
     "recording.activation_key": string;
     "recording.audio_cache_minutes": number;
+    "recording.audio_vault_encryption": "off" | "required";
+    "recording.durability_enabled": boolean;
+    "recording.durability_interval_seconds": number;
     "recording.max_recording_minutes": number;
     "recording.recording_mode": string;
     "refinement.enabled": boolean;

@@ -240,7 +240,7 @@ else
 fi
 
 # Install .desktop entry
-sed "s|{{INSTALL_DIR}}|${PROJECT_DIR}|g" "$PROJECT_DIR/vociferous.desktop.template" > "$PROJECT_DIR/vociferous.desktop"
+sed "s|{{INSTALL_DIR}}|${PROJECT_DIR}|g" "$PROJECT_DIR/scripts/vociferous.desktop.template" > "$PROJECT_DIR/vociferous.desktop"
 mkdir -p "$(dirname "$DESKTOP_DEST")"
 cp "$PROJECT_DIR/vociferous.desktop" "$DESKTOP_DEST"
 update-desktop-database "$(dirname "$DESKTOP_DEST")" 2>/dev/null || true

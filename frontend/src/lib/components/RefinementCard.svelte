@@ -19,7 +19,7 @@
         type RefinementProviderApiKeyStatus,
         type RefinementProviderId,
     } from "../api";
-    import type { GetConfigValue, SetConfigValue, VociferousConfig } from "../config.svelte";
+    import type { ConfigPath, GetConfigValue, SetConfigValue, VociferousConfig } from "../config.svelte";
     import { toast } from "../toast.svelte";
     import ToggleSwitch from "./ToggleSwitch.svelte";
     import CustomSelect from "./CustomSelect.svelte";
@@ -67,9 +67,7 @@
     let showsCpuRuntimeControls = $derived(isCpu || gpuWillFallbackToCpu);
 
     /* AWQ + CPU incompatibility check */
-    let selectedModelQuant = $derived(
-        models.slm[getSafe(config, "refinement.model_id", "qwen8b")]?.quant ?? "",
-    );
+    let selectedModelQuant = $derived(models.slm[getSafe(config, "refinement.model_id", "qwen8b")]?.quant ?? "");
     let awqCpuConflict = $derived(isCpu && selectedModelQuant === "awq");
     let awqAutoFallback = $derived(gpuWillFallbackToCpu && selectedModelQuant === "awq");
 
@@ -89,27 +87,37 @@
         return value === "lm_studio" || value === "groq";
     }
 
-    function providerPath(providerId: RefinementProviderId, key: string) {
-        return `refinement.${providerId}.${key}` as Parameters<SetConfigValue>[0];
+    type RefinementProviderConfigKey =
+        | "base_url"
+        | "model_id"
+        | "api_key_env"
+        | "timeout_seconds"
+        | "max_output_tokens"
+        | "model_list_enabled";
+    type RefinementProviderPath<Key extends RefinementProviderConfigKey> = Extract<
+        ConfigPath,
+        `refinement.${RefinementProviderId}.${Key}`
+    >;
+
+    function providerPath<Key extends RefinementProviderConfigKey>(
+        providerId: RefinementProviderId,
+        key: Key,
+    ): RefinementProviderPath<Key> {
+        return `refinement.${providerId}.${key}` as RefinementProviderPath<Key>;
     }
 
     function providerPayload(providerId: RefinementProviderId) {
         return {
-            base_url: getSafe(config, providerPath(providerId, "base_url") as never) as string,
-            model_id: getSafe(config, providerPath(providerId, "model_id") as never) as string,
-            api_key_env: getSafe(config, providerPath(providerId, "api_key_env") as never) as string | null,
+            base_url: getSafe(config, providerPath(providerId, "base_url"), ""),
+            model_id: getSafe(config, providerPath(providerId, "model_id"), ""),
+            api_key_env: getSafe(config, providerPath(providerId, "api_key_env"), null),
             api_key: apiKeyDraft.trim() || undefined,
-            timeout_seconds: getSafe(config, providerPath(providerId, "timeout_seconds") as never) as number,
-            max_output_tokens: getSafe(config, providerPath(providerId, "max_output_tokens") as never) as number,
-            model_list_enabled: getSafe(config, providerPath(providerId, "model_list_enabled") as never) as boolean,
-            max_retries:
-                providerId === "groq"
-                    ? (getSafe(config, "refinement.groq.max_retries", 2) as number)
-                    : undefined,
+            timeout_seconds: getSafe(config, providerPath(providerId, "timeout_seconds"), 120),
+            max_output_tokens: getSafe(config, providerPath(providerId, "max_output_tokens"), 1024),
+            model_list_enabled: getSafe(config, providerPath(providerId, "model_list_enabled"), true),
+            max_retries: providerId === "groq" ? getSafe(config, "refinement.groq.max_retries", 2) : undefined,
             retry_backoff_seconds:
-                providerId === "groq"
-                    ? (getSafe(config, "refinement.groq.retry_backoff_seconds", 1) as number)
-                    : undefined,
+                providerId === "groq" ? getSafe(config, "refinement.groq.retry_backoff_seconds", 1) : undefined,
         };
     }
 
@@ -121,7 +129,7 @@
             toast.error("Paste Groq key values into Stored API Key, not API Key Env Var");
             return;
         }
-        setSafe(providerPath(providerId, "api_key_env"), (trimmed || null) as never);
+        setSafe(providerPath(providerId, "api_key_env"), trimmed || null);
     }
 
     $effect(() => {
@@ -147,11 +155,16 @@
 
     function apiKeyStatusText(providerId: RefinementProviderId): string {
         if (providerId === "lm_studio") return "LM Studio usually does not require an API key.";
-        if (apiKeyStatus?.source === "stored" && apiKeyStatus.source_valid) return `Stored local key available via ${apiKeyStatus.backend}.`;
-        if (apiKeyStatus?.source === "stored") return "Stored Groq key looks invalid. Replace it with the full key from Groq.";
-        if (apiKeyStatus?.source === "environment" && apiKeyStatus.source_valid) return `Using ${apiKeyStatus.api_key_env ?? "environment"} from the process environment.`;
-        if (apiKeyStatus?.source === "environment") return `${apiKeyStatus.api_key_env ?? "Environment key"} is set but does not look like a valid Groq key.`;
-        if (apiKeyStatus?.backend === "unavailable") return "No local secret backend is available; use an environment variable instead.";
+        if (apiKeyStatus?.source === "stored" && apiKeyStatus.source_valid)
+            return `Stored local key available via ${apiKeyStatus.backend}.`;
+        if (apiKeyStatus?.source === "stored")
+            return "Stored Groq key looks invalid. Replace it with the full key from Groq.";
+        if (apiKeyStatus?.source === "environment" && apiKeyStatus.source_valid)
+            return `Using ${apiKeyStatus.api_key_env ?? "environment"} from the process environment.`;
+        if (apiKeyStatus?.source === "environment")
+            return `${apiKeyStatus.api_key_env ?? "Environment key"} is set but does not look like a valid Groq key.`;
+        if (apiKeyStatus?.backend === "unavailable")
+            return "No local secret backend is available; use an environment variable instead.";
         return "No Groq API key configured.";
     }
 
@@ -287,273 +300,291 @@
         </div>
 
         {#if provider === "local_ct2"}
-        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-            <label
-                class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                for="setting-refdevice"
-                data-tip="Auto uses CUDA when available and falls back to CPU when it is not. Force CPU ignores CUDA."
-                >Refinement Device</label
-            >
-            <div class="w-full max-w-[460px]">
-                <CustomSelect
-                    id="setting-refdevice"
-                    options={[
-                        { value: "gpu", label: "Auto (GPU if available)" },
-                        { value: "cpu", label: "CPU only" },
-                    ]}
-                    value={deviceValue}
-                    onchange={(v: string) => setDevice(v)}
-                />
-            </div>
-        </div>
-        {#if showsCpuRuntimeControls}
             <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
                 <label
                     class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                    for="setting-refthreads"
-                    data-tip="CPU threads for refinement inference. Higher values use more cores but may improve speed. Default: automatic logical cores divided by 3, clamped between 2 and 10."
-                    >Refinement Threads</label
+                    for="setting-refdevice"
+                    data-tip="Auto uses CUDA when available and falls back to CPU when it is not. Force CPU ignores CUDA."
+                    >Refinement Device</label
                 >
-                <input
-                    id="setting-refthreads"
-                    class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                    type="number"
-                    min="1"
-                    max="32"
-                    value={getSafe(config, "refinement.n_threads", 4)}
-                    oninput={(e) => {
-                        const v = parseInt((e.target as HTMLInputElement).value);
-                        if (!isNaN(v) && v >= 1 && v <= 32) setSafe("refinement.n_threads", v);
-                    }}
-                />
-            </div>
-        {/if}
-        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-            <label
-                class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                for="setting-refmodel"
-                data-tip="Larger models produce better refinements but use more RAM and are slower."
-                >Refinement Model</label
-            >
-            <div class="flex items-center gap-[var(--space-2)]">
                 <div class="w-full max-w-[460px]">
                     <CustomSelect
-                        id="setting-refmodel"
-                        options={Object.entries(models.slm).map(([id, m]) => ({
-                            value: id,
-                            label: `${m.name} (${m.size_mb}MB)${m.downloaded ? "" : " ⬇"}${showsCpuRuntimeControls && m.quant === "awq" ? " — GPU only" : ""}`,
-                        }))}
-                        value={getSafe(config, "refinement.model_id", "qwen8b")}
-                        onchange={(v: string) => setSafe("refinement.model_id", v)}
-                        placeholder="Select model…"
+                        id="setting-refdevice"
+                        options={[
+                            { value: "gpu", label: "Auto (GPU if available)" },
+                            { value: "cpu", label: "CPU only" },
+                        ]}
+                        value={deviceValue}
+                        onchange={(v: string) => setDevice(v)}
                     />
                 </div>
-                {#if models.slm[getSafe(config, "refinement.model_id", "qwen8b")]}
-                    {@const selectedSlm = models.slm[getSafe(config, "refinement.model_id", "qwen8b")]}
-                    {#if !selectedSlm.downloaded}
-                        {#if downloadingModel === getSafe(config, "refinement.model_id", "qwen8b")}
-                            <span
-                                class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--accent)] shrink overflow-hidden"
-                            >
-                                <Loader2 size={14} class="spin" />
-                                <span class="overflow-hidden text-ellipsis whitespace-nowrap">{downloadMessage}</span>
-                            </span>
-                        {:else}
-                            <DownloadButton
-                                onclick={() => handleDownload("slm", getSafe(config, "refinement.model_id", "qwen8b"))}
-                            />
-                        {/if}
-                    {:else}
-                        <span
-                            class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--color-success)]"
-                            ><CheckCircle size={14} /></span
-                        >
-                    {/if}
-                {/if}
             </div>
-        </div>
-        {#if downloadErrorSlm && !downloadingModel}
-            <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-danger)] py-1">
-                <AlertCircle size={14} />
-                <span class="break-words leading-[var(--leading-normal)]">{downloadErrorSlm}</span>
-            </div>
-        {/if}
-        {#if awqCpuConflict}
-            <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-warning, #e5a00d)] py-1">
-                <AlertCircle size={14} />
-                <span class="leading-[var(--leading-normal)]"
-                    >AWQ models require GPU. Switch to Auto or choose the 4B int8 model for CPU inference.</span
-                >
-            </div>
-        {:else if awqAutoFallback}
-            <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--text-secondary)] py-1">
-                <Info size={14} class="shrink-0 mt-px" />
-                <span class="leading-[var(--leading-normal)]"
-                    >CUDA is not usable, so refinement will run on CPU. AWQ models cannot run on CPU; Vociferous will
-                    use the 4B int8 model if it is downloaded.</span
-                >
-            </div>
-        {:else if showsCpuRuntimeControls}
-            <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--text-secondary)] py-1">
-                <Info size={14} class="shrink-0 mt-px" />
-                <span class="leading-[var(--leading-normal)]"
-                    >CPU refinement uses the int8 model path. AWQ models require CUDA and will use the 4B int8 CPU
-                    fallback when Auto cannot use GPU.</span
-                >
-            </div>
-        {/if}
-            {:else if isExternalProvider(provider)}
+            {#if showsCpuRuntimeControls}
                 <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
                     <label
                         class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                        for="setting-provider-url"
-                        data-tip="OpenAI-compatible base URL. LM Studio usually uses http://localhost:1234/v1; Groq uses https://api.groq.com/openai/v1."
-                        >Provider Base URL</label
+                        for="setting-refthreads"
+                        data-tip="CPU threads for refinement inference. Higher values use more cores but may improve speed. Default: automatic logical cores divided by 3, clamped between 2 and 10."
+                        >Refinement Threads</label
                     >
                     <input
-                        id="setting-provider-url"
-                        class="h-9 w-full max-w-[460px] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
-                        type="text"
-                        value={getSafe(config, providerPath(provider, "base_url") as never) as string}
-                        oninput={(e) => setSafe(providerPath(provider, "base_url"), (e.target as HTMLInputElement).value as never)}
+                        id="setting-refthreads"
+                        class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        type="number"
+                        min="1"
+                        max="32"
+                        value={getSafe(config, "refinement.n_threads", 4)}
+                        oninput={(e) => {
+                            const v = parseInt((e.target as HTMLInputElement).value);
+                            if (!isNaN(v) && v >= 1 && v <= 32) setSafe("refinement.n_threads", v);
+                        }}
                     />
                 </div>
-                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-                    <label
-                        class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                        for="setting-provider-model"
-                        data-tip="Model identifier sent to the provider's chat completions endpoint."
-                        >Provider Model</label
-                    >
-                    <div class="flex items-center gap-[var(--space-2)]">
-                        <input
-                            id="setting-provider-model"
-                            class="h-9 w-full max-w-[460px] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
-                            type="text"
-                            value={getSafe(config, providerPath(provider, "model_id") as never) as string}
-                            oninput={(e) => setSafe(providerPath(provider, "model_id"), (e.target as HTMLInputElement).value as never)}
-                        />
-                        <button
-                            type="button"
-                            class="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] text-[var(--accent)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
-                            aria-label="Refresh provider models"
-                            disabled={externalModelsLoading || !providerHasUsableApiKey(provider)}
-                            onclick={() => refreshExternalModels(provider)}
-                        >
-                            {#if externalModelsLoading}
-                                <Loader2 size={15} class="spin" />
-                            {:else}
-                                <RefreshCw size={15} />
-                            {/if}
-                        </button>
-                    </div>
-                </div>
-                {#if externalModels.length > 0}
-                    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-                        <label
-                            class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                            for="setting-provider-model-list"
-                            data-tip="Models returned by the provider's /models endpoint."
-                            >Available Models</label
-                        >
-                        <div class="w-full max-w-[460px]">
-                            <CustomSelect
-                                id="setting-provider-model-list"
-                                options={externalModels.map((model) => ({ value: model.id, label: model.id }))}
-                                value={getSafe(config, providerPath(provider, "model_id") as never) as string}
-                                onchange={(v: string) => setSafe(providerPath(provider, "model_id"), v as never)}
-                            />
-                        </div>
-                    </div>
-                {/if}
-                {#if !providerHasStoredKey(provider)}
-                    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-                        <label
-                            class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                            for="setting-provider-key-env"
-                            data-tip="Environment variable containing the provider API key. Groq defaults to GROQ_API_KEY. The key value itself is never stored in normal settings."
-                            >API Key Env Var</label
-                        >
-                        <input
-                            id="setting-provider-key-env"
-                            class="h-9 w-56 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
-                            type="text"
-                            value={(getSafe(config, providerPath(provider, "api_key_env") as never) as string | null) ?? ""}
-                            oninput={(e) => setApiKeyEnv(provider, (e.target as HTMLInputElement).value)}
-                        />
-                    </div>
-                {/if}
-                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-                    <label
-                        class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                        for="setting-provider-api-key"
-                        data-tip="Paste a provider API key to test it or save it into the local OS-backed secret store. The key is not written to settings.json."
-                        >Stored API Key</label
-                    >
-                    <div class="flex min-w-0 flex-wrap items-center gap-[var(--space-2)]">
-                        <input
-                            id="setting-provider-api-key"
-                            class="h-9 w-full max-w-[320px] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
-                            type="password"
-                            autocomplete="off"
-                            placeholder={apiKeyStatus?.has_stored_key ? "Saved key present" : provider === "groq" ? "Paste Groq key" : "Optional local-server key"}
-                            value={apiKeyDraft}
-                            oninput={(e) => (apiKeyDraft = (e.target as HTMLInputElement).value)}
-                        />
-                        <button
-                            type="button"
-                            class="inline-flex h-9 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-3)] text-[var(--text-sm)] text-[var(--accent)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
-                            disabled={apiKeyBusy || !apiKeyDraft.trim()}
-                            onclick={() => saveApiKey(provider)}
-                        >
-                            {#if apiKeyBusy}<Loader2 size={15} class="spin" />{/if}
-                            Save Key
-                        </button>
-                        <button
-                            type="button"
-                            class="inline-flex h-9 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-3)] text-[var(--text-sm)] text-[var(--text-secondary)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
-                            disabled={apiKeyBusy || !apiKeyStatus?.has_stored_key}
-                            onclick={() => removeApiKey(provider)}
-                        >
-                            Remove
-                        </button>
-                    </div>
-                </div>
-                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[24px]">
-                    <span></span>
-                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] leading-[var(--leading-normal)]">
-                        {apiKeyStatusText(provider)}
-                    </span>
-                </div>
-                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-                    <span class="text-[var(--text-sm)] text-[var(--text-primary)]" data-tip="Checks provider connectivity and authentication using the current draft settings.">Provider Check</span>
-                    <div class="flex items-center gap-[var(--space-2)]">
-                        <button
-                            type="button"
-                            class="inline-flex h-9 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-3)] text-[var(--text-sm)] text-[var(--accent)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
-                            disabled={externalModelsLoading || !providerHasUsableApiKey(provider)}
-                            onclick={() => testExternalConnection(provider)}
-                        >
-                            {#if externalModelsLoading}<Loader2 size={15} class="spin" />{:else}<PlugZap size={15} />{/if}
-                            Test
-                        </button>
-                        {#if providerTestMessage}
-                            <span class="text-[var(--text-xs)] {providerTestOk ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}">{providerTestMessage}</span>
-                        {/if}
-                    </div>
-                </div>
-                {#if provider === "groq"}
-                    <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-warning, #e5a00d)] py-1">
-                        <AlertCircle size={14} />
-                        <span class="leading-[var(--leading-normal)]">Groq refinement sends transcript text to Groq's cloud API for inference.</span>
-                    </div>
-                {:else}
-                    <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--text-secondary)] py-1">
-                        <Info size={14} class="shrink-0 mt-px" />
-                        <span class="leading-[var(--leading-normal)]">LM Studio must be running its local server, usually from the Developer tab or lms server start.</span>
-                    </div>
-                {/if}
             {/if}
+            <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                <label
+                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                    for="setting-refmodel"
+                    data-tip="Larger models produce better refinements but use more RAM and are slower."
+                    >Refinement Model</label
+                >
+                <div class="flex items-center gap-[var(--space-2)]">
+                    <div class="w-full max-w-[460px]">
+                        <CustomSelect
+                            id="setting-refmodel"
+                            options={Object.entries(models.slm).map(([id, m]) => ({
+                                value: id,
+                                label: `${m.name} (${m.size_mb}MB)${m.downloaded ? "" : " ⬇"}${showsCpuRuntimeControls && m.quant === "awq" ? " — GPU only" : ""}`,
+                            }))}
+                            value={getSafe(config, "refinement.model_id", "qwen8b")}
+                            onchange={(v: string) => setSafe("refinement.model_id", v)}
+                            placeholder="Select model…"
+                        />
+                    </div>
+                    {#if models.slm[getSafe(config, "refinement.model_id", "qwen8b")]}
+                        {@const selectedSlm = models.slm[getSafe(config, "refinement.model_id", "qwen8b")]}
+                        {#if !selectedSlm.downloaded}
+                            {#if downloadingModel === getSafe(config, "refinement.model_id", "qwen8b")}
+                                <span
+                                    class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--accent)] shrink overflow-hidden"
+                                >
+                                    <Loader2 size={14} class="spin" />
+                                    <span class="overflow-hidden text-ellipsis whitespace-nowrap"
+                                        >{downloadMessage}</span
+                                    >
+                                </span>
+                            {:else}
+                                <DownloadButton
+                                    onclick={() =>
+                                        handleDownload("slm", getSafe(config, "refinement.model_id", "qwen8b"))}
+                                />
+                            {/if}
+                        {:else}
+                            <span
+                                class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--color-success)]"
+                                ><CheckCircle size={14} /></span
+                            >
+                        {/if}
+                    {/if}
+                </div>
+            </div>
+            {#if downloadErrorSlm && !downloadingModel}
+                <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-danger)] py-1">
+                    <AlertCircle size={14} />
+                    <span class="break-words leading-[var(--leading-normal)]">{downloadErrorSlm}</span>
+                </div>
+            {/if}
+            {#if awqCpuConflict}
+                <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-warning, #e5a00d)] py-1">
+                    <AlertCircle size={14} />
+                    <span class="leading-[var(--leading-normal)]"
+                        >AWQ models require GPU. Switch to Auto or choose the 4B int8 model for CPU inference.</span
+                    >
+                </div>
+            {:else if awqAutoFallback}
+                <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--text-secondary)] py-1">
+                    <Info size={14} class="shrink-0 mt-px" />
+                    <span class="leading-[var(--leading-normal)]"
+                        >CUDA is not usable, so refinement will run on CPU. AWQ models cannot run on CPU; Vociferous
+                        will use the 4B int8 model if it is downloaded.</span
+                    >
+                </div>
+            {:else if showsCpuRuntimeControls}
+                <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--text-secondary)] py-1">
+                    <Info size={14} class="shrink-0 mt-px" />
+                    <span class="leading-[var(--leading-normal)]"
+                        >CPU refinement uses the int8 model path. AWQ models require CUDA and will use the 4B int8 CPU
+                        fallback when Auto cannot use GPU.</span
+                    >
+                </div>
+            {/if}
+        {:else if isExternalProvider(provider)}
+            <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                <label
+                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                    for="setting-provider-url"
+                    data-tip="OpenAI-compatible base URL. LM Studio usually uses http://localhost:1234/v1; Groq uses https://api.groq.com/openai/v1."
+                    >Provider Base URL</label
+                >
+                <input
+                    id="setting-provider-url"
+                    class="h-9 w-full max-w-[460px] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                    type="text"
+                    value={getSafe(config, providerPath(provider, "base_url"), "")}
+                    oninput={(e) => setSafe(providerPath(provider, "base_url"), (e.target as HTMLInputElement).value)}
+                />
+            </div>
+            <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                <label
+                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                    for="setting-provider-model"
+                    data-tip="Model identifier sent to the provider's chat completions endpoint.">Provider Model</label
+                >
+                <div class="flex items-center gap-[var(--space-2)]">
+                    <input
+                        id="setting-provider-model"
+                        class="h-9 w-full max-w-[460px] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                        type="text"
+                        value={getSafe(config, providerPath(provider, "model_id"), "")}
+                        oninput={(e) =>
+                            setSafe(providerPath(provider, "model_id"), (e.target as HTMLInputElement).value)}
+                    />
+                    <button
+                        type="button"
+                        class="inline-flex h-9 w-9 items-center justify-center rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] text-[var(--accent)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
+                        aria-label="Refresh provider models"
+                        disabled={externalModelsLoading || !providerHasUsableApiKey(provider)}
+                        onclick={() => refreshExternalModels(provider)}
+                    >
+                        {#if externalModelsLoading}
+                            <Loader2 size={15} class="spin" />
+                        {:else}
+                            <RefreshCw size={15} />
+                        {/if}
+                    </button>
+                </div>
+            </div>
+            {#if externalModels.length > 0}
+                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                    <label
+                        class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                        for="setting-provider-model-list"
+                        data-tip="Models returned by the provider's /models endpoint.">Available Models</label
+                    >
+                    <div class="w-full max-w-[460px]">
+                        <CustomSelect
+                            id="setting-provider-model-list"
+                            options={externalModels.map((model) => ({ value: model.id, label: model.id }))}
+                            value={getSafe(config, providerPath(provider, "model_id"), "")}
+                            onchange={(v: string) => setSafe(providerPath(provider, "model_id"), v)}
+                        />
+                    </div>
+                </div>
+            {/if}
+            {#if !providerHasStoredKey(provider)}
+                <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                    <label
+                        class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                        for="setting-provider-key-env"
+                        data-tip="Environment variable containing the provider API key. Groq defaults to GROQ_API_KEY. The key value itself is never stored in normal settings."
+                        >API Key Env Var</label
+                    >
+                    <input
+                        id="setting-provider-key-env"
+                        class="h-9 w-56 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                        type="text"
+                        value={getSafe(config, providerPath(provider, "api_key_env"), null) ?? ""}
+                        oninput={(e) => setApiKeyEnv(provider, (e.target as HTMLInputElement).value)}
+                    />
+                </div>
+            {/if}
+            <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                <label
+                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                    for="setting-provider-api-key"
+                    data-tip="Paste a provider API key to test it or save it into the local OS-backed secret store. The key is not written to settings.json."
+                    >Stored API Key</label
+                >
+                <div class="flex min-w-0 flex-wrap items-center gap-[var(--space-2)]">
+                    <input
+                        id="setting-provider-api-key"
+                        class="h-9 w-full max-w-[320px] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                        type="password"
+                        autocomplete="off"
+                        placeholder={apiKeyStatus?.has_stored_key
+                            ? "Saved key present"
+                            : provider === "groq"
+                              ? "Paste Groq key"
+                              : "Optional local-server key"}
+                        value={apiKeyDraft}
+                        oninput={(e) => (apiKeyDraft = (e.target as HTMLInputElement).value)}
+                    />
+                    <button
+                        type="button"
+                        class="inline-flex h-9 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-3)] text-[var(--text-sm)] text-[var(--accent)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
+                        disabled={apiKeyBusy || !apiKeyDraft.trim()}
+                        onclick={() => saveApiKey(provider)}
+                    >
+                        {#if apiKeyBusy}<Loader2 size={15} class="spin" />{/if}
+                        Save Key
+                    </button>
+                    <button
+                        type="button"
+                        class="inline-flex h-9 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-3)] text-[var(--text-sm)] text-[var(--text-secondary)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
+                        disabled={apiKeyBusy || !apiKeyStatus?.has_stored_key}
+                        onclick={() => removeApiKey(provider)}
+                    >
+                        Remove
+                    </button>
+                </div>
+            </div>
+            <div class="grid grid-cols-[200px_minmax(0,1fr)] items-start gap-x-[var(--space-4)] min-h-[24px]">
+                <span></span>
+                <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] leading-[var(--leading-normal)]">
+                    {apiKeyStatusText(provider)}
+                </span>
+            </div>
+            <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+                <span
+                    class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                    data-tip="Checks provider connectivity and authentication using the current draft settings."
+                    >Provider Check</span
+                >
+                <div class="flex items-center gap-[var(--space-2)]">
+                    <button
+                        type="button"
+                        class="inline-flex h-9 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-3)] text-[var(--text-sm)] text-[var(--accent)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
+                        disabled={externalModelsLoading || !providerHasUsableApiKey(provider)}
+                        onclick={() => testExternalConnection(provider)}
+                    >
+                        {#if externalModelsLoading}<Loader2 size={15} class="spin" />{:else}<PlugZap size={15} />{/if}
+                        Test
+                    </button>
+                    {#if providerTestMessage}
+                        <span
+                            class="text-[var(--text-xs)] {providerTestOk
+                                ? 'text-[var(--color-success)]'
+                                : 'text-[var(--color-danger)]'}">{providerTestMessage}</span
+                        >
+                    {/if}
+                </div>
+            </div>
+            {#if provider === "groq"}
+                <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-warning, #e5a00d)] py-1">
+                    <AlertCircle size={14} />
+                    <span class="leading-[var(--leading-normal)]"
+                        >Groq refinement sends transcript text to Groq's cloud API for inference.</span
+                    >
+                </div>
+            {:else}
+                <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--text-secondary)] py-1">
+                    <Info size={14} class="shrink-0 mt-px" />
+                    <span class="leading-[var(--leading-normal)]"
+                        >LM Studio must be running its local server, usually from the Developer tab or lms server start.</span
+                    >
+                </div>
+            {/if}
+        {/if}
         <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
             <label
                 id="setting-autorefine-label"
@@ -670,65 +701,65 @@
                 </div>
                 {#if provider === "local_ct2" || provider === "lm_studio"}
                     <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-                    <label
-                        class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                        for="setting-top-k"
-                        data-tip="Only the top-k most probable tokens are considered at each step. Default: 20"
-                        >Top-K</label
-                    >
-                    <input
-                        id="setting-top-k"
-                        class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                        type="number"
-                        min="1"
-                        max="200"
-                        step="1"
-                        value={getSafe(config, "refinement.top_k", 20)}
-                        oninput={(e) => {
-                            const v = parseInt((e.target as HTMLInputElement).value);
-                            if (!isNaN(v) && v >= 1 && v <= 200) setSafe("refinement.top_k", v);
-                        }}
-                    />
+                        <label
+                            class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                            for="setting-top-k"
+                            data-tip="Only the top-k most probable tokens are considered at each step. Default: 20"
+                            >Top-K</label
+                        >
+                        <input
+                            id="setting-top-k"
+                            class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                            type="number"
+                            min="1"
+                            max="200"
+                            step="1"
+                            value={getSafe(config, "refinement.top_k", 20)}
+                            oninput={(e) => {
+                                const v = parseInt((e.target as HTMLInputElement).value);
+                                if (!isNaN(v) && v >= 1 && v <= 200) setSafe("refinement.top_k", v);
+                            }}
+                        />
                     </div>
                     <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-                    <label
-                        class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                        for="setting-repetition-penalty"
-                        data-tip="Penalizes tokens that already appeared. 1.0 = no penalty, higher = less repetition. Default: 1.0"
-                        >Repetition Penalty</label
-                    >
-                    <input
-                        id="setting-repetition-penalty"
-                        class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                        type="number"
-                        min="1.0"
-                        max="2.0"
-                        step="0.05"
-                        value={getSafe(config, "refinement.repetition_penalty", 1.0)}
-                        oninput={(e) => {
-                            const v = parseFloat((e.target as HTMLInputElement).value);
-                            if (!isNaN(v) && v >= 1.0 && v <= 2.0) setSafe("refinement.repetition_penalty", v);
-                        }}
-                    />
+                        <label
+                            class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                            for="setting-repetition-penalty"
+                            data-tip="Penalizes tokens that already appeared. 1.0 = no penalty, higher = less repetition. Default: 1.0"
+                            >Repetition Penalty</label
+                        >
+                        <input
+                            id="setting-repetition-penalty"
+                            class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                            type="number"
+                            min="1.0"
+                            max="2.0"
+                            step="0.05"
+                            value={getSafe(config, "refinement.repetition_penalty", 1.0)}
+                            oninput={(e) => {
+                                const v = parseFloat((e.target as HTMLInputElement).value);
+                                if (!isNaN(v) && v >= 1.0 && v <= 2.0) setSafe("refinement.repetition_penalty", v);
+                            }}
+                        />
                     </div>
                 {/if}
                 {#if provider === "local_ct2"}
                     <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-                    <label
-                        id="setting-use-thinking-label"
-                        class="text-[var(--text-sm)] text-[var(--text-primary)]"
-                        for="setting-use-thinking"
-                        data-tip="Allow the model to reason internally before producing output. Improves quality on complex edits but uses more tokens and is slower. Only effective on reasoning-capable models."
-                        >Enable Thinking Mode</label
-                    >
-                    <ToggleSwitch
-                        id="setting-use-thinking"
-                        ariaLabelledby="setting-use-thinking-label"
-                        bind:checked={
-                            () => getSafe(config, "refinement.use_thinking", false),
-                            (checked: boolean) => setSafe("refinement.use_thinking", checked)
-                        }
-                    />
+                        <label
+                            id="setting-use-thinking-label"
+                            class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                            for="setting-use-thinking"
+                            data-tip="Allow the model to reason internally before producing output. Improves quality on complex edits but uses more tokens and is slower. Only effective on reasoning-capable models."
+                            >Enable Thinking Mode</label
+                        >
+                        <ToggleSwitch
+                            id="setting-use-thinking"
+                            ariaLabelledby="setting-use-thinking-label"
+                            bind:checked={
+                                () => getSafe(config, "refinement.use_thinking", false),
+                                (checked: boolean) => setSafe("refinement.use_thinking", checked)
+                            }
+                        />
                     </div>
                 {/if}
             </div>
