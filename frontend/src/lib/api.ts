@@ -527,8 +527,22 @@ export function cleanupEngine(deleteOrphanSpools = false): Promise<EngineCleanup
     });
 }
 
-export function getInsight(): Promise<{ text: string }> {
+export interface InsightPayload {
+    text: string;
+    daily_text: string;
+    lifetime_text: string;
+    generated_at: number;
+    generated_for_date: string;
+    stale: boolean;
+    dirty_reasons: string[];
+}
+
+export function getInsight(): Promise<InsightPayload> {
     return request("/insight");
+}
+
+export function refreshInsight(): Promise<InsightPayload> {
+    return request("/insight/refresh", { method: "POST" });
 }
 
 export function exportFile(content: string, filename: string): Promise<{ path: string }> {

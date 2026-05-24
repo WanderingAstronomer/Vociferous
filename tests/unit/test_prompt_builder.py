@@ -173,4 +173,4 @@ class TestTemplates:
         assert "1,234" in result
         assert "Daily highlights:" in result
         assert "Long-term highlights:" in result
-        assert "Required structure:" in result
+        assert 'Required JSON shape:\n{"daily":"...","lifetime":"..."}' in result

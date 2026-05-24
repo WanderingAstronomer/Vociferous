@@ -353,12 +353,14 @@ class TestRefinementHandlersHappyPath:
 
         t = db.add_transcript(raw_text="original text to refine", duration_ms=5000)
         settings = VociferousSettings()
+        insight_manager = MagicMock()
 
         handler = RefinementHandlers(
             db_provider=lambda: db,
             slm_runtime_provider=lambda: None,
             settings_provider=lambda: settings,
             event_bus_emit=_emit_to(events),
+            insight_manager_provider=lambda: insight_manager,
         )
 
         handler.handle_commit_refinement(SimpleNamespace(transcript_id=t.id, text="refined version of the text"))
@@ -367,6 +369,7 @@ class TestRefinementHandlersHappyPath:
         assert refreshed is not None
         assert refreshed.normalized_text == "refined version of the text"
         assert refreshed.text == "refined version of the text"
+        insight_manager.mark_dirty.assert_called_once_with("refinement_committed")
 
     def test_slm_exception_in_refine_thread_emits_error(self, db, events):
         from src.core.handlers.refinement_handlers import RefinementHandlers
@@ -402,7 +405,7 @@ class TestRefinementHandlersHappyPath:
 class TestBulkRefinementHappyPath:
     """Bulk refinement: sequential processing, auto-commit, tagged."""
 
-    def _make_handler(self, *, db, slm=None, events_list=None, title_gen=None):
+    def _make_handler(self, *, db, slm=None, events_list=None, title_gen=None, insight_manager=None):
         from src.core.handlers.refinement_handlers import RefinementHandlers
         from src.core.settings import VociferousSettings
 
@@ -414,6 +417,7 @@ class TestBulkRefinementHappyPath:
             settings_provider=lambda: settings,
             event_bus_emit=_emit_to(ev),
             title_generator_provider=lambda: title_gen,
+            insight_manager_provider=lambda: insight_manager,
         ), ev
 
     def test_bulk_refine_processes_all_transcripts(self, db, events):
@@ -424,8 +428,14 @@ class TestBulkRefinementHappyPath:
         mock_slm = MagicMock()
         mock_slm.state = SLMState.READY
         mock_slm.refine_text_sync.side_effect = lambda text, **kw: f"refined: {text}"
+        insight_manager = MagicMock()
 
-        handler, ev = self._make_handler(db=db, slm=mock_slm, events_list=events)
+        handler, ev = self._make_handler(
+            db=db,
+            slm=mock_slm,
+            events_list=events,
+            insight_manager=insight_manager,
+        )
         handler.handle_bulk_refine(
             SimpleNamespace(
                 transcript_ids=(t1.id, t2.id, t3.id),
@@ -459,6 +469,7 @@ class TestBulkRefinementHappyPath:
         assert complete[0]["total"] == 3
         assert complete[0]["failed"] == 0
         assert complete[0]["cancelled"] is False
+        insight_manager.mark_dirty.assert_called_once_with("bulk_refinement_committed")
 
     def test_smart_refinement_passes_skip_gate_to_bulk_refine(self, db, events):
         from src.core.settings import VociferousSettings

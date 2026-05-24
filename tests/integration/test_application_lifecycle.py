@@ -131,12 +131,17 @@ class TestHandlerRegistration:
         """Every intent defined in the coordinator must have a handler."""
         from src.core.intents.definitions import (
             AppendToTranscriptIntent,
+            BatchDeleteTranscriptsIntent,
             BeginRecordingIntent,
             BulkRefineTranscriptsIntent,
             CancelBulkRefinementIntent,
             CancelRecordingIntent,
+            ClearAllTranscriptsIntent,
             CommitEditsIntent,
             CommitRefinementIntent,
+            DeleteRecoveredRecordingIntent,
+            DeleteTagIntent,
+            DeleteTranscriptIntent,
             ImportAudioFileIntent,
             RefineTranscriptIntent,
             RestartEngineIntent,
@@ -146,6 +151,7 @@ class TestHandlerRegistration:
             SetAnalyticsInclusionIntent,
             StopRecordingIntent,
             ToggleRecordingIntent,
+            TranscribeRecoveredRecordingIntent,
             UpdateConfigIntent,
         )
 
@@ -158,8 +164,14 @@ class TestHandlerRegistration:
             RetranscribeIntent,
             CommitEditsIntent,
             RevertToRawIntent,
+            DeleteTranscriptIntent,
+            BatchDeleteTranscriptsIntent,
+            ClearAllTranscriptsIntent,
             AppendToTranscriptIntent,
             SetAnalyticsInclusionIntent,
+            DeleteTagIntent,
+            TranscribeRecoveredRecordingIntent,
+            DeleteRecoveredRecordingIntent,
             RefineTranscriptIntent,
             CommitRefinementIntent,
             BulkRefineTranscriptsIntent,
@@ -176,8 +188,7 @@ class TestHandlerRegistration:
 
     def test_handler_count_matches_intent_count(self, coordinator):
         """No extra/ghost handlers registered beyond the expected set."""
-        # 21 intents are registered in _register_handlers
-        assert len(coordinator.command_bus._handlers) == 21
+        assert len(coordinator.command_bus._handlers) == 23
 
     def test_handlers_are_callable(self, coordinator):
         """Every registered handler must be callable."""
@@ -187,7 +198,7 @@ class TestHandlerRegistration:
     def test_double_register_does_not_duplicate(self, coordinator):
         """Calling _register_handlers again overwrites, doesn't stack."""
         coordinator._register_handlers()
-        assert len(coordinator.command_bus._handlers) == 21
+        assert len(coordinator.command_bus._handlers) == 23
 
 
 # ── Shutdown & Cleanup ────────────────────────────────────────────────────

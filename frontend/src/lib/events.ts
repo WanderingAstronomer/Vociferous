@@ -142,6 +142,12 @@ export interface KeyCapturedData {
 
 export interface InsightReadyData {
     text: string;
+    daily_text: string;
+    lifetime_text: string;
+    generated_at: number;
+    generated_for_date: string;
+    stale: boolean;
+    dirty_reasons: string[];
 }
 
 // --- Event type → data mapping ---
@@ -297,5 +303,13 @@ export const wsEventValidators: {
     key_captured: (data): data is KeyCapturedData =>
         isObject(data) && isString(data.combo) && isString(data.display),
     insight_ready: (data): data is InsightReadyData =>
-        isObject(data) && isString(data.text),
+        isObject(data) &&
+        isString(data.text) &&
+        isString(data.daily_text) &&
+        isString(data.lifetime_text) &&
+        isNumber(data.generated_at) &&
+        isString(data.generated_for_date) &&
+        typeof data.stale === "boolean" &&
+        Array.isArray(data.dirty_reasons) &&
+        data.dirty_reasons.every(isString),
 };

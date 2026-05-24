@@ -35,11 +35,23 @@ class TranscriptHandlers:
         event_bus_emit: Callable,
         settings_provider: Callable[[], VociferousSettings],
         on_settings_updated: Callable[[VociferousSettings], None],
+        insight_manager_provider: Callable[[], Any] = lambda: None,
     ) -> None:
         self._db_provider = db_provider
         self._emit = event_bus_emit
         self._settings_provider = settings_provider
         self._on_settings_updated = on_settings_updated
+        self._insight_manager_provider = insight_manager_provider
+
+    def _mark_insight_dirty(self, reason: str) -> None:
+        insight_manager = self._insight_manager_provider()
+        if insight_manager is not None:
+            insight_manager.mark_dirty(reason)
+
+    def _clear_insight_cache(self, reason: str) -> None:
+        insight_manager = self._insight_manager_provider()
+        if insight_manager is not None:
+            insight_manager.clear_cache(reason)
 
     def _clear_default_prompt_if_deleted(self, transcript_id: int) -> None:
         from src.core.settings import update_settings
@@ -60,6 +72,7 @@ class TranscriptHandlers:
                 "transcript_updated",
                 {"id": intent.transcript_id},
             )
+            self._mark_insight_dirty("transcript_edited")
 
     @handles(RevertToRawIntent)
     def handle_revert_to_raw(self, intent: Any) -> None:
@@ -72,6 +85,7 @@ class TranscriptHandlers:
                 "transcript_updated",
                 {"id": intent.transcript_id},
             )
+            self._mark_insight_dirty("transcript_reverted")
 
     @handles(DeleteTranscriptIntent)
     def handle_delete_transcript(self, intent: Any) -> dict[str, bool]:
@@ -85,6 +99,7 @@ class TranscriptHandlers:
         if deleted:
             self._clear_default_prompt_if_deleted(intent.transcript_id)
             self._emit("transcript_deleted", {"id": intent.transcript_id})
+            self._mark_insight_dirty("transcript_deleted")
         return {"deleted": bool(deleted)}
 
     @handles(BatchDeleteTranscriptsIntent)
@@ -100,6 +115,7 @@ class TranscriptHandlers:
             self._clear_default_prompt_if_deleted(default_prompt_id)
         if count:
             self._emit("transcripts_batch_deleted", {"ids": ids, "count": count})
+            self._mark_insight_dirty("transcripts_deleted")
         return {"deleted": count}
 
     @handles(ClearAllTranscriptsIntent)
@@ -114,6 +130,7 @@ class TranscriptHandlers:
             self._clear_default_prompt_if_deleted(default_prompt_id)
         if deleted:
             self._emit("transcripts_cleared", {"count": deleted})
+            self._clear_insight_cache("transcripts_cleared")
         return {"deleted": deleted}
 
     @handles(AppendToTranscriptIntent)
@@ -127,6 +144,7 @@ class TranscriptHandlers:
             )
             if root_id is not None:
                 self._emit("transcript_updated", {"id": root_id})
+                self._mark_insight_dirty("transcript_appended")
 
     @handles(SetAnalyticsInclusionIntent)
     def handle_set_analytics_inclusion(self, intent: Any) -> None:
@@ -135,3 +153,4 @@ class TranscriptHandlers:
         if db:
             db.set_analytics_inclusion(intent.transcript_id, intent.include)
             self._emit("transcript_updated", {"id": intent.transcript_id})
+            self._mark_insight_dirty("analytics_inclusion_changed")

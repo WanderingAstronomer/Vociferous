@@ -20,10 +20,12 @@ Architecture constraint:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -34,6 +36,8 @@ if TYPE_CHECKING:
     from src.services.slm_runtime import SLMRuntime
 
 logger = logging.getLogger(__name__)
+
+InsightPayload = dict[str, str | float | bool | list[str]]
 
 # Minimum word count for a meaningful transcript to trigger threshold check.
 # Per ISS-119: enforced explicitly at scheduling time so trivially short
@@ -97,9 +101,46 @@ class InsightManager:
     @property
     def cached_text(self) -> str:
         """Return whatever is in the cache right now, or empty string."""
-        return self._cache.get("text", "")
+        return str(self.cached_payload.get("text", ""))
 
-    def maybe_schedule(self, new_transcript_words: int | None = None) -> None:
+    @property
+    def cached_payload(self) -> InsightPayload:
+        """Return the structured insight cache payload consumed by the API and WebSocket."""
+        return self._cache_payload()
+
+    def mark_dirty(self, reason: str, *, schedule: bool = True) -> None:
+        """Mark cached insight text stale and optionally try to regenerate immediately."""
+        clean_reason = reason.strip() or "analytics_data_changed"
+        with self._lock:
+            reasons = [str(r) for r in self._cache.get("dirty_reasons", []) if isinstance(r, str)]
+            if clean_reason not in reasons:
+                reasons.append(clean_reason)
+            self._cache["dirty"] = True
+            self._cache["dirty_reasons"] = reasons[-8:]
+            self._write_cache()
+
+        if schedule:
+            self.maybe_schedule(reason=clean_reason)
+
+    def clear_cache(self, reason: str = "analytics_data_cleared") -> None:
+        """Clear stale insight text when the analytics population is no longer meaningful."""
+        with self._lock:
+            self._cache = {}
+            self._last_generated_today_words = 0
+            try:
+                self._cache_path.unlink(missing_ok=True)
+            except Exception as e:
+                logger.debug("Failed to remove insight cache after %s: %s", reason, e)
+        self._emit(self._event_name, self._cache_payload())
+
+    def request_refresh(self) -> InsightPayload:
+        """Force a low-priority refresh attempt and return the current cached payload."""
+        self.mark_dirty("manual_refresh")
+        return self.cached_payload
+
+    def maybe_schedule(
+        self, new_transcript_words: int | None = None, *, reason: str = "transcription_completed"
+    ) -> None:
         """
         Called after every transcription_complete and when SLM becomes idle.
         Checks whether a threshold has been crossed and, if so, starts a
@@ -142,31 +183,124 @@ class InsightManager:
             # to determine today_words before committing to a full generation.
             stats = self._get_stats()
             if not stats or stats.get("count", 0) < 3:
+                if self._cache.get("text") or self._cache.get("daily_text") or self._cache.get("lifetime_text"):
+                    self._cache = {}
+                    self._last_generated_today_words = 0
+                    self._write_cache()
+                    emit_payload = self._cache_payload()
+                else:
+                    emit_payload = None
+            else:
+                emit_payload = None
+
+            if emit_payload is not None:
+                self._emit(self._event_name, emit_payload)
+            if not stats or stats.get("count", 0) < 3:
                 return
 
-            today_words = stats.get("today_words", 0)
-            if not self._should_regenerate(today_words):
+            if not self._should_regenerate(stats, reason=reason):
                 logger.debug(
-                    "Insight: no threshold crossed (today_words=%d, last=%d), skipping",
-                    today_words,
+                    "Insight: no regeneration needed (reason=%s, today_words=%d, last=%d), skipping",
+                    reason,
+                    int(stats.get("today_words", 0) or 0),
                     self._last_generated_today_words,
                 )
                 return
 
             self._generating = True
 
-        logger.info("Insight: scheduling background generation (threshold crossed, today_words=%d)", today_words)
-        thread = threading.Thread(target=self._generate_task, daemon=True)
+        today_words = int(stats.get("today_words", 0) or 0)
+        logger.info("Insight: scheduling background generation (reason=%s, today_words=%d)", reason, today_words)
+        thread = threading.Thread(target=self._generate_task, args=(reason,), daemon=True)
         thread.start()
 
     # ── Internal ─────────────────────────────────────────────────────────────
 
-    def _should_regenerate(self, today_words: int) -> bool:
+    @staticmethod
+    def _today_key() -> str:
+        return datetime.now().astimezone().strftime("%Y-%m-%d")
+
+    @staticmethod
+    def _stats_fingerprint(stats: dict[str, Any]) -> str:
+        encoded = json.dumps(stats, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
+
+    @staticmethod
+    def _combine_text(daily_text: str, lifetime_text: str) -> str:
+        return "\n\n".join(part for part in (daily_text.strip(), lifetime_text.strip()) if part)
+
+    @staticmethod
+    def _split_legacy_text(text: str, *, has_daily: bool) -> tuple[str, str]:
+        parts = [part.strip() for part in text.split("\n\n") if part.strip()]
+        if not parts:
+            return "", ""
+        if not has_daily:
+            return "", "\n\n".join(parts)
+        return parts[0], "\n\n".join(parts[1:])
+
+    @staticmethod
+    def _strip_json_fence(raw: str) -> str:
+        text = raw.strip()
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if len(lines) >= 3 and lines[-1].strip() == "```":
+                return "\n".join(lines[1:-1]).strip()
+        return text
+
+    def _cache_payload(self) -> InsightPayload:
+        today_key = self._today_key()
+        generated_for_date = str(self._cache.get("generated_for_date") or "")
+        text = str(self._cache.get("text") or "")
+        daily_text = str(self._cache.get("daily_text") or "")
+        lifetime_text = str(self._cache.get("lifetime_text") or "")
+
+        if text and not (daily_text or lifetime_text):
+            daily_text, lifetime_text = self._split_legacy_text(text, has_daily=generated_for_date == today_key)
+
+        if generated_for_date != today_key:
+            daily_text = ""
+
+        combined = self._combine_text(daily_text, lifetime_text)
+        dirty_reasons = [str(r) for r in self._cache.get("dirty_reasons", []) if isinstance(r, str)]
+        return {
+            "text": combined,
+            "daily_text": daily_text.strip(),
+            "lifetime_text": lifetime_text.strip(),
+            "generated_at": float(self._cache.get("generated_at", 0.0) or 0.0),
+            "generated_for_date": generated_for_date,
+            "stale": bool(self._cache.get("dirty")) or (bool(text or daily_text) and generated_for_date != today_key),
+            "dirty_reasons": dirty_reasons,
+        }
+
+    def _write_cache(self) -> None:
+        try:
+            self._cache_path.parent.mkdir(parents=True, exist_ok=True)
+            self._cache_path.write_text(json.dumps(self._cache, ensure_ascii=False), encoding="utf-8")
+        except Exception as e:
+            logger.error("Failed to save insight cache: %s", e)
+
+    def _should_regenerate(self, stats: dict[str, Any], *, reason: str = "transcription_completed") -> bool:
         """Return True if today_words has crossed a threshold or the
         growth-and-time freshness rule (ISS-122) has tripped since last generation."""
-        # No cache at all → always generate.
-        if not self._cache.get("text"):
+        today_words = int(stats.get("today_words", 0) or 0)
+        if reason == "manual_refresh":
             return True
+
+        # No cache at all → always generate.
+        if not (self._cache.get("text") or self._cache.get("daily_text") or self._cache.get("lifetime_text")):
+            return True
+
+        if self._cache.get("dirty"):
+            return True
+
+        if self._cache.get("generated_for_date") != self._today_key() and today_words > 0:
+            return True
+
+        fingerprint = self._stats_fingerprint(stats)
+        if self._cache.get("stats_fingerprint") and self._cache.get("stats_fingerprint") != fingerprint:
+            generated_at = float(self._cache.get("generated_at", 0.0) or 0.0)
+            if generated_at <= 0.0 or (time.time() - generated_at) >= _FRESHNESS_MIN_INTERVAL_S:
+                return True
 
         # Find the highest threshold that today_words has reached.
         current_bracket = 0
@@ -314,30 +448,55 @@ class InsightManager:
 
         return highlights[:3]
 
-    def _save_cache(self, text: str, today_words: int) -> None:
-        """Update cache in memory and on disk."""
-        self._cache = {
-            "text": text,
-            "generated_at": time.time(),
-            "last_today_words": today_words,
-        }
+    def _parse_generated_insight(self, raw: str, *, has_daily: bool) -> tuple[str, str]:
+        clean = self._strip_json_fence(raw)
         try:
-            self._cache_path.parent.mkdir(parents=True, exist_ok=True)
-            self._cache_path.write_text(json.dumps(self._cache, ensure_ascii=False), encoding="utf-8")
-        except Exception as e:
-            logger.error("Failed to save insight cache: %s", e)
+            parsed = json.loads(clean)
+        except json.JSONDecodeError:
+            daily_text, lifetime_text = self._split_legacy_text(clean, has_daily=has_daily)
+        else:
+            if not isinstance(parsed, dict):
+                return "", ""
+            daily_text = str(parsed.get("daily") or parsed.get("daily_text") or "").strip()
+            lifetime_text = str(parsed.get("lifetime") or parsed.get("lifetime_text") or "").strip()
 
-    def _generate_task(self) -> None:
+        if not has_daily:
+            lifetime_text = lifetime_text or daily_text
+            daily_text = ""
+        return daily_text.strip(), lifetime_text.strip()
+
+    def _save_cache(self, daily_text: str, lifetime_text: str, today_words: int, stats: dict[str, Any]) -> None:
+        """Update cache in memory and on disk."""
+        text = self._combine_text(daily_text, lifetime_text)
+        with self._lock:
+            self._cache = {
+                "text": text,
+                "daily_text": daily_text,
+                "lifetime_text": lifetime_text,
+                "generated_at": time.time(),
+                "generated_for_date": self._today_key(),
+                "last_today_words": today_words,
+                "stats_fingerprint": self._stats_fingerprint(stats),
+                "dirty": False,
+                "dirty_reasons": [],
+            }
+            self._last_generated_today_words = today_words
+            self._write_cache()
+
+    def _generate_task(self, reason: str = "scheduled") -> None:
         try:
             stats = self._get_stats()
             if not stats or stats.get("count", 0) < 3:
                 logger.info("Insight: not enough data for meaningful insight, skipping")
+                self.clear_cache("insufficient_data")
                 return
 
-            today_words = stats.get("today_words", 0)
+            today_words = int(stats.get("today_words", 0) or 0)
+            daily_highlights = self._build_daily_highlights(stats)
+            long_term_highlights = self._build_long_term_highlights(stats)
             fmt = {
-                "daily_highlights": self._highlight_block(self._build_daily_highlights(stats)),
-                "long_term_highlights": self._highlight_block(self._build_long_term_highlights(stats)),
+                "daily_highlights": self._highlight_block(daily_highlights),
+                "long_term_highlights": self._highlight_block(long_term_highlights),
             }
             prompt = self._prompt_template.format_map(fmt)
 
@@ -382,10 +541,13 @@ class InsightManager:
                 if any(marker in clean for marker in _LEAK_MARKERS):
                     logger.warning("Insight: output appears to contain leaked prompt fragments, discarding")
                     return
-                self._save_cache(clean, today_words)
-                self._last_generated_today_words = today_words
-                self._emit(self._event_name, {"text": clean})
-                logger.info("Insight: generation complete, cache updated")
+                daily_text, lifetime_text = self._parse_generated_insight(clean, has_daily=bool(daily_highlights))
+                if not daily_text and not lifetime_text:
+                    logger.warning("Insight: output could not be parsed into structured fields, discarding")
+                    return
+                self._save_cache(daily_text, lifetime_text, today_words, stats)
+                self._emit(self._event_name, self._cache_payload())
+                logger.info("Insight: generation complete, cache updated (reason=%s)", reason)
 
         except Exception:
             logger.exception("Insight: generation failed")

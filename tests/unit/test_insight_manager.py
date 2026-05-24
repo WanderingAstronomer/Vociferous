@@ -53,7 +53,7 @@ class TestInsightManagerThresholds:
 
         # Update stats to 800 words (still in the 500 bracket)
         manager._get_stats = lambda: _make_stats(today_words=800)
-        assert manager._should_regenerate(800) is False
+        assert manager._should_regenerate(_make_stats(today_words=800)) is False
 
     def test_regeneration_on_threshold_crossing(self, tmp_path: Path) -> None:
         """After generating at 600 words, 1100 words (crossed 1000) should regenerate."""
@@ -61,14 +61,14 @@ class TestInsightManagerThresholds:
         manager._generate_task()
         emit.reset_mock()
 
-        assert manager._should_regenerate(1100) is True
+        assert manager._should_regenerate(_make_stats(today_words=1100)) is True
 
     def test_multi_threshold_skip_counts_as_one(self, tmp_path: Path) -> None:
         """Jumping from 0 to 6000 words crosses multiple thresholds but should_regenerate is just True."""
         manager, _ = _make_manager_with_emit(tmp_path, "Insight.", today_words=0, thresholds=(500, 1000, 2500, 5000))
         # Cache exists but at bracket 0
-        manager._save_cache("old", 0)
-        assert manager._should_regenerate(6000) is True
+        manager._save_cache("", "old", 0, _make_stats(today_words=0))
+        assert manager._should_regenerate(_make_stats(today_words=6000)) is True
 
     def test_below_all_thresholds_no_regeneration(self, tmp_path: Path) -> None:
         """If today_words hasn't reached the first threshold, skip."""
@@ -76,7 +76,7 @@ class TestInsightManagerThresholds:
         # Generate once (first time always fires since cache is empty)
         manager._generate_task()
         # Now 200 words — still below first threshold
-        assert manager._should_regenerate(200) is False
+        assert manager._should_regenerate(_make_stats(today_words=200)) is False
 
 
 # ── Per-Transcript Word Gate (ISS-119) ─────────────────────────────────────
@@ -124,7 +124,7 @@ class TestInsightManagerPerTranscriptGate:
         # Should reach scheduling logic and proceed (today_words crosses 500/1000).
         # We assert by checking the generation flag was flipped on the lock path.
         # Easier: just confirm _should_regenerate returns True under those conditions.
-        assert manager._should_regenerate(2000) is True
+        assert manager._should_regenerate(_make_stats(today_words=2000)) is True
 
 
 # ── Growth-Based Freshness Rule (ISS-122) ──────────────────────────────────
@@ -135,7 +135,7 @@ class TestInsightManagerFreshness:
         manager, _ = _make_manager_with_emit(tmp_path, "Insight.", today_words=600, thresholds=(500, 1000))
         manager._generate_task()  # Establishes cache at today_words=600.
         # Small growth, no time delay considered — should not refresh.
-        assert manager._should_regenerate(700) is False
+        assert manager._should_regenerate(_make_stats(today_words=700)) is False
 
     def test_growth_above_delta_with_aged_cache_refreshes(self, tmp_path: Path) -> None:
         from src.core.insight_manager import _FRESHNESS_GROWTH_WORDS, _FRESHNESS_MIN_INTERVAL_S
@@ -146,7 +146,7 @@ class TestInsightManagerFreshness:
         import time as _time
 
         manager._cache["generated_at"] = _time.time() - (_FRESHNESS_MIN_INTERVAL_S + 5)
-        assert manager._should_regenerate(600 + _FRESHNESS_GROWTH_WORDS) is True
+        assert manager._should_regenerate(_make_stats(today_words=600 + _FRESHNESS_GROWTH_WORDS)) is True
 
     def test_growth_above_delta_but_cache_too_recent_no_refresh(self, tmp_path: Path) -> None:
         from src.core.insight_manager import _FRESHNESS_GROWTH_WORDS
@@ -154,7 +154,65 @@ class TestInsightManagerFreshness:
         manager, _ = _make_manager_with_emit(tmp_path, "Insight.", today_words=600, thresholds=(500, 1000))
         manager._generate_task()
         # Cache is fresh (just generated) — growth alone must not refresh.
-        assert manager._should_regenerate(600 + _FRESHNESS_GROWTH_WORDS) is False
+        assert manager._should_regenerate(_make_stats(today_words=600 + _FRESHNESS_GROWTH_WORDS)) is False
+
+
+class TestInsightManagerStructuredPayload:
+    def test_json_output_populates_daily_and_lifetime_fields(self, tmp_path: Path) -> None:
+        manager, emit = _make_manager_with_emit(
+            tmp_path,
+            '{"daily":"500 words today.","lifetime":"1,000 words overall."}',
+            today_words=500,
+        )
+
+        manager._generate_task()
+
+        assert manager.cached_payload["daily_text"] == "500 words today."
+        assert manager.cached_payload["lifetime_text"] == "1,000 words overall."
+        assert manager.cached_payload["text"] == "500 words today.\n\n1,000 words overall."
+        emit.assert_called_once()
+        assert emit.call_args[0][1]["daily_text"] == "500 words today."
+
+    def test_stale_daily_text_is_hidden_after_date_rollover(self, tmp_path: Path) -> None:
+        manager, _ = _make_manager_with_emit(tmp_path, "unused")
+        manager._cache = {
+            "daily_text": "Yesterday only.",
+            "lifetime_text": "Lifetime still useful.",
+            "text": "Yesterday only.\n\nLifetime still useful.",
+            "generated_for_date": "1999-01-01",
+            "generated_at": 1.0,
+        }
+
+        payload = manager.cached_payload
+
+        assert payload["daily_text"] == ""
+        assert payload["lifetime_text"] == "Lifetime still useful."
+        assert payload["text"] == "Lifetime still useful."
+        assert payload["stale"] is True
+
+    def test_mark_dirty_forces_regeneration_after_cache_exists(self, tmp_path: Path) -> None:
+        manager, _ = _make_manager_with_emit(tmp_path, "Insight.", today_words=500)
+        manager._generate_task()
+
+        manager.mark_dirty("transcript_edited", schedule=False)
+
+        assert manager._should_regenerate(_make_stats(today_words=500)) is True
+        assert manager.cached_payload["dirty_reasons"] == ["transcript_edited"]
+
+    def test_request_refresh_marks_cache_stale_and_schedules(self, tmp_path: Path, monkeypatch) -> None:
+        manager, _ = _make_manager_with_emit(tmp_path, "Insight.", today_words=500)
+        calls: list[dict] = []
+
+        def _capture_schedule(**kwargs):
+            calls.append(kwargs)
+
+        monkeypatch.setattr(manager, "maybe_schedule", _capture_schedule)
+
+        payload = manager.request_refresh()
+
+        assert payload["stale"] is True
+        assert payload["dirty_reasons"] == ["manual_refresh"]
+        assert calls == [{"reason": "manual_refresh"}]
 
 
 # ── Leak Guard ────────────────────────────────────────────────────────────
@@ -208,6 +266,7 @@ class TestInsightManagerPromptContract:
         assert kwargs["system_prompt"] == PromptBuilder.ANALYTICS_SYSTEM_PROMPT
         assert "Daily highlights:" in kwargs["user_prompt"]
         assert "Long-term highlights:" in kwargs["user_prompt"]
+        assert 'Required JSON shape:\n{"daily":"...","lifetime":"..."}' in kwargs["user_prompt"]
         assert "- Words today: 500." in kwargs["user_prompt"]
         assert "- Total words captured: 1,000 across 10 transcriptions." in kwargs["user_prompt"]
         assert kwargs["temperature"] == 0.4
@@ -220,6 +279,7 @@ class TestInsightManagerPromptContract:
 
         kwargs = manager._slm_provider().generate_custom_sync.call_args.kwargs
         assert "Daily highlights:\n- none" in kwargs["user_prompt"]
+        assert 'set "daily" to ""' in kwargs["user_prompt"]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────

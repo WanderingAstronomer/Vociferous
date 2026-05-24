@@ -8,6 +8,8 @@ but WITHOUT heavy services (ASR, SLM, audio, webview).
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from tests.conftest import EventCollector
@@ -49,6 +51,7 @@ class TestCommitEdits:
     def test_commit_updates_normalized_text(self, wired):
         coord, events = wired
         t = coord.db.add_transcript(raw_text="original text", duration_ms=500)
+        coord.insight_manager = MagicMock()
 
         from src.core.intents.definitions import CommitEditsIntent
 
@@ -60,6 +63,7 @@ class TestCommitEdits:
         assert refreshed is not None
         assert refreshed.text == "edited text"
         assert refreshed.normalized_text == "edited text"
+        coord.insight_manager.mark_dirty.assert_called_once_with("transcript_edited")
 
     def test_commit_preserves_raw(self, wired):
         """Raw text must remain immutable after edits."""

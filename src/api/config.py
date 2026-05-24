@@ -107,16 +107,23 @@ def restart_engine() -> dict:
 
 @get("/api/insight", sync_to_thread=True)
 def get_insight() -> dict:
-    """Return the cached UserView insight, or empty text if none exists yet."""
+    """Return the structured cached analytics insight payload."""
     coordinator = get_coordinator()
-    return {"text": coordinator.get_insight_text()}
+    return coordinator.get_insight_payload()
+
+
+@post("/api/insight/refresh", sync_to_thread=True)
+def refresh_insight() -> dict:
+    """Mark analytics insight stale and request regeneration when possible."""
+    coordinator = get_coordinator()
+    return coordinator.request_insight_refresh()
 
 
 @get("/api/motd", sync_to_thread=True)
 def get_motd() -> dict:
-    """Return the cached insight text (alias for /api/insight; kept for frontend compat)."""
+    """Return the cached insight payload (alias for /api/insight; kept for frontend compat)."""
     coordinator = get_coordinator()
-    return {"text": coordinator.get_insight_text()}
+    return coordinator.get_insight_payload()
 
 
 # --- Generic intent dispatch ---

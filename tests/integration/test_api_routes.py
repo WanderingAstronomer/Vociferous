@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from litestar.testing import TestClient
@@ -39,6 +39,8 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
         clear_default_refinement_prompt,
         dispatch_intent,
         get_config,
+        get_insight,
+        refresh_insight,
         set_default_refinement_prompt,
         update_config,
     )
@@ -98,9 +100,11 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
             transcribe_recovered_recording,
             delete_recovered_recording,
             get_config,
+            get_insight,
             update_config,
             set_default_refinement_prompt,
             clear_default_refinement_prompt,
+            refresh_insight,
             list_models,
             download_model,
             health,
@@ -580,6 +584,15 @@ class TestConfigRoutes:
         # Verify coordinator's settings reference updated
         assert coord.settings.recording.activation_key == "ctrl_left"
 
+    def test_typing_wpm_update_marks_insight_dirty(self, api):
+        client, coord, _ = api
+        coord.insight_manager = MagicMock()
+
+        resp = client.put("/api/config", json={"user": {"typing_wpm": 95}})
+
+        assert resp.status_code == 200
+        coord.insight_manager.mark_dirty.assert_called_once_with("typing_wpm_changed")
+
     def test_set_default_refinement_prompt_emits_event(self, api):
         client, coord, events = api
         prompt_tag = next(tag for tag in coord.db.get_tags() if tag.name == "Prompt")
@@ -606,6 +619,44 @@ class TestConfigRoutes:
         assert coord.settings.refinement.default_prompt_transcript_id is None
         updated = events.of_type("config_updated")
         assert updated[-1]["refinement"]["default_prompt_transcript_id"] is None
+
+    def test_get_insight_returns_structured_payload(self, api):
+        client, coord, _ = api
+        coord.insight_manager = MagicMock()
+        coord.insight_manager.cached_payload = {
+            "text": "Daily.\n\nLifetime.",
+            "daily_text": "Daily.",
+            "lifetime_text": "Lifetime.",
+            "generated_at": 123.0,
+            "generated_for_date": "2026-05-24",
+            "stale": False,
+            "dirty_reasons": [],
+        }
+
+        resp = client.get("/api/insight")
+
+        assert resp.status_code == 200
+        assert resp.json()["daily_text"] == "Daily."
+        assert resp.json()["lifetime_text"] == "Lifetime."
+
+    def test_refresh_insight_dispatches_manual_refresh(self, api):
+        client, coord, _ = api
+        coord.insight_manager = MagicMock()
+        coord.insight_manager.request_refresh.return_value = {
+            "text": "",
+            "daily_text": "",
+            "lifetime_text": "",
+            "generated_at": 0.0,
+            "generated_for_date": "",
+            "stale": True,
+            "dirty_reasons": ["manual_refresh"],
+        }
+
+        resp = client.post("/api/insight/refresh")
+
+        assert resp.status_code == 201
+        assert resp.json()["dirty_reasons"] == ["manual_refresh"]
+        coord.insight_manager.request_refresh.assert_called_once_with()
 
 
 # ── Refinement Provider Secrets ───────────────────────────────────────────

@@ -315,6 +315,8 @@ class SLMRuntime:
                 self._CUSTOM_LOCK_TIMEOUT,
             )
             return ""
+        previous_state = self.state
+        self.state = SLMState.INFERRING
         try:
             if not self._engine:
                 raise RuntimeError("Engine not loaded.")
@@ -329,6 +331,7 @@ class SLMRuntime:
             self._log_inference_timing("custom-generation", user_prompt, result.content, time.perf_counter() - start)
         finally:
             self._lock.release()
+            self.state = previous_state
         return result.content
 
     def _inference_task(self, text: str, level: int, instructions: str = "") -> None:

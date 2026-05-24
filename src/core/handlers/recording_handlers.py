@@ -642,8 +642,11 @@ class RecordingSession:
             # ambiguous aggregate-side effects.
             insight_manager = self._insight_manager_provider()
             if insight_manager is not None:
-                new_words = len(text.split())
-                insight_manager.maybe_schedule(new_transcript_words=new_words)
+                if settings.output.auto_refine and settings.refinement.enabled:
+                    insight_manager.mark_dirty("transcription_completed_auto_refine", schedule=False)
+                else:
+                    new_words = len(text.split())
+                    insight_manager.maybe_schedule(new_transcript_words=new_words, reason="transcription_completed")
 
             # Schedule SLM-based auto-titling for the new transcript.
             # Skip initial title when auto-refine is enabled — refinement

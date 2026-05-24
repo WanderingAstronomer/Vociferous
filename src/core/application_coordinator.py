@@ -226,6 +226,7 @@ class ApplicationCoordinator:
             event_bus_emit=self.event_bus.emit,
             settings_provider=lambda: self.settings,
             on_settings_updated=lambda s: setattr(self, "settings", s),
+            insight_manager_provider=lambda: self.insight_manager,
         )
         tag = TagHandlers(
             db_provider=lambda: self.db,
@@ -237,6 +238,7 @@ class ApplicationCoordinator:
             settings_provider=lambda: self.settings,
             event_bus_emit=self.event_bus.emit,
             title_generator_provider=lambda: self.title_generator,
+            insight_manager_provider=lambda: self.insight_manager,
         )
         system = SystemHandlers(
             event_bus_emit=self.event_bus.emit,
@@ -340,6 +342,26 @@ class ApplicationCoordinator:
         if self.insight_manager is not None:
             return self.insight_manager.cached_text
         return ""
+
+    def get_insight_payload(self) -> dict[str, Any]:
+        """Return the structured cached insight payload, or an empty payload if unavailable."""
+        if self.insight_manager is not None:
+            return self.insight_manager.cached_payload
+        return {
+            "text": "",
+            "daily_text": "",
+            "lifetime_text": "",
+            "generated_at": 0.0,
+            "generated_for_date": "",
+            "stale": False,
+            "dirty_reasons": [],
+        }
+
+    def request_insight_refresh(self) -> dict[str, Any]:
+        """Mark analytics insight stale and request regeneration when the SLM is available."""
+        if self.insight_manager is not None:
+            return self.insight_manager.request_refresh()
+        return self.get_insight_payload()
 
     def get_motd_text(self) -> str:
         """Return the cached insight text (same as get_insight_text; kept for API compat)."""

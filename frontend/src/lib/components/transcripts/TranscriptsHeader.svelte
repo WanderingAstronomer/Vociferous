@@ -1,8 +1,9 @@
 <script lang="ts">
-    import { ArrowUpDown, ChevronLeft, ChevronRight, Search, X } from "lucide-svelte";
+    import { ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Search, X } from "lucide-svelte";
 
     import type { Tag, TagFilterMode } from "../../api";
     import TagBar from "../TagBar.svelte";
+    import { getZoomFactor } from "../../zoom";
 
     type SortDirection = "asc" | "desc";
 
@@ -70,6 +71,25 @@
         onGoToPage,
         onSetPageSize,
     }: Props = $props();
+
+    /* ===== Filter mode dropdown ===== */
+    let filterModeOpen = $state(false);
+    let filterModeX = $state(0);
+    let filterModeY = $state(0);
+
+    function openFilterModeDropdown(event: MouseEvent) {
+        const btn = event.currentTarget as HTMLButtonElement;
+        const rect = btn.getBoundingClientRect();
+        const z = getZoomFactor();
+        filterModeX = Math.min(rect.left / z, window.innerWidth / z - 140);
+        filterModeY = rect.bottom / z + 4;
+        filterModeOpen = true;
+    }
+
+    function selectFilterMode(mode: TagFilterMode) {
+        onSetFilterMode(mode);
+        filterModeOpen = false;
+    }
 </script>
 
 <div class="shrink-0 px-4 pt-3 pb-2 flex flex-col gap-2 border-b border-[var(--shell-border)]">
@@ -106,16 +126,14 @@
         oncolorchange={onTagColorChange}
     >
         {#if activeTagIds.size > 0}
-            <select
-                class="h-6 pl-2 pr-6 rounded-full text-xs font-semibold border border-[var(--accent-muted)] bg-[var(--surface-primary)] text-[var(--accent)] cursor-pointer outline-none transition-colors hover:bg-[var(--hover-overlay)]"
-                value={tagFilterMode}
-                onchange={(event) => onSetFilterMode((event.currentTarget as HTMLSelectElement).value as TagFilterMode)}
+            <button
+                class="inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-full text-xs font-semibold border border-[var(--accent-muted)] bg-[var(--surface-primary)] text-[var(--accent)] cursor-pointer outline-none transition-colors hover:bg-[var(--hover-overlay)]"
+                onclick={openFilterModeDropdown}
                 title="Tag boolean operator"
             >
-                {#each tagFilterModes as mode (mode)}
-                    <option value={mode}>{mode.toUpperCase()}</option>
-                {/each}
-            </select>
+                {tagFilterMode.toUpperCase()}
+                <ChevronDown size={10} />
+            </button>
             <button
                 class="h-6 px-1.5 rounded-full text-xs text-[var(--text-tertiary)] bg-transparent border-none cursor-pointer hover:text-[var(--text-primary)] transition-colors"
                 onclick={onClearTagFilters}
@@ -125,6 +143,32 @@
         {/if}
     </TagBar>
 </div>
+
+<!-- Filter mode dropdown (fixed to escape overflow-hidden parents) -->
+{#if filterModeOpen}
+    <div class="fixed inset-0 z-[249]" onclick={() => (filterModeOpen = false)} role="presentation"></div>
+    <div
+        class="fixed min-w-[120px] bg-[var(--surface-primary)] border border-[var(--shell-border)] rounded-lg shadow-[0_8px_24px_rgba(0,0,0,0.4)] py-1 z-[250]"
+        style="left: {filterModeX}px; top: {filterModeY}px"
+        role="menu"
+        tabindex="-1"
+        onpointerdown={(e) => e.stopPropagation()}
+    >
+        <div class="px-3 py-1 text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">Filter mode</div>
+        {#each tagFilterModes as mode (mode)}
+            <button
+                class="w-full flex items-center gap-2 px-3 py-1.5 border-none bg-transparent text-left text-xs cursor-pointer transition-colors hover:bg-[var(--hover-overlay)]"
+                class:text-[var(--accent)]={mode === tagFilterMode}
+                class:font-semibold={mode === tagFilterMode}
+                class:text-[var(--text-primary)]={mode !== tagFilterMode}
+                onclick={() => selectFilterMode(mode)}
+                role="menuitem"
+            >
+                {mode.toUpperCase()}
+            </button>
+        {/each}
+    </div>
+{/if}
 
 <div class="shrink-0 px-4 py-1.5 flex items-center gap-3 text-[13px] text-[var(--text-tertiary)]">
     {#if !isSearching}

@@ -39,14 +39,21 @@ class RefinementHandlers:
         settings_provider: Callable[[], VociferousSettings],
         event_bus_emit: Callable,
         title_generator_provider: Callable[[], Any] = lambda: None,
+        insight_manager_provider: Callable[[], Any] = lambda: None,
     ) -> None:
         self._db_provider = db_provider
         self._slm_runtime_provider = slm_runtime_provider
         self._settings_provider = settings_provider
         self._emit = event_bus_emit
         self._title_generator_provider = title_generator_provider
+        self._insight_manager_provider = insight_manager_provider
         self._bulk_cancel = threading.Event()
         self._bulk_active = False
+
+    def _mark_insight_dirty(self, reason: str) -> None:
+        insight_manager = self._insight_manager_provider()
+        if insight_manager is not None:
+            insight_manager.mark_dirty(reason)
 
     def _fallback_raw_clipboard(self, transcript_id: int) -> None:
         """Copy raw transcript text to clipboard when refinement can't proceed.
@@ -268,6 +275,7 @@ class RefinementHandlers:
             return
 
         self._persist_refinement(db, intent.transcript_id, intent.text)
+        self._mark_insight_dirty("refinement_committed")
 
         settings = self._settings_provider()
         if settings.output.auto_retitle_on_refine:
@@ -493,6 +501,8 @@ class RefinementHandlers:
                         "cancelled": self._bulk_cancel.is_set(),
                     },
                 )
+                if completed > 0:
+                    self._mark_insight_dirty("bulk_refinement_committed")
             except Exception as e:
                 logger.exception("Bulk refinement loop crashed")
                 self._emit(
