@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -23,7 +23,10 @@ from src.refinement.prompt_builder import PromptBuilder
 logger = logging.getLogger(__name__)
 
 _NO_THINK_MODEL_MARKERS = ("qwen", "qwq", "qwopus")
-_LM_STUDIO_SCHEMA_MODEL_MARKERS = ("qwen3", "qwq", "qwopus", "gpt-oss", "deepseek-r1")
+_ENABLE_THINKING_KWARG_MODEL_MARKERS = ("qwen3", "qwq", "qwopus")
+_REASONING_EFFORT_MODEL_MARKERS = ("qwen3", "qwq", "qwopus", "gpt-oss")
+_LM_STUDIO_SCHEMA_MODEL_MARKERS = ("gpt-oss", "deepseek-r1")
+_LM_STUDIO_SCHEMA_MIN_OUTPUT_TOKENS = 128
 _REASONING_MESSAGE_FIELDS = ("reasoning_content", "reasoning")
 _TEXT_RESPONSE_FORMAT: dict[str, object] = {
     "type": "json_schema",
@@ -441,12 +444,14 @@ class OpenAICompatibleRefinementProvider:
             top_p=top_p,
             top_k=top_k,
             repetition_penalty=repetition_penalty,
+            use_thinking=use_thinking,
         )
         if not result.content.strip():
             detail = " after producing reasoning only" if result.reasoning else ""
-            raise RuntimeError(
-                f"{self._provider_label} returned empty refinement content{detail}. "
-                "Disable thinking for this model or increase the provider max output tokens."
+            raise ProviderRequestError(
+                f"{self._provider_label} returned empty refinement output{detail}. "
+                "Disable thinking for this model or increase the provider max output tokens.",
+                status_code=502,
             )
         return result
 
@@ -473,6 +478,7 @@ class OpenAICompatibleRefinementProvider:
             top_p=1.0,
             top_k=0,
             repetition_penalty=1.0,
+            use_thinking=use_thinking,
         )
 
     @property
@@ -484,6 +490,35 @@ class OpenAICompatibleRefinementProvider:
             return ""
         model_id = self._provider_settings.model_id.lower()
         return "/no_think" if any(marker in model_id for marker in _NO_THINK_MODEL_MARKERS) else ""
+
+    def _chat_template_kwargs(self, use_thinking: bool) -> dict[str, object] | None:
+        """LM Studio chat_template_kwargs for Qwen3-family thinking suppression.
+
+        Qwen3's chat template honors `enable_thinking`; when False it pre-fills
+        an empty `<think></think>` block so the model cannot emit reasoning at
+        all. This is the canonical mechanism and is much more reliable than
+        injecting `/no_think` into the user message, which custom merges
+        (e.g. Qwopus) frequently ignore.
+        """
+        if self._provider_id != "lm_studio":
+            return None
+        model_id = self._provider_settings.model_id.lower()
+        if any(marker in model_id for marker in _ENABLE_THINKING_KWARG_MODEL_MARKERS):
+            return {"enable_thinking": bool(use_thinking)}
+        return None
+
+    def _reasoning_effort_value(self, use_thinking: bool) -> str | None:
+        """Value for the `reasoning_effort` parameter when the model supports it.
+
+        Supported by Groq's reasoning-tier models and by LM Studio for
+        reasoning families (gpt-oss, Qwen3, QwQ). `none` is treated as an
+        explicit opt-out; `medium` is a reasonable default when thinking
+        is enabled.
+        """
+        model_id = self._provider_settings.model_id.lower()
+        if not any(marker in model_id for marker in _REASONING_EFFORT_MODEL_MARKERS):
+            return None
+        return "medium" if use_thinking else "none"
 
     @property
     def _api_key(self) -> str | None:
@@ -688,22 +723,41 @@ class OpenAICompatibleRefinementProvider:
         top_p: float,
         top_k: int,
         repetition_penalty: float,
+        use_thinking: bool = False,
     ) -> GenerationResult:
-        payload: dict[str, object] = {
-            "model": self._provider_settings.model_id,
-            "messages": messages,
-            "temperature": max(0.01, temperature),
-            "top_p": top_p,
-            "stream": False,
-        }
-        if self._provider_id == "groq":
-            payload["max_completion_tokens"] = max_tokens
-        else:
-            payload["max_tokens"] = max_tokens
-            if top_k > 0:
-                payload["top_k"] = top_k
-            if repetition_penalty != 1.0:
-                payload["repeat_penalty"] = repetition_penalty
+        force_text_schema = self._should_force_text_schema()
+        request_tokens = max(1, max_tokens)
+        if force_text_schema:
+            request_tokens = max(request_tokens, _LM_STUDIO_SCHEMA_MIN_OUTPUT_TOKENS)
+
+        chat_template_kwargs = self._chat_template_kwargs(use_thinking)
+        reasoning_effort = self._reasoning_effort_value(use_thinking)
+
+        while True:
+            payload: dict[str, object] = {
+                "model": self._provider_settings.model_id,
+                "messages": messages,
+                "temperature": max(0.01, temperature),
+                "top_p": top_p,
+                "stream": False,
+            }
+            if self._provider_id == "groq":
+                payload["max_completion_tokens"] = request_tokens
+                payload["reasoning_format"] = "parsed"
+                if reasoning_effort is not None:
+                    payload["reasoning_effort"] = reasoning_effort
+            else:
+                payload["max_tokens"] = request_tokens
+                if top_k > 0:
+                    payload["top_k"] = top_k
+                if repetition_penalty != 1.0:
+                    payload["repeat_penalty"] = repetition_penalty
+                if force_text_schema:
+                    payload["response_format"] = _TEXT_RESPONSE_FORMAT
+                if chat_template_kwargs is not None:
+                    payload["chat_template_kwargs"] = chat_template_kwargs
+                if reasoning_effort is not None:
+                    payload["reasoning_effort"] = reasoning_effort
 
             try:
                 response = self._request("POST", "chat/completions", json_payload=payload)
@@ -736,9 +790,79 @@ class OpenAICompatibleRefinementProvider:
             content = ""
         if not isinstance(content, str):
             raise RuntimeError(f"{self._provider_label} returned non-text chat completion content.")
-        return parse_generation_output(content)
+        prompt_tokens, completion_tokens, total_tokens = self._usage_counts()
+        reasoning = self._message_reasoning(message)
+        schema_text = self._text_from_schema_output(content) or self._text_from_schema_output(reasoning or "")
+        if schema_text is not None:
+            return GenerationResult(
+                content=schema_text,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+            )
 
-    def _refinement_max_tokens(self, text: str) -> int:
+        parsed = parse_generation_output(content)
+        combined_reasoning = "\n\n".join(part for part in (parsed.reasoning, reasoning) if part) or None
+        if combined_reasoning and not parsed.content.strip():
+            logger.warning(
+                "%s returned reasoning-only chat completion (finish_reason=%s).",
+                self._provider_label,
+                choice.get("finish_reason"),
+            )
+        return GenerationResult(
+            content=parsed.content,
+            reasoning=combined_reasoning,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
+
+    def _smaller_retry_budget(self, current_tokens: int, exc: ProviderRequestError) -> int | None:
+        if exc.status_code != 413:
+            return None
+        if current_tokens <= 128:
+            return None
+        return max(128, current_tokens // 2)
+
+    def _should_force_text_schema(self) -> bool:
+        if self._provider_id != "lm_studio":
+            return False
+        model_id = self._provider_settings.model_id.lower()
+        return any(marker in model_id for marker in _LM_STUDIO_SCHEMA_MODEL_MARKERS)
+
+    @staticmethod
+    def _text_from_schema_output(text: str) -> str | None:
+        if not text or not text.strip():
+            return None
+        cleaned = text.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned.removeprefix("```json").removesuffix("```").strip()
+        elif cleaned.startswith("```"):
+            cleaned = cleaned.removeprefix("```").removesuffix("```").strip()
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(parsed, dict) and isinstance(parsed.get("text"), str):
+            return parsed["text"].strip()
+        return None
+
+    @staticmethod
+    def _message_reasoning(message: dict[str, object]) -> str | None:
+        for field in _REASONING_MESSAGE_FIELDS:
+            value = message.get(field)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    def _usage_counts(self) -> tuple[int, int, int]:
+        usage = self._last_usage or {}
+        prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        completion_tokens = int(usage.get("completion_tokens") or 0)
+        total_tokens = int(usage.get("total_tokens") or (prompt_tokens + completion_tokens))
+        return prompt_tokens, completion_tokens, total_tokens
+
+    def _refinement_max_tokens(self, text: str, *, use_thinking: bool = False) -> int:
         words = max(1, len(text.split()))
         heuristic = max(256, int(words * 1.75) + 128)
         if use_thinking:

@@ -521,7 +521,6 @@ class TestEngineRestartedEvent:
         coordinator.event_bus.on("engine_restarted", lambda _data: event_received.set())
 
         # Use patches so the actual heavy model reload is skipped
-        from unittest.mock import patch
 
         with (
             patch.object(coordinator, "_init_slm_runtime"),

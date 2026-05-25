@@ -6,7 +6,7 @@ Configuration values for audio, timing, and system limits that do not depend on 
 
 from dataclasses import dataclass
 
-from src._version import __version__ as APP_VERSION
+from src._version import __version__ as APP_VERSION  # noqa: F401
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +24,8 @@ class TitleGeneration:
     MIN_TEXT_CHARS = 100  # Skip titling for tiny recordings (<25 words)
     MAX_TEXT_CHARS = 30_000  # Cap at ~7500 words to avoid stuffing a novel into the SLM
     MAX_TITLE_TOKENS = 30  # Short titles: 5-10 words max
+    MAX_TITLE_WORDS = 12
+    MAX_TITLE_CHARS = 96
     TEMPERATURE = 0.4  # Slightly creative but grounded
 
 

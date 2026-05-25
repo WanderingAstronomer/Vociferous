@@ -108,7 +108,7 @@ def test_qwen_external_custom_generation_sends_no_think_when_thinking_disabled(f
     assert "/no_think" in str(captured["messages"])
 
 
-def test_lm_studio_qwopus_refinement_sends_no_think_when_thinking_disabled(fresh_settings) -> None:
+def test_lm_studio_qwopus_refinement_uses_canonical_thinking_suppression(fresh_settings) -> None:
     fresh_settings.refinement.provider = "lm_studio"
     fresh_settings.refinement.lm_studio.model_id = "qwopus3.6-27b-v2-mtp"
 
@@ -132,13 +132,22 @@ def test_lm_studio_qwopus_refinement_sends_no_think_when_thinking_disabled(fresh
     )
 
     assert result.content == "Edited text"
+    # Canonical Qwen3 mechanism: chat_template_kwargs.enable_thinking=False pre-fills
+    # an empty <think></think> block so the model structurally cannot reason.
+    assert captured["chat_template_kwargs"] == {"enable_thinking": False}
+    # reasoning_effort=none is the parallel mechanism for providers that honor it.
+    assert captured["reasoning_effort"] == "none"
+    # /no_think is still injected as a belt-and-suspenders fallback for custom
+    # merges whose chat templates ignore enable_thinking.
     assert "/no_think" in str(captured["messages"])
-    assert captured["response_format"]
+    # JSON schema must NOT be forced for Qwen3-family — it conflicts with the
+    # thinking flow and reliably caused empty-content + reasoning-only hangs.
+    assert "response_format" not in captured
 
 
-def test_lm_studio_qwopus_extracts_schema_text_from_reasoning_content(fresh_settings) -> None:
+def test_lm_studio_gpt_oss_extracts_schema_text_from_reasoning_content(fresh_settings) -> None:
     fresh_settings.refinement.provider = "lm_studio"
-    fresh_settings.refinement.lm_studio.model_id = "qwopus3.6-27b-v2-mtp"
+    fresh_settings.refinement.lm_studio.model_id = "openai/gpt-oss-20b"
 
     captured: dict[str, object] = {}
 
@@ -176,11 +185,14 @@ def test_lm_studio_qwopus_extracts_schema_text_from_reasoning_content(fresh_sett
     assert captured["response_format"]
 
 
-def test_lm_studio_qwopus_extracts_schema_text_from_content(fresh_settings) -> None:
+def test_lm_studio_gpt_oss_extracts_schema_text_from_content(fresh_settings) -> None:
     fresh_settings.refinement.provider = "lm_studio"
-    fresh_settings.refinement.lm_studio.model_id = "qwopus3.6-27b-v2-mtp"
+    fresh_settings.refinement.lm_studio.model_id = "openai/gpt-oss-20b"
+
+    captured: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content.decode("utf-8")))
         return _json_response({"choices": [{"message": {"content": '{"text": "Useful Title"}'}}]})
 
     provider = OpenAICompatibleRefinementProvider(fresh_settings, "lm_studio")
@@ -196,6 +208,7 @@ def test_lm_studio_qwopus_extracts_schema_text_from_content(fresh_settings) -> N
 
     assert result.content == "Useful Title"
     assert result.reasoning is None
+    assert captured["max_tokens"] == 128
 
 
 def test_lm_studio_chat_response_preserves_reasoning_content(fresh_settings) -> None:
@@ -258,6 +271,133 @@ def test_lm_studio_refinement_adds_token_budget_when_thinking_enabled(fresh_sett
 
     assert captured["max_tokens"] == 2304
     assert "/no_think" not in str(captured["messages"])
+    assert captured["chat_template_kwargs"] == {"enable_thinking": True}
+    assert captured["reasoning_effort"] == "medium"
+
+
+def test_lm_studio_non_reasoning_model_omits_reasoning_params(fresh_settings) -> None:
+    fresh_settings.refinement.provider = "lm_studio"
+    fresh_settings.refinement.lm_studio.model_id = "gemma-4-26b-a4b-it-ultra-uncensored-heretic"
+
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content.decode("utf-8")))
+        return _json_response({"choices": [{"message": {"content": "Edited text"}}]})
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "lm_studio")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    provider.refine(
+        "unedited text",
+        temperature=0.2,
+        top_p=0.9,
+        top_k=20,
+        repetition_penalty=1.0,
+        use_thinking=False,
+        allow_skip=False,
+    )
+
+    assert "chat_template_kwargs" not in captured
+    assert "reasoning_effort" not in captured
+    assert "response_format" not in captured
+
+
+def test_groq_sets_reasoning_format_parsed_for_every_request(fresh_settings) -> None:
+    fresh_settings.refinement.provider = "groq"
+    fresh_settings.refinement.groq.model_id = "llama-3.1-8b-instant"
+    fresh_settings.refinement.groq.api_key = VALID_GROQ_KEY
+
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content.decode("utf-8")))
+        return _json_response({"choices": [{"message": {"content": "Groq text"}}]})
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "groq")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    provider.refine(
+        "groq text",
+        temperature=0.2,
+        top_p=0.9,
+        top_k=0,
+        repetition_penalty=1.0,
+        use_thinking=False,
+        allow_skip=False,
+    )
+
+    assert captured["reasoning_format"] == "parsed"
+    # llama-3.1 is not a reasoning model, so no effort param is sent.
+    assert "reasoning_effort" not in captured
+
+
+def test_groq_gpt_oss_sets_reasoning_effort_per_thinking_mode(fresh_settings) -> None:
+    fresh_settings.refinement.provider = "groq"
+    fresh_settings.refinement.groq.model_id = "openai/gpt-oss-120b"
+    fresh_settings.refinement.groq.api_key = VALID_GROQ_KEY
+
+    seen_efforts: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        seen_efforts.append(str(payload.get("reasoning_effort", "<missing>")))
+        return _json_response({"choices": [{"message": {"content": "ok"}}]})
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "groq")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    provider.refine(
+        "text",
+        temperature=0.2,
+        top_p=0.9,
+        top_k=0,
+        repetition_penalty=1.0,
+        use_thinking=False,
+        allow_skip=False,
+    )
+    provider.refine(
+        "text",
+        temperature=0.2,
+        top_p=0.9,
+        top_k=0,
+        repetition_penalty=1.0,
+        use_thinking=True,
+        allow_skip=False,
+    )
+
+    assert seen_efforts == ["none", "medium"]
+
+
+def test_groq_does_not_send_lm_studio_chat_template_kwargs(fresh_settings) -> None:
+    fresh_settings.refinement.provider = "groq"
+    fresh_settings.refinement.groq.model_id = "qwen/qwen3-32b"
+    fresh_settings.refinement.groq.api_key = VALID_GROQ_KEY
+
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content.decode("utf-8")))
+        return _json_response({"choices": [{"message": {"content": "ok"}}]})
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "groq")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    provider.refine(
+        "groq qwen3 refine",
+        temperature=0.2,
+        top_p=0.9,
+        top_k=0,
+        repetition_penalty=1.0,
+        use_thinking=False,
+        allow_skip=False,
+    )
+
+    # chat_template_kwargs is an LM Studio passthrough; Groq surfaces thinking
+    # control through reasoning_effort and reasoning_format instead.
+    assert "chat_template_kwargs" not in captured
+    assert captured["reasoning_effort"] == "none"
+    assert captured["reasoning_format"] == "parsed"
 
 
 def test_lm_studio_reasoning_only_refinement_raises_instead_of_returning_original(fresh_settings) -> None:
@@ -467,8 +607,6 @@ def test_groq_key_shape_is_validated_before_request(fresh_settings) -> None:
 
 
 def test_groq_refine_retries_with_smaller_budget_after_413(fresh_settings) -> None:
-    import pytest
-
     fresh_settings.refinement.provider = "groq"
     fresh_settings.refinement.groq.model_id = "openai/gpt-oss-120b"
     fresh_settings.refinement.groq.api_key = VALID_GROQ_KEY
@@ -502,8 +640,6 @@ def test_groq_refine_retries_with_smaller_budget_after_413(fresh_settings) -> No
 
 
 def test_external_refine_raises_when_provider_returns_empty_content(fresh_settings) -> None:
-    import pytest
-
     fresh_settings.refinement.provider = "lm_studio"
     fresh_settings.refinement.lm_studio.model_id = "local-model"
 

@@ -185,6 +185,20 @@ class TestGenerateTask:
 
         assert db.get_transcript(t.id).display_name == "Good Title"
 
+    def test_paragraph_title_is_rejected(self, generator, mock_slm, db, emitted_events):
+        """If the SLM copies the transcript instead of titling it, no display name is saved."""
+        t = db.add_transcript(raw_text="x" * 200, duration_ms=1000)
+        mock_slm.generate_custom_sync.return_value = (
+            "Now arguably one of the greatest advantages we are not employing is speaker identification "
+            "and diarization for meeting notes."
+        )
+
+        generator.schedule(t.id, "x" * 200)
+        _wait_for_threads("title-gen-")
+
+        assert db.get_transcript(t.id).display_name is None
+        assert len([e for et, e in emitted_events if et == "transcript_updated"]) == 0
+
     def test_slm_disappears_mid_generation(self, db, emitted_events):
         """If SLM becomes None between schedule check and generation, no crash."""
         call_count = 0

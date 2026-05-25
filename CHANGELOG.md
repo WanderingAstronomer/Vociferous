@@ -1,5 +1,17 @@
 # Vociferous Changelog
 
+## v6.6.2 — Reasoning-Model Refinement & Title Guardrail
+
+**Date:** 2026-05-25
+**Status:** Bug fix
+
+### Fixed
+- **LM Studio reasoning models returning empty refinements** — Models that route output to `reasoning_content` (e.g., Qwopus, GPT-OSS, DeepSeek-R1) now have their final payload extracted from both `content` and `reasoning_content`. Schema-forced output (`response_format: json_schema`) is applied when these markers match, with a minimum 128-token output budget so the JSON envelope itself does not exhaust the token budget.
+- **Title generation copying entire transcript as the title** — Schema-forced generation against reasoning models could return the source text as the `title` field. Added a guardrail in `_is_valid_title` that rejects any candidate longer than `TitleGeneration.MAX_TITLE_CHARS` (96) or `TitleGeneration.MAX_TITLE_WORDS` (12) before persisting.
+
+### Housekeeping
+- Removed two trivial unused-import lint errors in `insight_manager.py` and `test_application_lifecycle.py`.
+
 ## v6.6.1 — Processing Provenance & Forecasting Metadata
 
 **Date:** 2026-05-23

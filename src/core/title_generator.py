@@ -34,6 +34,16 @@ def _clean_title(raw: str) -> str:
     return title
 
 
+def _is_valid_title(title: str) -> bool:
+    if not title:
+        return False
+    if len(title) > TitleGeneration.MAX_TITLE_CHARS:
+        return False
+    if len(title.split()) > TitleGeneration.MAX_TITLE_WORDS:
+        return False
+    return True
+
+
 _TITLE_SYSTEM_PROMPT = """\
 You generate short, descriptive titles for speech-to-text transcriptions.
 
@@ -149,6 +159,9 @@ class TitleGenerator:
 
             # Clean up: strip quotes the model might wrap around the title
             title = _clean_title(title)
+            if not _is_valid_title(title):
+                logger.warning("Title gen: rejected invalid title for transcript %d: %r", transcript_id, title[:120])
+                return
 
             # Write to DB
             db = self._db_provider()
