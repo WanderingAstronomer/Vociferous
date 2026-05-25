@@ -10,7 +10,6 @@ from __future__ import annotations
 import io
 import logging
 import os
-import re
 import time
 import wave
 from pathlib import Path
@@ -656,160 +655,29 @@ def _stored_api_key(provider_id: str) -> str | None:
         return None
 
 
-def _collapse_repeated_phrases(text: str, min_phrase_words: int = 3, max_phrase_words: int = 30) -> str:
-    """
-    Detect and collapse repeated phrases in transcription output.
+# Post-processing helpers were extracted to src.services.transcription.post_process.
+# The names below are re-exported here as the legacy single-underscore aliases used
+# by tests and by other modules that imported from this file before the split.
+from src.services.transcription.post_process import (  # noqa: E402
+    collapse_repeated_phrases as _collapse_repeated_phrases,
+    merge_segment_texts as _merge_segment_texts,
+    needs_boundary_space as _needs_boundary_space,
+    normalize_sentence_casing as _normalize_sentence_casing,
+    post_process_transcription as post_process_transcription,
+)
 
-    Whisper (especially v3) sometimes gets stuck in a loop, emitting the same
-    phrase or sentence 5-50+ times consecutively.  This function detects any
-    n-gram (from *min_phrase_words* to *max_phrase_words* words) that repeats
-    3 or more times in a row and collapses it to a single occurrence.
-
-    This is a safety net — the beam-search / entropy-threshold parameters on
-    the model should catch most cases, but when they don't, this prevents
-    the output from being unusable.
-    """
-    if not text:
-        return text
-
-    words = text.split()
-    if len(words) < min_phrase_words * 3:
-        return text  # Too short to contain meaningful repetition
-
-    result = text
-    # Try phrase lengths from longest to shortest (greedy — catch big loops first)
-    for phrase_len in range(min(max_phrase_words, len(words) // 3), min_phrase_words - 1, -1):
-        # Build a regex that matches the phrase repeated 3+ times
-        # Applying iteratively on the current result — not the original — because a longer
-        # match may have already cleaned part of it.
-        result_words = result.split()
-        i = 0
-        cleaned_words: list[str] = []
-        while i < len(result_words):
-            # Check if the next phrase_len words repeat at least twice more
-            if i + phrase_len * 3 <= len(result_words):
-                phrase = result_words[i : i + phrase_len]
-                repeats = 1
-                j = i + phrase_len
-                while j + phrase_len <= len(result_words):
-                    candidate = result_words[j : j + phrase_len]
-                    if candidate == phrase:
-                        repeats += 1
-                        j += phrase_len
-                    else:
-                        break
-                if repeats >= 3:
-                    # Collapse: keep one occurrence, skip the rest
-                    logger.warning(
-                        "Collapsed %d consecutive repetitions of %d-word phrase: '%s'",
-                        repeats,
-                        phrase_len,
-                        " ".join(phrase[:8]) + ("..." if phrase_len > 8 else ""),
-                    )
-                    cleaned_words.extend(phrase)
-                    i = j
-                    continue
-            cleaned_words.append(result_words[i])
-            i += 1
-        result = " ".join(cleaned_words)
-
-    return result
-
-
-def _needs_boundary_space(left_text: str, right_text: str) -> bool:
-    """Return True when a single separator space should be inserted."""
-    if not left_text or not right_text:
-        return False
-
-    left_char = left_text[-1]
-    right_char = right_text[0]
-
-    if left_char.isspace() or right_char.isspace():
-        return False
-
-    if left_char.isalnum() and right_char.isalnum():
-        return True
-
-    if left_char in ".!?;:," and right_char.isalnum():
-        return True
-
-    return False
-
-
-def _merge_segment_texts(segment_texts: list[str]) -> str:
-    """Merge ASR segment text with boundary-aware whitespace handling."""
-    merged = ""
-
-    for chunk in segment_texts:
-        if not chunk:
-            continue
-
-        if not merged:
-            merged = chunk
-            continue
-
-        if _needs_boundary_space(merged, chunk):
-            merged += " " + chunk.lstrip()
-        else:
-            merged += chunk
-
-    return merged.strip()
-
-
-def _normalize_sentence_casing(text: str) -> str:
-    """Capitalize the first alphabetical character of each sentence."""
-    if not text:
-        return text
-
-    chars = list(text)
-    should_capitalize = True
-
-    for i, char in enumerate(chars):
-        if char.isalpha():
-            if should_capitalize:
-                chars[i] = char.upper()
-                should_capitalize = False
-            continue
-
-        if char in ".!?":
-            should_capitalize = True
-
-    return "".join(chars)
-
-
-def post_process_transcription(
-    transcription: str | None,
-    settings: VociferousSettings,
-) -> str:
-    """Apply user-configured post-processing.
-
-    Normalises whitespace artefacts from segment joining and applies
-    output settings (e.g. trailing space).
-    """
-    if not transcription:
-        return ""
-
-    result = transcription.strip()
-
-    # Collapse repeated phrases (whisper hallucination safety net)
-    result = _collapse_repeated_phrases(result)
-
-    # Deterministic whitespace normalization.
-    result = re.sub(r"\s+", " ", result).strip()
-
-    # Remove spacing before punctuation marks.
-    result = re.sub(r"\s+([,.;:!?])", r"\1", result)
-
-    # Ensure spacing after punctuation when followed by letters.
-    # Keep decimal numbers intact (e.g., 3.14).
-    result = re.sub(r"(\.\.\.)([A-Za-z])", r"\1 \2", result)
-    result = re.sub(r"(?<!\d)\.([A-Za-z])", r". \1", result)
-    result = re.sub(r"([!?;:,])([A-Za-z])", r"\1 \2", result)
-
-    # Deterministic sentence-start capitalization.
-    result = _normalize_sentence_casing(result)
-
-    if settings.output.add_trailing_space:
-        result += " "
-
-    return result
+__all__ = [
+    "_collapse_repeated_phrases",
+    "_merge_segment_texts",
+    "_needs_boundary_space",
+    "_normalize_sentence_casing",
+    "create_local_model",
+    "describe_asr_runtime",
+    "describe_transcription_capture",
+    "list_external_transcription_provider_models",
+    "post_process_transcription",
+    "test_external_transcription_provider",
+    "transcribe",
+    "OpenAICompatibleTranscriptionProvider",
+    "TranscriptionProviderRequestError",
+]

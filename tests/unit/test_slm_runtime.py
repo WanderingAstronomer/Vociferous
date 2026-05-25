@@ -228,7 +228,7 @@ class TestLoadModelTask:
         fresh_settings.refinement.model_id = "nonexistent-model-v9"
         runtime._state = SLMState.LOADING
 
-        with patch("src.refinement.providers.get_slm_model", return_value=None):
+        with patch("src.refinement.providers.local_ct2.get_slm_model", return_value=None):
             runtime._load_model_task()
 
         assert runtime.state is SLMState.ERROR
@@ -244,7 +244,7 @@ class TestLoadModelTask:
         mock_model.model_file = "model.bin"
 
         with (
-            patch("src.refinement.providers.get_slm_model", return_value=mock_model),
+            patch("src.refinement.providers.local_ct2.get_slm_model", return_value=mock_model),
             patch("src.core.resource_manager.ResourceManager.get_user_cache_dir", return_value=tmp_path),
         ):
             runtime._load_model_task()
@@ -278,9 +278,9 @@ class TestLoadModelTask:
         )
 
         with (
-            patch("src.refinement.providers.detect_cuda_runtime", return_value=cuda_status),
+            patch("src.refinement.providers.local_ct2.detect_cuda_runtime", return_value=cuda_status),
             patch("src.core.resource_manager.ResourceManager.get_user_cache_dir", return_value=tmp_path),
-            patch("src.refinement.providers.RefinementEngine") as mock_engine,
+            patch("src.refinement.providers.local_ct2.RefinementEngine") as mock_engine,
         ):
             runtime._load_model_task()
 
@@ -313,7 +313,7 @@ class TestLoadModelTask:
         runtime._state = SLMState.LOADING
 
         with (
-            patch("src.refinement.providers.RefinementEngine") as mock_engine,
+            patch("src.refinement.providers.local_ct2.RefinementEngine") as mock_engine,
             patch("src.refinement.providers.OpenAICompatibleRefinementProvider.list_models", return_value=[]),
         ):
             runtime._load_model_task()

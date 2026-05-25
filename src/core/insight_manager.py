@@ -20,14 +20,21 @@ Architecture constraint:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import threading
 import time
-from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable
 
+from src.core.insights.formatting import (
+    combine_text,
+    highlight_block as _highlight_block,
+    parse_generated_insight,
+    split_legacy_text,
+    stats_fingerprint,
+    today_key,
+)
+from src.core.insights.highlights import build_daily_highlights, build_long_term_highlights
 from src.core.resource_manager import ResourceManager
 from src.refinement.prompt_builder import PromptBuilder
 
@@ -215,51 +222,20 @@ class InsightManager:
 
     # ── Internal ─────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _today_key() -> str:
-        return datetime.now().astimezone().strftime("%Y-%m-%d")
-
-    @staticmethod
-    def _stats_fingerprint(stats: dict[str, Any]) -> str:
-        encoded = json.dumps(stats, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8")
-        return hashlib.sha256(encoded).hexdigest()
-
-    @staticmethod
-    def _combine_text(daily_text: str, lifetime_text: str) -> str:
-        return "\n\n".join(part for part in (daily_text.strip(), lifetime_text.strip()) if part)
-
-    @staticmethod
-    def _split_legacy_text(text: str, *, has_daily: bool) -> tuple[str, str]:
-        parts = [part.strip() for part in text.split("\n\n") if part.strip()]
-        if not parts:
-            return "", ""
-        if not has_daily:
-            return "", "\n\n".join(parts)
-        return parts[0], "\n\n".join(parts[1:])
-
-    @staticmethod
-    def _strip_json_fence(raw: str) -> str:
-        text = raw.strip()
-        if text.startswith("```"):
-            lines = text.splitlines()
-            if len(lines) >= 3 and lines[-1].strip() == "```":
-                return "\n".join(lines[1:-1]).strip()
-        return text
-
     def _cache_payload(self) -> InsightPayload:
-        today_key = self._today_key()
+        today = today_key()
         generated_for_date = str(self._cache.get("generated_for_date") or "")
         text = str(self._cache.get("text") or "")
         daily_text = str(self._cache.get("daily_text") or "")
         lifetime_text = str(self._cache.get("lifetime_text") or "")
 
         if text and not (daily_text or lifetime_text):
-            daily_text, lifetime_text = self._split_legacy_text(text, has_daily=generated_for_date == today_key)
+            daily_text, lifetime_text = split_legacy_text(text, has_daily=generated_for_date == today)
 
-        if generated_for_date != today_key:
+        if generated_for_date != today:
             daily_text = ""
 
-        combined = self._combine_text(daily_text, lifetime_text)
+        combined = combine_text(daily_text, lifetime_text)
         dirty_reasons = [str(r) for r in self._cache.get("dirty_reasons", []) if isinstance(r, str)]
         return {
             "text": combined,
@@ -267,7 +243,7 @@ class InsightManager:
             "lifetime_text": lifetime_text.strip(),
             "generated_at": float(self._cache.get("generated_at", 0.0) or 0.0),
             "generated_for_date": generated_for_date,
-            "stale": bool(self._cache.get("dirty")) or (bool(text or daily_text) and generated_for_date != today_key),
+            "stale": bool(self._cache.get("dirty")) or (bool(text or daily_text) and generated_for_date != today),
             "dirty_reasons": dirty_reasons,
         }
 
@@ -292,10 +268,10 @@ class InsightManager:
         if self._cache.get("dirty"):
             return True
 
-        if self._cache.get("generated_for_date") != self._today_key() and today_words > 0:
+        if self._cache.get("generated_for_date") != today_key() and today_words > 0:
             return True
 
-        fingerprint = self._stats_fingerprint(stats)
+        fingerprint = stats_fingerprint(stats)
         if self._cache.get("stats_fingerprint") and self._cache.get("stats_fingerprint") != fingerprint:
             generated_at = float(self._cache.get("generated_at", 0.0) or 0.0)
             if generated_at <= 0.0 or (time.time() - generated_at) >= _FRESHNESS_MIN_INTERVAL_S:
@@ -332,150 +308,18 @@ class InsightManager:
 
         return False
 
-    @staticmethod
-    def _fmt_duration(seconds: float) -> str:
-        """Human-readable duration for prompt context."""
-        if seconds < 60:
-            return f"{round(seconds)}s"
-        minutes = int(seconds // 60)
-        if minutes < 60:
-            return f"{minutes}m"
-        hours = minutes // 60
-        remaining_minutes = minutes % 60
-        return f"{hours}h {remaining_minutes}m" if remaining_minutes else f"{hours}h"
-
-    @staticmethod
-    def _fmt_float(value: Any, decimals: int = 1) -> str:
-        """Format numeric values consistently for prompt highlights."""
-        try:
-            return f"{float(value):.{decimals}f}"
-        except (TypeError, ValueError):
-            return f"{0.0:.{decimals}f}"
-
-    @staticmethod
-    def _highlight_block(lines: list[str]) -> str:
-        """Render curated highlight lines for the analytics prompt."""
-        if not lines:
-            return "- none"
-        return "\n".join(f"- {line}" for line in lines)
-
-    def _build_daily_highlights(self, stats: dict[str, Any]) -> list[str]:
-        """Pick the exact daily facts the SLM is allowed to mention."""
-        today_words = int(stats.get("today_words", 0) or 0)
-        if today_words <= 0:
-            return []
-
-        highlights = [f"Words today: {today_words:,}."]
-
-        today_count = int(stats.get("today_count", 0) or 0)
-        if today_count > 0:
-            highlights.append(f"Transcriptions today: {today_count}.")
-
-        days_active_this_week = int(stats.get("days_active_this_week", 0) or 0)
-        if days_active_this_week > 0:
-            highlights.append(f"Active days this week: {days_active_this_week}.")
-
-        current_streak = int(stats.get("current_streak", 0) or 0)
-        if current_streak > 0 and len(highlights) < 3:
-            highlights.append(f"Current streak: {current_streak} days.")
-
-        return highlights[:3]
-
-    def _build_refinement_impact_highlight(self, stats: dict[str, Any]) -> str | None:
-        """Build one exact refinement-impact fact instead of asking the SLM to infer one."""
-        refined_count = int(stats.get("refined_count", 0) or 0)
-        if refined_count <= 0:
-            return None
-
-        raw_fillers = int(stats.get("verbatim_filler_count", 0) or 0)
-        refined_fillers = int(stats.get("refined_filler_count", 0) or 0)
-        raw_density = float(stats.get("verbatim_filler_density", 0) or 0)
-        refined_density = float(stats.get("refined_filler_density", 0) or 0)
-        raw_fk = float(stats.get("verbatim_avg_fk_grade", 0) or 0)
-        refined_fk = float(stats.get("refined_avg_fk_grade", 0) or 0)
-
-        details: list[str] = [f"Refinement sample: {refined_count} transcripts"]
-        if raw_fillers or refined_fillers:
-            details.append(
-                "fillers "
-                f"{refined_fillers} ({refined_density:.1%}) after refinement vs "
-                f"{raw_fillers} ({raw_density:.1%}) raw"
-            )
-        if raw_fk or refined_fk:
-            details.append(f"FK grade {self._fmt_float(refined_fk)} after refinement vs {self._fmt_float(raw_fk)} raw")
-        return "; ".join(details) + "."
-
-    def _build_long_term_highlights(self, stats: dict[str, Any]) -> list[str]:
-        """Pick the exact long-term facts the SLM is allowed to mention."""
-        total_words = int(stats.get("total_words", 0) or 0)
-        total_count = int(stats.get("count", 0) or 0)
-        highlights = [f"Total words captured: {total_words:,} across {total_count} transcriptions."]
-
-        time_saved_seconds = float(stats.get("time_saved_seconds", 0) or 0)
-        if time_saved_seconds > 0:
-            highlights.append(f"Estimated time saved vs typing: {self._fmt_duration(time_saved_seconds)}.")
-
-        refinement_impact = self._build_refinement_impact_highlight(stats)
-        if refinement_impact:
-            highlights.append(refinement_impact)
-
-        avg_wpm = int(stats.get("avg_wpm", 0) or 0)
-        if avg_wpm > 0 and len(highlights) < 3:
-            highlights.append(f"Average speaking pace: {avg_wpm} wpm.")
-
-        current_streak = int(stats.get("current_streak", 0) or 0)
-        longest_streak = int(stats.get("longest_streak", 0) or 0)
-        if len(highlights) < 3 and (current_streak > 0 or longest_streak > 0):
-            if current_streak > 0 and longest_streak > 0:
-                highlights.append(f"Streaks: current {current_streak} days, longest {longest_streak} days.")
-            elif longest_streak > 0:
-                highlights.append(f"Longest streak: {longest_streak} days.")
-            else:
-                highlights.append(f"Current streak: {current_streak} days.")
-
-        avg_transcription_speed = float(stats.get("avg_transcription_speed_x", 0) or 0)
-        timed_transcripts = int(stats.get("transcripts_with_transcription_time", 0) or 0)
-        if len(highlights) < 3 and avg_transcription_speed > 0 and timed_transcripts > 0:
-            highlights.append(
-                f"Transcription speed: {self._fmt_float(avg_transcription_speed)}x realtime across {timed_transcripts} samples."
-            )
-
-        avg_refinement_wpm = int(stats.get("avg_refinement_wpm", 0) or 0)
-        refinement_samples = int(stats.get("transcripts_with_refinement_time", 0) or 0)
-        if len(highlights) < 3 and avg_refinement_wpm > 0 and refinement_samples > 0:
-            highlights.append(f"Refinement throughput: {avg_refinement_wpm} wpm across {refinement_samples} samples.")
-
-        return highlights[:3]
-
-    def _parse_generated_insight(self, raw: str, *, has_daily: bool) -> tuple[str, str]:
-        clean = self._strip_json_fence(raw)
-        try:
-            parsed = json.loads(clean)
-        except json.JSONDecodeError:
-            daily_text, lifetime_text = self._split_legacy_text(clean, has_daily=has_daily)
-        else:
-            if not isinstance(parsed, dict):
-                return "", ""
-            daily_text = str(parsed.get("daily") or parsed.get("daily_text") or "").strip()
-            lifetime_text = str(parsed.get("lifetime") or parsed.get("lifetime_text") or "").strip()
-
-        if not has_daily:
-            lifetime_text = lifetime_text or daily_text
-            daily_text = ""
-        return daily_text.strip(), lifetime_text.strip()
-
     def _save_cache(self, daily_text: str, lifetime_text: str, today_words: int, stats: dict[str, Any]) -> None:
         """Update cache in memory and on disk."""
-        text = self._combine_text(daily_text, lifetime_text)
+        text = combine_text(daily_text, lifetime_text)
         with self._lock:
             self._cache = {
                 "text": text,
                 "daily_text": daily_text,
                 "lifetime_text": lifetime_text,
                 "generated_at": time.time(),
-                "generated_for_date": self._today_key(),
+                "generated_for_date": today_key(),
                 "last_today_words": today_words,
-                "stats_fingerprint": self._stats_fingerprint(stats),
+                "stats_fingerprint": stats_fingerprint(stats),
                 "dirty": False,
                 "dirty_reasons": [],
             }
@@ -491,11 +335,11 @@ class InsightManager:
                 return
 
             today_words = int(stats.get("today_words", 0) or 0)
-            daily_highlights = self._build_daily_highlights(stats)
-            long_term_highlights = self._build_long_term_highlights(stats)
+            daily_highlights = build_daily_highlights(stats)
+            long_term_highlights = build_long_term_highlights(stats)
             fmt = {
-                "daily_highlights": self._highlight_block(daily_highlights),
-                "long_term_highlights": self._highlight_block(long_term_highlights),
+                "daily_highlights": _highlight_block(daily_highlights),
+                "long_term_highlights": _highlight_block(long_term_highlights),
             }
             prompt = self._prompt_template.format_map(fmt)
 
@@ -540,7 +384,7 @@ class InsightManager:
                 if any(marker in clean for marker in _LEAK_MARKERS):
                     logger.warning("Insight: output appears to contain leaked prompt fragments, discarding")
                     return
-                daily_text, lifetime_text = self._parse_generated_insight(clean, has_daily=bool(daily_highlights))
+                daily_text, lifetime_text = parse_generated_insight(clean, has_daily=bool(daily_highlights))
                 if not daily_text and not lifetime_text:
                     logger.warning("Insight: output could not be parsed into structured fields, discarding")
                     return

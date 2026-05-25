@@ -1,5 +1,34 @@
 # Vociferous Changelog
 
+## v6.7.0 — SOLID Refactor Sweep
+
+**Date:** 2026-05-26
+**Status:** Internal refactor (no behavior change)
+
+A ten-item architectural cleanup pass focused on Single Responsibility and explicit boundaries. No user-facing behavior changes. All 740 tests still pass, lint clean. Back-compat preserved via `__all__` re-exports — every external import path that worked in v6.6.2 still works in v6.7.0.
+
+### Added
+- **ARCHITECTURE.md** — Composition root, intent-driven H-pattern, threading model, persistence contract, and non-negotiable invariants are now documented in one place instead of being scattered across copilot instructions and tribal knowledge.
+- **`src/services/transcription/` package** — Transcription post-processing (segment shaping, language guards, timing assembly) extracted from the monolithic service module into focused submodules.
+- **`src/refinement/providers/` package** — The old single-file `src/refinement/providers.py` was split into `contracts`, `capabilities`, `runtime`, `local_ct2`, `openai_compatible`, and `factory` modules. Each provider class lives next to the contract it satisfies, not piled into one file.
+- **`ProviderCapabilities` dataclass** — Replaces the scattered marker-tuple checks for `thinking_directive`, `chat_template_kwargs`, and `reasoning_effort` that were duplicated across provider implementations. Each provider now declares its capabilities once.
+- **`src/core/refinement/` package** — `build_refinement_capture` and `validate_slm_ready` extracted as pure helper functions. `RefinementHandlers` now delegates to them instead of owning the construction logic.
+- **`src/core/insights/` package** — Formatting helpers (`today_key`, `stats_fingerprint`, `combine_text`, `split_legacy_text`, `strip_json_fence`, `fmt_duration`, `fmt_float`, `highlight_block`, `parse_generated_insight`) and highlight builders (`build_daily_highlights`, `build_long_term_highlights`, `build_refinement_impact_highlight`) are now pure free functions. `InsightManager` is orchestration-only.
+- **`src/database/models.py`** — `Tag`, `Transcript`, `RecordingSessionRecord`, `AudioAsset`, and `utc_now` extracted from `db.py` into a dedicated models module. Pure data — no SQL, no I/O.
+
+### Changed
+- **`_transcribe_and_store` decomposed** — The recording god-method was broken into eight named stage methods (`_ensure_asr_model_loaded`, `_ensure_audio_pipeline`, `_run_transcription`, `_handle_empty_transcription`, `_persist_transcript`, `_schedule_derived_work`, `_promote_legacy_spool`, `_handle_transcription_failure`). Each stage does one thing and can be read in isolation.
+- **`InsightManager`** — All eleven static/instance helper methods removed in favor of the new `src/core/insights/` free functions. The class is now a coordinator: cache lifecycle, regeneration policy, and SLM dispatch. Nothing else.
+- **`RefinementHandlers`** — `_build_refinement_capture` and `_validate_slm_ready` are now one-line delegates to the new `src/core/refinement/` helpers.
+- **`src/database/db.py`** — Imports models from `src/database/models.py` and re-exports them via `__all__`. External consumers (`src/services/audio_vault.py`, tests) continue to import from `src.database.db` without change.
+
+### Deferred
+- **Recording handlers package split** — Originally planned as item #6. After the `_transcribe_and_store` stage decomposition (#5) achieved SRP within the existing file, further package fragmentation would have added mixin clutter or argument-passing overhead without proportional readability gain. Skipped intentionally.
+- **Full `TranscriptDB` repository split** — Originally planned as the second half of item #7. The models extraction landed cleanly, but slicing the ~1400-line `TranscriptDB` facade into repository classes (transcripts, tags, audio assets, sessions) carries real risk of breaking the implicit transactional contracts the facade currently guarantees. Deferred to v6.7.1, where it gets its own focused branch and a proper transaction-boundary audit.
+
+### Tests
+- Full suite remains at 740 passing. No tests added in this release — refactors preserve external behavior and the existing suite proves it. New tests will land alongside the v6.7.1 repository split.
+
 ## v6.6.2 — Reasoning-Model Refinement & Title Guardrail
 
 **Date:** 2026-05-25

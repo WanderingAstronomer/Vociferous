@@ -534,97 +534,53 @@ class RecordingSession:
         source_tag: str | None = None,
         display_name: str | None = None,
     ) -> None:
-        """Run transcription on audio data, store result, and emit events."""
+        """Run transcription on audio data, store result, and emit events.
+
+        Thin orchestrator over the ordered stages:
+          1. shutdown guard
+          2. ensure ASR model + audio pipeline are loaded
+          3. run transcription
+          4. persist transcript + audio asset
+          5. emit completion event
+          6. schedule derived work (insights, title, clipboard)
+          7. promote legacy PCM spool (if applicable)
+
+        Any stage may raise; failures are funneled through ``_handle_failure``.
+        """
         if self._shutdown_event.is_set():
             logger.debug("Transcription skipped — shutdown in progress")
             return
 
-        from src.services.transcription_service import create_local_model, describe_transcription_capture, transcribe
-
-        settings = self._settings_provider()
-        db = self._db_provider()
         try:
-            # Lazy-load ASR model if warm load failed at startup
-            if self._asr_model is None:
-                logger.info("ASR model not loaded — attempting lazy recovery...")
-                try:
-                    self._asr_model = create_local_model(settings)
-                except Exception as model_err:
-                    logger.error("ASR model failed to load: %s", model_err)
-                    self._emit("engine_status", {"asr": "unavailable"})
-                    self._emit(
-                        "transcription_error",
-                        {
-                            "message": "Speech recognition model failed to load. Check GPU memory or switch to a smaller model in Settings.",
-                        },
-                    )
-                    if recording_id and db is not None:
-                        db.mark_recording_status(recording_id, "failed", failure_reason="ASR model failed to load")
-                    return
+            settings = self._settings_provider()
+            db = self._db_provider()
+
+            if not self._ensure_asr_model_loaded(settings, db, recording_id):
+                return
 
             if recording_id and db is not None:
                 db.mark_recording_status(recording_id, "transcribing")
 
-            # Lazy-create the AudioPipeline (holds cached Silero VAD session)
-            if self._audio_pipeline is None:
-                from src.services.audio_pipeline import AudioPipeline
+            self._ensure_audio_pipeline(settings)
 
-                self._audio_pipeline = AudioPipeline(sensitivity=settings.recording.vad_sensitivity)
-
-            text, speech_duration_ms, transcription_time_ms = transcribe(
-                audio_data,
-                settings=settings,
-                local_model=self._asr_model,
-                audio_pipeline=self._audio_pipeline,
-            )
-
+            text, speech_duration_ms, transcription_time_ms = self._run_transcription(audio_data, settings)
             if not text.strip():
-                self._emit("transcription_error", {"message": "No speech detected"})
-                if recording_id and db is not None:
-                    db.mark_recording_status(recording_id, "failed", failure_reason="No speech detected")
-                elif spool_path is not None:
-                    self._cleanup_spool(spool_path)
+                self._handle_empty_transcription(db, recording_id, spool_path)
                 return
 
-            # Store in database
             duration_ms = int(len(audio_data) / 16000 * 1000)
-            transcript = None
-            if db:
-                transcription_capture = describe_transcription_capture(settings, local_model=self._asr_model)
-                transcript = db.add_transcript(
-                    raw_text=text,
-                    duration_ms=duration_ms,
-                    speech_duration_ms=speech_duration_ms,
-                    transcription_time_ms=transcription_time_ms,
-                    transcription_provider=str(transcription_capture["transcription_provider"]),
-                    transcription_model_id=str(transcription_capture["transcription_model_id"]),
-                    transcription_resolved_device=str(transcription_capture["transcription_resolved_device"]),
-                    transcription_compute_type=str(transcription_capture["transcription_compute_type"]),
-                    transcription_cpu_threads=int(transcription_capture["transcription_cpu_threads"]),
-                    transcription_prompt_text=str(transcription_capture["transcription_prompt_text"]),
-                    transcription_prompt_chars=int(transcription_capture["transcription_prompt_chars"]),
-                    transcription_prompt_words=int(transcription_capture["transcription_prompt_words"]),
-                    display_name=display_name,
-                )
-                if source_tag and transcript:
-                    db.add_system_tag_to_transcript(transcript.id, source_tag)
-                    if source_tag == "Imported" and settings.output.exclude_imported_from_analytics:
-                        db.set_analytics_inclusion(transcript.id, False)
-                if recording_id and transcript and spool_path is not None:
-                    size_bytes = spool_path.stat().st_size if spool_path.exists() else 0
-                    record = db.get_recording_session(recording_id)
-                    db.add_audio_asset(
-                        recording_id=recording_id,
-                        transcript_id=transcript.id,
-                        role="transcript_source",
-                        path=spool_path,
-                        duration_ms=duration_ms,
-                        size_bytes=size_bytes,
-                        encrypted=bool(record.encrypted) if record is not None else False,
-                        pinned=True,
-                    )
-                    db.set_audio_cached(transcript.id, True)
-                    db.mark_recording_status(recording_id, "completed", transcript_id=transcript.id, finalized=True)
+            transcript = self._persist_transcript(
+                text=text,
+                settings=settings,
+                db=db,
+                duration_ms=duration_ms,
+                speech_duration_ms=speech_duration_ms,
+                transcription_time_ms=transcription_time_ms,
+                spool_path=spool_path,
+                recording_id=recording_id,
+                source_tag=source_tag,
+                display_name=display_name,
+            )
 
             self._emit(
                 "transcription_complete",
@@ -636,71 +592,236 @@ class RecordingSession:
                 },
             )
 
-            # Schedule analytics insight generation if a threshold has been crossed.
-            # Pass the new transcript's word count so InsightManager can apply
-            # the explicit per-transcript minimum (ISS-119) instead of relying on
-            # ambiguous aggregate-side effects.
-            insight_manager = self._insight_manager_provider()
-            if insight_manager is not None:
-                if settings.output.auto_refine and settings.refinement.enabled:
-                    insight_manager.mark_dirty("transcription_completed_auto_refine", schedule=False)
-                else:
-                    new_words = len(text.split())
-                    insight_manager.maybe_schedule(new_transcript_words=new_words, reason="transcription_completed")
-
-            # Schedule SLM-based auto-titling for the new transcript.
-            # Skip initial title when auto-refine is enabled — refinement
-            # completion will retitle with better text, avoiding double work.
-            if not settings.output.auto_refine:
-                title_gen = self._title_generator_provider()
-                if title_gen is not None and transcript is not None:
-                    title_gen.schedule(transcript.id, text)
-
-            # When auto-refine is active, defer clipboard until refinement
-            # completes — otherwise we'd paste raw text that's about to be rewritten.
-            if settings.output.auto_copy_to_clipboard and not settings.output.auto_refine:
-                _copy_to_system_clipboard(text)
-
-            # Legacy PCM spools can still be promoted to WAV. Vault recordings are already the source asset.
-            if (
-                spool_path is not None
-                and spool_path.suffix == ".pcm"
-                and transcript is not None
-                and self._audio_cache is not None
-            ):
-                try:
-                    wav_path, evicted_ids = self._audio_cache.store(
-                        transcript.id,
-                        spool_path,
-                        max_cache_minutes=settings.recording.audio_cache_minutes,
-                    )
-                    if wav_path is not None and db is not None:
-                        db.set_audio_cached(transcript.id, True)
-                    # Clear has_audio_cached for transcripts whose WAVs were pruned
-                    if db is not None:
-                        for evicted_id in evicted_ids:
-                            db.set_audio_cached(evicted_id, False)
-                except Exception:
-                    logger.warning("Audio cache store failed", exc_info=True)
-                    self._cleanup_spool(spool_path)
-            else:
-                if recording_id is None:
-                    self._cleanup_spool(spool_path)
+            self._schedule_derived_work(settings, transcript, text)
+            self._promote_legacy_spool(settings, db, transcript, spool_path, recording_id)
 
             logger.info("Transcription complete: %d chars, %dms", len(text), duration_ms)
 
-        except Exception as e:
-            logger.exception("Transcription failed")
-            if recording_id:
-                db = self._db_provider()
-                if db is not None:
-                    db.mark_recording_status(recording_id, "failed", failure_reason=normalize_engine_error(e))
-            else:
-                self._cleanup_spool(spool_path)
-            self.last_asr_error = normalize_engine_error(e)
-            self._emit("transcription_error", {"message": self.last_asr_error})
+        except Exception as exc:
+            self._handle_transcription_failure(exc, recording_id, spool_path)
         finally:
             self.is_transcribing = False
+
+    # ------------------------------------------------------------------
+    # Pipeline stages
+    # ------------------------------------------------------------------
+
+    def _ensure_asr_model_loaded(
+        self,
+        settings: VociferousSettings,
+        db: TranscriptDB | None,
+        recording_id: str | None,
+    ) -> bool:
+        """Lazy-load the ASR model if warm load failed at startup.
+
+        Returns True if the model is ready, False if loading failed (in
+        which case error events have already been emitted and any pending
+        recording row has been marked failed).
+        """
+        if self._asr_model is not None:
+            return True
+
+        from src.services.transcription_service import create_local_model
+
+        logger.info("ASR model not loaded — attempting lazy recovery...")
+        try:
+            self._asr_model = create_local_model(settings)
+            return True
+        except Exception as model_err:
+            logger.error("ASR model failed to load: %s", model_err)
+            self._emit("engine_status", {"asr": "unavailable"})
+            self._emit(
+                "transcription_error",
+                {
+                    "message": (
+                        "Speech recognition model failed to load. "
+                        "Check GPU memory or switch to a smaller model in Settings."
+                    ),
+                },
+            )
+            if recording_id and db is not None:
+                db.mark_recording_status(recording_id, "failed", failure_reason="ASR model failed to load")
+            return False
+
+    def _ensure_audio_pipeline(self, settings: VociferousSettings) -> None:
+        """Lazy-create the AudioPipeline (holds cached Silero VAD session)."""
+        if self._audio_pipeline is None:
+            from src.services.audio_pipeline import AudioPipeline
+
+            self._audio_pipeline = AudioPipeline(sensitivity=settings.recording.vad_sensitivity)
+
+    def _run_transcription(
+        self,
+        audio_data: Any,
+        settings: VociferousSettings,
+    ) -> tuple[str, int, int]:
+        from src.services.transcription_service import transcribe
+
+        return transcribe(
+            audio_data,
+            settings=settings,
+            local_model=self._asr_model,
+            audio_pipeline=self._audio_pipeline,
+        )
+
+    def _handle_empty_transcription(
+        self,
+        db: TranscriptDB | None,
+        recording_id: str | None,
+        spool_path: Path | None,
+    ) -> None:
+        self._emit("transcription_error", {"message": "No speech detected"})
+        if recording_id and db is not None:
+            db.mark_recording_status(recording_id, "failed", failure_reason="No speech detected")
+        elif spool_path is not None:
+            self._cleanup_spool(spool_path)
+
+    def _persist_transcript(
+        self,
+        *,
+        text: str,
+        settings: VociferousSettings,
+        db: TranscriptDB | None,
+        duration_ms: int,
+        speech_duration_ms: int,
+        transcription_time_ms: int,
+        spool_path: Path | None,
+        recording_id: str | None,
+        source_tag: str | None,
+        display_name: str | None,
+    ) -> Any:
+        """Insert the transcript row + audio asset; return the new transcript or None."""
+        if db is None:
+            return None
+
+        from src.services.transcription_service import describe_transcription_capture
+
+        capture = describe_transcription_capture(settings, local_model=self._asr_model)
+        transcript = db.add_transcript(
+            raw_text=text,
+            duration_ms=duration_ms,
+            speech_duration_ms=speech_duration_ms,
+            transcription_time_ms=transcription_time_ms,
+            transcription_provider=str(capture["transcription_provider"]),
+            transcription_model_id=str(capture["transcription_model_id"]),
+            transcription_resolved_device=str(capture["transcription_resolved_device"]),
+            transcription_compute_type=str(capture["transcription_compute_type"]),
+            transcription_cpu_threads=int(capture["transcription_cpu_threads"]),
+            transcription_prompt_text=str(capture["transcription_prompt_text"]),
+            transcription_prompt_chars=int(capture["transcription_prompt_chars"]),
+            transcription_prompt_words=int(capture["transcription_prompt_words"]),
+            display_name=display_name,
+        )
+
+        if source_tag and transcript:
+            db.add_system_tag_to_transcript(transcript.id, source_tag)
+            if source_tag == "Imported" and settings.output.exclude_imported_from_analytics:
+                db.set_analytics_inclusion(transcript.id, False)
+
+        if recording_id and transcript and spool_path is not None:
+            size_bytes = spool_path.stat().st_size if spool_path.exists() else 0
+            record = db.get_recording_session(recording_id)
+            db.add_audio_asset(
+                recording_id=recording_id,
+                transcript_id=transcript.id,
+                role="transcript_source",
+                path=spool_path,
+                duration_ms=duration_ms,
+                size_bytes=size_bytes,
+                encrypted=bool(record.encrypted) if record is not None else False,
+                pinned=True,
+            )
+            db.set_audio_cached(transcript.id, True)
+            db.mark_recording_status(recording_id, "completed", transcript_id=transcript.id, finalized=True)
+
+        return transcript
+
+    def _schedule_derived_work(
+        self,
+        settings: VociferousSettings,
+        transcript: Any,
+        text: str,
+    ) -> None:
+        """Insights, auto-titling, and clipboard side-effects."""
+        # Schedule analytics insight generation if a threshold has been crossed.
+        # Pass the new transcript's word count so InsightManager can apply
+        # the explicit per-transcript minimum (ISS-119) instead of relying on
+        # ambiguous aggregate-side effects.
+        insight_manager = self._insight_manager_provider()
+        if insight_manager is not None:
+            if settings.output.auto_refine and settings.refinement.enabled:
+                insight_manager.mark_dirty("transcription_completed_auto_refine", schedule=False)
+            else:
+                insight_manager.maybe_schedule(
+                    new_transcript_words=len(text.split()),
+                    reason="transcription_completed",
+                )
+
+        # Skip initial title when auto-refine is enabled — refinement
+        # completion will retitle with better text, avoiding double work.
+        if not settings.output.auto_refine:
+            title_gen = self._title_generator_provider()
+            if title_gen is not None and transcript is not None:
+                title_gen.schedule(transcript.id, text)
+
+        # When auto-refine is active, defer clipboard until refinement
+        # completes — otherwise we'd paste raw text that's about to be rewritten.
+        if settings.output.auto_copy_to_clipboard and not settings.output.auto_refine:
+            _copy_to_system_clipboard(text)
+
+    def _promote_legacy_spool(
+        self,
+        settings: VociferousSettings,
+        db: TranscriptDB | None,
+        transcript: Any,
+        spool_path: Path | None,
+        recording_id: str | None,
+    ) -> None:
+        """Promote a legacy PCM spool to a WAV in the audio cache.
+
+        Vault recordings (where ``recording_id`` is set and the audio asset
+        was already registered) are skipped — they are already the source
+        asset and need no promotion.
+        """
+        eligible = (
+            spool_path is not None
+            and spool_path.suffix == ".pcm"
+            and transcript is not None
+            and self._audio_cache is not None
+        )
+        if eligible:
+            try:
+                wav_path, evicted_ids = self._audio_cache.store(
+                    transcript.id,
+                    spool_path,
+                    max_cache_minutes=settings.recording.audio_cache_minutes,
+                )
+                if wav_path is not None and db is not None:
+                    db.set_audio_cached(transcript.id, True)
+                if db is not None:
+                    for evicted_id in evicted_ids:
+                        db.set_audio_cached(evicted_id, False)
+            except Exception:
+                logger.warning("Audio cache store failed", exc_info=True)
+                self._cleanup_spool(spool_path)
+        elif recording_id is None:
+            self._cleanup_spool(spool_path)
+
+    def _handle_transcription_failure(
+        self,
+        exc: Exception,
+        recording_id: str | None,
+        spool_path: Path | None,
+    ) -> None:
+        logger.exception("Transcription failed")
+        if recording_id:
+            db = self._db_provider()
+            if db is not None:
+                db.mark_recording_status(recording_id, "failed", failure_reason=normalize_engine_error(exc))
+        else:
+            self._cleanup_spool(spool_path)
+        self.last_asr_error = normalize_engine_error(exc)
+        self._emit("transcription_error", {"message": self.last_asr_error})
 
     @staticmethod
     def _cleanup_spool(spool_path: Path | None) -> None:

@@ -17,7 +17,8 @@ from src.core.intents.definitions import (
     CommitRefinementIntent,
     RefineTranscriptIntent,
 )
-from src.refinement.prompt_builder import PromptBuilder
+from src.core.refinement.capture import build_refinement_capture
+from src.core.refinement.validation import validate_slm_ready
 
 if TYPE_CHECKING:
     from src.core.settings import VociferousSettings
@@ -25,7 +26,6 @@ if TYPE_CHECKING:
     from src.services.slm_runtime import SLMRuntime
 
 logger = logging.getLogger(__name__)
-_PROMPT_BODY_SENTINEL = "__VOCIFEROUS_TRANSCRIPT_BODY__"
 
 
 class RefinementHandlers:
@@ -91,55 +91,7 @@ class RefinementHandlers:
         return instructions
 
     def _build_refinement_capture(self, instructions: str, slm_runtime: Any) -> dict[str, str | int | bool]:
-        settings = self._settings_provider()
-        runtime: dict[str, object] = {}
-        get_runtime_summary = getattr(slm_runtime, "get_runtime_summary", None)
-        if callable(get_runtime_summary):
-            candidate = get_runtime_summary()
-            if isinstance(candidate, dict):
-                runtime = candidate
-
-        provider = str(runtime.get("provider") or settings.refinement.provider)
-        model_id = str(runtime.get("model_id") or settings.refinement.model_id)
-        use_thinking = bool(runtime.get("use_thinking", settings.refinement.use_thinking))
-        last_usage = runtime.get("last_usage") if isinstance(runtime.get("last_usage"), dict) else {}
-        if use_thinking:
-            thinking_directive = ""
-        elif provider == "local_ct2":
-            thinking_directive = "/no_think"
-        else:
-            thinking_directive = "/no_think" if "qwen" in model_id.lower() else ""
-
-        prompt_builder = PromptBuilder(
-            system_prompt=settings.refinement.system_prompt,
-            invariants=settings.refinement.invariants,
-        )
-        messages = prompt_builder.build_refinement_messages(
-            _PROMPT_BODY_SENTINEL,
-            instructions,
-            use_thinking=use_thinking,
-            thinking_directive=thinking_directive,
-        )
-        prompt_text = "\n\n".join(
-            str(message.get("content", "")).replace(_PROMPT_BODY_SENTINEL, "").rstrip()
-            for message in messages
-            if isinstance(message, dict)
-        ).strip()
-        return {
-            "refinement_provider": provider,
-            "refinement_model_id": model_id,
-            "refinement_resolved_device": str(runtime.get("resolved_device") or ""),
-            "refinement_compute_type": str(runtime.get("compute_type") or ""),
-            "refinement_cpu_threads": int(runtime.get("cpu_threads") or 0),
-            "refinement_gpu_layers": int(runtime.get("gpu_layers") or 0),
-            "refinement_use_thinking": use_thinking,
-            "refinement_prompt_text": prompt_text,
-            "refinement_prompt_chars": len(prompt_text),
-            "refinement_prompt_words": len(prompt_text.split()),
-            "refinement_prompt_tokens": int(last_usage.get("prompt_tokens") or 0),
-            "refinement_completion_tokens": int(last_usage.get("completion_tokens") or 0),
-            "refinement_total_tokens": int(last_usage.get("total_tokens") or 0),
-        }
+        return build_refinement_capture(self._settings_provider(), slm_runtime, instructions)
 
     @handles(RefineTranscriptIntent)
     def handle_refine(self, intent: Any) -> None:
@@ -287,23 +239,7 @@ class RefinementHandlers:
 
     def _validate_slm_ready(self) -> tuple[Any, str | None]:
         """Check SLM is ready; return (runtime, error_message_or_None)."""
-        slm_runtime = self._slm_runtime_provider()
-        if not slm_runtime:
-            return None, "Refinement is not configured. Enable it in Settings."
-        from src.services.slm_types import SLMState
-
-        state = slm_runtime.state
-        if state == SLMState.DISABLED:
-            return None, "Refinement is disabled. Enable it in Settings and ensure a model is downloaded."
-        if state == SLMState.LOADING:
-            return None, "The refinement model is still loading. Please wait a moment and try again."
-        if state == SLMState.ERROR:
-            return None, "The refinement model failed to load. Check Settings to verify a model is downloaded."
-        if state == SLMState.INFERRING:
-            return None, "A refinement is already in progress. Please wait for it to finish."
-        if state != SLMState.READY:
-            return None, f"Refinement model not ready (state: {state.value})"
-        return slm_runtime, None
+        return validate_slm_ready(self._slm_runtime_provider())
 
     def _persist_refinement(
         self,
