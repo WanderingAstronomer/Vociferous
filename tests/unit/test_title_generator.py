@@ -101,12 +101,17 @@ class TestScheduleGuards:
         _wait_for_threads("title-gen-")
         assert len(emitted_events) == 0
 
-    def test_slm_not_ready_skips(self, generator, mock_slm, emitted_events):
-        """If SLM state is not READY, schedule is a no-op."""
+    def test_busy_slm_still_queues_title_generation(self, generator, mock_slm, db):
+        """Busy SLM state must not drop auto-retitle work scheduled after refinement."""
+        t = db.add_transcript(raw_text="x" * 200, duration_ms=1000)
         mock_slm.state = SLMState.INFERRING
-        generator.schedule(1, "x" * 200)
+        mock_slm.generate_custom_sync.return_value = "Queued Title"
+
+        generator.schedule(t.id, "x" * 200)
         _wait_for_threads("title-gen-")
-        mock_slm.generate_custom_sync.assert_not_called()
+
+        mock_slm.generate_custom_sync.assert_called_once()
+        assert db.get_transcript(t.id).display_name == "Queued Title"
 
     def test_duplicate_transcript_id_skips(self, generator, mock_slm, db):
         """A second schedule() for the same transcript ID is rejected while in-flight."""

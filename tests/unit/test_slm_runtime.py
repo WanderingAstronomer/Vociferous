@@ -383,6 +383,17 @@ class TestRefineTextSync:
         with pytest.raises(RuntimeError, match="Engine not loaded"):
             runtime.refine_text_sync("text")
 
+    def test_sync_refine_does_not_restore_stale_inferring_state(self, runtime):
+        mock_engine = MagicMock()
+        mock_engine.refine.return_value = MagicMock(content="polished text")
+        runtime._engine = mock_engine
+        runtime._state = SLMState.INFERRING
+
+        result = runtime.refine_text_sync("rough text", level=1)
+
+        assert result == "polished text"
+        assert runtime.state is SLMState.READY
+
 
 # ── generate_custom_sync ──────────────────────────────────────────────────
 
@@ -404,6 +415,17 @@ class TestGenerateCustomSync:
         runtime._engine = None
         with pytest.raises(RuntimeError, match="Engine not loaded"):
             runtime.generate_custom_sync("system", "prompt")
+
+    def test_custom_generation_does_not_restore_stale_inferring_state(self, runtime):
+        mock_engine = MagicMock()
+        mock_engine.generate_custom.return_value = MagicMock(content="generated")
+        runtime._engine = mock_engine
+        runtime._state = SLMState.INFERRING
+
+        result = runtime.generate_custom_sync("system", "user prompt")
+
+        assert result == "generated"
+        assert runtime.state is SLMState.READY
 
 
 class TestTimingLogs:

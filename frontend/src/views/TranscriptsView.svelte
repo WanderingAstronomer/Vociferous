@@ -2,6 +2,7 @@
     import {
         clearDefaultRefinementPrompt,
         setDefaultRefinementPrompt,
+        getTranscript,
         getTranscripts,
         updateConfig,
         updateTag,
@@ -66,8 +67,9 @@
     let currentPage = $state(1);
     let sortBy = $state("created_at");
     let sortDir: "asc" | "desc" = $state("desc");
+    let cardHeight: "small" | "medium" | "large" = $state("medium");
 
-    const PAGE_SIZES = [10, 25, 50] as const;
+    const PAGE_SIZES = [10, 25, 50, 100] as const;
     const SORT_OPTIONS = [
         { value: "created_at", label: "Date" },
         { value: "duration_ms", label: "Duration" },
@@ -81,8 +83,10 @@
     let searchResults: Transcript[] = $state([]);
     let searchTotal = $state(0);
     let searching = $state(false);
+    let selectingAll = $state(false);
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const SEARCH_PAGE_SIZE = 100;
+    const SELECT_ALL_BATCH_SIZE = 250;
 
     // Tags
     let allTags: Tag[] = $state([]);
@@ -150,6 +154,7 @@
 
     /** Has more search results to load? */
     let hasMore = $derived(isSearching && searchResults.length < searchTotal);
+    let canSelectAll = $derived(isSearching ? searchTotal > 0 : totalCount > 0);
 
     /** Ordered IDs for range selection. */
     let orderedIds = $derived(filteredEntries.map((e) => e.id));
@@ -531,14 +536,100 @@
     }
 
     function setSort(by: string) {
-        if (sortBy === by) {
-            sortDir = sortDir === "desc" ? "asc" : "desc";
-        } else {
-            sortBy = by;
-            sortDir = "desc";
-        }
+        sortBy = by;
         currentPage = 1;
         loadTranscripts();
+    }
+
+    function toggleSortDir() {
+        sortDir = sortDir === "desc" ? "asc" : "desc";
+        currentPage = 1;
+        loadTranscripts();
+    }
+
+    function setCardHeight(value: "small" | "medium" | "large") {
+        cardHeight = value;
+    }
+
+    async function fetchAllBrowseMatches(): Promise<Transcript[]> {
+        const tagIds = activeTagIds.size > 0 ? [...activeTagIds] : undefined;
+        const matches: Transcript[] = [];
+        let offset = 0;
+        let total = totalCount;
+        while (matches.length < total) {
+            const result = await getTranscripts({
+                limit: SELECT_ALL_BATCH_SIZE,
+                offset,
+                sort_by: sortBy,
+                sort_dir: sortDir,
+                tag_ids: tagIds,
+                tag_mode: tagFilterMode,
+            });
+            total = result.total;
+            if (result.items.length === 0) break;
+            matches.push(...result.items);
+            offset += result.items.length;
+        }
+        return matches;
+    }
+
+    async function fetchAllSearchMatches(): Promise<Transcript[]> {
+        const query = searchQuery.trim();
+        if (!query) return [];
+        const matches: Transcript[] = [];
+        const allResults: Transcript[] = [];
+        const selectedTagIds = [...activeTagIds];
+        let offset = 0;
+        let total = searchTotal;
+        while (offset < total) {
+            const result = await searchTranscripts(query, SELECT_ALL_BATCH_SIZE, offset);
+            total = result.total;
+            if (result.items.length === 0) break;
+            allResults.push(...result.items);
+            matches.push(
+                ...result.items.filter((entry) =>
+                    selectedTagIds.length === 0 ? true : matchesTagFilter(entry, selectedTagIds, tagFilterMode),
+                ),
+            );
+            offset += result.items.length;
+        }
+        searchResults = allResults;
+        searchTotal = total;
+        return matches;
+    }
+
+    async function fetchAllMatchingTranscripts(): Promise<Transcript[]> {
+        return isSearching ? fetchAllSearchMatches() : fetchAllBrowseMatches();
+    }
+
+    async function selectAllMatching() {
+        if (!canSelectAll || selectingAll) return;
+        selectingAll = true;
+        try {
+            const matches = await fetchAllMatchingTranscripts();
+            const ids = [...new Set(matches.map((entry) => entry.id))];
+            if (ids.length === 0) {
+                selection.clear();
+                toast.info("No matching transcripts to select");
+                return;
+            }
+            selection.selectAll(ids);
+            toast.info(`Selected ${ids.length} transcript${ids.length === 1 ? "" : "s"}`);
+        } catch (e: any) {
+            toast.error(`Select all failed: ${e.message}`);
+        } finally {
+            selectingAll = false;
+        }
+    }
+
+    async function getSelectedTranscripts(): Promise<Transcript[]> {
+        const ids = selection.ids;
+        if (ids.length === 0) return [];
+        const visibleById = new Map(filteredEntries.map((entry) => [entry.id, entry]));
+        const transcripts = await Promise.all(
+            ids.map(async (id) => visibleById.get(id) ?? (await getTranscript(id).catch(() => null))),
+        );
+        return transcripts.filter((entry): entry is Transcript => entry !== null);
     }
 
     function goToPage(page: number) {
@@ -619,9 +710,7 @@
         exportOpen = false;
         exporting = true;
         try {
-            // Gather transcripts: selected IDs from in-memory data
-            const selectedIds = new Set(selection.ids);
-            const selected = filteredEntries.filter((e) => selectedIds.has(e.id));
+            const selected = await getSelectedTranscripts();
 
             if (selected.length === 0) {
                 toast.error("No transcripts selected");
@@ -670,9 +759,7 @@
             } else {
                 // Multi-select: add if not all selected have the tag; remove if all do.
                 // Preserves every other tag on each transcript.
-                const selectedTranscripts = ids
-                    .map((id) => filteredEntries.find((e) => e.id === id))
-                    .filter(Boolean) as Transcript[];
+                const selectedTranscripts = await getSelectedTranscripts();
                 const allHave = selectedTranscripts.every((t) => t.tags.some((tag) => tag.id === tagId));
                 await batchToggleTag(ids, tagId, !allHave);
             }
@@ -716,7 +803,7 @@
             const el = event.target as HTMLElement;
             if (el?.tagName === "INPUT" || el?.tagName === "TEXTAREA") return;
             event.preventDefault();
-            selection.selectAll(orderedIds);
+            void selectAllMatching();
         }
     }
 
@@ -728,7 +815,7 @@
             .ensureLoaded()
             .then((cfg) => {
                 const savedSize = Number(cfg.user?.page_size);
-                if ([25, 50, 100].includes(savedSize)) pageSize = savedSize;
+                if (PAGE_SIZES.includes(savedSize as (typeof PAGE_SIZES)[number])) pageSize = savedSize;
             })
             .catch(() => {})
             .finally(() => {
@@ -820,6 +907,7 @@
             {sortBy}
             {sortDir}
             sortOptions={SORT_OPTIONS}
+            {cardHeight}
             {currentPage}
             {totalPages}
             {pageSize}
@@ -833,8 +921,13 @@
             onSetFilterMode={setFilterMode}
             onClearTagFilters={clearTagFilters}
             onSetSort={setSort}
+            onToggleSortDir={toggleSortDir}
+            onSetCardHeight={setCardHeight}
             onGoToPage={goToPage}
             onSetPageSize={setPageSize}
+            {selectingAll}
+            {canSelectAll}
+            onSelectAll={selectAllMatching}
         />
 
         <TranscriptsListPane
@@ -846,6 +939,7 @@
             {activeTagIds}
             {selection}
             {defaultPromptId}
+            {cardHeight}
             {hasMore}
             {searching}
             remainingSearchCount={searchTotal - searchResults.length}

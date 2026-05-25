@@ -481,6 +481,8 @@ class TranscriptDB:
         # Wrap each token as an FTS5 phrase with prefix wildcard.
         # Inner double-quotes are escaped by doubling them per FTS5 syntax.
         fts_terms = " ".join(f'"{token.replace(chr(34), chr(34) * 2)}"*' for token in tokens)
+        title_conditions = " AND ".join("LOWER(COALESCE(t.display_name, '')) LIKE ?" for _ in tokens)
+        title_params = tuple(f"%{token.lower()}%" for token in tokens)
         with self._write_lock:
             visibility_conditions: list[str] = []
             if not include_compound_children:
@@ -493,10 +495,13 @@ class TranscriptDB:
             rows = self._conn.execute(
                 f"""SELECT t.*
                    FROM transcripts t
-                   WHERE t.id IN (SELECT rowid FROM transcripts_fts WHERE transcripts_fts MATCH ?)
+                   WHERE (
+                       t.id IN (SELECT rowid FROM transcripts_fts WHERE transcripts_fts MATCH ?)
+                       OR ({title_conditions})
+                   )
                    {visibility}
                    ORDER BY t.created_at DESC LIMIT ? OFFSET ?""",
-                (fts_terms, limit, offset),
+                (fts_terms, *title_params, limit, offset),
             ).fetchall()
             transcripts = [self._row_to_transcript(r) for r in rows]
             self._enrich_transcripts_with_tags(transcripts)
@@ -517,8 +522,12 @@ class TranscriptDB:
             )
         tokens = query.split()
         fts_terms = " ".join(f'"{t.replace(chr(34), chr(34) * 2)}"*' for t in tokens)
+        title_conditions = " AND ".join("LOWER(COALESCE(t.display_name, '')) LIKE ?" for _ in tokens)
+        title_params = tuple(f"%{token.lower()}%" for token in tokens)
         with self._write_lock:
-            visibility_conditions = ["t.id IN (SELECT rowid FROM transcripts_fts WHERE transcripts_fts MATCH ?)"]
+            visibility_conditions = [
+                f"(t.id IN (SELECT rowid FROM transcripts_fts WHERE transcripts_fts MATCH ?) OR ({title_conditions}))"
+            ]
             if not include_compound_children:
                 visibility_conditions.append("t.compound_root_id IS NULL")
             if not include_protected:
@@ -526,7 +535,7 @@ class TranscriptDB:
             where = " AND ".join(visibility_conditions)
             row = self._conn.execute(
                 f"SELECT COUNT(*) FROM transcripts t WHERE {where}",
-                (fts_terms,),
+                (fts_terms, *title_params),
             ).fetchone()
         return row[0] if row else 0
 

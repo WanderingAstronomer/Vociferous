@@ -53,7 +53,7 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
         save_refinement_provider_api_key,
         test_refinement_provider,
     )
-    from src.api.system import health
+    from src.api.system import health, import_audio_file
     from src.api.transcription_providers import list_transcription_provider_models, test_transcription_provider
     from src.api.transcripts import (
         batch_tag_toggle,
@@ -108,6 +108,7 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
             list_models,
             download_model,
             health,
+            import_audio_file,
             dispatch_intent,
             get_refinement_provider_api_key_status,
             save_refinement_provider_api_key,
@@ -138,7 +139,7 @@ class TestHealthEndpoint:
     def test_health_returns_ok(self, api):
         client, coord, _ = api
         resp = client.get("/api/health")
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         body = resp.json()
         assert body["status"] == "ok"
         assert "version" in body
@@ -187,7 +188,7 @@ class TestTranscriptRoutes:
         """Fresh DB has no user transcript data in the default list."""
         client, _, _ = api
         resp = client.get("/api/transcripts")
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         data = resp.json()
         assert data["total"] == 0
         assert data["items"] == []
@@ -277,6 +278,60 @@ class TestTranscriptRoutes:
         data = resp.json()
         assert len(data["items"]) == 3
         assert data["total"] == 5
+
+
+class TestImportAudioRoute:
+    def test_import_audio_queues_intent_with_temp_file(self, api):
+        client, coord, _ = api
+        dispatched = []
+        coord.command_bus.dispatch = lambda intent: dispatched.append(intent) or True
+
+        resp = client.post(
+            "/api/import-audio",
+            files={"data": ("sample.wav", b"RIFFfake-wave-data", "audio/wav")},
+        )
+
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["status"] == "importing"
+        assert body["dispatched"] is True
+        assert len(dispatched) == 1
+        intent = dispatched[0]
+        assert type(intent).__name__ == "ImportAudioFileIntent"
+        assert intent.cleanup_source is True
+        temp_path = Path(intent.file_path)
+        assert temp_path.exists()
+        assert temp_path.read_bytes() == b"RIFFfake-wave-data"
+        temp_path.unlink(missing_ok=True)
+
+    def test_import_audio_rejects_oversized_uploads(self, api, monkeypatch):
+        client, _, _ = api
+        from src.api import system
+
+        monkeypatch.setattr(system, "_MAX_IMPORT_AUDIO_BYTES", 8)
+
+        resp = client.post(
+            "/api/import-audio",
+            files={"data": ("huge.wav", b"0123456789", "audio/wav")},
+        )
+
+        assert resp.status_code == 413
+        assert "too large" in resp.json()["error"].lower()
+
+    def test_import_audio_cleans_temp_file_when_dispatch_fails(self, api):
+        client, coord, _ = api
+        dispatched = []
+        coord.command_bus.dispatch = lambda intent: dispatched.append(intent) or False
+
+        resp = client.post(
+            "/api/import-audio",
+            files={"data": ("sample.wav", b"RIFFdispatch-failure", "audio/wav")},
+        )
+
+        assert resp.status_code == 503
+        assert resp.json()["error"] == "Failed to queue audio import"
+        assert len(dispatched) == 1
+        assert not Path(dispatched[0].file_path).exists()
 
     def test_append_intent_preserves_source_but_keeps_default_list_count_stable(self, api):
         client, coord, _ = api

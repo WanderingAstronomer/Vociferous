@@ -25,7 +25,7 @@
 </script>
 
 <button
-    class="grid h-full min-h-[156px] max-h-[320px] w-full shrink-0 place-items-center overflow-hidden rounded-[var(--radius-xl)] border p-0 cursor-pointer transition-[background,border-color,color,box-shadow,transform] duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] active:scale-[0.995] {isRecording
+    class="grid h-full min-h-[128px] max-h-[260px] w-full shrink-0 place-items-center overflow-hidden rounded-[var(--radius-xl)] border p-0 cursor-pointer transition-[background,border-color,color,box-shadow,transform] duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] active:scale-[0.995] {isRecording
         ? recordingClasses
         : idleClasses}"
     onclick={isRecording ? onstop : onstart}

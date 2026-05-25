@@ -30,6 +30,13 @@ from src.services.audio_service import AudioService
 
 logger = logging.getLogger(__name__)
 
+_IMPORT_AUDIO_CHUNK_BYTES = 1024 * 1024
+_MAX_IMPORT_AUDIO_BYTES = 256 * 1024 * 1024
+
+
+class _AudioImportTooLargeError(Exception):
+    """Raised when an uploaded audio file exceeds the import size limit."""
+
 
 def _open_directory(path: Path) -> None:
     """Open a directory in the platform file manager."""
@@ -137,6 +144,26 @@ def cleanup_engine(data: dict | None = None) -> dict:
 _ALLOWED_AUDIO_EXTENSIONS = frozenset((".wav", ".mp3", ".m4a", ".flac", ".ogg", ".webm", ".wma", ".aac", ".opus"))
 
 
+async def _write_upload_to_tempfile(data: UploadFile, *, suffix: str) -> tuple[str, int]:
+    """Stream an uploaded audio file to disk with a hard byte limit."""
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix, prefix="vociferous_import_")
+    total_bytes = 0
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            while True:
+                chunk = await data.read(_IMPORT_AUDIO_CHUNK_BYTES)
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                if total_bytes > _MAX_IMPORT_AUDIO_BYTES:
+                    raise _AudioImportTooLargeError()
+                handle.write(chunk)
+    except Exception:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise
+    return tmp_path, total_bytes
+
+
 @post("/api/import-audio")
 async def import_audio_file(
     data: UploadFile = Body(media_type=RequestEncodingType.MULTI_PART),
@@ -157,18 +184,24 @@ async def import_audio_file(
     if ext not in _ALLOWED_AUDIO_EXTENSIONS:
         return Response(content={"error": f"Unsupported format: {ext}"}, status_code=400)
 
-    content = await data.read()
-    if not content:
-        return Response(content={"error": "Empty file"}, status_code=400)
-
-    fd, tmp_path = tempfile.mkstemp(suffix=ext, prefix="vociferous_import_")
     try:
-        os.write(fd, content)
-    finally:
-        os.close(fd)
+        tmp_path, total_bytes = await _write_upload_to_tempfile(data, suffix=ext)
+    except _AudioImportTooLargeError:
+        max_mb = _MAX_IMPORT_AUDIO_BYTES // (1024 * 1024)
+        return Response(content={"error": f"Audio file too large (max {max_mb} MB)"}, status_code=413)
+    except Exception as e:
+        logger.exception("Failed to store uploaded audio file %s", original_name)
+        return Response(content={"error": f"Upload failed: {e}"}, status_code=500)
+
+    if total_bytes == 0:
+        Path(tmp_path).unlink(missing_ok=True)
+        return Response(content={"error": "Empty file"}, status_code=400)
 
     intent = ImportAudioFileIntent(file_path=tmp_path, cleanup_source=True)
     success = coordinator.command_bus.dispatch(intent)
+    if not success:
+        Path(tmp_path).unlink(missing_ok=True)
+        return Response(content={"error": "Failed to queue audio import"}, status_code=503)
 
     return Response(content={"status": "importing", "file": original_name, "dispatched": success})
 

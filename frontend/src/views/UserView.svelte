@@ -331,6 +331,17 @@
                                 class="font-[var(--weight-emphasis)] text-[var(--text-xs)] text-[var(--text-tertiary)] uppercase tracking-[1px] text-center"
                                 >Refinement Impact</span
                             >
+                            {#if refinementTimeSaved > 0}
+                                <div class="grid grid-cols-1 gap-[var(--space-3)]">
+                                    <StatCard
+                                        icon={Timer}
+                                        value={formatDuration(refinementTimeSaved)}
+                                        label="Est. Editing Time Saved"
+                                        sublabel="vs manual proofreading at {Math.round(typingWpm / 2)} WPM"
+                                        variant="featured"
+                                    />
+                                </div>
+                            {/if}
                             <div class="grid grid-cols-3 gap-[var(--space-3)]">
                                 <StatCard
                                     icon={FileCheck2}
@@ -351,16 +362,6 @@
                                     sublabel="Verbatim → Refined ({fkGradeDelta > 0 ? '+' : ''}{fkGradeDelta})"
                                 />
                             </div>
-                            {#if refinementTimeSaved > 0}
-                                <div class="grid grid-cols-1 gap-[var(--space-3)]">
-                                    <StatCard
-                                        icon={Timer}
-                                        value={formatDuration(refinementTimeSaved)}
-                                        label="Est. Editing Time Saved"
-                                        sublabel="vs manual proofreading at {Math.round(typingWpm / 2)} WPM"
-                                    />
-                                </div>
-                            {/if}
                         </div>
                     {/if}
 
@@ -390,7 +391,7 @@
                         <div class="flex gap-[var(--space-3)]">
                             <a
                                 class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-3)] border border-[var(--shell-border)] rounded-[var(--radius-md)] text-[var(--text-secondary)] text-[var(--text-sm)] no-underline transition-[color,border-color] duration-[var(--transition-fast)] hover:text-[var(--accent)] hover:border-[var(--accent)]"
-                                href="https://www.linkedin.com/in/abrown7521/"
+                                href="https://www.linkedin.com/in/wanderingastronomer/"
                                 target="_blank"
                                 rel="noopener"
                             >

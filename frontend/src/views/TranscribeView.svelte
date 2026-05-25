@@ -199,7 +199,6 @@
 
     /* ===== Recent sessions (idle panel) ===== */
     let recentSessions = $state<Transcript[]>([]);
-    let recentSessionCount = $state(0);
 
     // Recording timer
     let recordingElapsedMs = $state(0);
@@ -222,7 +221,6 @@
     function loadRecentSessions() {
         getTranscripts({ limit: 500 })
             .then((r) => {
-                recentSessionCount = r.total;
                 recentSessions = r.items;
             })
             .catch(() => {});
@@ -256,21 +254,20 @@
 
     /* ===== Recent session analytics (idle panel) ===== */
     let sessionStats = $derived.by(() => {
-        if (!recentSessions.length) return null;
         const todayStr = new Date().toLocaleDateString("sv");
-        const wordsPerSession = recentSessions.map(
+        const todaySessions = recentSessions.filter((t) => {
+            const ca = t.created_at;
+            return ca ? new Date(ca).toLocaleDateString("sv") === todayStr : false;
+        });
+        if (!todaySessions.length) return null;
+        const wordsPerSession = todaySessions.map(
             (t) => (t.text || t.normalized_text || "").split(/\s+/).filter(Boolean).length,
         );
-        const todayWords = recentSessions
-            .filter((t) => {
-                const ca = t.created_at;
-                return ca ? new Date(ca).toLocaleDateString("sv") === todayStr : false;
-            })
-            .reduce((sum, t) => sum + (t.text || t.normalized_text || "").split(/\s+/).filter(Boolean).length, 0);
-        const totalSpeechMs = recentSessions.reduce((s, t) => s + (t.speech_duration_ms ?? 0), 0);
+        const todayWords = wordsPerSession.reduce((sum, words) => sum + words, 0);
+        const totalSpeechMs = todaySessions.reduce((sum, t) => sum + (t.speech_duration_ms ?? 0), 0);
         const avgWpm =
             totalSpeechMs > 0 ? Math.round(wordsPerSession.reduce((a, b) => a + b, 0) / (totalSpeechMs / 60000)) : 0;
-        return { todayWords, avgWpm, count: recentSessionCount };
+        return { todayWords, avgWpm, count: todaySessions.length };
     });
 
     function formatTranscriptTimestamp(iso: string): string {

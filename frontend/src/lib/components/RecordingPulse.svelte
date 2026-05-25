@@ -1,13 +1,10 @@
 <script lang="ts">
     /**
-     * RecordingPulse — Fills the record button with a horizontal pulse treatment.
+     * RecordingPulse — cheap EQ display for active recording.
      *
-     * Sizing is intrinsic: `width: 100%; height: 100%`. The mic icon scales with
-     * the button's smaller dimension. Glow intensity and border vividness track
-     * the smoothed audio level.
+     * The bars update at roughly 10fps from the latest backend audio level.
+     * CSS transitions handle the in-between frames without a JS animation loop.
      */
-
-    import { Mic } from "lucide-svelte";
 
     interface Props {
         audioLevel?: number;
@@ -17,51 +14,55 @@
 
     let { audioLevel = 0 }: Props = $props();
 
-    let containerEl: HTMLDivElement | undefined = $state();
-    let micIconSize = $state(30);
+    const barShape = [
+        0.18, 0.34, 0.52, 0.74, 0.48, 0.86, 0.62, 0.96, 0.58, 0.82, 0.45, 0.7, 0.36, 0.54, 0.28, 0.42, 0.5,
+        0.78, 0.42, 0.66, 0.3, 0.56, 0.24, 0.44,
+    ];
+
+    let displayedLevel = $state(0);
+    let lastDisplayUpdate = 0;
 
     $effect(() => {
-        if (!containerEl) return;
-        const ro = new ResizeObserver(([e]) => {
-            const side = Math.min(e.contentRect.width, e.contentRect.height);
-            micIconSize = Math.max(26, Math.min(34, Math.round(side * 0.48)));
-        });
-        ro.observe(containerEl);
-        return () => ro.disconnect();
-    });
-
-    /* ── Audio-reactive smoothing (low-pass on raw audioLevel) ── */
-    let smooth = $state(0);
-    let rafId: number | undefined;
-
-    function tick() {
-        smooth += (audioLevel - smooth) * 0.25;
-        if (Math.abs(smooth - audioLevel) < 0.001) smooth = audioLevel;
-        if (smooth > 0.001 || audioLevel > 0.001) {
-            rafId = requestAnimationFrame(tick);
-        } else {
-            rafId = undefined;
-        }
-    }
-
-    $effect(() => {
-        if (audioLevel > 0.001 && rafId === undefined) {
-            rafId = requestAnimationFrame(tick);
+        const now = performance.now();
+        if (now - lastDisplayUpdate >= 100 || Math.abs(audioLevel - displayedLevel) >= 0.18) {
+            displayedLevel = Math.max(0, Math.min(1, audioLevel));
+            lastDisplayUpdate = now;
         }
     });
 
-    $effect(() => () => {
-        if (rafId !== undefined) {
-            cancelAnimationFrame(rafId);
-            rafId = undefined;
-        }
-    });
+    let barHeights = $derived(
+        barShape.map((shape, index) => {
+            const floor = 10 + ((index * 7) % 8);
+            const gain = displayedLevel * (42 + shape * 48);
+            return Math.round(Math.min(96, floor + gain));
+        }),
+    );
 
-    let speaking = $derived(smooth > 0.05);
+    let borderMix = $derived(`${(50 + displayedLevel * 28).toFixed(1)}%`);
+    let backgroundMix = $derived(`${(3 + displayedLevel * 10).toFixed(1)}%`);
+    let barMix = $derived(`${(64 + displayedLevel * 28).toFixed(1)}%`);
+    let eqOpacity = $derived((0.46 + displayedLevel * 0.54).toFixed(3));
+    let glowSize = $derived(`${(displayedLevel * 12).toFixed(2)}px`);
+    let glowMix = $derived(`${(displayedLevel * 55).toFixed(1)}%`);
+    let hintOpacity = $derived((0.62 + displayedLevel * 0.2).toFixed(3));
 </script>
 
-<div bind:this={containerEl} class="recording-display" class:speaking style:--recording-intensity={smooth.toFixed(3)}>
-    <Mic class="recording-mic" size={micIconSize} strokeWidth={1.5} />
+<div
+    class="recording-display"
+    style:--recording-border-mix={borderMix}
+    style:--recording-background-mix={backgroundMix}
+    style:--recording-bar-mix={barMix}
+    style:--recording-eq-opacity={eqOpacity}
+    style:--recording-glow-size={glowSize}
+    style:--recording-glow-mix={glowMix}
+    style:--recording-hint-opacity={hintOpacity}
+>
+    <div class="eq-wrap" aria-hidden="true">
+        {#each barHeights as height, index (index)}
+            <span class="eq-bar" style:height="{height}%"></span>
+        {/each}
+    </div>
+    <div class="recording-hint">click to stop recording and transcribe</div>
 </div>
 
 <style>
@@ -69,50 +70,49 @@
         position: relative;
         width: 100%;
         height: 100%;
-        display: flex;
+        display: grid;
         align-items: center;
         justify-content: center;
-        color: var(--orange-4);
+        color: var(--accent);
         border-radius: var(--radius-xl);
-        border: 3px solid var(--orange-4);
-        background: rgba(255, 128, 32, calc(0.05 + var(--recording-intensity, 0) * 0.08));
-        box-shadow:
-            0 0 0 calc(5px + var(--recording-intensity, 0) * 11px)
-                rgba(255, 196, 88, calc(0.18 + var(--recording-intensity, 0) * 0.2)),
-            0 0 calc(34px + var(--recording-intensity, 0) * 76px)
-                rgba(255, 160, 60, calc(0.42 + var(--recording-intensity, 0) * 0.46)),
-            0 0 calc(86px + var(--recording-intensity, 0) * 116px)
-                rgba(255, 96, 40, calc(0.2 + var(--recording-intensity, 0) * 0.3));
-        transition: background 120ms ease-out, box-shadow 120ms ease-out;
-        animation: recording-breathe 4s ease-in-out infinite;
-        will-change: box-shadow, border-color;
+        border: 2px solid color-mix(in srgb, var(--accent) var(--recording-border-mix), var(--shell-border));
+        background: color-mix(in srgb, var(--accent) var(--recording-background-mix), var(--surface-secondary));
+        box-shadow: none;
+        transition: background 120ms linear, border-color 120ms linear;
     }
 
-    /* When speaking, freeze the idle breath and let the reactive box-shadow drive. */
-    .recording-display.speaking {
-        animation: none;
+    .eq-wrap {
+        width: min(88%, 940px);
+        height: clamp(48px, 54%, 124px);
+        display: grid;
+        grid-template-columns: repeat(24, minmax(4px, 1fr));
+        align-items: center;
+        gap: clamp(5px, 1vw, 12px);
+        opacity: var(--recording-eq-opacity);
     }
 
-    @keyframes recording-breathe {
-        0%,
-        100% {
-            border-color: var(--orange-4);
-            box-shadow:
-                0 0 0 5px rgba(255, 196, 88, 0.18),
-                0 0 34px rgba(255, 160, 60, 0.42),
-                0 0 86px rgba(255, 96, 40, 0.2);
-        }
-        50% {
-            border-color: rgba(255, 210, 96, 0.92);
-            box-shadow:
-                0 0 0 14px rgba(255, 196, 88, 0.28),
-                0 0 64px rgba(255, 160, 60, 0.7),
-                0 0 126px rgba(255, 96, 40, 0.36);
-        }
-    }
-
-    :global(.recording-mic) {
+    .eq-bar {
         display: block;
-        filter: drop-shadow(0 0 14px rgba(255, 210, 96, 0.86));
+        min-height: 10px;
+        max-height: 100%;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--accent) var(--recording-bar-mix), white 8%);
+        box-shadow: 0 0 var(--recording-glow-size)
+            color-mix(in srgb, var(--accent) var(--recording-glow-mix), transparent);
+        transition: height 100ms linear, opacity 100ms linear;
+        will-change: height;
+    }
+
+    .recording-hint {
+        position: absolute;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: var(--text-tertiary);
+        font-size: 12px;
+        font-style: italic;
+        letter-spacing: 0;
+        white-space: nowrap;
+        opacity: var(--recording-hint-opacity);
     }
 </style>

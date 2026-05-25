@@ -265,6 +265,7 @@ class SLMRuntime:
             raise TimeoutError(f"Timed out waiting for SLM lock after {self._REFINE_LOCK_TIMEOUT:.0f}s")
 
         try:
+            self.state = SLMState.INFERRING
             if not self._engine:
                 raise RuntimeError("Engine not loaded.")
             params = self._sampling_params_for_level(level)
@@ -285,7 +286,7 @@ class SLMRuntime:
             self._log_inference_timing("refinement", text, result.content, time.perf_counter() - start)
         finally:
             self._lock.release()
-            self.state = previous_state
+            self.state = SLMState.READY if self._engine else previous_state
         return result.content
 
     # Maximum seconds to wait for the inference lock before giving up.
@@ -331,7 +332,7 @@ class SLMRuntime:
             self._log_inference_timing("custom-generation", user_prompt, result.content, time.perf_counter() - start)
         finally:
             self._lock.release()
-            self.state = previous_state
+            self.state = SLMState.READY if self._engine else previous_state
         return result.content
 
     def _inference_task(self, text: str, level: int, instructions: str = "") -> None:

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { ws } from "./lib/ws";
     import { onMount, onDestroy } from "svelte";
-    import { getModels, getHealth } from "./lib/api";
+    import { getModels, getHealth, getRecoverableRecordings } from "./lib/api";
     import { appConfig } from "./lib/config.svelte";
     import { nav } from "./lib/navigation.svelte";
     import type { ViewId } from "./lib/navigation.svelte";
@@ -75,6 +75,18 @@
             }
         } catch {
             // Health check failed — not critical, skip VRAM warning
+        }
+
+        try {
+            const recoverable = await getRecoverableRecordings();
+            if (recoverable.total > 0) {
+                toast.warning(
+                    `${recoverable.total} recoverable recording${recoverable.total === 1 ? "" : "s"} found. Manage them in Settings > Recording.`,
+                    9000,
+                );
+            }
+        } catch {
+            // Recovery inventory is advisory; startup should not block on it.
         }
 
         unsubRecordingStarted = ws.on("recording_started", () => {

@@ -61,7 +61,7 @@
     /* ===== Derived ===== */
 
     let originalText = $derived(transcript ? transcript.normalized_text || transcript.raw_text || "" : "");
-    let isDirty = $derived(editText !== originalText);
+    let isDirty = $derived(normalizeEditableText(editText) !== normalizeEditableText(originalText));
     let wc = $derived(wordCount(editText));
     let fillerCount = $derived(editText ? countFillers(editText) : 0);
     let fkGrade = $derived(wc >= 3 ? fleschKincaidGrade(editText) : null);
@@ -80,6 +80,10 @@
 
     function getTitle(t: Transcript): string {
         return t.display_name?.trim() || `Transcript #${t.id}`;
+    }
+
+    function normalizeEditableText(text: string): string {
+        return text.replace(/\r\n/g, "\n").trim();
     }
 
     /* ===== Actions ===== */

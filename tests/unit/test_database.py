@@ -208,6 +208,15 @@ class TestTranscriptCRUD:
         assert len(results) == 1
         assert "Python" in results[0].raw_text
 
+    def test_search_matches_display_name(self, db: TranscriptDB):
+        titled = db.add_transcript(raw_text="Body text without the keyword", display_name="Launch Checklist", duration_ms=100)
+        db.add_transcript(raw_text="Unrelated body", display_name="Meeting Notes", duration_ms=100)
+
+        results = db.search("launch")
+
+        assert [item.id for item in results] == [titled.id]
+        assert db.search_count("launch") == 1
+
     def test_append_preserves_source_and_hides_child_from_default_queries(self, db: TranscriptDB):
         root = db.add_transcript(raw_text="Root text", duration_ms=1000, speech_duration_ms=900)
         source = db.add_transcript(raw_text="New segment", duration_ms=500, speech_duration_ms=450)

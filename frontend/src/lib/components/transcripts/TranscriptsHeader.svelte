@@ -1,11 +1,22 @@
 <script lang="ts">
-    import { ArrowUpDown, ChevronDown, ChevronLeft, ChevronRight, Search, X } from "lucide-svelte";
+    import {
+        ArrowDown,
+        ArrowUp,
+        ArrowUpDown,
+        Check,
+        ChevronDown,
+        ChevronLeft,
+        ChevronRight,
+        Search,
+        X,
+    } from "lucide-svelte";
 
     import type { Tag, TagFilterMode } from "../../api";
     import TagBar from "../TagBar.svelte";
     import { getZoomFactor } from "../../zoom";
 
     type SortDirection = "asc" | "desc";
+    type CardHeight = "small" | "medium" | "large";
 
     interface SortOption {
         value: string;
@@ -25,10 +36,13 @@
         sortBy: string;
         sortDir: SortDirection;
         sortOptions: readonly SortOption[];
+        cardHeight: CardHeight;
         currentPage: number;
         totalPages: number;
         pageSize: number;
         pageSizes: readonly number[];
+        selectingAll: boolean;
+        canSelectAll: boolean;
         onSearchChange: (value: string) => void;
         onClearSearch: () => void;
         onToggleTagFilter: (tagId: number) => void;
@@ -38,8 +52,11 @@
         onSetFilterMode: (mode: TagFilterMode) => void;
         onClearTagFilters: () => void;
         onSetSort: (value: string) => void;
+        onToggleSortDir: () => void;
+        onSetCardHeight: (value: CardHeight) => void;
         onGoToPage: (page: number) => void;
         onSetPageSize: (size: number) => void;
+        onSelectAll: () => void;
     }
 
     let {
@@ -55,10 +72,13 @@
         sortBy,
         sortDir,
         sortOptions,
+        cardHeight,
         currentPage,
         totalPages,
         pageSize,
         pageSizes,
+        selectingAll,
+        canSelectAll,
         onSearchChange,
         onClearSearch,
         onToggleTagFilter,
@@ -68,9 +88,20 @@
         onSetFilterMode,
         onClearTagFilters,
         onSetSort,
+        onToggleSortDir,
+        onSetCardHeight,
         onGoToPage,
         onSetPageSize,
+        onSelectAll,
     }: Props = $props();
+
+    const CARD_HEIGHT_OPTIONS: readonly { value: CardHeight; label: string }[] = [
+        { value: "small", label: "S" },
+        { value: "medium", label: "M" },
+        { value: "large", label: "L" },
+    ];
+
+    let pageOptions = $derived(Array.from({ length: totalPages }, (_, index) => index + 1));
 
     /* ===== Filter mode dropdown ===== */
     let filterModeOpen = $state(false);
@@ -172,27 +203,50 @@
 
 <div class="shrink-0 px-4 py-1.5 flex items-center gap-3 text-[13px] text-[var(--text-tertiary)]">
     {#if !isSearching}
-        <div class="flex items-center gap-1 shrink-0">
+        <div class="flex items-center gap-1.5 shrink-0">
             <ArrowUpDown size={12} class="text-[var(--text-tertiary)]" />
-            {#each sortOptions as opt (opt.value)}
-                <button
-                    class="h-6 px-1.5 rounded text-[11px] border-none cursor-pointer transition-colors"
-                    class:bg-[var(--hover-overlay)]={sortBy === opt.value}
-                    class:text-[var(--text-primary)]={sortBy === opt.value}
-                    class:font-semibold={sortBy === opt.value}
-                    class:bg-transparent={sortBy !== opt.value}
-                    class:text-[var(--text-tertiary)]={sortBy !== opt.value}
-                    class:hover:text-[var(--text-secondary)]={sortBy !== opt.value}
-                    onclick={() => onSetSort(opt.value)}
-                    title="Sort by {opt.label}{sortBy === opt.value
-                        ? sortDir === 'asc'
-                            ? ' (ascending)'
-                            : ' (descending)'
-                        : ''}"
-                >
-                    {opt.label}{sortBy === opt.value ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
-                </button>
-            {/each}
+            <select
+                class="h-7 min-w-[118px] rounded border border-[var(--shell-border)] bg-[var(--surface-secondary)] px-2 py-0 text-[12px] leading-[1.2] text-[var(--text-primary)] outline-none cursor-pointer focus:border-[var(--accent)]"
+                value={sortBy}
+                onchange={(event) => onSetSort((event.currentTarget as HTMLSelectElement).value)}
+                title="Sort field"
+            >
+                {#each sortOptions as opt (opt.value)}
+                    <option value={opt.value}>{opt.label}</option>
+                {/each}
+            </select>
+            <button
+                class="h-7 w-7 rounded text-[var(--text-secondary)] bg-transparent border border-[var(--shell-border)] cursor-pointer transition-colors flex items-center justify-center hover:bg-[var(--hover-overlay)] hover:text-[var(--text-primary)]"
+                onclick={onToggleSortDir}
+                title="Sort {sortDir === 'asc' ? 'ascending' : 'descending'}"
+            >
+                {#if sortDir === "asc"}
+                    <ArrowUp size={12} />
+                {:else}
+                    <ArrowDown size={12} />
+                {/if}
+            </button>
+        </div>
+
+        <div class="flex items-center gap-1 shrink-0">
+            <span class="text-[10px] text-[var(--text-tertiary)]">Height</span>
+            <div class="inline-flex h-7 rounded border border-[var(--shell-border)] overflow-hidden">
+                {#each CARD_HEIGHT_OPTIONS as opt (opt.value)}
+                    <button
+                        class="w-7 border-0 border-r border-[var(--shell-border)] last:border-r-0 text-[11px] cursor-pointer transition-colors"
+                        class:bg-[var(--hover-overlay)]={cardHeight === opt.value}
+                        class:text-[var(--text-primary)]={cardHeight === opt.value}
+                        class:font-semibold={cardHeight === opt.value}
+                        class:bg-transparent={cardHeight !== opt.value}
+                        class:text-[var(--text-tertiary)]={cardHeight !== opt.value}
+                        class:hover:text-[var(--text-secondary)]={cardHeight !== opt.value}
+                        onclick={() => onSetCardHeight(opt.value)}
+                        title="{opt.value[0].toUpperCase() + opt.value.slice(1)} cards"
+                    >
+                        {opt.label}
+                    </button>
+                {/each}
+            </div>
         </div>
     {:else}
         <span class="shrink-0">
@@ -211,15 +265,28 @@
     {#if !isSearching && totalPages > 1}
         <div class="flex items-center gap-2 shrink-0">
             <button
-                class="flex items-center gap-1 h-6 px-2 rounded text-[var(--text-secondary)] bg-transparent border border-[var(--shell-border)] cursor-pointer transition-colors text-[11px] hover:bg-[var(--hover-overlay)] disabled:opacity-30 disabled:cursor-default"
+                class="flex items-center gap-1 h-7 px-2 rounded text-[var(--text-secondary)] bg-transparent border border-[var(--shell-border)] cursor-pointer transition-colors text-[11px] hover:bg-[var(--hover-overlay)] disabled:opacity-30 disabled:cursor-default"
                 onclick={() => onGoToPage(currentPage - 1)}
                 disabled={currentPage <= 1}
             >
                 <ChevronLeft size={12} /> Prev
             </button>
-            <span class="text-[var(--text-tertiary)] tabular-nums text-[11px]">{currentPage} / {totalPages}</span>
+            <div class="flex items-center gap-1">
+                <span class="text-[10px] text-[var(--text-tertiary)]">Page</span>
+                <select
+                    class="h-7 min-w-[68px] rounded border border-[var(--shell-border)] bg-[var(--surface-secondary)] px-2 py-0 text-[12px] leading-[1.2] text-[var(--text-primary)] outline-none cursor-pointer focus:border-[var(--accent)]"
+                    value={currentPage}
+                    onchange={(event) => onGoToPage(Number((event.currentTarget as HTMLSelectElement).value))}
+                    title="Page"
+                >
+                    {#each pageOptions as page (page)}
+                        <option value={page}>{page}</option>
+                    {/each}
+                </select>
+                <span class="text-[11px] text-[var(--text-tertiary)] tabular-nums">/ {totalPages}</span>
+            </div>
             <button
-                class="flex items-center gap-1 h-6 px-2 rounded text-[var(--text-secondary)] bg-transparent border border-[var(--shell-border)] cursor-pointer transition-colors text-[11px] hover:bg-[var(--hover-overlay)] disabled:opacity-30 disabled:cursor-default"
+                class="flex items-center gap-1 h-7 px-2 rounded text-[var(--text-secondary)] bg-transparent border border-[var(--shell-border)] cursor-pointer transition-colors text-[11px] hover:bg-[var(--hover-overlay)] disabled:opacity-30 disabled:cursor-default"
                 onclick={() => onGoToPage(currentPage + 1)}
                 disabled={currentPage >= totalPages}
             >
@@ -230,23 +297,29 @@
 
     <div class="flex-1"></div>
 
-    {#if !isSearching}
-        <div class="flex items-center gap-0.5 shrink-0">
-            {#each pageSizes as size (size)}
-                <button
-                    class="h-6 px-1.5 rounded text-[11px] border-none cursor-pointer transition-colors"
-                    class:bg-[var(--hover-overlay)]={pageSize === size}
-                    class:text-[var(--text-primary)]={pageSize === size}
-                    class:font-semibold={pageSize === size}
-                    class:bg-transparent={pageSize !== size}
-                    class:text-[var(--text-tertiary)]={pageSize !== size}
-                    class:hover:text-[var(--text-secondary)]={pageSize !== size}
-                    onclick={() => onSetPageSize(size)}
+    <div class="flex items-center gap-2 shrink-0">
+        {#if !isSearching}
+            <div class="flex items-center gap-1">
+                <span class="text-[10px] text-[var(--text-tertiary)]">Show</span>
+                <select
+                    class="h-7 min-w-[70px] rounded border border-[var(--shell-border)] bg-[var(--surface-secondary)] px-2 py-0 text-[12px] leading-[1.2] text-[var(--text-primary)] outline-none cursor-pointer focus:border-[var(--accent)]"
+                    value={pageSize}
+                    onchange={(event) => onSetPageSize(Number((event.currentTarget as HTMLSelectElement).value))}
+                    title="Transcripts per page"
                 >
-                    {size}
-                </button>
-            {/each}
-            <span class="text-[10px] text-[var(--text-tertiary)] ml-0.5">/ page</span>
-        </div>
-    {/if}
+                    {#each pageSizes as size (size)}
+                        <option value={size}>{size}</option>
+                    {/each}
+                </select>
+            </div>
+        {/if}
+        <button
+            class="inline-flex items-center gap-1 h-7 px-2 rounded text-[var(--text-secondary)] bg-transparent border border-[var(--shell-border)] cursor-pointer transition-colors text-[11px] hover:bg-[var(--hover-overlay)] hover:text-[var(--text-primary)] disabled:opacity-30 disabled:cursor-default"
+            onclick={onSelectAll}
+            disabled={!canSelectAll || selectingAll}
+            title="Select all matching transcripts"
+        >
+            <Check size={12} /> {selectingAll ? "Selecting..." : "Select All"}
+        </button>
+    </div>
 </div>

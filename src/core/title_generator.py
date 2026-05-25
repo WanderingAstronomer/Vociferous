@@ -6,7 +6,7 @@ no blocking, emits 'transcript_updated' when the title is ready.
 
 Trigger: called after each transcription_complete in the recording pipeline.
 Guard rails:
-    - Only fires if SLM is READY (not INFERRING, not DISABLED).
+    - Only fires if an SLM runtime exists.
     - Only fires if text length is within bounds (100–30,000 chars).
     - One generation at a time per transcript (simple set-based dedup).
 """
@@ -88,7 +88,7 @@ class TitleGenerator:
 
         Conditions:
         1. Text length is within bounds.
-        2. SLM runtime is loaded and READY.
+        2. SLM runtime exists.
         3. No title generation is already in flight for this transcript.
         """
         text_len = len(text)
@@ -111,12 +111,6 @@ class TitleGenerator:
                 logger.debug("Title gen: SLM unavailable, skipping transcript %d", transcript_id)
                 return
 
-            from src.services.slm_types import SLMState
-
-            if slm.state != SLMState.READY:
-                logger.debug("Title gen: SLM not ready (%s), skipping transcript %d", slm.state, transcript_id)
-                return
-
             self._pending.add(transcript_id)
 
         logger.info("Title gen: scheduling for transcript %d (%d chars)", transcript_id, text_len)
@@ -134,12 +128,6 @@ class TitleGenerator:
             slm = self._slm_provider()
             if slm is None:
                 logger.warning("Title gen: SLM disappeared before generation for transcript %d", transcript_id)
-                return
-
-            from src.services.slm_types import SLMState
-
-            if slm.state != SLMState.READY:
-                logger.warning("Title gen: SLM no longer ready (%s) for transcript %d", slm.state, transcript_id)
                 return
 
             # Truncate input to the max bound — don't feed a whole novel
