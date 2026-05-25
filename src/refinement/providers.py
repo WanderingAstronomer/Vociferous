@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import os
 import time
 from pathlib import Path
@@ -20,6 +21,23 @@ from src.refinement.output_parser import GenerationResult, parse_generation_outp
 from src.refinement.prompt_builder import PromptBuilder
 
 logger = logging.getLogger(__name__)
+
+_NO_THINK_MODEL_MARKERS = ("qwen", "qwq", "qwopus")
+_LM_STUDIO_SCHEMA_MODEL_MARKERS = ("qwen3", "qwq", "qwopus", "gpt-oss", "deepseek-r1")
+_REASONING_MESSAGE_FIELDS = ("reasoning_content", "reasoning")
+_TEXT_RESPONSE_FORMAT: dict[str, object] = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "vociferous_text_response",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+        },
+    },
+}
 
 
 class ProviderRequestError(RuntimeError):
@@ -394,15 +412,18 @@ class OpenAICompatibleRefinementProvider:
         )
         result = self._chat_completion(
             messages=messages,
-            max_tokens=self._refinement_max_tokens(text),
+            max_tokens=self._refinement_max_tokens(text, use_thinking=use_thinking),
             temperature=temperature,
             top_p=top_p,
             top_k=top_k,
             repetition_penalty=repetition_penalty,
         )
         if not result.content.strip():
-            logger.warning("External refinement returned empty content. Returning original text.")
-            return GenerationResult(content=text, reasoning=result.reasoning)
+            detail = " after producing reasoning only" if result.reasoning else ""
+            raise RuntimeError(
+                f"{self._provider_label} returned empty refinement content{detail}. "
+                "Disable thinking for this model or increase the provider max output tokens."
+            )
         return result
 
     def generate_custom(
@@ -438,7 +459,7 @@ class OpenAICompatibleRefinementProvider:
         if use_thinking:
             return ""
         model_id = self._provider_settings.model_id.lower()
-        return "/no_think" if "qwen" in model_id else ""
+        return "/no_think" if any(marker in model_id for marker in _NO_THINK_MODEL_MARKERS) else ""
 
     @property
     def _api_key(self) -> str | None:
@@ -583,21 +604,80 @@ class OpenAICompatibleRefinementProvider:
                 payload["top_k"] = top_k
             if repetition_penalty != 1.0:
                 payload["repeat_penalty"] = repetition_penalty
+            if self._should_force_text_schema():
+                payload["response_format"] = _TEXT_RESPONSE_FORMAT
 
         response = self._request("POST", "chat/completions", json_payload=payload)
         body = response.json()
         self._last_usage = body.get("usage") if isinstance(body.get("usage"), dict) else None
         try:
-            content = body["choices"][0]["message"]["content"]
+            choice = body["choices"][0]
+            message = choice["message"]
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError(f"{self._provider_label} returned an invalid chat completion response.") from exc
+        if not isinstance(message, dict):
+            raise RuntimeError(f"{self._provider_label} returned an invalid chat completion message.")
+
+        content = message.get("content", "")
+        if content is None:
+            content = ""
         if not isinstance(content, str):
             raise RuntimeError(f"{self._provider_label} returned non-text chat completion content.")
-        return parse_generation_output(content)
+        reasoning = self._message_reasoning(message)
+        schema_text = self._text_from_schema_output(content) or self._text_from_schema_output(reasoning or "")
+        if schema_text is not None:
+            return GenerationResult(content=schema_text)
 
-    def _refinement_max_tokens(self, text: str) -> int:
+        result = parse_generation_output(content)
+        if reasoning:
+            result = GenerationResult(
+                content=result.content,
+                reasoning="\n\n".join(part for part in (result.reasoning, reasoning) if part),
+            )
+            if not result.content.strip():
+                logger.warning(
+                    "%s returned reasoning-only chat completion (finish_reason=%s).",
+                    self._provider_label,
+                    choice.get("finish_reason"),
+                )
+        return result
+
+    def _should_force_text_schema(self) -> bool:
+        if self._provider_id != "lm_studio":
+            return False
+        model_id = self._provider_settings.model_id.lower()
+        return any(marker in model_id for marker in _LM_STUDIO_SCHEMA_MODEL_MARKERS)
+
+    @staticmethod
+    def _text_from_schema_output(text: str) -> str | None:
+        if not text or not text.strip():
+            return None
+        cleaned = text.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned.removeprefix("```json").removesuffix("```").strip()
+        elif cleaned.startswith("```"):
+            cleaned = cleaned.removeprefix("```").removesuffix("```").strip()
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(parsed, dict) and isinstance(parsed.get("text"), str):
+            return parsed["text"].strip()
+        return None
+
+    @staticmethod
+    def _message_reasoning(message: dict[str, object]) -> str | None:
+        for field in _REASONING_MESSAGE_FIELDS:
+            value = message.get(field)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    def _refinement_max_tokens(self, text: str, *, use_thinking: bool = False) -> int:
         words = max(1, len(text.split()))
         heuristic = max(256, int(words * 1.75) + 128)
+        if use_thinking:
+            heuristic += RefinementEngine.THINKING_BUDGET_TOKENS
         return min(max(1, self._provider_settings.max_output_tokens), heuristic)
 
     def _capture_rate_limits(self, response: httpx.Response) -> None:
