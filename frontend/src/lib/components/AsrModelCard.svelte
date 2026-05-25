@@ -18,7 +18,7 @@
         type RefinementProviderApiKeyStatus,
         type TranscriptionProviderId,
     } from "../api";
-    import type { GetConfigValue, SetConfigValue, VociferousConfig } from "../config.svelte";
+    import type { ConfigPath, GetConfigValue, SetConfigValue, VociferousConfig } from "../config.svelte";
     import { toast } from "../toast.svelte";
     import CustomSelect from "./CustomSelect.svelte";
     import DownloadButton from "./DownloadButton.svelte";
@@ -67,21 +67,35 @@
         apiKeyDraft = "";
     }
 
-    function providerPath(providerId: TranscriptionProviderId, key: string) {
-        return `model.${providerId}.${key}` as Parameters<SetConfigValue>[0];
+    type TranscriptionProviderConfigKey =
+        | "base_url"
+        | "model_id"
+        | "api_key_env"
+        | "timeout_seconds"
+        | "model_list_enabled";
+    type TranscriptionProviderPath<Key extends TranscriptionProviderConfigKey> = Extract<
+        ConfigPath,
+        `model.${TranscriptionProviderId}.${Key}`
+    >;
+
+    function providerPath<Key extends TranscriptionProviderConfigKey>(
+        providerId: TranscriptionProviderId,
+        key: Key,
+    ): TranscriptionProviderPath<Key> {
+        return `model.${providerId}.${key}` as TranscriptionProviderPath<Key>;
     }
 
     function providerPayload(providerId: TranscriptionProviderId) {
         return {
-            base_url: getSafe(config, providerPath(providerId, "base_url") as never) as string,
-            model_id: getSafe(config, providerPath(providerId, "model_id") as never) as string,
-            api_key_env: getSafe(config, providerPath(providerId, "api_key_env") as never) as string | null,
+            base_url: getSafe(config, providerPath(providerId, "base_url"), ""),
+            model_id: getSafe(config, providerPath(providerId, "model_id"), ""),
+            api_key_env: getSafe(config, providerPath(providerId, "api_key_env"), null),
             api_key: apiKeyDraft.trim() || undefined,
-            timeout_seconds: getSafe(config, providerPath(providerId, "timeout_seconds") as never) as number,
-            model_list_enabled: getSafe(config, providerPath(providerId, "model_list_enabled") as never) as boolean,
-            max_retries: providerId === "groq" ? (getSafe(config, "model.groq.max_retries", 2) as number) : undefined,
+            timeout_seconds: getSafe(config, providerPath(providerId, "timeout_seconds"), 120),
+            model_list_enabled: getSafe(config, providerPath(providerId, "model_list_enabled"), true),
+            max_retries: providerId === "groq" ? getSafe(config, "model.groq.max_retries", 2) : undefined,
             retry_backoff_seconds:
-                providerId === "groq" ? (getSafe(config, "model.groq.retry_backoff_seconds", 1) as number) : undefined,
+                providerId === "groq" ? getSafe(config, "model.groq.retry_backoff_seconds", 1) : undefined,
         };
     }
 
@@ -93,7 +107,7 @@
             toast.error("Paste Groq key values into Stored API Key, not API Key Env Var");
             return;
         }
-        setSafe(providerPath(providerId, "api_key_env"), (trimmed || null) as never);
+        setSafe(providerPath(providerId, "api_key_env"), trimmed || null);
     }
 
     $effect(() => {
@@ -117,11 +131,16 @@
     }
 
     function apiKeyStatusText(providerId: TranscriptionProviderId): string {
-        if (apiKeyStatus?.source === "stored" && apiKeyStatus.source_valid) return `Stored local key available via ${apiKeyStatus.backend}.`;
-        if (apiKeyStatus?.source === "stored") return "Stored Groq key looks invalid. Replace it with the full key from Groq.";
-        if (apiKeyStatus?.source === "environment" && apiKeyStatus.source_valid) return `Using ${apiKeyStatus.api_key_env ?? "environment"} from the process environment.`;
-        if (apiKeyStatus?.source === "environment") return `${apiKeyStatus.api_key_env ?? "Environment key"} is set but does not look like a valid Groq key.`;
-        if (apiKeyStatus?.backend === "unavailable") return "No local secret backend is available; use an environment variable instead.";
+        if (apiKeyStatus?.source === "stored" && apiKeyStatus.source_valid)
+            return `Stored local key available via ${apiKeyStatus.backend}.`;
+        if (apiKeyStatus?.source === "stored")
+            return "Stored Groq key looks invalid. Replace it with the full key from Groq.";
+        if (apiKeyStatus?.source === "environment" && apiKeyStatus.source_valid)
+            return `Using ${apiKeyStatus.api_key_env ?? "environment"} from the process environment.`;
+        if (apiKeyStatus?.source === "environment")
+            return `${apiKeyStatus.api_key_env ?? "Environment key"} is set but does not look like a valid Groq key.`;
+        if (apiKeyStatus?.backend === "unavailable")
+            return "No local secret backend is available; use an environment variable instead.";
         return "No Groq API key configured.";
     }
 
@@ -212,7 +231,6 @@
             externalModelsLoading = false;
         }
     }
-
 </script>
 
 <div class="flex flex-col gap-[var(--space-3)]">
@@ -238,101 +256,100 @@
     </div>
 
     {#if provider === "local_faster_whisper"}
-    <!-- Whisper Architecture -->
-    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-        <label
-            class="text-[var(--text-sm)] text-[var(--text-primary)]"
-            for="setting-model"
-            data-tip="Larger models are slower but more accurate. Tiny/Base are fast; Small/Medium offer better quality."
-            >Whisper Architecture</label
-        >
-        <div class="flex items-center gap-[var(--space-2)]">
+        <!-- Whisper Architecture -->
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+            <label
+                class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                for="setting-model"
+                data-tip="Larger models are slower but more accurate. Tiny/Base are fast; Small/Medium offer better quality."
+                >Whisper Architecture</label
+            >
+            <div class="flex items-center gap-[var(--space-2)]">
+                <div class="w-full max-w-[460px]">
+                    <CustomSelect
+                        id="setting-model"
+                        options={Object.entries(models.asr).map(([id, m]) => ({
+                            value: id,
+                            label: `${m.name} (${m.size_mb}MB)${m.downloaded ? "" : " ⬇"}`,
+                        }))}
+                        value={String(getSafe(config, "model.model", ""))}
+                        onchange={(v: string) => setSafe("model.model", v)}
+                        placeholder="Select model…"
+                    />
+                </div>
+                {#if models.asr[getSafe(config, "model.model", "")]}
+                    {@const selectedAsr = models.asr[getSafe(config, "model.model", "")]}
+                    {#if !selectedAsr.downloaded}
+                        {#if downloadingModel === getSafe(config, "model.model", "")}
+                            <span
+                                class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--accent)] shrink overflow-hidden"
+                            >
+                                <Loader2 size={14} class="spin" />
+                                <span class="overflow-hidden text-ellipsis whitespace-nowrap">{downloadMessage}</span>
+                            </span>
+                        {:else}
+                            <DownloadButton onclick={() => handleDownload("asr", getSafe(config, "model.model", ""))} />
+                        {/if}
+                    {:else}
+                        <span
+                            class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--color-success)]"
+                            ><CheckCircle size={14} /></span
+                        >
+                    {/if}
+                {/if}
+            </div>
+        </div>
+
+        <!-- ASR download error -->
+        {#if downloadErrorAsr && !downloadingModel}
+            <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-danger)] py-1">
+                <AlertCircle size={14} />
+                <span class="break-words leading-[var(--leading-normal)]">{downloadErrorAsr}</span>
+            </div>
+        {/if}
+
+        <!-- ASR Device -->
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+            <label
+                class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                for="setting-device"
+                data-tip="Preference for ASR backend selection. Requires engine restart after saving.">ASR Device</label
+            >
             <div class="w-full max-w-[460px]">
                 <CustomSelect
-                    id="setting-model"
-                    options={Object.entries(models.asr).map(([id, m]) => ({
-                        value: id,
-                        label: `${m.name} (${m.size_mb}MB)${m.downloaded ? "" : " ⬇"}`,
-                    }))}
-                    value={String(getSafe(config, "model.model", ""))}
-                    onchange={(v: string) => setSafe("model.model", v)}
-                    placeholder="Select model…"
+                    id="setting-device"
+                    options={[
+                        { value: "auto", label: "Automatic" },
+                        { value: "gpu", label: "Prefer GPU" },
+                        { value: "cpu", label: "Force CPU" },
+                    ]}
+                    value={String(getSafe(config, "model.device", "auto"))}
+                    onchange={(v: string) => setSafe("model.device", v)}
                 />
             </div>
-            {#if models.asr[getSafe(config, "model.model", "")]}
-                {@const selectedAsr = models.asr[getSafe(config, "model.model", "")]}
-                {#if !selectedAsr.downloaded}
-                    {#if downloadingModel === getSafe(config, "model.model", "")}
-                        <span
-                            class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--accent)] shrink overflow-hidden"
-                        >
-                            <Loader2 size={14} class="spin" />
-                            <span class="overflow-hidden text-ellipsis whitespace-nowrap">{downloadMessage}</span>
-                        </span>
-                    {:else}
-                        <DownloadButton onclick={() => handleDownload("asr", getSafe(config, "model.model", ""))} />
-                    {/if}
-                {:else}
-                    <span
-                        class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--color-success)]"
-                        ><CheckCircle size={14} /></span
-                    >
-                {/if}
-            {/if}
         </div>
-    </div>
 
-    <!-- ASR download error -->
-    {#if downloadErrorAsr && !downloadingModel}
-        <div class="flex items-start gap-1 text-[var(--text-xs)] text-[var(--color-danger)] py-1">
-            <AlertCircle size={14} />
-            <span class="break-words leading-[var(--leading-normal)]">{downloadErrorAsr}</span>
-        </div>
-    {/if}
-
-    <!-- ASR Device -->
-    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-        <label
-            class="text-[var(--text-sm)] text-[var(--text-primary)]"
-            for="setting-device"
-            data-tip="Preference for ASR backend selection. Requires engine restart after saving.">ASR Device</label
-        >
-        <div class="w-full max-w-[460px]">
-            <CustomSelect
-                id="setting-device"
-                options={[
-                    { value: "auto", label: "Automatic" },
-                    { value: "gpu", label: "Prefer GPU" },
-                    { value: "cpu", label: "Force CPU" },
-                ]}
-                value={String(getSafe(config, "model.device", "auto"))}
-                onchange={(v: string) => setSafe("model.device", v)}
+        <!-- ASR Threads -->
+        <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
+            <label
+                class="text-[var(--text-sm)] text-[var(--text-primary)]"
+                for="setting-threads"
+                data-tip="CPU threads for Whisper inference. Higher values use more cores but may improve speed. Default: 4."
+                >ASR Threads</label
+            >
+            <input
+                id="setting-threads"
+                class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                type="number"
+                min="1"
+                max="32"
+                value={getSafe(config, "model.n_threads", 4)}
+                oninput={(e) => {
+                    const v = parseInt((e.target as HTMLInputElement).value);
+                    if (!isNaN(v) && v >= 1 && v <= 32) setSafe("model.n_threads", v);
+                }}
             />
         </div>
-    </div>
-
-    <!-- ASR Threads -->
-    <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-        <label
-            class="text-[var(--text-sm)] text-[var(--text-primary)]"
-            for="setting-threads"
-            data-tip="CPU threads for Whisper inference. Higher values use more cores but may improve speed. Default: 4."
-            >ASR Threads</label
-        >
-        <input
-            id="setting-threads"
-            class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            type="number"
-            min="1"
-            max="32"
-            value={getSafe(config, "model.n_threads", 4)}
-            oninput={(e) => {
-                const v = parseInt((e.target as HTMLInputElement).value);
-                if (!isNaN(v) && v >= 1 && v <= 32) setSafe("model.n_threads", v);
-            }}
-        />
-    </div>
-
     {:else if isExternalProvider(provider)}
         {@const providerId = provider}
         <!-- Provider Base URL -->
@@ -340,15 +357,14 @@
             <label
                 class="text-[var(--text-sm)] text-[var(--text-primary)]"
                 for="setting-asr-provider-base-url"
-                data-tip="OpenAI-compatible base URL for speech-to-text requests."
-                >Provider Base URL</label
+                data-tip="OpenAI-compatible base URL for speech-to-text requests.">Provider Base URL</label
             >
             <input
                 id="setting-asr-provider-base-url"
                 class="h-9 w-full max-w-[460px] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
                 type="text"
-                value={getSafe(config, providerPath(providerId, "base_url") as never) as string}
-                oninput={(e) => setSafe(providerPath(providerId, "base_url"), (e.target as HTMLInputElement).value as never)}
+                value={getSafe(config, providerPath(providerId, "base_url"), "")}
+                oninput={(e) => setSafe(providerPath(providerId, "base_url"), (e.target as HTMLInputElement).value)}
             />
         </div>
 
@@ -357,16 +373,15 @@
             <label
                 class="text-[var(--text-sm)] text-[var(--text-primary)]"
                 for="setting-asr-provider-model"
-                data-tip="Speech-to-text model id sent to the provider."
-                >Provider Model</label
+                data-tip="Speech-to-text model id sent to the provider.">Provider Model</label
             >
             <div class="flex items-center gap-[var(--space-2)] max-w-[480px]">
                 <input
                     id="setting-asr-provider-model"
                     class="h-9 flex-1 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
                     type="text"
-                    value={getSafe(config, providerPath(providerId, "model_id") as never) as string}
-                    oninput={(e) => setSafe(providerPath(providerId, "model_id"), (e.target as HTMLInputElement).value as never)}
+                    value={getSafe(config, providerPath(providerId, "model_id"), "")}
+                    oninput={(e) => setSafe(providerPath(providerId, "model_id"), (e.target as HTMLInputElement).value)}
                 />
                 <button
                     type="button"
@@ -389,8 +404,8 @@
                     <CustomSelect
                         id="setting-asr-provider-model-list"
                         options={externalModels.map((m) => ({ value: m.id, label: m.id }))}
-                        value={getSafe(config, providerPath(providerId, "model_id") as never) as string}
-                        onchange={(v: string) => setSafe(providerPath(providerId, "model_id"), v as never)}
+                        value={getSafe(config, providerPath(providerId, "model_id"), "")}
+                        onchange={(v: string) => setSafe(providerPath(providerId, "model_id"), v)}
                     />
                 </div>
             </div>
@@ -399,12 +414,14 @@
         {#if !providerHasStoredKey(providerId)}
             <!-- API Key Env Var -->
             <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-                <label class="text-[var(--text-sm)] text-[var(--text-primary)]" for="setting-asr-api-key-env">API Key Env Var</label>
+                <label class="text-[var(--text-sm)] text-[var(--text-primary)]" for="setting-asr-api-key-env"
+                    >API Key Env Var</label
+                >
                 <input
                     id="setting-asr-api-key-env"
                     class="h-9 w-56 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
                     type="text"
-                    value={(getSafe(config, providerPath(providerId, "api_key_env") as never) as string | null) ?? ""}
+                    value={getSafe(config, providerPath(providerId, "api_key_env"), null) ?? ""}
                     oninput={(e) => setApiKeyEnv(providerId, (e.target as HTMLInputElement).value)}
                 />
             </div>
@@ -412,7 +429,9 @@
 
         <!-- Stored API Key -->
         <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-            <label class="text-[var(--text-sm)] text-[var(--text-primary)]" for="setting-asr-provider-api-key">Stored API Key</label>
+            <label class="text-[var(--text-sm)] text-[var(--text-primary)]" for="setting-asr-provider-api-key"
+                >Stored API Key</label
+            >
             <div class="flex items-center gap-[var(--space-2)] max-w-[480px]">
                 <input
                     id="setting-asr-provider-api-key"
@@ -427,14 +446,14 @@
                     type="button"
                     class="h-9 px-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] text-[var(--text-sm)] text-[var(--text-primary)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
                     disabled={apiKeyBusy || !apiKeyDraft.trim()}
-                    onclick={() => saveApiKey(providerId)}
-                >Save</button>
+                    onclick={() => saveApiKey(providerId)}>Save</button
+                >
                 <button
                     type="button"
                     class="h-9 px-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] text-[var(--text-sm)] text-[var(--text-secondary)] hover:bg-[var(--hover-overlay-blue)] disabled:opacity-50"
                     disabled={apiKeyBusy || !apiKeyStatus?.has_stored_key}
-                    onclick={() => removeApiKey(providerId)}
-                >Remove</button>
+                    onclick={() => removeApiKey(providerId)}>Remove</button
+                >
             </div>
         </div>
 
@@ -444,17 +463,20 @@
         </div>
 
         <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
-            <label class="text-[var(--text-sm)] text-[var(--text-primary)]" for="setting-asr-provider-timeout">Timeout Seconds</label>
+            <label class="text-[var(--text-sm)] text-[var(--text-primary)]" for="setting-asr-provider-timeout"
+                >Timeout Seconds</label
+            >
             <input
                 id="setting-asr-provider-timeout"
                 class="h-9 w-24 rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 type="number"
                 min="5"
                 max="600"
-                value={getSafe(config, providerPath(providerId, "timeout_seconds") as never) as number}
+                value={getSafe(config, providerPath(providerId, "timeout_seconds"), 120)}
                 oninput={(e) => {
                     const value = parseFloat((e.target as HTMLInputElement).value);
-                    if (!isNaN(value) && value >= 5 && value <= 600) setSafe(providerPath(providerId, "timeout_seconds"), value as never);
+                    if (!isNaN(value) && value >= 5 && value <= 600)
+                        setSafe(providerPath(providerId, "timeout_seconds"), value);
                 }}
             />
         </div>
@@ -472,7 +494,11 @@
                     Test Connection
                 </button>
                 {#if providerTestMessage}
-                    <span class="text-[var(--text-xs)] {providerTestOk ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}">
+                    <span
+                        class="text-[var(--text-xs)] {providerTestOk
+                            ? 'text-[var(--color-success)]'
+                            : 'text-[var(--color-danger)]'}"
+                    >
                         {providerTestMessage}
                     </span>
                 {/if}

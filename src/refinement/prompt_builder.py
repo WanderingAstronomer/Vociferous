@@ -28,9 +28,10 @@ Rules:
 - Do not swap in different metrics or invent extra comparisons.
 - Never invent, estimate, recompute, or paraphrase a number into a different value.
 - If a fact is missing or weak, omit it.
-- Output plain text only.
-- Write one or two short paragraphs, with at most four sentences total.
-- No bullets, no headings, no preamble, no meta-talk.
+- Output only a valid JSON object with string keys "daily" and "lifetime".
+- Each value must be one short paragraph, with at most two sentences.
+- Use an empty string for "daily" when Daily highlights is "- none".
+- No bullets, no headings, no preamble, no meta-talk outside the JSON object.
 - No exclamation marks.
 - Do NOT begin any sentence with \"You\" or \"Your\".
 - Keep the tone direct, warm, and slightly wry."""
@@ -44,14 +45,17 @@ Daily highlights:
 Long-term highlights:
 {long_term_highlights}
 
-Required structure:
-- Paragraph 1 uses only Daily highlights.
-- Paragraph 2 uses only Long-term highlights.
-- If Daily highlights is "- none", write one paragraph using only Long-term highlights.
+Required JSON shape:
+{{"daily":"...","lifetime":"..."}}
+
+Rules:
+- The "daily" value uses only Daily highlights.
+- The "lifetime" value uses only Long-term highlights.
+- If Daily highlights is "- none", set "daily" to "".
 - Keep every number exactly as written.
 - Do not introduce any new metrics, comparisons, or conclusions beyond the highlights.
 
-Output only the paragraph text."""
+Output only the JSON object."""
 
     def __init__(
         self,

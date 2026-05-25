@@ -237,7 +237,7 @@ class TestTranscribeAndStore:
     @patch("src.services.transcription_service.transcribe")
     def test_insight_manager_scheduled(self, mock_transcribe, mock_pipeline, session, emit, fake_db):
         """Non-None insight_manager gets maybe_schedule() called."""
-        mock_transcribe.return_value = ("text", 500, 100)
+        mock_transcribe.return_value = ("one two three", 500, 100)
         session._asr_model = MagicMock()
         session._audio_pipeline = MagicMock()
         mock_insight = MagicMock()
@@ -245,7 +245,36 @@ class TestTranscribeAndStore:
 
         session._transcribe_and_store(np.zeros(16000, dtype=np.float32))
 
-        mock_insight.maybe_schedule.assert_called_once()
+        mock_insight.maybe_schedule.assert_called_once_with(
+            new_transcript_words=3,
+            reason="transcription_completed",
+        )
+
+    @patch("src.services.audio_pipeline.AudioPipeline")
+    @patch("src.services.transcription_service.transcribe")
+    def test_auto_refine_marks_insight_dirty_without_scheduling(
+        self,
+        mock_transcribe,
+        mock_pipeline,
+        session,
+        emit,
+        fake_db,
+        fresh_settings,
+    ):
+        """Auto-refine defers insight generation so it does not fight refinement for the SLM."""
+        mock_transcribe.return_value = ("one two three", 500, 100)
+        new_output = fresh_settings.output.model_copy(update={"auto_refine": True})
+        new_settings = fresh_settings.model_copy(update={"output": new_output})
+        session._settings_provider = lambda: new_settings
+        session._asr_model = MagicMock()
+        session._audio_pipeline = MagicMock()
+        mock_insight = MagicMock()
+        session._insight_manager_provider = lambda: mock_insight
+
+        session._transcribe_and_store(np.zeros(16000, dtype=np.float32))
+
+        mock_insight.maybe_schedule.assert_not_called()
+        mock_insight.mark_dirty.assert_called_once_with("transcription_completed_auto_refine", schedule=False)
 
     @patch("src.services.audio_pipeline.AudioPipeline")
     @patch("src.services.transcription_service.transcribe")

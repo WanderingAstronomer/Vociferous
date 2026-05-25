@@ -36,8 +36,21 @@ class InsightStats(TypedDict):
     refined_avg_fk_grade: float
     avg_transcription_speed_x: float
     avg_refinement_wpm: int
+    avg_retranscription_speed_x: float
+    avg_refinement_tokens_per_second: float
+    avg_refinement_prompt_tokens: int
+    avg_refinement_completion_tokens: int
     transcripts_with_transcription_time: int
+    transcripts_with_retranscription_time: int
     transcripts_with_refinement_time: int
+    transcripts_with_refinement_tokens: int
+    total_retranscriptions: int
+    transcription_provider_counts: dict[str, int]
+    transcription_model_counts: dict[str, int]
+    retranscription_provider_counts: dict[str, int]
+    retranscription_model_counts: dict[str, int]
+    refinement_provider_counts: dict[str, int]
+    refinement_model_counts: dict[str, int]
     current_streak: int
     longest_streak: int
     today_count: int
@@ -60,6 +73,12 @@ def _parse_local_created_at(created_at: str | None) -> datetime | None:
         return datetime.fromisoformat(created_at.replace("Z", "+00:00")).astimezone()
     except (ValueError, AttributeError):
         return None
+
+
+def _count_value(values: dict[str, int], value: str | None) -> None:
+    if not value:
+        return
+    values[value] = values.get(value, 0) + 1
 
 
 def _resolve_duration_metrics(
@@ -128,17 +147,40 @@ def compute_usage_stats(db: TranscriptDB, typing_wpm: int = _TYPING_WPM) -> Insi
 
     # Processing performance accumulators
     total_transcription_time = 0.0  # seconds
+    total_retranscription_time = 0.0  # seconds
     total_refinement_time = 0.0  # seconds
+    total_refinement_token_time = 0.0  # seconds
     transcripts_with_transcription_time = 0
+    transcripts_with_retranscription_time = 0
     transcripts_with_refinement_time = 0
+    transcripts_with_refinement_tokens = 0
     timed_recorded_seconds = 0.0
+    timed_retranscribed_recorded_seconds = 0.0
     timed_refined_words = 0
+    total_retranscriptions = 0
+    total_refinement_prompt_tokens = 0
+    total_refinement_completion_tokens = 0
+    total_refinement_tokens = 0
+    transcription_provider_counts: dict[str, int] = {}
+    transcription_model_counts: dict[str, int] = {}
+    retranscription_provider_counts: dict[str, int] = {}
+    retranscription_model_counts: dict[str, int] = {}
+    refinement_provider_counts: dict[str, int] = {}
+    refinement_model_counts: dict[str, int] = {}
 
-    for t in transcripts:
-        raw = t.raw_text or ""
-        norm = t.normalized_text or ""
+    for transcript in transcripts:
+        raw = transcript.raw_text or ""
+        norm = transcript.normalized_text or ""
         is_refined = bool(norm and norm != raw)
         text = norm or raw  # best-available
+
+        _count_value(transcription_provider_counts, transcript.transcription_provider)
+        _count_value(transcription_model_counts, transcript.transcription_model_id)
+        _count_value(retranscription_provider_counts, transcript.last_retranscription_provider)
+        _count_value(retranscription_model_counts, transcript.last_retranscription_model_id)
+        _count_value(refinement_provider_counts, transcript.refinement_provider)
+        _count_value(refinement_model_counts, transcript.refinement_model_id)
+        total_retranscriptions += transcript.retranscription_count
 
         words = text.split()
         word_count = len(words)
@@ -171,22 +213,32 @@ def compute_usage_stats(db: TranscriptDB, typing_wpm: int = _TYPING_WPM) -> Insi
 
         recorded_for_transcript, speech_for_transcript, silence_for_transcript = _resolve_duration_metrics(
             word_count,
-            t.duration_ms,
-            t.speech_duration_ms,
+            transcript.duration_ms,
+            transcript.speech_duration_ms,
         )
         recorded_seconds += recorded_for_transcript
         total_speech_seconds += speech_for_transcript
 
         # Processing timing — only count transcript content that has matching timing data.
-        if t.transcription_time_ms > 0:
-            total_transcription_time += t.transcription_time_ms / 1000
+        if transcript.transcription_time_ms > 0:
+            total_transcription_time += transcript.transcription_time_ms / 1000
             transcripts_with_transcription_time += 1
             timed_recorded_seconds += recorded_for_transcript
-        if t.refinement_time_ms > 0:
-            total_refinement_time += t.refinement_time_ms / 1000
+        if transcript.last_retranscription_time_ms > 0:
+            total_retranscription_time += transcript.last_retranscription_time_ms / 1000
+            transcripts_with_retranscription_time += 1
+            timed_retranscribed_recorded_seconds += recorded_for_transcript
+        if transcript.refinement_time_ms > 0:
+            total_refinement_time += transcript.refinement_time_ms / 1000
             transcripts_with_refinement_time += 1
             if is_refined:
                 timed_refined_words += norm_word_count
+        if transcript.refinement_time_ms > 0 and transcript.refinement_total_tokens > 0:
+            total_refinement_token_time += transcript.refinement_time_ms / 1000
+            transcripts_with_refinement_tokens += 1
+            total_refinement_prompt_tokens += transcript.refinement_prompt_tokens
+            total_refinement_completion_tokens += transcript.refinement_completion_tokens
+            total_refinement_tokens += transcript.refinement_total_tokens
 
     typing_seconds = (total_words / typing_wpm) * 60
     time_saved = max(0.0, typing_seconds - recorded_seconds)
@@ -204,8 +256,8 @@ def compute_usage_stats(db: TranscriptDB, typing_wpm: int = _TYPING_WPM) -> Insi
 
     # ── Streak computation (consecutive active days) ──
     transcript_dates: set[int] = set()
-    for t in transcripts:
-        dt = _parse_local_created_at(t.created_at)
+    for transcript in transcripts:
+        dt = _parse_local_created_at(transcript.created_at)
         if dt is not None:
             transcript_dates.add(dt.toordinal())
 
@@ -237,13 +289,13 @@ def compute_usage_stats(db: TranscriptDB, typing_wpm: int = _TYPING_WPM) -> Insi
     today_count = 0
     today_words = 0
     active_days: set[int] = set()
-    for t in transcripts:
-        dt = _parse_local_created_at(t.created_at)
+    for transcript in transcripts:
+        dt = _parse_local_created_at(transcript.created_at)
         if dt is None:
             continue
         if dt.strftime("%Y-%m-%d") == today_str:
             today_count += 1
-            today_words += len((t.normalized_text or t.raw_text or "").split())
+            today_words += len((transcript.normalized_text or transcript.raw_text or "").split())
         ordinal = dt.toordinal()
         if ordinal >= week_start:
             active_days.add(ordinal)
@@ -255,10 +307,24 @@ def compute_usage_stats(db: TranscriptDB, typing_wpm: int = _TYPING_WPM) -> Insi
     if total_transcription_time > 0 and timed_recorded_seconds > 0:
         avg_transcription_speed_x = round(timed_recorded_seconds / total_transcription_time, 1)
 
+    avg_retranscription_speed_x = 0.0
+    if total_retranscription_time > 0 and timed_retranscribed_recorded_seconds > 0:
+        avg_retranscription_speed_x = round(timed_retranscribed_recorded_seconds / total_retranscription_time, 1)
+
     # Refinement throughput: only count refined words that have matching timing data.
     avg_refinement_wpm = 0
     if total_refinement_time > 0 and timed_refined_words > 0:
         avg_refinement_wpm = round(timed_refined_words / (total_refinement_time / 60))
+
+    avg_refinement_tokens_per_second = 0.0
+    avg_refinement_prompt_tokens = 0
+    avg_refinement_completion_tokens = 0
+    if total_refinement_token_time > 0 and total_refinement_tokens > 0:
+        avg_refinement_tokens_per_second = round(total_refinement_tokens / total_refinement_token_time, 1)
+        avg_refinement_prompt_tokens = round(total_refinement_prompt_tokens / transcripts_with_refinement_tokens)
+        avg_refinement_completion_tokens = round(
+            total_refinement_completion_tokens / transcripts_with_refinement_tokens
+        )
 
     return {
         "count": count,
@@ -274,8 +340,21 @@ def compute_usage_stats(db: TranscriptDB, typing_wpm: int = _TYPING_WPM) -> Insi
         "refined_avg_fk_grade": round(refined_fk_sum / r_count, 1),
         "avg_transcription_speed_x": avg_transcription_speed_x,
         "avg_refinement_wpm": avg_refinement_wpm,
+        "avg_retranscription_speed_x": avg_retranscription_speed_x,
+        "avg_refinement_tokens_per_second": avg_refinement_tokens_per_second,
+        "avg_refinement_prompt_tokens": avg_refinement_prompt_tokens,
+        "avg_refinement_completion_tokens": avg_refinement_completion_tokens,
         "transcripts_with_transcription_time": transcripts_with_transcription_time,
+        "transcripts_with_retranscription_time": transcripts_with_retranscription_time,
         "transcripts_with_refinement_time": transcripts_with_refinement_time,
+        "transcripts_with_refinement_tokens": transcripts_with_refinement_tokens,
+        "total_retranscriptions": total_retranscriptions,
+        "transcription_provider_counts": transcription_provider_counts,
+        "transcription_model_counts": transcription_model_counts,
+        "retranscription_provider_counts": retranscription_provider_counts,
+        "retranscription_model_counts": retranscription_model_counts,
+        "refinement_provider_counts": refinement_provider_counts,
+        "refinement_model_counts": refinement_model_counts,
         "current_streak": current_streak,
         "longest_streak": longest_streak,
         "today_count": today_count,

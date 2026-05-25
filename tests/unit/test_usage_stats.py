@@ -75,8 +75,21 @@ class TestUsageStatsContract:
             "refined_avg_fk_grade",
             "avg_transcription_speed_x",
             "avg_refinement_wpm",
+            "avg_retranscription_speed_x",
+            "avg_refinement_tokens_per_second",
+            "avg_refinement_prompt_tokens",
+            "avg_refinement_completion_tokens",
             "transcripts_with_transcription_time",
+            "transcripts_with_retranscription_time",
             "transcripts_with_refinement_time",
+            "transcripts_with_refinement_tokens",
+            "total_retranscriptions",
+            "transcription_provider_counts",
+            "transcription_model_counts",
+            "retranscription_provider_counts",
+            "retranscription_model_counts",
+            "refinement_provider_counts",
+            "refinement_model_counts",
             "current_streak",
             "longest_streak",
             "today_count",
@@ -190,6 +203,63 @@ class TestTimingMetrics:
 
         assert stats["transcripts_with_refinement_time"] == 1
         assert stats["avg_refinement_wpm"] == 100
+
+    def test_processing_forecasting_metadata_is_aggregated_from_matching_samples(self, db):
+        transcript = db.add_transcript(
+            raw_text="rough source text",
+            duration_ms=20_000,
+            transcription_time_ms=5_000,
+            transcription_provider="groq",
+            transcription_model_id="whisper-large-v3-turbo",
+        )
+        db.update_normalized_text(transcript.id, "refined source text")
+        db.update_retranscription_processing_context(
+            transcript.id,
+            normalized_text="retranscribed source text",
+            retranscription_time_ms=10_000,
+            retranscription_provider="local_faster_whisper",
+            retranscription_model_id="large-v3",
+            retranscription_resolved_device="cuda",
+            retranscription_compute_type="float16",
+            retranscription_cpu_threads=6,
+            retranscription_prompt_text="Prefer names.",
+            retranscription_prompt_chars=13,
+            retranscription_prompt_words=2,
+        )
+        db.update_refinement_processing_context(
+            transcript.id,
+            refinement_time_ms=4_000,
+            refinement_provider="lm_studio",
+            refinement_model_id="qwen3.5-27b",
+            refinement_resolved_device="cuda",
+            refinement_compute_type="float16",
+            refinement_cpu_threads=8,
+            refinement_gpu_layers=99,
+            refinement_use_thinking=False,
+            refinement_prompt_text="Fix grammar.",
+            refinement_prompt_chars=12,
+            refinement_prompt_words=2,
+            refinement_prompt_tokens=80,
+            refinement_completion_tokens=40,
+            refinement_total_tokens=120,
+        )
+
+        stats = compute_usage_stats(db)
+
+        assert stats["avg_transcription_speed_x"] == 4.0
+        assert stats["avg_retranscription_speed_x"] == 2.0
+        assert stats["avg_refinement_tokens_per_second"] == 30.0
+        assert stats["avg_refinement_prompt_tokens"] == 80
+        assert stats["avg_refinement_completion_tokens"] == 40
+        assert stats["transcripts_with_retranscription_time"] == 1
+        assert stats["transcripts_with_refinement_tokens"] == 1
+        assert stats["total_retranscriptions"] == 1
+        assert stats["transcription_provider_counts"] == {"groq": 1}
+        assert stats["transcription_model_counts"] == {"whisper-large-v3-turbo": 1}
+        assert stats["retranscription_provider_counts"] == {"local_faster_whisper": 1}
+        assert stats["retranscription_model_counts"] == {"large-v3": 1}
+        assert stats["refinement_provider_counts"] == {"lm_studio": 1}
+        assert stats["refinement_model_counts"] == {"qwen3.5-27b": 1}
 
 
 class TestSessionMetrics:

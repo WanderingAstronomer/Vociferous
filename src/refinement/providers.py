@@ -181,6 +181,7 @@ class LocalCT2RefinementProvider:
         self._settings = settings
         self._engine: RefinementEngine | None = None
         self._runtime_summary: dict[str, object] | None = None
+        self._last_usage: dict[str, int] | None = None
 
     @property
     def provider_id(self) -> str:
@@ -214,7 +215,9 @@ class LocalCT2RefinementProvider:
                 raise FileNotFoundError(
                     f"CPU fallback model {slm_model.name} is not downloaded. Download it in Settings before using refinement on this machine."
                 )
-            raise FileNotFoundError(f"CT2 model directory not found: {model_dir}. Please run provisioning to download the model.")
+            raise FileNotFoundError(
+                f"CT2 model directory not found: {model_dir}. Please run provisioning to download the model."
+            )
 
         if slm_model.quant == "awq" and runtime_summary["resolved_device"] != "cuda":
             raise ValueError(
@@ -252,9 +255,13 @@ class LocalCT2RefinementProvider:
             logger.debug("CT2 Generator.unload_model() failed (non-fatal)")
         self._engine = None
         self._runtime_summary = None
+        self._last_usage = None
 
     def get_runtime_summary(self) -> dict[str, object]:
-        return dict(self._runtime_summary or describe_refinement_runtime(self._settings))
+        summary = dict(self._runtime_summary or describe_refinement_runtime(self._settings))
+        if self._last_usage:
+            summary["last_usage"] = dict(self._last_usage)
+        return summary
 
     def refine(
         self,
@@ -270,7 +277,7 @@ class LocalCT2RefinementProvider:
     ) -> GenerationResult:
         if self._engine is None:
             raise RuntimeError("Engine not loaded.")
-        return self._engine.refine(
+        result = self._engine.refine(
             text,
             user_instructions=instructions,
             temperature=temperature,
@@ -280,6 +287,12 @@ class LocalCT2RefinementProvider:
             use_thinking=use_thinking,
             allow_skip=allow_skip,
         )
+        self._last_usage = {
+            "prompt_tokens": result.prompt_tokens,
+            "completion_tokens": result.completion_tokens,
+            "total_tokens": result.total_tokens,
+        }
+        return result
 
     def generate_custom(
         self,
@@ -314,7 +327,9 @@ class LocalCT2RefinementProvider:
         if model.quant != "awq":
             return model, ""
         if settings.refinement.n_gpu_layers == 0:
-            raise ValueError(f"{model.name} uses AWQ quantization which requires GPU. Choose an int8 refinement model for CPU mode.")
+            raise ValueError(
+                f"{model.name} uses AWQ quantization which requires GPU. Choose an int8 refinement model for CPU mode."
+            )
         if wants_gpu and cuda_status.cuda_available:
             return model, ""
 
@@ -328,6 +343,15 @@ class LocalCT2RefinementProvider:
 
 class OpenAICompatibleRefinementProvider:
     """OpenAI-compatible HTTP refinement provider for LM Studio and Groq."""
+
+    _CONNECT_TIMEOUT_SECONDS = 5.0
+    _POOL_TIMEOUT_SECONDS = 5.0
+    _WRITE_TIMEOUT_SECONDS = 30.0
+    _LM_STUDIO_LONG_PROMPT_WORD_THRESHOLD = 600
+    _LM_STUDIO_LONG_COMPLETION_TOKEN_THRESHOLD = 1024
+    _LM_STUDIO_PROMPT_WORDS_PER_SECOND = 40.0
+    _LM_STUDIO_GENERATION_TOKENS_PER_SECOND = 12.0
+    _LM_STUDIO_MAX_READ_TIMEOUT_SECONDS = 900.0
 
     def __init__(self, settings: VociferousSettings, provider_id: str) -> None:
         if provider_id not in {"lm_studio", "groq"}:
@@ -475,14 +499,79 @@ class OpenAICompatibleRefinementProvider:
                 validate_provider_api_key(self._provider_id, self._api_key)
             except ValueError as exc:
                 if not self._api_key:
-                    raise ValueError("Groq API key is not configured. Set GROQ_API_KEY or save a local provider API key.") from exc
+                    raise ValueError(
+                        "Groq API key is not configured. Set GROQ_API_KEY or save a local provider API key."
+                    ) from exc
                 raise
 
     @property
     def _client_instance(self) -> httpx.Client:
         if self._client is None:
-            self._client = httpx.Client(timeout=self._provider_settings.timeout_seconds)
+            self._client = httpx.Client()
         return self._client
+
+    def _request_timeout(self, endpoint: str, *, json_payload: dict[str, object] | None = None) -> httpx.Timeout:
+        read_timeout = max(1.0, float(self._provider_settings.timeout_seconds))
+        if endpoint == "chat/completions":
+            read_timeout = self._chat_completion_read_timeout(read_timeout, json_payload)
+        return httpx.Timeout(
+            connect=self._CONNECT_TIMEOUT_SECONDS,
+            read=read_timeout,
+            write=self._WRITE_TIMEOUT_SECONDS,
+            pool=self._POOL_TIMEOUT_SECONDS,
+        )
+
+    def _chat_completion_read_timeout(
+        self,
+        baseline_timeout: float,
+        json_payload: dict[str, object] | None,
+    ) -> float:
+        if self._provider_id != "lm_studio" or not isinstance(json_payload, dict):
+            return baseline_timeout
+
+        messages = json_payload.get("messages")
+        if not isinstance(messages, list):
+            return baseline_timeout
+
+        prompt_words = sum(
+            len(str(message.get("content", "")).split()) for message in messages if isinstance(message, dict)
+        )
+        requested_tokens = self._requested_completion_tokens(json_payload)
+
+        if (
+            prompt_words < self._LM_STUDIO_LONG_PROMPT_WORD_THRESHOLD
+            and requested_tokens <= self._LM_STUDIO_LONG_COMPLETION_TOKEN_THRESHOLD
+        ):
+            return baseline_timeout
+
+        estimated_output_tokens = max(512, prompt_words * 2)
+        if requested_tokens > 0:
+            estimated_output_tokens = min(requested_tokens, estimated_output_tokens)
+
+        estimated_timeout = max(
+            baseline_timeout,
+            15.0
+            + (prompt_words / self._LM_STUDIO_PROMPT_WORDS_PER_SECOND)
+            + (estimated_output_tokens / self._LM_STUDIO_GENERATION_TOKENS_PER_SECOND),
+        )
+        scaled_timeout = min(self._LM_STUDIO_MAX_READ_TIMEOUT_SECONDS, estimated_timeout)
+        if scaled_timeout > baseline_timeout:
+            logger.debug(
+                "LM Studio read timeout scaled from %.1fs to %.1fs (prompt_words=%d, requested_tokens=%d)",
+                baseline_timeout,
+                scaled_timeout,
+                prompt_words,
+                requested_tokens,
+            )
+        return scaled_timeout
+
+    @staticmethod
+    def _requested_completion_tokens(json_payload: dict[str, object]) -> int:
+        raw_value = json_payload.get("max_tokens", json_payload.get("max_completion_tokens", 0))
+        try:
+            return max(0, int(raw_value))
+        except (TypeError, ValueError):
+            return 0
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -499,6 +588,7 @@ class OpenAICompatibleRefinementProvider:
         self._require_api_key_if_needed()
         attempts = max(1, self._max_retries + 1)
         last_error: Exception | None = None
+        timeout = self._request_timeout(endpoint, json_payload=json_payload)
         for attempt in range(attempts):
             try:
                 response = self._client_instance.request(
@@ -506,6 +596,7 @@ class OpenAICompatibleRefinementProvider:
                     self._url(endpoint),
                     headers=self._headers(),
                     json=json_payload,
+                    timeout=timeout,
                 )
                 self._capture_rate_limits(response)
                 if response.status_code < 400:
@@ -514,6 +605,15 @@ class OpenAICompatibleRefinementProvider:
                     time.sleep(self._retry_delay(response))
                     continue
                 raise ProviderRequestError(self._error_message(response), status_code=response.status_code)
+            except httpx.TimeoutException as exc:
+                last_error = exc
+                if attempt < attempts - 1:
+                    time.sleep(self._retry_delay(None))
+                    continue
+                raise ProviderRequestError(
+                    f"{self._provider_label} did not respond within {timeout.read:g}s at {self._provider_settings.base_url}. The server may be busy or stalled.",
+                    status_code=504,
+                ) from exc
             except httpx.RequestError as exc:
                 last_error = exc
                 if attempt < attempts - 1:
@@ -604,10 +704,23 @@ class OpenAICompatibleRefinementProvider:
                 payload["top_k"] = top_k
             if repetition_penalty != 1.0:
                 payload["repeat_penalty"] = repetition_penalty
-            if self._should_force_text_schema():
-                payload["response_format"] = _TEXT_RESPONSE_FORMAT
 
-        response = self._request("POST", "chat/completions", json_payload=payload)
+            try:
+                response = self._request("POST", "chat/completions", json_payload=payload)
+                break
+            except ProviderRequestError as exc:
+                next_tokens = self._smaller_retry_budget(request_tokens, exc)
+                if next_tokens is None:
+                    raise
+                logger.warning(
+                    "%s rejected completion budget %d (HTTP %d). Retrying with %d.",
+                    self._provider_label,
+                    request_tokens,
+                    exc.status_code,
+                    next_tokens,
+                )
+                request_tokens = next_tokens
+
         body = response.json()
         self._last_usage = body.get("usage") if isinstance(body.get("usage"), dict) else None
         try:
@@ -623,57 +736,9 @@ class OpenAICompatibleRefinementProvider:
             content = ""
         if not isinstance(content, str):
             raise RuntimeError(f"{self._provider_label} returned non-text chat completion content.")
-        reasoning = self._message_reasoning(message)
-        schema_text = self._text_from_schema_output(content) or self._text_from_schema_output(reasoning or "")
-        if schema_text is not None:
-            return GenerationResult(content=schema_text)
+        return parse_generation_output(content)
 
-        result = parse_generation_output(content)
-        if reasoning:
-            result = GenerationResult(
-                content=result.content,
-                reasoning="\n\n".join(part for part in (result.reasoning, reasoning) if part),
-            )
-            if not result.content.strip():
-                logger.warning(
-                    "%s returned reasoning-only chat completion (finish_reason=%s).",
-                    self._provider_label,
-                    choice.get("finish_reason"),
-                )
-        return result
-
-    def _should_force_text_schema(self) -> bool:
-        if self._provider_id != "lm_studio":
-            return False
-        model_id = self._provider_settings.model_id.lower()
-        return any(marker in model_id for marker in _LM_STUDIO_SCHEMA_MODEL_MARKERS)
-
-    @staticmethod
-    def _text_from_schema_output(text: str) -> str | None:
-        if not text or not text.strip():
-            return None
-        cleaned = text.strip()
-        if cleaned.startswith("```json"):
-            cleaned = cleaned.removeprefix("```json").removesuffix("```").strip()
-        elif cleaned.startswith("```"):
-            cleaned = cleaned.removeprefix("```").removesuffix("```").strip()
-        try:
-            parsed = json.loads(cleaned)
-        except json.JSONDecodeError:
-            return None
-        if isinstance(parsed, dict) and isinstance(parsed.get("text"), str):
-            return parsed["text"].strip()
-        return None
-
-    @staticmethod
-    def _message_reasoning(message: dict[str, object]) -> str | None:
-        for field in _REASONING_MESSAGE_FIELDS:
-            value = message.get(field)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        return None
-
-    def _refinement_max_tokens(self, text: str, *, use_thinking: bool = False) -> int:
+    def _refinement_max_tokens(self, text: str) -> int:
         words = max(1, len(text.split()))
         heuristic = max(256, int(words * 1.75) + 128)
         if use_thinking:

@@ -57,17 +57,11 @@
     import EmptyState from "../lib/components/EmptyState.svelte";
     import ToggleSwitch from "../lib/components/ToggleSwitch.svelte";
     import type { DownloadProgressData, EngineStatusData } from "../lib/events";
+    import { formatDuration } from "../lib/formatters";
 
     /* ===== Sections ===== */
 
-    type SettingsSection =
-        | "profile"
-        | "recording"
-        | "asr"
-        | "refinement"
-        | "output"
-        | "safety"
-        | "diagnostics";
+    type SettingsSection = "profile" | "recording" | "asr" | "refinement" | "output" | "safety" | "diagnostics";
 
     const sections: { id: SettingsSection; label: string; icon: typeof Cpu }[] = [
         { id: "profile", label: "Profile & Interface", icon: UserCog },
@@ -291,8 +285,7 @@
             config = cloneConfig(updated);
             originalConfig = JSON.stringify(config);
             const shouldArmRestartPrompt = restartPromptArmed || runtimeSettingsChanged(previousConfig, config);
-            restartPromptArmed =
-                shouldArmRestartPrompt && detectRestartRequired(config, engineStatus, true).length > 0;
+            restartPromptArmed = shouldArmRestartPrompt && detectRestartRequired(config, engineStatus, true).length > 0;
             showMessage("Settings saved", "success");
             return true;
         } catch (e: unknown) {
@@ -326,7 +319,8 @@
         try {
             const shouldLeave = await confirmDialog.confirm({
                 title: "Apply settings changes?",
-                message: "You have unapplied settings changes. Apply them before leaving, discard them, or stay in Settings.",
+                message:
+                    "You have unapplied settings changes. Apply them before leaving, discard them, or stay in Settings.",
                 confirmLabel: "Apply and Leave",
                 alternativeLabel: "Discard and Leave",
                 cancelLabel: "Stay",
@@ -397,7 +391,12 @@
             const cfgAsrThreads = saved.model?.n_threads;
             const runtimeThreadsRaw = runtimeAsr?.cpu_threads;
             const loadedAsrThreads = typeof runtimeThreadsRaw === "number" ? runtimeThreadsRaw : undefined;
-            if (asrComparable && cfgAsrThreads !== undefined && loadedAsrThreads !== undefined && cfgAsrThreads !== loadedAsrThreads) {
+            if (
+                asrComparable &&
+                cfgAsrThreads !== undefined &&
+                loadedAsrThreads !== undefined &&
+                cfgAsrThreads !== loadedAsrThreads
+            ) {
                 reasons.push("ASR threads");
             }
         } else if (cfgAsrProvider === "groq") {
@@ -421,7 +420,8 @@
             const runtime = engine.slm.runtime as Record<string, unknown> | undefined;
             const cfgSlmProvider = saved.refinement?.provider ?? "local_ct2";
             const loadedProvider = runtime?.provider as string | undefined;
-            if (slmComparable && loadedProvider && cfgSlmProvider !== loadedProvider) reasons.push("Refinement provider");
+            if (slmComparable && loadedProvider && cfgSlmProvider !== loadedProvider)
+                reasons.push("Refinement provider");
 
             if (cfgSlmProvider === "local_ct2") {
                 const cfgSlmModel = saved.refinement?.model_id ?? "";
@@ -431,7 +431,12 @@
                 }
                 const cfgSlmThreads = saved.refinement?.n_threads;
                 const loadedSlmThreads = runtime?.cpu_threads as number | undefined;
-                if (slmComparable && cfgSlmThreads !== undefined && loadedSlmThreads !== undefined && cfgSlmThreads !== loadedSlmThreads) {
+                if (
+                    slmComparable &&
+                    cfgSlmThreads !== undefined &&
+                    loadedSlmThreads !== undefined &&
+                    cfgSlmThreads !== loadedSlmThreads
+                ) {
                     reasons.push("Refinement threads");
                 }
                 const cfgSlmCpu = (saved.refinement?.n_gpu_layers ?? -1) === 0;
@@ -439,20 +444,33 @@
                 if (loadedSlmDevice && engine.slm.ready) {
                     const loadedSlmCpu = loadedSlmDevice.includes("cpu");
                     if (cfgSlmCpu && !loadedSlmCpu) reasons.push("Refinement device");
-                    else if (!cfgSlmCpu && loadedSlmCpu && health.gpu?.cuda_available) reasons.push("Refinement device");
+                    else if (!cfgSlmCpu && loadedSlmCpu && health.gpu?.cuda_available)
+                        reasons.push("Refinement device");
                 }
             } else if (cfgSlmProvider === "lm_studio") {
-                if (slmComparable && (saved.refinement?.lm_studio?.model_id ?? "") !== (runtime?.model_id as string | undefined)) {
+                if (
+                    slmComparable &&
+                    (saved.refinement?.lm_studio?.model_id ?? "") !== (runtime?.model_id as string | undefined)
+                ) {
                     reasons.push("LM Studio model");
                 }
-                if (slmComparable && (saved.refinement?.lm_studio?.base_url ?? "") !== (runtime?.base_url as string | undefined)) {
+                if (
+                    slmComparable &&
+                    (saved.refinement?.lm_studio?.base_url ?? "") !== (runtime?.base_url as string | undefined)
+                ) {
                     reasons.push("LM Studio base URL");
                 }
             } else if (cfgSlmProvider === "groq") {
-                if (slmComparable && (saved.refinement?.groq?.model_id ?? "") !== (runtime?.model_id as string | undefined)) {
+                if (
+                    slmComparable &&
+                    (saved.refinement?.groq?.model_id ?? "") !== (runtime?.model_id as string | undefined)
+                ) {
                     reasons.push("Groq model");
                 }
-                if (slmComparable && (saved.refinement?.groq?.base_url ?? "") !== (runtime?.base_url as string | undefined)) {
+                if (
+                    slmComparable &&
+                    (saved.refinement?.groq?.base_url ?? "") !== (runtime?.base_url as string | undefined)
+                ) {
                     reasons.push("Groq base URL");
                 }
             }
@@ -466,7 +484,11 @@
     type ConfigRecord = Record<string, unknown>;
 
     function getSafe<Path extends ConfigPath>(obj: VociferousConfig, path: Path): ConfigValue<Path> | undefined;
-    function getSafe<Path extends ConfigPath>(obj: VociferousConfig, path: Path, fallback: ConfigValue<Path>): ConfigValue<Path>;
+    function getSafe<Path extends ConfigPath>(
+        obj: VociferousConfig,
+        path: Path,
+        fallback: ConfigValue<Path>,
+    ): ConfigValue<Path>;
     function getSafe<Path extends ConfigPath>(
         obj: VociferousConfig,
         path: Path,
@@ -522,7 +544,9 @@
     }
 
     function readConfigPath(source: VociferousConfig, path: string): unknown {
-        return path.split(".").reduce<unknown>((current, key) => (isRecord(current) ? current[key] : undefined), source);
+        return path
+            .split(".")
+            .reduce<unknown>((current, key) => (isRecord(current) ? current[key] : undefined), source);
     }
 
     function withConfigValue<Path extends ConfigPath>(
@@ -636,10 +660,9 @@
                                     <div
                                         class="mt-[var(--space-1)] text-[var(--text-sm)] text-[var(--text-secondary)] leading-[var(--leading-normal)]"
                                     >
-                                        {health.gpu?.gpu_name || "Detected GPU"} is visible to the driver, but
-                                        CTranslate2 cannot use CUDA yet. Vociferous will fall back to CPU until you
-                                        install a usable CUDA 12 runtime. CUDA 13 toolchains are not supported by this
-                                        build.
+                                        {health.gpu?.gpu_name || "Detected GPU"} is visible to the driver, but CTranslate2
+                                        cannot use CUDA yet. Vociferous will fall back to CPU until you install a usable CUDA
+                                        12 runtime. CUDA 13 toolchains are not supported by this build.
                                     </div>
                                     {#if health.gpu?.detail}
                                         <div
@@ -779,8 +802,7 @@
                                                 { value: "200", label: "200%" },
                                             ]}
                                             value={String(getSafe(config, "display.ui_scale", 100))}
-                                            onchange={(v: string) =>
-                                                setSafe("display.ui_scale", parseInt(v, 10))}
+                                            onchange={(v: string) => setSafe("display.ui_scale", parseInt(v, 10))}
                                         />
                                     </div>
                                 </div>
@@ -997,12 +1019,18 @@
                                             { value: "required", label: "Required" },
                                         ]}
                                         value={getSafe(config, "recording.audio_vault_encryption", "off")}
-                                        onchange={(v: string) => setSafe("recording.audio_vault_encryption", v)}
+                                        onchange={(v: string) =>
+                                            setSafe(
+                                                "recording.audio_vault_encryption",
+                                                v === "required" ? "required" : "off",
+                                            )}
                                     />
                                 </div>
                             </div>
                             {#if recoverableRecordings.length > 0}
-                                <div class="mt-[var(--space-3)] border-t border-[var(--shell-border)] pt-[var(--space-3)]">
+                                <div
+                                    class="mt-[var(--space-3)] border-t border-[var(--shell-border)] pt-[var(--space-3)]"
+                                >
                                     <div class="flex items-center gap-[var(--space-2)] mb-[var(--space-2)]">
                                         <TriangleAlert size={15} class="text-[var(--color-warning)]" />
                                         <h3 class="text-[var(--text-sm)] font-semibold text-[var(--text-primary)]">
@@ -1015,16 +1043,25 @@
                                                 class="flex items-center gap-[var(--space-3)] rounded-[var(--radius-md)] border border-[var(--shell-border)] bg-[var(--surface-primary)] px-[var(--space-3)] py-[var(--space-2)]"
                                             >
                                                 <div class="min-w-0 flex-1">
-                                                    <div class="flex items-center gap-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]">
-                                                        <span class="font-medium">{formatDuration(recording.duration_ms)}</span>
-                                                        <span class="text-[var(--text-tertiary)]">{recording.status}</span>
+                                                    <div
+                                                        class="flex items-center gap-[var(--space-2)] text-[var(--text-sm)] text-[var(--text-primary)]"
+                                                    >
+                                                        <span class="font-medium"
+                                                            >{formatDuration(recording.duration_ms)}</span
+                                                        >
+                                                        <span class="text-[var(--text-tertiary)]"
+                                                            >{recording.status}</span
+                                                        >
                                                         {#if recording.encrypted}
                                                             <Lock size={13} class="text-[var(--accent)]" />
                                                         {/if}
                                                     </div>
-                                                    <div class="truncate text-[var(--text-xs)] text-[var(--text-tertiary)]">
+                                                    <div
+                                                        class="truncate text-[var(--text-xs)] text-[var(--text-tertiary)]"
+                                                    >
                                                         {recording.started_at || recording.id}
-                                                        {#if recording.failure_reason} · {recording.failure_reason}{/if}
+                                                        {#if recording.failure_reason}
+                                                            · {recording.failure_reason}{/if}
                                                     </div>
                                                 </div>
                                                 <StyledButton
@@ -1130,7 +1167,8 @@
                             <Undo2 size={14} /> Revert
                         </StyledButton>
                         <StyledButton variant="primary" size="sm" onclick={saveConfig} disabled={saving}>
-                            {#if saving}<Loader2 size={14} class="spin" /> Saving…{:else}<Save size={14} /> Save and Apply Settings{/if}
+                            {#if saving}<Loader2 size={14} class="spin" /> Saving…{:else}<Save size={14} /> Save and Apply
+                                Settings{/if}
                         </StyledButton>
                     {/if}
                 </div>

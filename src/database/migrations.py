@@ -667,6 +667,197 @@ def _v14_audio_vault(conn: sqlite3.Connection) -> None:
     logger.info("v14 migration: durable audio vault tables ensured")
 
 
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+        is not None
+    )
+
+
+def _table_has_foreign_key_target(conn: sqlite3.Connection, table_name: str, target_table: str) -> bool:
+    if not _table_exists(conn, table_name):
+        return False
+    return any(row[2] == target_table for row in conn.execute(f"PRAGMA foreign_key_list({table_name})").fetchall())
+
+
+def _v15_repair_audio_vault_transcript_foreign_keys(conn: sqlite3.Connection) -> None:
+    """v15 — Repair audio vault FKs retargeted to transcripts_old during v12.
+
+    TranscriptDB creates the current baseline schema before applying migrations. On old databases at v11 or earlier,
+    that means v14-era audio vault tables can already exist before v12 rebuilds transcripts. SQLite then rewrites their
+    transcript_id foreign keys from transcripts to the temporary transcripts_old table. After v12 drops transcripts_old,
+    inserting a recording session fails with "no such table: main.transcripts_old". Absolutely delightful.
+    """
+    stale_tables = [
+        table_name
+        for table_name in ("recording_sessions", "audio_assets")
+        if _table_has_foreign_key_target(conn, table_name, "transcripts_old")
+    ]
+    if not stale_tables:
+        _v14_audio_vault(conn)
+        logger.info("v15 migration: audio vault transcript foreign keys already valid")
+        return
+
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.executescript(
+            """
+            DROP TABLE IF EXISTS recording_sessions_new;
+            DROP TABLE IF EXISTS audio_assets_new;
+
+            CREATE TABLE recording_sessions_new (
+                id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                finalized_at TEXT,
+                sample_rate INTEGER NOT NULL,
+                channels INTEGER NOT NULL,
+                sample_width_bytes INTEGER NOT NULL,
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                frame_count INTEGER NOT NULL DEFAULT 0,
+                byte_count INTEGER NOT NULL DEFAULT 0,
+                last_durable_chunk INTEGER NOT NULL DEFAULT -1,
+                audio_path TEXT NOT NULL,
+                encrypted INTEGER NOT NULL DEFAULT 0,
+                encryption_key_id TEXT,
+                transcript_id INTEGER REFERENCES transcripts(id) ON DELETE SET NULL,
+                failure_reason TEXT
+            );
+
+            INSERT INTO recording_sessions_new (
+                id, status, started_at, updated_at, finalized_at, sample_rate, channels,
+                sample_width_bytes, duration_ms, frame_count, byte_count, last_durable_chunk,
+                audio_path, encrypted, encryption_key_id, transcript_id, failure_reason
+            )
+            SELECT
+                id, status, started_at, updated_at, finalized_at, sample_rate, channels,
+                sample_width_bytes, duration_ms, frame_count, byte_count, last_durable_chunk,
+                audio_path, encrypted, encryption_key_id,
+                CASE
+                    WHEN transcript_id IS NULL THEN NULL
+                    WHEN EXISTS (SELECT 1 FROM transcripts WHERE transcripts.id = recording_sessions.transcript_id)
+                        THEN transcript_id
+                    ELSE NULL
+                END,
+                failure_reason
+            FROM recording_sessions;
+
+            DROP TABLE recording_sessions;
+            ALTER TABLE recording_sessions_new RENAME TO recording_sessions;
+
+            CREATE INDEX IF NOT EXISTS idx_recording_sessions_status ON recording_sessions(status);
+            CREATE INDEX IF NOT EXISTS idx_recording_sessions_transcript ON recording_sessions(transcript_id);
+
+            CREATE TABLE audio_assets_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                recording_id TEXT REFERENCES recording_sessions(id) ON DELETE SET NULL,
+                transcript_id INTEGER REFERENCES transcripts(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                path TEXT NOT NULL,
+                duration_ms INTEGER NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                encrypted INTEGER NOT NULL DEFAULT 0,
+                pinned INTEGER NOT NULL DEFAULT 0,
+                retain_until TEXT,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f', 'now'))
+            );
+
+            INSERT INTO audio_assets_new (
+                id, recording_id, transcript_id, role, path, duration_ms, size_bytes,
+                encrypted, pinned, retain_until, created_at
+            )
+            SELECT
+                id,
+                CASE
+                    WHEN recording_id IS NULL THEN NULL
+                    WHEN EXISTS (SELECT 1 FROM recording_sessions WHERE recording_sessions.id = audio_assets.recording_id)
+                        THEN recording_id
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN transcript_id IS NULL THEN NULL
+                    WHEN EXISTS (SELECT 1 FROM transcripts WHERE transcripts.id = audio_assets.transcript_id)
+                        THEN transcript_id
+                    ELSE NULL
+                END,
+                role, path, duration_ms, size_bytes, encrypted, pinned, retain_until, created_at
+            FROM audio_assets;
+
+            DROP TABLE audio_assets;
+            ALTER TABLE audio_assets_new RENAME TO audio_assets;
+
+            CREATE INDEX IF NOT EXISTS idx_audio_assets_recording ON audio_assets(recording_id);
+            CREATE INDEX IF NOT EXISTS idx_audio_assets_transcript ON audio_assets(transcript_id);
+            CREATE INDEX IF NOT EXISTS idx_audio_assets_role ON audio_assets(role);
+            """
+        )
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+    logger.info(
+        "v15 migration: rebuilt audio vault tables to repair stale transcript foreign keys (%s)",
+        ", ".join(stale_tables),
+    )
+
+
+def _v16_processing_provenance(conn: sqlite3.Connection) -> None:
+    """v16 — Persist ASR/SLM provider, model, and prompt provenance on transcripts."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(transcripts)").fetchall()}
+    additions = (
+        ("transcription_provider", "TEXT NOT NULL DEFAULT ''"),
+        ("transcription_model_id", "TEXT NOT NULL DEFAULT ''"),
+        ("transcription_prompt_text", "TEXT NOT NULL DEFAULT ''"),
+        ("transcription_prompt_chars", "INTEGER NOT NULL DEFAULT 0"),
+        ("transcription_prompt_words", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_provider", "TEXT NOT NULL DEFAULT ''"),
+        ("refinement_model_id", "TEXT NOT NULL DEFAULT ''"),
+        ("refinement_prompt_text", "TEXT NOT NULL DEFAULT ''"),
+        ("refinement_prompt_chars", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_prompt_words", "INTEGER NOT NULL DEFAULT 0"),
+    )
+    for column_name, column_sql in additions:
+        if column_name not in cols:
+            conn.execute(f"ALTER TABLE transcripts ADD COLUMN {column_name} {column_sql}")
+    logger.info("v16 migration: transcript processing provenance columns added")
+
+
+def _v17_processing_runtime_context(conn: sqlite3.Connection) -> None:
+    """v17 — Persist runtime context, refinement token counts, and separate re-transcription metadata."""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(transcripts)").fetchall()}
+    additions = (
+        ("transcription_resolved_device", "TEXT NOT NULL DEFAULT ''"),
+        ("transcription_compute_type", "TEXT NOT NULL DEFAULT ''"),
+        ("transcription_cpu_threads", "INTEGER NOT NULL DEFAULT 0"),
+        ("retranscription_count", "INTEGER NOT NULL DEFAULT 0"),
+        ("last_retranscription_at", "TEXT NOT NULL DEFAULT ''"),
+        ("last_retranscription_time_ms", "INTEGER NOT NULL DEFAULT 0"),
+        ("last_retranscription_provider", "TEXT NOT NULL DEFAULT ''"),
+        ("last_retranscription_model_id", "TEXT NOT NULL DEFAULT ''"),
+        ("last_retranscription_resolved_device", "TEXT NOT NULL DEFAULT ''"),
+        ("last_retranscription_compute_type", "TEXT NOT NULL DEFAULT ''"),
+        ("last_retranscription_cpu_threads", "INTEGER NOT NULL DEFAULT 0"),
+        ("last_retranscription_prompt_text", "TEXT NOT NULL DEFAULT ''"),
+        ("last_retranscription_prompt_chars", "INTEGER NOT NULL DEFAULT 0"),
+        ("last_retranscription_prompt_words", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_resolved_device", "TEXT NOT NULL DEFAULT ''"),
+        ("refinement_compute_type", "TEXT NOT NULL DEFAULT ''"),
+        ("refinement_cpu_threads", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_gpu_layers", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_use_thinking", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_prompt_tokens", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_completion_tokens", "INTEGER NOT NULL DEFAULT 0"),
+        ("refinement_total_tokens", "INTEGER NOT NULL DEFAULT 0"),
+    )
+    for column_name, column_sql in additions:
+        if column_name not in cols:
+            conn.execute(f"ALTER TABLE transcripts ADD COLUMN {column_name} {column_sql}")
+    logger.info("v17 migration: runtime context, refinement token counts, and retranscription columns added")
+
+
 #: Ordered list of (human-readable description, migration function) pairs.
 #: Append here to add future migrations; do not edit existing entries.
 MIGRATIONS: list[tuple[str, object]] = [
@@ -684,6 +875,15 @@ MIGRATIONS: list[tuple[str, object]] = [
     ("v12 timestamp not unique — preserve rapid transcript inserts", _v12_timestamp_not_unique),
     ("v13 shipped Markdown refinement prompts — prompt-library records only", _v13_seed_markdown_refinement_prompts),
     ("v14 audio vault — durable recording manifests and assets", _v14_audio_vault),
+    (
+        "v15 audio vault FK repair — remove stale transcripts_old references",
+        _v15_repair_audio_vault_transcript_foreign_keys,
+    ),
+    ("v16 processing provenance — provider/model/prompt metadata on transcripts", _v16_processing_provenance),
+    (
+        "v17 processing runtime context — resolved device, refinement tokens, and retranscription metadata",
+        _v17_processing_runtime_context,
+    ),
 ]
 
 

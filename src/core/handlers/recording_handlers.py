@@ -201,7 +201,9 @@ class RecordingSession:
                     if not model_path.exists():
                         self._emit(
                             "transcription_error",
-                            {"message": "No ASR model downloaded. Go to Settings to download a speech recognition model."},
+                            {
+                                "message": "No ASR model downloaded. Go to Settings to download a speech recognition model."
+                            },
                         )
                         return
 
@@ -349,7 +351,11 @@ class RecordingSession:
                     self._emit("transcription_error", {"message": "Cached audio is empty"})
                     return
 
-                from src.services.transcription_service import create_local_model, transcribe
+                from src.services.transcription_service import (
+                    create_local_model,
+                    describe_transcription_capture,
+                    transcribe,
+                )
 
                 settings = self._settings_provider()
 
@@ -366,7 +372,7 @@ class RecordingSession:
 
                     self._audio_pipeline = AudioPipeline(sensitivity=settings.recording.vad_sensitivity)
 
-                text, speech_duration_ms, _transcription_time_ms = transcribe(
+                text, speech_duration_ms, retranscription_time_ms = transcribe(
                     int16_audio,
                     settings=settings,
                     local_model=self._asr_model,
@@ -377,7 +383,20 @@ class RecordingSession:
                     self._emit("transcription_error", {"message": "No speech detected in cached audio"})
                     return
 
-                db.update_normalized_text(transcript_id, text)
+                retranscription_capture = describe_transcription_capture(settings, local_model=self._asr_model)
+                db.update_retranscription_processing_context(
+                    transcript_id,
+                    normalized_text=text,
+                    retranscription_time_ms=retranscription_time_ms,
+                    retranscription_provider=str(retranscription_capture["transcription_provider"]),
+                    retranscription_model_id=str(retranscription_capture["transcription_model_id"]),
+                    retranscription_resolved_device=str(retranscription_capture["transcription_resolved_device"]),
+                    retranscription_compute_type=str(retranscription_capture["transcription_compute_type"]),
+                    retranscription_cpu_threads=int(retranscription_capture["transcription_cpu_threads"]),
+                    retranscription_prompt_text=str(retranscription_capture["transcription_prompt_text"]),
+                    retranscription_prompt_chars=int(retranscription_capture["transcription_prompt_chars"]),
+                    retranscription_prompt_words=int(retranscription_capture["transcription_prompt_words"]),
+                )
                 self._emit("transcript_updated", {"id": transcript_id})
 
                 logger.info("Re-transcription complete for transcript %d: %d chars", transcript_id, len(text))
@@ -520,7 +539,7 @@ class RecordingSession:
             logger.debug("Transcription skipped — shutdown in progress")
             return
 
-        from src.services.transcription_service import create_local_model, transcribe
+        from src.services.transcription_service import create_local_model, describe_transcription_capture, transcribe
 
         settings = self._settings_provider()
         db = self._db_provider()
@@ -571,11 +590,20 @@ class RecordingSession:
             duration_ms = int(len(audio_data) / 16000 * 1000)
             transcript = None
             if db:
+                transcription_capture = describe_transcription_capture(settings, local_model=self._asr_model)
                 transcript = db.add_transcript(
                     raw_text=text,
                     duration_ms=duration_ms,
                     speech_duration_ms=speech_duration_ms,
                     transcription_time_ms=transcription_time_ms,
+                    transcription_provider=str(transcription_capture["transcription_provider"]),
+                    transcription_model_id=str(transcription_capture["transcription_model_id"]),
+                    transcription_resolved_device=str(transcription_capture["transcription_resolved_device"]),
+                    transcription_compute_type=str(transcription_capture["transcription_compute_type"]),
+                    transcription_cpu_threads=int(transcription_capture["transcription_cpu_threads"]),
+                    transcription_prompt_text=str(transcription_capture["transcription_prompt_text"]),
+                    transcription_prompt_chars=int(transcription_capture["transcription_prompt_chars"]),
+                    transcription_prompt_words=int(transcription_capture["transcription_prompt_words"]),
                     display_name=display_name,
                 )
                 if source_tag and transcript:
@@ -614,8 +642,11 @@ class RecordingSession:
             # ambiguous aggregate-side effects.
             insight_manager = self._insight_manager_provider()
             if insight_manager is not None:
-                new_words = len(text.split())
-                insight_manager.maybe_schedule(new_transcript_words=new_words)
+                if settings.output.auto_refine and settings.refinement.enabled:
+                    insight_manager.mark_dirty("transcription_completed_auto_refine", schedule=False)
+                else:
+                    new_words = len(text.split())
+                    insight_manager.maybe_schedule(new_transcript_words=new_words, reason="transcription_completed")
 
             # Schedule SLM-based auto-titling for the new transcript.
             # Skip initial title when auto-refine is enabled — refinement
@@ -631,7 +662,12 @@ class RecordingSession:
                 _copy_to_system_clipboard(text)
 
             # Legacy PCM spools can still be promoted to WAV. Vault recordings are already the source asset.
-            if spool_path is not None and spool_path.suffix == ".pcm" and transcript is not None and self._audio_cache is not None:
+            if (
+                spool_path is not None
+                and spool_path.suffix == ".pcm"
+                and transcript is not None
+                and self._audio_cache is not None
+            ):
                 try:
                     wav_path, evicted_ids = self._audio_cache.store(
                         transcript.id,

@@ -44,6 +44,12 @@ class SystemHandlers:
         self._on_settings_updated(new_settings)
         self._emit("config_updated", new_settings.model_dump())
 
+        user_updates = intent.settings.get("user") if isinstance(intent.settings, dict) else None
+        if isinstance(user_updates, dict) and "typing_wpm" in user_updates:
+            insight_manager = self._insight_manager_provider()
+            if insight_manager is not None:
+                insight_manager.mark_dirty("typing_wpm_changed")
+
         if "logging" in intent.settings:
             try:
                 LogManager().configure_logging()

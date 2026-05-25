@@ -7,7 +7,6 @@ import pytest
 
 from src.refinement.providers import OpenAICompatibleRefinementProvider, describe_refinement_runtime
 
-
 VALID_GROQ_KEY = "gsk_test_secret_123456789012345678901234567890"
 
 
@@ -353,6 +352,63 @@ def test_lm_studio_load_surfaces_server_unreachable(fresh_settings) -> None:
         provider.load()
 
 
+def test_lm_studio_refine_surfaces_timeout_as_stalled_server(fresh_settings) -> None:
+    import pytest
+
+    fresh_settings.refinement.provider = "lm_studio"
+    fresh_settings.refinement.lm_studio.model_id = "local-model"
+    fresh_settings.refinement.lm_studio.timeout_seconds = 7.5
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "lm_studio")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(Exception, match=r"did not respond within 7.5s .*busy or stalled"):
+        provider.refine(
+            "needs fixing",
+            temperature=0.2,
+            top_p=0.9,
+            top_k=40,
+            repetition_penalty=1.15,
+            use_thinking=False,
+            allow_skip=False,
+        )
+
+
+def test_lm_studio_large_refine_scales_read_timeout(fresh_settings) -> None:
+    fresh_settings.refinement.provider = "lm_studio"
+    fresh_settings.refinement.lm_studio.model_id = "local-model"
+    fresh_settings.refinement.lm_studio.timeout_seconds = 120.0
+
+    captured_timeout: dict[str, float] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        timeout = request.extensions.get("timeout", {})
+        captured_timeout.update(timeout)
+        return _json_response({"choices": [{"message": {"content": "Corrected text"}}]})
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "lm_studio")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    result = provider.refine(
+        "word " * 2000,
+        temperature=0.2,
+        top_p=0.9,
+        top_k=40,
+        repetition_penalty=1.15,
+        use_thinking=False,
+        allow_skip=False,
+    )
+
+    assert result.content == "Corrected text"
+    assert captured_timeout["read"] > 120.0
+    assert captured_timeout["connect"] == 5.0
+    assert captured_timeout["write"] == 30.0
+    assert captured_timeout["pool"] == 5.0
+
+
 def test_list_models_parses_openai_compatible_response(fresh_settings) -> None:
     fresh_settings.refinement.lm_studio.model_id = "local-model"
 
@@ -408,3 +464,63 @@ def test_groq_key_shape_is_validated_before_request(fresh_settings) -> None:
 
     with pytest.raises(ValueError, match="Groq API key looks invalid"):
         provider.list_models()
+
+
+def test_groq_refine_retries_with_smaller_budget_after_413(fresh_settings) -> None:
+    import pytest
+
+    fresh_settings.refinement.provider = "groq"
+    fresh_settings.refinement.groq.model_id = "openai/gpt-oss-120b"
+    fresh_settings.refinement.groq.api_key = VALID_GROQ_KEY
+    fresh_settings.refinement.groq.max_output_tokens = 512
+
+    seen_budgets: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        budget = int(payload["max_completion_tokens"])
+        seen_budgets.append(budget)
+        if len(seen_budgets) == 1:
+            return _json_response({"error": {"message": "request too large"}}, status_code=413)
+        return _json_response({"choices": [{"message": {"content": "Retried successfully"}}]})
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "groq")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    result = provider.refine(
+        "word " * 250,
+        temperature=0.2,
+        top_p=0.9,
+        top_k=0,
+        repetition_penalty=1.0,
+        use_thinking=False,
+        allow_skip=False,
+    )
+
+    assert result.content == "Retried successfully"
+    assert seen_budgets == [512, 256]
+
+
+def test_external_refine_raises_when_provider_returns_empty_content(fresh_settings) -> None:
+    import pytest
+
+    fresh_settings.refinement.provider = "lm_studio"
+    fresh_settings.refinement.lm_studio.model_id = "local-model"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _json_response({"choices": [{"message": {"content": "   "}}]})
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "lm_studio")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(Exception, match="returned empty refinement output"):
+        provider.refine(
+            "needs fixing",
+            temperature=0.2,
+            top_p=0.9,
+            top_k=40,
+            repetition_penalty=1.15,
+            use_thinking=False,
+            allow_skip=False,
+        )
+

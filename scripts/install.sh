@@ -37,6 +37,7 @@ REQUIRED_SYSTEM_PKGS=(
     "build-essential:gcc|c++ compiler"
     "${PYTHON_DEV_PKG}:Python development headers"
     "libportaudio2:Audio library for sounddevice"
+    "libsecret-tools:Linux secret-store CLI for stored API keys and encrypted audio vault keys"
     "xclip:Clipboard access for auto-copy"
 )
 
@@ -125,6 +126,46 @@ if [ "$DEPS_OK" = false ]; then
     echo ""
     echo "Then try again: bash scripts/install.sh"
     exit 1
+fi
+
+echo ""
+echo "=========================================="
+echo "Checking local secret store"
+echo "=========================================="
+
+if command -v secret-tool &> /dev/null; then
+    if [ -t 0 ] && [ -t 1 ]; then
+        SECRET_PROBE_SERVICE="vociferous-install-probe"
+        SECRET_PROBE_ACCOUNT="install-$$"
+        SECRET_PROBE_LABEL="Vociferous install probe"
+        SECRET_PROBE_VALUE="vociferous-install-probe-$RANDOM-$$"
+
+        if printf '%s' "$SECRET_PROBE_VALUE" | secret-tool store --label "$SECRET_PROBE_LABEL" \
+            service "$SECRET_PROBE_SERVICE" account "$SECRET_PROBE_ACCOUNT" >/dev/null 2>&1; then
+            STORED_SECRET=$(secret-tool lookup service "$SECRET_PROBE_SERVICE" account "$SECRET_PROBE_ACCOUNT" 2>/dev/null || true)
+            secret-tool clear service "$SECRET_PROBE_SERVICE" account "$SECRET_PROBE_ACCOUNT" >/dev/null 2>&1 || true
+
+            if [[ "$STORED_SECRET" == "$SECRET_PROBE_VALUE" ]]; then
+                echo "✓ Linux secret store is ready"
+            else
+                echo "⚠ Linux secret store probe could not read back the stored value."
+                echo "  Stored provider API keys and encrypted audio vault keys may not work until a Secret Service/keyring session is running and unlocked."
+                echo "  GNOME Keyring, KWallet, or another Secret Service provider can satisfy this."
+                echo "  Environment variables such as GROQ_API_KEY still work."
+            fi
+        else
+            echo "⚠ libsecret-tools is installed, but no usable Secret Service/keyring session was detected."
+            echo "  Stored provider API keys and encrypted audio vault keys may not work until a Secret Service/keyring session is running and unlocked."
+            echo "  GNOME Keyring, KWallet, or another Secret Service provider can satisfy this."
+            echo "  Environment variables such as GROQ_API_KEY still work."
+        fi
+    else
+        echo "⚠ Non-interactive terminal detected. Skipping Linux secret store probe."
+        echo "  Stored provider API keys and encrypted audio vault keys require a working Secret Service/keyring session."
+    fi
+else
+    echo "✗ secret-tool is not available even though libsecret-tools was expected."
+    echo "  Stored provider API keys and encrypted audio vault keys will not work until libsecret-tools is installed."
 fi
 
 if [[ "$OSTYPE" == "linux-gnu"* ]] && command -v nvidia-smi &> /dev/null && nvidia-smi &> /dev/null; then
@@ -240,7 +281,7 @@ else
 fi
 
 # Install .desktop entry
-sed "s|{{INSTALL_DIR}}|${PROJECT_DIR}|g" "$PROJECT_DIR/vociferous.desktop.template" > "$PROJECT_DIR/vociferous.desktop"
+sed "s|{{INSTALL_DIR}}|${PROJECT_DIR}|g" "$PROJECT_DIR/scripts/vociferous.desktop.template" > "$PROJECT_DIR/vociferous.desktop"
 mkdir -p "$(dirname "$DESKTOP_DEST")"
 cp "$PROJECT_DIR/vociferous.desktop" "$DESKTOP_DEST"
 update-desktop-database "$(dirname "$DESKTOP_DEST")" 2>/dev/null || true

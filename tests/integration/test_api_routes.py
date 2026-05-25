@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from litestar.testing import TestClient
@@ -39,6 +39,8 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
         clear_default_refinement_prompt,
         dispatch_intent,
         get_config,
+        get_insight,
+        refresh_insight,
         set_default_refinement_prompt,
         update_config,
     )
@@ -98,9 +100,11 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
             transcribe_recovered_recording,
             delete_recovered_recording,
             get_config,
+            get_insight,
             update_config,
             set_default_refinement_prompt,
             clear_default_refinement_prompt,
+            refresh_insight,
             list_models,
             download_model,
             health,
@@ -204,6 +208,23 @@ class TestTranscriptRoutes:
         assert all(item["created_at"] == "" for item in data["items"])
         assert all(item["include_in_analytics"] is False for item in data["items"])
 
+    def test_list_supports_not_tag_filter_mode(self, api):
+        client, coord, _ = api
+        work_tag = coord.db.add_tag("Work")
+        personal_tag = coord.db.add_tag("Personal")
+        assert work_tag.id is not None
+        assert personal_tag.id is not None
+        coord.db.add_transcript(raw_text="work item", tag_ids=[work_tag.id])
+        coord.db.add_transcript(raw_text="personal item", tag_ids=[personal_tag.id])
+        coord.db.add_transcript(raw_text="untagged item")
+
+        resp = client.get("/api/transcripts", params={"tag_ids": str(work_tag.id), "tag_mode": "not"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        assert {item["raw_text"] for item in data["items"]} == {"personal item", "untagged item"}
+
     def test_list_returns_transcripts(self, api):
         client, coord, _ = api
         coord.db.add_transcript(raw_text="hello world", duration_ms=1000)
@@ -293,6 +314,14 @@ class TestTranscriptRoutes:
         message = resp.json().get("error") or resp.json().get("detail", "")
         assert "tag_ids" in message
 
+    def test_list_rejects_invalid_tag_mode(self, api):
+        client, _, _ = api
+
+        resp = client.get("/api/transcripts", params={"tag_ids": "1", "tag_mode": "nor"})
+        assert resp.status_code == 400
+        message = resp.json().get("error") or resp.json().get("detail", "")
+        assert "tag_mode" in message
+
     def test_list_rejects_negative_offset(self, api):
         client, _, _ = api
 
@@ -311,6 +340,75 @@ class TestTranscriptRoutes:
         assert body["raw_text"] == "find me"
         assert body["id"] == t.id
         assert "tags" in body  # Detail view includes tags
+
+    def test_get_transcript_exposes_processing_provenance(self, api):
+        client, coord, _ = api
+        transcript = coord.db.add_transcript(
+            raw_text="original text",
+            duration_ms=20_000,
+            transcription_time_ms=5_000,
+            transcription_provider="groq",
+            transcription_model_id="whisper-large-v3-turbo",
+            transcription_resolved_device="external_api",
+            transcription_compute_type="api",
+            transcription_cpu_threads=0,
+            transcription_prompt_text="Use medical terminology.",
+            transcription_prompt_chars=24,
+            transcription_prompt_words=3,
+        )
+        coord.db.update_retranscription_processing_context(
+            transcript.id,
+            normalized_text="retranscribed text",
+            retranscription_time_ms=10_000,
+            retranscription_provider="local_faster_whisper",
+            retranscription_model_id="large-v3",
+            retranscription_resolved_device="cuda",
+            retranscription_compute_type="float16",
+            retranscription_cpu_threads=6,
+            retranscription_prompt_text="Prefer names.",
+            retranscription_prompt_chars=13,
+            retranscription_prompt_words=2,
+        )
+        coord.db.update_refinement_processing_context(
+            transcript.id,
+            refinement_time_ms=4_000,
+            refinement_provider="lm_studio",
+            refinement_model_id="qwen3.5-27b",
+            refinement_resolved_device="cuda",
+            refinement_compute_type="float16",
+            refinement_cpu_threads=8,
+            refinement_gpu_layers=99,
+            refinement_use_thinking=False,
+            refinement_prompt_text="Fix grammar.",
+            refinement_prompt_chars=12,
+            refinement_prompt_words=2,
+            refinement_prompt_tokens=80,
+            refinement_completion_tokens=40,
+            refinement_total_tokens=120,
+        )
+
+        resp = client.get(f"/api/transcripts/{transcript.id}")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["transcription_provider"] == "groq"
+        assert body["transcription_model_id"] == "whisper-large-v3-turbo"
+        assert body["transcription_resolved_device"] == "external_api"
+        assert body["transcription_prompt_text"] == "Use medical terminology."
+        assert body["retranscription_count"] == 1
+        assert body["last_retranscription_provider"] == "local_faster_whisper"
+        assert body["last_retranscription_model_id"] == "large-v3"
+        assert body["last_retranscription_resolved_device"] == "cuda"
+        assert body["last_retranscription_prompt_text"] == "Prefer names."
+        assert body["refinement_provider"] == "lm_studio"
+        assert body["refinement_model_id"] == "qwen3.5-27b"
+        assert body["refinement_resolved_device"] == "cuda"
+        assert body["refinement_gpu_layers"] == 99
+        assert body["refinement_use_thinking"] is False
+        assert body["refinement_prompt_text"] == "Fix grammar."
+        assert body["refinement_prompt_tokens"] == 80
+        assert body["refinement_completion_tokens"] == 40
+        assert body["refinement_total_tokens"] == 120
 
     def test_get_transcript_not_found(self, api):
         client, _, _ = api
@@ -486,6 +584,15 @@ class TestConfigRoutes:
         # Verify coordinator's settings reference updated
         assert coord.settings.recording.activation_key == "ctrl_left"
 
+    def test_typing_wpm_update_marks_insight_dirty(self, api):
+        client, coord, _ = api
+        coord.insight_manager = MagicMock()
+
+        resp = client.put("/api/config", json={"user": {"typing_wpm": 95}})
+
+        assert resp.status_code == 200
+        coord.insight_manager.mark_dirty.assert_called_once_with("typing_wpm_changed")
+
     def test_set_default_refinement_prompt_emits_event(self, api):
         client, coord, events = api
         prompt_tag = next(tag for tag in coord.db.get_tags() if tag.name == "Prompt")
@@ -512,6 +619,44 @@ class TestConfigRoutes:
         assert coord.settings.refinement.default_prompt_transcript_id is None
         updated = events.of_type("config_updated")
         assert updated[-1]["refinement"]["default_prompt_transcript_id"] is None
+
+    def test_get_insight_returns_structured_payload(self, api):
+        client, coord, _ = api
+        coord.insight_manager = MagicMock()
+        coord.insight_manager.cached_payload = {
+            "text": "Daily.\n\nLifetime.",
+            "daily_text": "Daily.",
+            "lifetime_text": "Lifetime.",
+            "generated_at": 123.0,
+            "generated_for_date": "2026-05-24",
+            "stale": False,
+            "dirty_reasons": [],
+        }
+
+        resp = client.get("/api/insight")
+
+        assert resp.status_code == 200
+        assert resp.json()["daily_text"] == "Daily."
+        assert resp.json()["lifetime_text"] == "Lifetime."
+
+    def test_refresh_insight_dispatches_manual_refresh(self, api):
+        client, coord, _ = api
+        coord.insight_manager = MagicMock()
+        coord.insight_manager.request_refresh.return_value = {
+            "text": "",
+            "daily_text": "",
+            "lifetime_text": "",
+            "generated_at": 0.0,
+            "generated_for_date": "",
+            "stale": True,
+            "dirty_reasons": ["manual_refresh"],
+        }
+
+        resp = client.post("/api/insight/refresh")
+
+        assert resp.status_code == 201
+        assert resp.json()["dirty_reasons"] == ["manual_refresh"]
+        coord.insight_manager.request_refresh.assert_called_once_with()
 
 
 # ── Refinement Provider Secrets ───────────────────────────────────────────
@@ -554,14 +699,24 @@ class TestRefinementProviderSecretRoutes:
         monkeypatch.delenv("GROQ_API_KEY", raising=False)
         monkeypatch.setattr(refinement_providers, "get_secret_backend", lambda: "test_secret")
         monkeypatch.setattr(refinement_providers, "get_provider_api_key", lambda provider_id: stored.get(provider_id))
-        monkeypatch.setattr(refinement_providers, "store_provider_api_key", lambda provider_id, api_key: stored.__setitem__(provider_id, api_key))
-        monkeypatch.setattr(refinement_providers, "delete_provider_api_key", lambda provider_id: stored.pop(provider_id, None) is not None)
+        monkeypatch.setattr(
+            refinement_providers,
+            "store_provider_api_key",
+            lambda provider_id, api_key: stored.__setitem__(provider_id, api_key),
+        )
+        monkeypatch.setattr(
+            refinement_providers,
+            "delete_provider_api_key",
+            lambda provider_id: stored.pop(provider_id, None) is not None,
+        )
 
         status = client.get("/api/refinement/providers/groq/api-key")
         assert status.status_code == 200
         assert status.json()["source"] == "none"
 
-        saved = client.put("/api/refinement/providers/groq/api-key", json={"api_key": "gsk_test_secret_123456789012345678901234567890"})
+        saved = client.put(
+            "/api/refinement/providers/groq/api-key", json={"api_key": "gsk_test_secret_123456789012345678901234567890"}
+        )
         assert saved.status_code == 200
         assert saved.json() == {"provider": "groq", "stored": True, "backend": "test_secret"}
         assert "gsk_test_secret_123456789012345678901234567890" not in saved.text

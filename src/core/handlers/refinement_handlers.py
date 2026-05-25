@@ -17,6 +17,7 @@ from src.core.intents.definitions import (
     CommitRefinementIntent,
     RefineTranscriptIntent,
 )
+from src.refinement.prompt_builder import PromptBuilder
 
 if TYPE_CHECKING:
     from src.core.settings import VociferousSettings
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
     from src.services.slm_runtime import SLMRuntime
 
 logger = logging.getLogger(__name__)
+_PROMPT_BODY_SENTINEL = "__VOCIFEROUS_TRANSCRIPT_BODY__"
 
 
 class RefinementHandlers:
@@ -37,14 +39,21 @@ class RefinementHandlers:
         settings_provider: Callable[[], VociferousSettings],
         event_bus_emit: Callable,
         title_generator_provider: Callable[[], Any] = lambda: None,
+        insight_manager_provider: Callable[[], Any] = lambda: None,
     ) -> None:
         self._db_provider = db_provider
         self._slm_runtime_provider = slm_runtime_provider
         self._settings_provider = settings_provider
         self._emit = event_bus_emit
         self._title_generator_provider = title_generator_provider
+        self._insight_manager_provider = insight_manager_provider
         self._bulk_cancel = threading.Event()
         self._bulk_active = False
+
+    def _mark_insight_dirty(self, reason: str) -> None:
+        insight_manager = self._insight_manager_provider()
+        if insight_manager is not None:
+            insight_manager.mark_dirty(reason)
 
     def _fallback_raw_clipboard(self, transcript_id: int) -> None:
         """Copy raw transcript text to clipboard when refinement can't proceed.
@@ -80,6 +89,57 @@ class RefinementHandlers:
                 except Exception as e:
                     logger.warning("Failed to resolve default prompt (ID %d): %s", prompt_id, e)
         return instructions
+
+    def _build_refinement_capture(self, instructions: str, slm_runtime: Any) -> dict[str, str | int | bool]:
+        settings = self._settings_provider()
+        runtime: dict[str, object] = {}
+        get_runtime_summary = getattr(slm_runtime, "get_runtime_summary", None)
+        if callable(get_runtime_summary):
+            candidate = get_runtime_summary()
+            if isinstance(candidate, dict):
+                runtime = candidate
+
+        provider = str(runtime.get("provider") or settings.refinement.provider)
+        model_id = str(runtime.get("model_id") or settings.refinement.model_id)
+        use_thinking = bool(runtime.get("use_thinking", settings.refinement.use_thinking))
+        last_usage = runtime.get("last_usage") if isinstance(runtime.get("last_usage"), dict) else {}
+        if use_thinking:
+            thinking_directive = ""
+        elif provider == "local_ct2":
+            thinking_directive = "/no_think"
+        else:
+            thinking_directive = "/no_think" if "qwen" in model_id.lower() else ""
+
+        prompt_builder = PromptBuilder(
+            system_prompt=settings.refinement.system_prompt,
+            invariants=settings.refinement.invariants,
+        )
+        messages = prompt_builder.build_refinement_messages(
+            _PROMPT_BODY_SENTINEL,
+            instructions,
+            use_thinking=use_thinking,
+            thinking_directive=thinking_directive,
+        )
+        prompt_text = "\n\n".join(
+            str(message.get("content", "")).replace(_PROMPT_BODY_SENTINEL, "").rstrip()
+            for message in messages
+            if isinstance(message, dict)
+        ).strip()
+        return {
+            "refinement_provider": provider,
+            "refinement_model_id": model_id,
+            "refinement_resolved_device": str(runtime.get("resolved_device") or ""),
+            "refinement_compute_type": str(runtime.get("compute_type") or ""),
+            "refinement_cpu_threads": int(runtime.get("cpu_threads") or 0),
+            "refinement_gpu_layers": int(runtime.get("gpu_layers") or 0),
+            "refinement_use_thinking": use_thinking,
+            "refinement_prompt_text": prompt_text,
+            "refinement_prompt_chars": len(prompt_text),
+            "refinement_prompt_words": len(prompt_text.split()),
+            "refinement_prompt_tokens": int(last_usage.get("prompt_tokens") or 0),
+            "refinement_completion_tokens": int(last_usage.get("completion_tokens") or 0),
+            "refinement_total_tokens": int(last_usage.get("total_tokens") or 0),
+        }
 
     @handles(RefineTranscriptIntent)
     def handle_refine(self, intent: Any) -> None:
@@ -138,13 +198,30 @@ class RefinementHandlers:
                     instructions=resolved_instructions,
                     allow_skip=self._settings_provider().refinement.smart_refinement,
                 )
+                refinement_capture = self._build_refinement_capture(resolved_instructions, _slm)
 
                 elapsed = round(time.monotonic() - start_time, 1)
 
                 # Persist refinement processing time for analytics
                 _db = self._db_provider()
                 if _db:
-                    _db.update_refinement_time(intent.transcript_id, int(elapsed * 1000))
+                    _db.update_refinement_processing_context(
+                        intent.transcript_id,
+                        refinement_time_ms=int(elapsed * 1000),
+                        refinement_provider=str(refinement_capture["refinement_provider"]),
+                        refinement_model_id=str(refinement_capture["refinement_model_id"]),
+                        refinement_resolved_device=str(refinement_capture["refinement_resolved_device"]),
+                        refinement_compute_type=str(refinement_capture["refinement_compute_type"]),
+                        refinement_cpu_threads=int(refinement_capture["refinement_cpu_threads"]),
+                        refinement_gpu_layers=int(refinement_capture["refinement_gpu_layers"]),
+                        refinement_use_thinking=bool(refinement_capture["refinement_use_thinking"]),
+                        refinement_prompt_text=str(refinement_capture["refinement_prompt_text"]),
+                        refinement_prompt_chars=int(refinement_capture["refinement_prompt_chars"]),
+                        refinement_prompt_words=int(refinement_capture["refinement_prompt_words"]),
+                        refinement_prompt_tokens=int(refinement_capture["refinement_prompt_tokens"]),
+                        refinement_completion_tokens=int(refinement_capture["refinement_completion_tokens"]),
+                        refinement_total_tokens=int(refinement_capture["refinement_total_tokens"]),
+                    )
 
                 self._emit(
                     "refinement_complete",
@@ -198,6 +275,7 @@ class RefinementHandlers:
             return
 
         self._persist_refinement(db, intent.transcript_id, intent.text)
+        self._mark_insight_dirty("refinement_committed")
 
         settings = self._settings_provider()
         if settings.output.auto_retitle_on_refine:
@@ -234,6 +312,7 @@ class RefinementHandlers:
         refined_text: str,
         *,
         refine_elapsed_ms: int | None = None,
+        refinement_capture: dict[str, str | int | bool] | None = None,
     ) -> None:
         """Persist refinement output and broadcast the resulting tag set.
 
@@ -242,7 +321,25 @@ class RefinementHandlers:
         """
         db.update_normalized_text(transcript_id, refined_text)
         db.add_system_tag_to_transcript(transcript_id, "Refined")
-        if refine_elapsed_ms is not None:
+        if refine_elapsed_ms is not None and refinement_capture is not None:
+            db.update_refinement_processing_context(
+                transcript_id,
+                refinement_time_ms=refine_elapsed_ms,
+                refinement_provider=str(refinement_capture["refinement_provider"]),
+                refinement_model_id=str(refinement_capture["refinement_model_id"]),
+                refinement_resolved_device=str(refinement_capture["refinement_resolved_device"]),
+                refinement_compute_type=str(refinement_capture["refinement_compute_type"]),
+                refinement_cpu_threads=int(refinement_capture["refinement_cpu_threads"]),
+                refinement_gpu_layers=int(refinement_capture["refinement_gpu_layers"]),
+                refinement_use_thinking=bool(refinement_capture["refinement_use_thinking"]),
+                refinement_prompt_text=str(refinement_capture["refinement_prompt_text"]),
+                refinement_prompt_chars=int(refinement_capture["refinement_prompt_chars"]),
+                refinement_prompt_words=int(refinement_capture["refinement_prompt_words"]),
+                refinement_prompt_tokens=int(refinement_capture["refinement_prompt_tokens"]),
+                refinement_completion_tokens=int(refinement_capture["refinement_completion_tokens"]),
+                refinement_total_tokens=int(refinement_capture["refinement_total_tokens"]),
+            )
+        elif refine_elapsed_ms is not None:
             db.update_refinement_time(transcript_id, refine_elapsed_ms)
 
         updated = db.get_transcript(transcript_id)
@@ -305,6 +402,7 @@ class RefinementHandlers:
         def do_bulk() -> None:
             completed = 0
             failed = 0
+            _slm = self._slm_runtime_provider()
             try:
                 for tid in transcript_ids:
                     if self._bulk_cancel.is_set():
@@ -334,7 +432,6 @@ class RefinementHandlers:
 
                     text = transcript.normalized_text or transcript.raw_text
                     try:
-                        _slm = self._slm_runtime_provider()
                         refine_start = time.monotonic()
                         refined = _slm.refine_text_sync(
                             text,
@@ -342,6 +439,7 @@ class RefinementHandlers:
                             instructions=resolved_instructions,
                             allow_skip=self._settings_provider().refinement.smart_refinement,
                         )
+                        refinement_capture = self._build_refinement_capture(resolved_instructions, _slm)
                         refine_elapsed_ms = int((time.monotonic() - refine_start) * 1000)
                     except TimeoutError:
                         logger.warning("Bulk refine: timed out waiting for SLM lock for transcript %d", tid)
@@ -373,7 +471,13 @@ class RefinementHandlers:
                         continue
 
                     # Auto-commit: persist + tag + timing + emit
-                    self._persist_refinement(_db, tid, refined, refine_elapsed_ms=refine_elapsed_ms)
+                    self._persist_refinement(
+                        _db,
+                        tid,
+                        refined,
+                        refine_elapsed_ms=refine_elapsed_ms,
+                        refinement_capture=refinement_capture,
+                    )
                     completed += 1
 
                     # Auto-retitle if enabled
@@ -397,6 +501,8 @@ class RefinementHandlers:
                         "cancelled": self._bulk_cancel.is_set(),
                     },
                 )
+                if completed > 0:
+                    self._mark_insight_dirty("bulk_refinement_committed")
             except Exception as e:
                 logger.exception("Bulk refinement loop crashed")
                 self._emit(

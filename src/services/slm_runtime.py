@@ -78,6 +78,11 @@ class SLMRuntime:
                 self._on_state_changed(new_state)
 
     def get_runtime_summary(self) -> dict[str, object] | None:
+        if self._engine is not None:
+            try:
+                self._runtime_summary = self._engine.get_runtime_summary()
+            except Exception:
+                logger.debug("Failed to refresh live refinement runtime summary", exc_info=True)
         return dict(self._runtime_summary) if self._runtime_summary else None
 
     def enable(self) -> None:
@@ -172,18 +177,22 @@ class SLMRuntime:
 
     def _log_inference_timing(self, operation: str, input_text: str, output_text: str, elapsed: float) -> None:
         """Emit support-useful timing context without logging user text."""
-        runtime = self._runtime_summary or describe_slm_runtime(self._settings_provider())
+        runtime = self.get_runtime_summary() or describe_slm_runtime(self._settings_provider())
+        usage = runtime.get("last_usage") if isinstance(runtime, dict) else None
         input_words = len(input_text.split())
         output_words = len(output_text.split()) if output_text else 0
 
         logger.info(
-            "SLM %s completed in %.2fs (input_chars=%d, input_words=%d, output_chars=%d, output_words=%d, model=%s, resolved_device=%s, gpu_layers=%s, cpu_threads=%s, use_thinking=%s)",
+            "SLM %s completed in %.2fs (input_chars=%d, input_words=%d, output_chars=%d, output_words=%d, prompt_tokens=%s, completion_tokens=%s, total_tokens=%s, model=%s, resolved_device=%s, gpu_layers=%s, cpu_threads=%s, use_thinking=%s)",
             operation,
             elapsed,
             len(input_text),
             input_words,
             len(output_text),
             output_words,
+            usage.get("prompt_tokens") if isinstance(usage, dict) else None,
+            usage.get("completion_tokens") if isinstance(usage, dict) else None,
+            usage.get("total_tokens") if isinstance(usage, dict) else None,
             runtime.get("model_id"),
             runtime.get("resolved_device"),
             runtime.get("gpu_layers"),
@@ -237,7 +246,9 @@ class SLMRuntime:
         )
         t.start()
 
-    def refine_text_sync(self, text: str, level: int = 1, instructions: str = "", allow_skip: bool | None = None) -> str:
+    def refine_text_sync(
+        self, text: str, level: int = 1, instructions: str = "", allow_skip: bool | None = None
+    ) -> str:
         """Synchronous refinement — blocks until complete. Returns refined text."""
         if not self._engine:
             raise RuntimeError("Engine not loaded.")
@@ -257,7 +268,9 @@ class SLMRuntime:
             if not self._engine:
                 raise RuntimeError("Engine not loaded.")
             params = self._sampling_params_for_level(level)
-            should_allow_skip = self._settings_provider().refinement.smart_refinement if allow_skip is None else allow_skip
+            should_allow_skip = (
+                self._settings_provider().refinement.smart_refinement if allow_skip is None else allow_skip
+            )
             start = time.perf_counter()
             result = self._engine.refine(
                 text,
@@ -302,6 +315,8 @@ class SLMRuntime:
                 self._CUSTOM_LOCK_TIMEOUT,
             )
             return ""
+        previous_state = self.state
+        self.state = SLMState.INFERRING
         try:
             if not self._engine:
                 raise RuntimeError("Engine not loaded.")
@@ -316,6 +331,7 @@ class SLMRuntime:
             self._log_inference_timing("custom-generation", user_prompt, result.content, time.perf_counter() - start)
         finally:
             self._lock.release()
+            self.state = previous_state
         return result.content
 
     def _inference_task(self, text: str, level: int, instructions: str = "") -> None:

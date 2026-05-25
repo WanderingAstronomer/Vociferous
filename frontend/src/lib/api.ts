@@ -38,6 +38,38 @@ export interface Transcript {
     speech_duration_ms: number;
     transcription_time_ms: number;
     refinement_time_ms: number;
+    transcription_provider: string;
+    transcription_model_id: string;
+    transcription_resolved_device: string;
+    transcription_compute_type: string;
+    transcription_cpu_threads: number;
+    transcription_prompt_text: string;
+    transcription_prompt_chars: number;
+    transcription_prompt_words: number;
+    retranscription_count: number;
+    last_retranscription_at: string;
+    last_retranscription_time_ms: number;
+    last_retranscription_provider: string;
+    last_retranscription_model_id: string;
+    last_retranscription_resolved_device: string;
+    last_retranscription_compute_type: string;
+    last_retranscription_cpu_threads: number;
+    last_retranscription_prompt_text: string;
+    last_retranscription_prompt_chars: number;
+    last_retranscription_prompt_words: number;
+    refinement_provider: string;
+    refinement_model_id: string;
+    refinement_resolved_device: string;
+    refinement_compute_type: string;
+    refinement_cpu_threads: number;
+    refinement_gpu_layers: number;
+    refinement_use_thinking: boolean;
+    refinement_prompt_text: string;
+    refinement_prompt_chars: number;
+    refinement_prompt_words: number;
+    refinement_prompt_tokens: number;
+    refinement_completion_tokens: number;
+    refinement_total_tokens: number;
     created_at: string;
     include_in_analytics: boolean;
     has_audio_cached: boolean;
@@ -57,13 +89,15 @@ export interface PaginatedResult<T> {
     total: number;
 }
 
+export type TagFilterMode = "or" | "and" | "not" | "nand" | "xor";
+
 export interface TranscriptListParams {
     limit?: number;
     offset?: number;
     sort_by?: string;
     sort_dir?: "asc" | "desc";
     tag_ids?: number[];
-    tag_mode?: "any" | "all";
+    tag_mode?: TagFilterMode;
 }
 
 export function getTranscripts(params: TranscriptListParams = {}): Promise<PaginatedResult<Transcript>> {
@@ -493,8 +527,22 @@ export function cleanupEngine(deleteOrphanSpools = false): Promise<EngineCleanup
     });
 }
 
-export function getInsight(): Promise<{ text: string }> {
+export interface InsightPayload {
+    text: string;
+    daily_text: string;
+    lifetime_text: string;
+    generated_at: number;
+    generated_for_date: string;
+    stale: boolean;
+    dirty_reasons: string[];
+}
+
+export function getInsight(): Promise<InsightPayload> {
     return request("/insight");
+}
+
+export function refreshInsight(): Promise<InsightPayload> {
+    return request("/insight/refresh", { method: "POST" });
 }
 
 export function exportFile(content: string, filename: string): Promise<{ path: string }> {

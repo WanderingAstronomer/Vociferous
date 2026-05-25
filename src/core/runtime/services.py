@@ -45,7 +45,7 @@ def init_slm_runtime(coordinator: ApplicationCoordinator) -> None:
             from src.services.slm_types import SLMState as _SLMState
 
             if state == _SLMState.READY and coordinator.insight_manager is not None:
-                coordinator.insight_manager.maybe_schedule()
+                coordinator.insight_manager.maybe_schedule(reason="slm_ready")
 
         def on_slm_error(msg):
             coordinator.event_bus.emit("refinement_error", {"message": msg})
