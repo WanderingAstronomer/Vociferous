@@ -193,10 +193,12 @@ class TestTranscriptCRUD:
         prompt_tag = next(tag for tag in db.get_tags() if tag.name == "Prompt")
         prompts, total = db.recent(tag_ids=[prompt_tag.id], include_protected=True)
 
-        assert total == 2
+        assert total == 4
         assert {prompt.display_name for prompt in prompts} == {
-            "Small Model Markdown Refinement Prompt",
-            "Large Model Structured Markdown Prompt",
+            "Clean Verbatim (Fast)",
+            "Clean Verbatim (Deep)",
+            "Markdown Rewrite (Fast)",
+            "Markdown Rewrite (Deep)",
         }
         assert all(prompt.created_at == "" for prompt in prompts)
         assert all(not prompt.include_in_analytics for prompt in prompts)

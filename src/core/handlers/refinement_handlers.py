@@ -76,18 +76,20 @@ class RefinementHandlers:
             copy_to_system_clipboard(text)
             logger.info("Auto-copy fallback: copied raw text for transcript %d", transcript_id)
 
-    def _resolve_instructions(self, provided: str, db: Any) -> str:
+    def _resolve_instructions(self, provided: str, db: Any, prompt_transcript_id: int | None = None) -> str:
         instructions = provided or ""
         if not instructions.strip():
-            settings = self._settings_provider()
-            prompt_id = settings.refinement.default_prompt_transcript_id
-            if prompt_id is not None:
+            # Session-level override takes priority over the settings global default.
+            effective_id = prompt_transcript_id if prompt_transcript_id is not None else (
+                self._settings_provider().refinement.default_prompt_transcript_id
+            )
+            if effective_id is not None:
                 try:
-                    prompt_t = db.get_transcript(prompt_id)
+                    prompt_t = db.get_transcript(effective_id)
                     if prompt_t:
                         instructions = prompt_t.normalized_text or prompt_t.raw_text or ""
                 except Exception as e:
-                    logger.warning("Failed to resolve default prompt (ID %d): %s", prompt_id, e)
+                    logger.warning("Failed to resolve prompt (ID %d): %s", effective_id, e)
         return instructions
 
     def _build_refinement_capture(self, instructions: str, slm_runtime: Any) -> dict[str, str | int | bool]:
@@ -118,7 +120,7 @@ class RefinementHandlers:
             self._emit("refinement_error", {"message": "Transcript not found"})
             return
 
-        resolved_instructions = self._resolve_instructions(intent.instructions, db)
+        resolved_instructions = self._resolve_instructions(intent.instructions, db, intent.prompt_transcript_id)
 
         self._emit(
             "refinement_started",

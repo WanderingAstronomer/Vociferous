@@ -153,9 +153,9 @@ class TestMessagesToChatml:
 
 class TestTemplates:
     def test_analytics_system_prompt_is_constrained(self) -> None:
-        assert "Use ONLY the facts and numbers provided by the user message." in PromptBuilder.ANALYTICS_SYSTEM_PROMPT
-        assert "already selected" in PromptBuilder.ANALYTICS_SYSTEM_PROMPT
-        assert "Never invent, estimate, recompute" in PromptBuilder.ANALYTICS_SYSTEM_PROMPT
+        assert "pre-calculated facts" in PromptBuilder.ANALYTICS_SYSTEM_PROMPT
+        assert 'keys "daily" and "lifetime"' in PromptBuilder.ANALYTICS_SYSTEM_PROMPT
+        assert "hallucinate stats" in PromptBuilder.ANALYTICS_SYSTEM_PROMPT
 
     def test_analytics_template_has_placeholders(self) -> None:
         for key in ["daily_highlights", "long_term_highlights"]:

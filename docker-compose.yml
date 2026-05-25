@@ -2,7 +2,7 @@
 #
 # Usage:
 #   docker compose up                   # Wayland (default)
-#   docker compose --profile gpu up     # Wayland + NVIDIA GPU
+#   docker compose --profile gpu up vociferous-gpu  # Wayland + NVIDIA GPU
 #
 # Prerequisites:
 #   - Wayland or X11 display server running
@@ -54,7 +54,7 @@ services:
     network_mode: host
     ipc: host
 
-  # ── GPU variant (activate with: docker compose --profile gpu up) ──
+  # ── GPU variant (activate with: docker compose --profile gpu up vociferous-gpu) ──
   vociferous-gpu:
     extends:
       service: vociferous

@@ -334,13 +334,13 @@ docker compose build
 
 # Provision models (first run only — persisted in named volume)
 docker compose run --rm --entrypoint python3 vociferous scripts/provision_models.py install large-v3-turbo-int8
-docker compose run --rm --entrypoint python3 vociferous scripts/provision_models.py install qwen8b
+docker compose run --rm --entrypoint python3 vociferous scripts/provision_models.py install qwen4b
 
 # CPU mode
 docker compose up
 
 # NVIDIA GPU mode (requires nvidia-container-toolkit)
-docker compose --profile gpu up
+docker compose --profile gpu up vociferous-gpu
 ```
 
 > Docker requires a display server (Wayland/X11), PulseAudio (or PipeWire compat) for mic access, and `input` group membership for global hotkeys via evdev. See `docker-compose.yml` for environment overrides.
@@ -442,13 +442,13 @@ tests/                # Unit + integration + contract tests (582 tests)
 Both ASR and SLM use CTranslate2-format models downloaded from HuggingFace Hub.
 
 ```bash
-make provision    # Interactive model selection
+make provision    # Download default models
 ```
 
 Default models:
 
 - **ASR**: `faster-whisper-large-v3-turbo-int8-ct2` (~780 MB)
-- **SLM**: `Qwen3-8B-ct2-AWQ` (~5.8 GB)
+- **SLM**: `Qwen3-4B-ct2-int8` (~3.8 GB)
 
 Models are cached in `~/.cache/vociferous/models/` (XDG-compliant).
 

@@ -177,6 +177,11 @@ FILLER_SINGLE: frozenset[str] = frozenset(
 FILLER_MULTI: tuple[str, ...] = ("you know", "i mean", "kind of", "sort of")
 
 
+def _count_phrase(text: str, phrase: str) -> int:
+    escaped = re.escape(phrase).replace(r"\ ", r"\s+")
+    return len(re.findall(rf"(?:^|[^a-zA-Z]){escaped}(?![a-zA-Z])", text))
+
+
 def count_fillers(text: str) -> int:
     """Count filler words and multi-word filler phrases in a text string."""
     if not text:
@@ -185,10 +190,7 @@ def count_fillers(text: str) -> int:
     count = 0
 
     for phrase in FILLER_MULTI:
-        idx = 0
-        while (idx := lower.find(phrase, idx)) != -1:
-            count += 1
-            idx += len(phrase)
+        count += _count_phrase(lower, phrase)
 
     for w in lower.split():
         cleaned = w.strip(".,!?;:'\"()[]{}").lower()

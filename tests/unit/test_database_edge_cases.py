@@ -404,7 +404,7 @@ class TestConcurrentReads:
         db.close()
 
         assert not errors, f"Concurrent read errors: {errors}"
-        assert all(c == 12 for c in results)  # 10 user transcripts + 2 protected prompt records
+        assert all(c == 14 for c in results)  # 10 user transcripts + 4 protected prompt records
 
 
 # ── Boundary Inputs ───────────────────────────────────────────────────────

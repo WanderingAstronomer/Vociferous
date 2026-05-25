@@ -48,6 +48,8 @@ async def download_model(data: dict) -> Response:
     coordinator = get_coordinator()
     model_type = data.get("model_type", "asr")
     model_id = data.get("model_id")
+    if model_type not in {"asr", "slm"}:
+        return Response(content={"error": "model_type must be 'asr' or 'slm'"}, status_code=400)
     if not model_id:
         return Response(content={"error": "Missing model_id"}, status_code=400)
 

@@ -136,7 +136,7 @@ def open_window(coordinator: ApplicationCoordinator) -> None:
             url="http://127.0.0.1:18900",
             width=1200,
             height=800,
-            min_size=(800, 600),
+            min_size=(960, 700),
             background_color="#1e1e1e",
         )
         coordinator._main_window = main_window

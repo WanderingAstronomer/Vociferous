@@ -8,6 +8,7 @@ import pytest
 
 from src.core.text_analysis import (
     compute_text_metrics,
+    count_fillers,
     estimate_syllables,
     flesch_kincaid_grade,
     split_sentences,
@@ -146,5 +147,18 @@ class TestComputeTextMetrics:
         metrics = compute_text_metrics("")
         assert metrics["word_count"] == 0
         assert metrics["fk_grade"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Filler word detection
+# ---------------------------------------------------------------------------
+
+
+class TestCountFillers:
+    def test_counts_multi_word_fillers_on_word_boundaries(self):
+        assert count_fillers("Well, you know, I mean this is kind of rough.") == 4
+
+    def test_multi_word_fillers_do_not_match_inside_larger_words(self):
+        assert count_fillers("I meanwhile saw something unknowable and sortable.") == 0
 
 

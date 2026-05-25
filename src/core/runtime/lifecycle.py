@@ -77,7 +77,10 @@ def do_cleanup(coordinator: ApplicationCoordinator) -> None:
             logger.exception("SLM runtime cleanup failed")
 
     if coordinator.recording_session is not None:
-        coordinator.recording_session.shutdown_models()
+        try:
+            coordinator.recording_session.shutdown_models()
+        except Exception:
+            logger.exception("Recording model cleanup failed")
 
     if coordinator.db:
         try:

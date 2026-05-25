@@ -265,6 +265,19 @@ class TestShutdownLifecycle:
         coordinator.cleanup()
         assert coordinator.recording_session._asr_model is None
 
+    def test_cleanup_resilient_to_recording_model_shutdown_error(self, coordinator, event_collector):
+        """cleanup() continues even if recording model shutdown raises."""
+        event_collector.subscribe_all(coordinator.event_bus, ["transcript_deleted"])
+        db_ref = coordinator.db
+        coordinator.recording_session.shutdown_models = MagicMock(side_effect=RuntimeError("model cleanup boom"))
+
+        coordinator.cleanup()
+
+        coordinator.recording_session.shutdown_models.assert_called_once()
+        with pytest.raises(Exception):  # noqa: BLE001 - sqlite3.ProgrammingError on closed conn
+            db_ref._conn.execute("SELECT 1").fetchone()
+        assert len(coordinator.event_bus._handlers) == 0
+
     def test_cleanup_stops_uvicorn(self, coordinator):
         """cleanup() sets should_exit on the uvicorn server."""
         mock_server = MagicMock()

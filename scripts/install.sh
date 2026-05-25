@@ -304,7 +304,7 @@ if [ "$MODELS_NEEDED" = true ]; then
     "$VENV_PYTHON" "$PROVISION_SCRIPT" list
     echo ""
     echo "Vociferous needs at least the ASR model and VAD model to function."
-    echo "The default set (VAD + ASR + SLM) is ~10 GB total."
+    echo "The default set (VAD + ASR + SLM) is ~4.6 GB total."
     echo ""
 
     # Support non-interactive mode (e.g. CI) via VOCIFEROUS_PROVISION=yes
@@ -327,7 +327,7 @@ if [ "$MODELS_NEEDED" = true ]; then
         echo "Downloading ASR model (~780 MB)..."
         "$VENV_PYTHON" "$PROVISION_SCRIPT" install large-v3-turbo-int8
         echo ""
-        echo "Downloading SLM model (~9.5 GB)..."
+        echo "Downloading SLM model (~3.8 GB)..."
         "$VENV_PYTHON" "$PROVISION_SCRIPT" install qwen4b
         echo ""
         echo "✓ All default models installed"

@@ -81,6 +81,12 @@ const FILLER_SINGLE = new Set([
 ]);
 const FILLER_MULTI = ["you know", "i mean", "kind of", "sort of"];
 
+function countPhrase(text: string, phrase: string): number {
+    const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+    const pattern = new RegExp(`(^|[^a-zA-Z])${escaped}(?![a-zA-Z])`, "g");
+    return text.match(pattern)?.length ?? 0;
+}
+
 /** Count filler words and phrases in a string. */
 export function countFillers(text: string): number {
     if (!text) return 0;
@@ -89,11 +95,7 @@ export function countFillers(text: string): number {
 
     // Multi-word fillers
     for (const phrase of FILLER_MULTI) {
-        let idx = 0;
-        while ((idx = lower.indexOf(phrase, idx)) !== -1) {
-            count++;
-            idx += phrase.length;
-        }
+        count += countPhrase(lower, phrase);
     }
 
     // Single-word fillers
@@ -112,10 +114,9 @@ export function countFillersByWord(text: string): Record<string, number> {
     const breakdown: Record<string, number> = {};
 
     for (const phrase of FILLER_MULTI) {
-        let idx = 0;
-        while ((idx = lower.indexOf(phrase, idx)) !== -1) {
-            breakdown[phrase] = (breakdown[phrase] || 0) + 1;
-            idx += phrase.length;
+        const count = countPhrase(lower, phrase);
+        if (count > 0) {
+            breakdown[phrase] = count;
         }
     }
 

@@ -755,6 +755,36 @@ class TestRecordingSessionLifecycle:
         assert transcript.transcription_prompt_chars == len("Use medical terminology.")
         assert transcript.transcription_prompt_words == 3
 
+    def test_transcribe_and_store_sets_transcribing_flag_while_running(self, events):
+        session = self._make_session(events_list=events)
+        session._asr_model = MagicMock()
+
+        started = threading.Event()
+        release = threading.Event()
+
+        def slow_transcribe(audio_data, **kwargs):
+            started.set()
+            assert session.is_transcribing is True
+            assert release.wait(timeout=2.0)
+            return "transcribed text", 800, 1200
+
+        with patch("src.services.transcription_service.transcribe", side_effect=slow_transcribe):
+            worker = threading.Thread(
+                target=session._transcribe_and_store,
+                args=([0] * 16000,),
+                daemon=True,
+                name="transcribe-flag-test",
+            )
+            worker.start()
+
+            assert started.wait(timeout=1.0)
+            assert session.is_transcribing is True
+
+            release.set()
+            worker.join(timeout=2.0)
+
+        assert session.is_transcribing is False
+
     def test_handle_retranscribe_persists_separate_retranscription_provenance(self, db, events):
         from src.core.settings import VociferousSettings
 

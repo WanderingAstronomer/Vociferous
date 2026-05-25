@@ -58,6 +58,7 @@
     import { PlusCircle } from "lucide-svelte";
     import type { Transcript, Tag } from "../lib/api";
     import TagBar from "../lib/components/TagBar.svelte";
+    import CustomSelect from "../lib/components/CustomSelect.svelte";
     import AnalyticsParagraph from "../lib/components/AnalyticsParagraph.svelte";
     import { confirmDeleteAction } from "../lib/deleteConfirm";
     import { appConfig } from "../lib/config.svelte";
@@ -95,6 +96,25 @@
             .then((tags) => (allTags = tags))
             .catch(() => {});
     }
+
+    /* ===== Session refinement prompt ===== */
+    let promptTranscripts = $state<Transcript[]>([]);
+    let sessionPromptId = $state<number | null>(null);
+
+    $effect(() => {
+        const promptTag = allTags.find((t) => t.is_system && t.name === "Prompt");
+        if (!promptTag) {
+            promptTranscripts = [];
+            return;
+        }
+        getTranscripts({ tag_ids: [promptTag.id], tag_mode: "or", limit: 50 })
+            .then((r) => {
+                promptTranscripts = r.items;
+            })
+            .catch(() => {
+                promptTranscripts = [];
+            });
+    });
 
     /* ===== Session tag state (persisted via localStorage) ===== */
     const SESSION_TAGS_STORAGE_KEY = "vociferous_session_tag_ids";
@@ -422,7 +442,7 @@
                         /* Auto-refine the combined transcript if enabled */
                         if (autoRefine && refinementEnabled) {
                             const DEFAULT_LEVEL = 2;
-                            refineTranscript(targetId, DEFAULT_LEVEL).catch((e) =>
+                            refineTranscript(targetId, DEFAULT_LEVEL, "", sessionPromptId).catch((e) =>
                                 console.warn("Auto-refine after append failed:", e),
                             );
                         }
@@ -454,7 +474,7 @@
                 /* Auto-refine: fire-and-forget if enabled */
                 if (autoRefine && refinementEnabled && data.id) {
                     const DEFAULT_LEVEL = 2;
-                    refineTranscript(data.id, DEFAULT_LEVEL).catch((e) =>
+                    refineTranscript(data.id, DEFAULT_LEVEL, "", sessionPromptId).catch((e) =>
                         console.warn("Auto-refine dispatch failed:", e),
                     );
                 }
@@ -651,7 +671,7 @@
             /* Auto-refine the combined transcript if enabled */
             if (autoRefine && refinementEnabled) {
                 const DEFAULT_LEVEL = 2;
-                refineTranscript(targetId, DEFAULT_LEVEL).catch((e) =>
+                refineTranscript(targetId, DEFAULT_LEVEL, "", sessionPromptId).catch((e) =>
                     console.warn("Auto-refine after append failed:", e),
                 );
             }
@@ -730,6 +750,45 @@
                     ondelete={handleSessionTagDelete}
                     oncolorchange={handleSessionTagColorChange}
                 />
+            </div>
+        {/if}
+
+        <!-- Session refinement prompt selector (idle/recording — overrides default prompt for auto-refine) -->
+        {#if (viewState === "idle" || viewState === "recording") && promptTranscripts.length > 0}
+            <div
+                class="shrink-0 flex flex-col items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)]"
+                title="Selected prompt is used for auto-refinement on every new recording until cleared"
+            >
+                <div class="flex items-center gap-[var(--space-1)]">
+                    <Sparkles
+                        size={13}
+                        class={sessionPromptId != null
+                            ? "text-[var(--accent)] shrink-0"
+                            : "text-[var(--text-tertiary)] shrink-0"}
+                    />
+                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] shrink-0 select-none"
+                        >Session prompt</span
+                    >
+                </div>
+                <div class="w-full max-w-[260px]">
+                    <CustomSelect
+                        options={[
+                            { value: "", label: "Default" },
+                            ...promptTranscripts.map((t) => {
+                                const isGlobalDefault =
+                                    t.id === (appConfig.current?.refinement?.default_prompt_transcript_id ?? null);
+                                const base = t.display_name?.trim() || t.text.slice(0, 40);
+                                return {
+                                    value: String(t.id),
+                                    label: isGlobalDefault ? `${base} ★` : base,
+                                };
+                            }),
+                        ]}
+                        value={sessionPromptId != null ? String(sessionPromptId) : ""}
+                        onchange={(v: string) => (sessionPromptId = v ? Number(v) : null)}
+                        placeholder="Default"
+                    />
+                </div>
             </div>
         {/if}
 

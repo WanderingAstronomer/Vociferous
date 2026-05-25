@@ -141,10 +141,17 @@ export function searchTranscripts(q: string, limit = 50, offset = 0): Promise<Se
     return request(`/transcripts/search?q=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`);
 }
 
-export function refineTranscript(id: number, level: number, instructions = ""): Promise<{ status: string }> {
+export function refineTranscript(
+    id: number,
+    level: number,
+    instructions = "",
+    promptTranscriptId?: number | null,
+): Promise<{ status: string }> {
+    const body: Record<string, unknown> = { level, instructions };
+    if (promptTranscriptId != null) body.prompt_transcript_id = promptTranscriptId;
     return request(`/transcripts/${id}/refine`, {
         method: "POST",
-        body: JSON.stringify({ level, instructions }),
+        body: JSON.stringify(body),
     });
 }
 

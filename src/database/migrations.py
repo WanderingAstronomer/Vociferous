@@ -453,66 +453,45 @@ def _v12_timestamp_not_unique(conn: sqlite3.Connection) -> None:
     logger.info("v12 migration: transcript timestamp uniqueness removed")
 
 
-_SMALL_MODEL_MARKDOWN_PROMPT = """\
-Rewrite the following text as clean, well-structured Markdown.
+_CLEAN_VERBATIM_FAST = """\
+Text repair. Fix grammar, spelling, and punctuation.
 
-Rules:
-
-Never include # headings; these are made by default whenever a transcription is complete.
-
-Use ## only for genuinely distinct major sections. Use ### sparingly beneath those.
-
-Break continuous text into paragraphs. Each paragraph gets one idea.
-
-**bold** for key terms on first use. *italic* for titles and introduced technical terms. Backtick code for all technical tokens, commands, filenames, and values.
-
-Numbered lists for sequential steps. Bullet lists for four or more enumerable, non-sequential items. Everything else is prose.
-
-Do not add information. Do not remove meaning. Preserve the author's voice and phrasing.
-
-Output only the Markdown. No commentary.
+- Do not change words unless they are transcription errors.
+- Break into paragraphs to avoid long walls of text.
+- Do not use any Markdown formatting (no asterisks, no bullets, no headers).
+- Output only the corrected text.
 """
 
+_CLEAN_VERBATIM_DEEP = """\
+You are a verbatim transcript editor. Your job is to clean up speech-to-text output while preserving the speaker's exact colloquialisms and voice.
 
-_LARGE_MODEL_MARKDOWN_PROMPT = """\
-Rewrite the following text as polished, well-structured Markdown. Execute each step in order.
+- Fix all punctuation, capitalization, and obvious transcription errors (e.g., homophones).
+- Insert paragraph breaks for readability when the topic subtly shifts.
+- Do not rephrase sentences, summarize, or "improve" the text structure.
+- Do not use Markdown formatting.
+- Output only the repaired text. No conversational filler or explanations.
+"""
 
-STEP 1 — CLASSIFY (silent)
-Identify the single best class: NARRATIVE, TECHNICAL, NOTES, ANALYTICAL, INSTRUCTIONAL, CORRESPONDENCE, or REFERENCE. Do not output this classification.
+_MARKDOWN_REWRITE_FAST = """\
+Rewrite the text into clean Markdown.
 
-STEP 2 — HEADINGS
+- Fix all grammar and punctuation.
+- Break into logical paragraphs.
+- Use **bold** for key terms and *italic* for emphasis.
+- Use bullet points if a list is spoken.
+- Do NOT use headers (#).
+- Output only the Markdown text.
+"""
 
-- Never include `#` headings; these are made by default whenever a transcription is complete.
-- `##` — Major named sections with meaningful thematic separation only.
-- `###` — Sub-sections within a `##` block. Use sparingly.
-  Derive all heading text from the content. Never invent titles.
+_MARKDOWN_REWRITE_DEEP = """\
+Rewrite the transcription into polished, well-structured Markdown.
 
-STEP 3 — PARAGRAPHS
-Each paragraph: topic sentence, 2–5 supporting sentences, closing or transition. No walls of continuous text. Blank line between all block-level elements.
-
-STEP 4 — INLINE FORMATTING
-
-- `**bold**` — key terms on first significant use, or critical emphasis
-- `*italic*` — titles of works, technical terms being introduced, soft emphasis
-- Backtick `code` — all technical tokens, commands, filenames, values, identifiers without exception
-- `> blockquote` — direct quotes or key statements warranting visual separation
-- `- bullet` — genuinely enumerable, non-sequential items only
-- `1. numbered` — sequential steps or ranked items only
-
-STEP 5 — CLASS-SPECIFIC RULES
-NARRATIVE/BLOG: Flowing prose throughout. Lists almost never appropriate. Preserve anecdotes, asides, humor, and personal voice intact.
-TECHNICAL: Numbered lists for sequential steps, bullets for options/features. Inline code on every technical token.
-NOTES: Identify the central thesis; use it as `##`. Group related thoughts into `##` sections. Preserve tentative or exploratory tone — do not manufacture false precision.
-ANALYTICAL: `##` for the central claim, `##` for each major argument, `###` for sub-points. Preserve every hedge, qualification, and uncertainty exactly as written. Never strengthen claims beyond the author's intent.
-INSTRUCTIONAL: `##` for procedure name, `##` for major phases, `###` for steps. Number all sequential steps. Code blocks for all commands and values.
-CORRESPONDENCE: Preserve greeting and closing structure unaltered. `##` only to separate distinct subjects in long messages. Do not restructure conversational flow or change formality register.
-REFERENCE: `##` for collection title, `##` for categories, `###` for individual entries.
-
-INVARIANTS — NEVER BREAK
-
-- Preserve the author's voice, idioms, characteristic phrasing, and rhetorical patterns.
-- Restructure for clarity only. Add no new information. Remove no existing meaning.
-- Output only the refined Markdown. No preamble, no commentary.
+- Create readable paragraphs with clear breaks.
+- Use `##` for distinct major topics (never use `#`).
+- Use **bold** for key concepts and *italic* for titles or introduced terms.
+- Use bulleted or numbered lists where enumerations naturally exist in the text.
+- Preserve the speaker's original voice, meaning, and intent. Remove only verbal filler (ums, ahs) and false starts.
+- Output only the final Markdown. No conversational filler or explanations.
 """
 
 
@@ -540,8 +519,10 @@ def _v13_seed_markdown_refinement_prompts(conn: sqlite3.Connection) -> None:
         prompt_tag_id = cur.lastrowid
 
     shipped_prompts = (
-        ("Small Model Markdown Refinement Prompt", _SMALL_MODEL_MARKDOWN_PROMPT),
-        ("Large Model Structured Markdown Prompt", _LARGE_MODEL_MARKDOWN_PROMPT),
+        ("Clean Verbatim (Fast)", _CLEAN_VERBATIM_FAST),
+        ("Clean Verbatim (Deep)", _CLEAN_VERBATIM_DEEP),
+        ("Markdown Rewrite (Fast)", _MARKDOWN_REWRITE_FAST),
+        ("Markdown Rewrite (Deep)", _MARKDOWN_REWRITE_DEEP),
     )
 
     old_default = conn.execute(
@@ -858,6 +839,18 @@ def _v17_processing_runtime_context(conn: sqlite3.Connection) -> None:
     logger.info("v17 migration: runtime context, refinement token counts, and retranscription columns added")
 
 
+def _v18_prompt_grid(conn: sqlite3.Connection) -> None:
+    """v18 — Delete legacy v13 Prompts and install the 4-prompt grid."""
+    # Wipe the legacy v13 prompts if they exist (clean removal)
+    conn.execute(
+        "DELETE FROM transcripts WHERE is_protected = 1 AND display_name IN ('Small Model Markdown Refinement Prompt', 'Large Model Structured Markdown Prompt')"
+    )
+    # The v13 migration might not have seeded the new ones for existing users because they already ran v13.
+    # We just explicitly call logic the new v13 script uses to seed the new ones.
+    _v13_seed_markdown_refinement_prompts(conn)
+    logger.info("v18 migration: legacy prompts wiped, new prompt grid seeded")
+
+
 #: Ordered list of (human-readable description, migration function) pairs.
 #: Append here to add future migrations; do not edit existing entries.
 MIGRATIONS: list[tuple[str, object]] = [
@@ -884,6 +877,7 @@ MIGRATIONS: list[tuple[str, object]] = [
         "v17 processing runtime context — resolved device, refinement tokens, and retranscription metadata",
         _v17_processing_runtime_context,
     ),
+    ("v18 prompt grid — clean verbatim vs markdown rewrites", _v18_prompt_grid),
 ]
 
 

@@ -92,7 +92,7 @@ docker: ## Build and run in Docker (CPU)
 	docker compose up --build
 
 docker-gpu: ## Build and run in Docker (NVIDIA GPU)
-	docker compose --profile gpu up --build
+	docker compose --profile gpu up --build vociferous-gpu
 
 # ── Cleanup ──────────────────────────────────────────────────────────────────
 

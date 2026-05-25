@@ -204,10 +204,12 @@ async def refine_transcript(transcript_id: int, data: dict) -> Response:
     from src.core.intents.definitions import RefineTranscriptIntent
 
     try:
+        raw_ptid = data.get("prompt_transcript_id")
         intent = RefineTranscriptIntent(
             transcript_id=transcript_id,
             level=data.get("level", 2),
             instructions=data.get("instructions", ""),
+            prompt_transcript_id=int(raw_ptid) if isinstance(raw_ptid, (int, float)) else None,
         )
     except ValueError as e:
         return Response(content={"error": str(e)}, status_code=400)

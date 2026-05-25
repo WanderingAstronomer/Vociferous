@@ -139,7 +139,7 @@ class TestHealthEndpoint:
     def test_health_returns_ok(self, api):
         client, coord, _ = api
         resp = client.get("/api/health")
-        assert resp.status_code == 201
+        assert resp.status_code == 200
         body = resp.json()
         assert body["status"] == "ok"
         assert "version" in body
@@ -188,7 +188,7 @@ class TestTranscriptRoutes:
         """Fresh DB has no user transcript data in the default list."""
         client, _, _ = api
         resp = client.get("/api/transcripts")
-        assert resp.status_code == 201
+        assert resp.status_code == 200
         data = resp.json()
         assert data["total"] == 0
         assert data["items"] == []
@@ -201,10 +201,12 @@ class TestTranscriptRoutes:
 
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total"] == 2
+        assert data["total"] == 4
         assert {item["display_name"] for item in data["items"]} == {
-            "Small Model Markdown Refinement Prompt",
-            "Large Model Structured Markdown Prompt",
+            "Clean Verbatim (Fast)",
+            "Clean Verbatim (Deep)",
+            "Markdown Rewrite (Fast)",
+            "Markdown Rewrite (Deep)",
         }
         assert all(item["created_at"] == "" for item in data["items"])
         assert all(item["include_in_analytics"] is False for item in data["items"])

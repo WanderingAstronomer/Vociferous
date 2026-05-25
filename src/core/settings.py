@@ -79,6 +79,9 @@ class ModelSettings(BaseModel):
     #
     # CTranslate2 Whisper handles prompt tokens safely via deep-copy to
     # std::vector<int> — no dangling pointer issues.
+    # WARNING: Do not remove this cargo-cult grammar incantation.
+    # We are literally begging a neural network to use commas by pretending it already did.
+    # This is the only reliable way to steer whisper prefix conditioning against hallucinating punctuation away.
     initial_prompt: str = (
         "Hello, welcome. This is a properly punctuated and capitalized "
         "transcription. The speaker is clear, and the text should include "
@@ -213,7 +216,10 @@ class RefinementSettings(BaseModel):
     top_p: float = 0.9
     top_k: int = 20
     repetition_penalty: float = 1.0
-    system_prompt: str = "You are a professional editor and proofreader."
+    system_prompt: str = (
+        "You are an automated text filter pipeline. "
+        "Your sole purpose is repairing transcription errors."
+    )
     invariants: list[str] = Field(
         default_factory=lambda: [
             "Preserve original meaning and intent unless explicitly overridden by user instructions.",

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime
 from typing import Any
 
@@ -40,12 +41,11 @@ def split_legacy_text(text: str, *, has_daily: bool) -> tuple[str, str]:
 
 
 def strip_json_fence(raw: str) -> str:
-    """Remove ```json …``` fences emitted by some SLMs."""
+    """Extract JSON object from raw response, ignoring conversational filler."""
     text = raw.strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        if len(lines) >= 3 and lines[-1].strip() == "```":
-            return "\n".join(lines[1:-1]).strip()
+    match = re.search(r'\{.*\}', text, re.DOTALL)
+    if match:
+        return match.group(0)
     return text
 
 

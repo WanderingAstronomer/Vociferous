@@ -284,6 +284,16 @@ class TestModelDownloadErrors:
         )
         assert resp.status_code == 404
 
+    def test_download_rejects_unknown_model_type(self, api):
+        """Unknown model_type must not be treated as SLM."""
+        client, _, _ = api
+        resp = client.post(
+            "/api/models/download",
+            json={"model_type": "nonsense", "model_id": "qwen4b"},
+        )
+        assert resp.status_code == 400
+        assert "model_type" in resp.json()["error"]
+
 
 # ── Health Edge Cases ─────────────────────────────────────────────────────
 
@@ -306,6 +316,29 @@ class TestHealthEdgeCases:
         resp = client.get("/api/health")
         assert "version" in resp.json()
         assert isinstance(resp.json()["version"], str)
+
+
+class TestSystemRoutes:
+    """System route registration and error handling."""
+
+    def test_create_app_registers_open_log_directory(self, coordinator, monkeypatch):
+        """The real app factory must expose the diagnostics log-directory route."""
+        from litestar.testing import TestClient
+
+        from src.api.app import create_app
+        from src.api import system as system_module
+
+        opened_paths = []
+        monkeypatch.setattr(system_module, "_open_directory", lambda path: opened_paths.append(path))
+
+        with TestClient(app=create_app(coordinator)) as client:
+            resp = client.post("/api/logs/open-dir")
+
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["status"] == "opened"
+        assert body["path"]
+        assert opened_paths
 
 
 # ── Transcript DB-Unavailable Paths ───────────────────────────────────────

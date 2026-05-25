@@ -551,6 +551,7 @@ class RecordingSession:
             logger.debug("Transcription skipped — shutdown in progress")
             return
 
+        self.is_transcribing = True
         try:
             settings = self._settings_provider()
             db = self._db_provider()

@@ -105,6 +105,7 @@ class RefineTranscriptIntent(InteractionIntent):
     transcript_id: int = 0
     level: int = 2
     instructions: str = ""
+    prompt_transcript_id: int | None = None
     source: IntentSource = IntentSource.CONTROLS
 
     def __post_init__(self) -> None:

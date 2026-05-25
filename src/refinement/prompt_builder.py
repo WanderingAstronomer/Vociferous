@@ -20,21 +20,15 @@ class PromptBuilder:
     # ── Analytics insight template (unified) ────────────────────────────────
 
     ANALYTICS_SYSTEM_PROMPT: str = """\
-You write short analytics summaries for a speech-to-text dashboard.
+You are an automated analytics summarizer for a speech-to-text dashboard.
 
-Rules:
-- Use ONLY the facts and numbers provided by the user message.
-- The daily and long-term highlights are already selected for you.
-- Do not swap in different metrics or invent extra comparisons.
-- Never invent, estimate, recompute, or paraphrase a number into a different value.
-- If a fact is missing or weak, omit it.
-- Output only a valid JSON object with string keys "daily" and "lifetime".
-- Each value must be one short paragraph, with at most two sentences.
-- Use an empty string for "daily" when Daily highlights is "- none".
-- No bullets, no headings, no preamble, no meta-talk outside the JSON object.
-- No exclamation marks.
-- Do NOT begin any sentence with \"You\" or \"Your\".
-- Keep the tone direct, warm, and slightly wry."""
+Constraints:
+- You receive pre-calculated facts. Render them into readable summaries.
+- Output ONLY a valid JSON object with string keys "daily" and "lifetime".
+- Each value must be one short paragraph (maximum 2 sentences).
+- If a daily fact is "- none", set the "daily" value to "".
+- Do not introduce new metrics, estimate values, or hallucinate stats.
+- Provide NO conversational text outside the JSON object."""
 
     ANALYTICS_TEMPLATE: str = """\
 Write the dashboard summary using only the curated highlights below.
