@@ -68,6 +68,7 @@
 
     let viewState = $state<WorkspaceState>("idle");
     let transcriptText = $state("");
+    let verbatimWordCount = $state(0);
     let editText = $state("");
     let transcriptId = $state<number | null>(null);
     let transcriptTitle = $state("");
@@ -285,6 +286,7 @@
 
     function resetTranscriptWorkspace() {
         transcriptText = "";
+        verbatimWordCount = 0;
         transcriptId = null;
         transcriptTitle = "";
         transcriptTimestamp = "";
@@ -296,6 +298,7 @@
 
     function applyTranscriptWorkspaceState({
         text,
+        rawText,
         id,
         title,
         timestamp,
@@ -305,6 +308,7 @@
         tagIds,
     }: {
         text: string;
+        rawText: string;
         id: number | null;
         title: string;
         timestamp: string;
@@ -314,6 +318,7 @@
         tagIds?: Iterable<number>;
     }) {
         transcriptText = text;
+        verbatimWordCount = rawText.split(/\s+/).filter(Boolean).length;
         transcriptId = id;
         transcriptTitle = title;
         transcriptTimestamp = timestamp;
@@ -326,6 +331,7 @@
     function applyLoadedTranscript(t: Transcript) {
         applyTranscriptWorkspaceState({
             text: t.text || t.normalized_text || t.raw_text || "",
+            rawText: t.raw_text || "",
             id: t.id,
             title: t.display_name || "",
             timestamp: formatTranscriptTimestamp(t.created_at || t.timestamp || ""),
@@ -344,6 +350,7 @@
     }) {
         applyTranscriptWorkspaceState({
             text: data.text,
+            rawText: data.text,
             id: data.id ?? null,
             title: "",
             timestamp: "",
@@ -678,7 +685,7 @@
             {transcriptTimestamp}
         />
 
-        <TranscribeTranscriptMetrics {hasText} {durationMs} {speechDurationMs} {wordCount} />
+        <TranscribeTranscriptMetrics {hasText} {durationMs} {speechDurationMs} wordCount={verbatimWordCount} />
 
         <!-- Append mode banner -->
         {#if appendTargetId !== null && (viewState === "idle" || viewState === "recording")}

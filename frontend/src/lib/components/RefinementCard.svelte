@@ -481,7 +481,7 @@
                     </div>
                 </div>
             {/if}
-            {#if !providerHasStoredKey(provider)}
+            {#if provider !== "lm_studio" && !providerHasStoredKey(provider)}
                 <div class="grid grid-cols-[200px_minmax(0,1fr)] items-center gap-x-[var(--space-4)] min-h-[36px]">
                     <label
                         class="text-[var(--text-sm)] text-[var(--text-primary)]"

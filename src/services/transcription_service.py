@@ -416,7 +416,13 @@ def list_external_transcription_provider_models(
 ) -> list[dict[str, object]]:
     provider = OpenAICompatibleTranscriptionProvider(_settings_for_external_provider(settings, provider_id))
     provider.load()
-    return provider.list_models()
+    models = provider.list_models()
+    # Groq's /models endpoint returns every model they serve (LLMs, embeddings, etc.).
+    # Their audio/transcriptions endpoint only accepts whisper-family models.
+    # Filter everything else out so the picker doesn't show nonsense.
+    if provider_id == "groq":
+        models = [m for m in models if str(m.get("id", "")).lower().startswith("whisper")]
+    return models
 
 
 def test_external_transcription_provider(settings: VociferousSettings, provider_id: str) -> dict[str, object]:
