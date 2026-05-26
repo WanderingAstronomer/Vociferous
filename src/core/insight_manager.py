@@ -381,7 +381,8 @@ class InsightManager:
                     "<|im_start|>",
                     "/no_think",
                 )
-                if any(marker in clean for marker in _LEAK_MARKERS):
+                clean_lower = clean.lower()
+                if any(marker.lower() in clean_lower for marker in _LEAK_MARKERS):
                     logger.warning("Insight: output appears to contain leaked prompt fragments, discarding")
                     return
                 daily_text, lifetime_text = parse_generated_insight(clean, has_daily=bool(daily_highlights))

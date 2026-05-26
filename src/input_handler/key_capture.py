@@ -55,7 +55,7 @@ def make_capture_handler(
     captured_keys: set[str] = set()
 
     def on_key(key: KeyCode, event: InputEvent) -> None:
-        if event != InputEvent.KEY_PRESS:
+        if event not in {InputEvent.KEY_PRESS, InputEvent.MOUSE_PRESS}:
             return
 
         if key in MODIFIER_CODES:

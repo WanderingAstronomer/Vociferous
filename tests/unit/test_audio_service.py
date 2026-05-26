@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
 
 from src.services.audio_service import AudioService, MicrophoneStatus
@@ -245,3 +246,36 @@ class TestConstructor:
             on_level_update=on_level,
         )
         assert svc.on_level_update is on_level
+
+
+# ── Recording drain edge cases ─────────────────────────────────────────
+
+
+class TestRecordAudioDrain:
+    """record_audio() cleanup must preserve the same frame-skip rules."""
+
+    @patch("src.services.audio_service.sd.InputStream")
+    def test_residual_queue_drain_respects_initial_hotkey_skip(self, mock_stream, fresh_settings):
+        recording_settings = fresh_settings.recording.model_copy(update={"min_duration_ms": 0})
+        settings = fresh_settings.model_copy(update={"recording": recording_settings})
+
+        class DummyStream:
+            def __init__(self, *args, **kwargs):
+                self.callback = kwargs["callback"]
+                self.blocksize = kwargs["blocksize"]
+
+            def __enter__(self):
+                frame = np.ones((self.blocksize, 1), dtype=np.int16)
+                self.callback(frame, self.blocksize, None, None)
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        mock_stream.side_effect = DummyStream
+        service = AudioService(settings_provider=lambda: settings)
+
+        audio = service.record_audio(should_stop=lambda: True)
+
+        assert audio is not None
+        assert audio.size == 0

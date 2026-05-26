@@ -27,9 +27,10 @@ def copy_to_system_clipboard(text: str) -> None:
                     subprocess.run(cmd, input=text.encode("utf-8"), check=True, timeout=3)
                     logger.debug("Copied %d chars to clipboard via %s", len(text), cmd[0])
                     return
-                except FileNotFoundError:
+                except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    logger.debug("Clipboard command failed: %s", cmd[0], exc_info=True)
                     continue
-            logger.warning("No clipboard tool found (install xclip or xsel)")
+            logger.warning("No usable clipboard tool found (install xclip or xsel)")
         elif system == "Darwin":
             subprocess.run(["pbcopy"], input=text.encode("utf-8"), check=True, timeout=3)
             logger.debug("Copied %d chars to clipboard via pbcopy", len(text))

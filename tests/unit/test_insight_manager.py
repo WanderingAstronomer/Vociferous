@@ -235,6 +235,14 @@ class TestInsightManagerLeakGuard:
         manager._generate_task()
         emit.assert_not_called()
 
+    def test_leaked_prompt_fragment_is_rejected_case_insensitively(self, tmp_path: Path) -> None:
+        manager, emit = _make_manager_with_emit(
+            tmp_path,
+            "write the dashboard summary using only the facts below.",
+        )
+        manager._generate_task()
+        emit.assert_not_called()
+
     def test_leaked_no_think_is_rejected(self, tmp_path: Path) -> None:
         manager, emit = _make_manager_with_emit(tmp_path, "/no_think\n\nSome output")
         manager._generate_task()

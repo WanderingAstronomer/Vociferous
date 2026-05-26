@@ -84,6 +84,19 @@ class TestSearchEdgeCases:
         results = db.search("foo")
         assert len(results) == 1
 
+    def test_search_display_name_treats_like_wildcards_literally(self, db: TranscriptDB) -> None:
+        percent = db.add_transcript(raw_text="alpha", display_name="100% literal", duration_ms=100)
+        underscore = db.add_transcript(raw_text="beta", display_name="snake_case literal", duration_ms=100)
+        db.add_transcript(raw_text="gamma", display_name="plain title", duration_ms=100)
+
+        percent_results = db.search("%")
+        underscore_results = db.search("_")
+
+        assert [item.id for item in percent_results] == [percent.id]
+        assert db.search_count("%") == 1
+        assert [item.id for item in underscore_results] == [underscore.id]
+        assert db.search_count("_") == 1
+
     def test_search_respects_limit(self, db: TranscriptDB) -> None:
         for i in range(10):
             db.add_transcript(raw_text=f"common word {i}", duration_ms=100)

@@ -58,6 +58,10 @@ class TestPostProcessTranscription:
         result = post_process_transcription("The value is 3.14 exactly", get_settings())
         assert "3.14" in result
 
+    def test_decimal_period_does_not_force_casing_after_number(self, fresh_settings):
+        result = post_process_transcription("the value is 3.14 exactly", get_settings())
+        assert result == "The value is 3.14 exactly "
+
     # --- Comma / semicolon / colon spacing ---
 
     def test_missing_space_after_comma(self, fresh_settings):

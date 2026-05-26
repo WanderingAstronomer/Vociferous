@@ -8,7 +8,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Callable
 
 from src.core.command_bus import handles
-from src.core.intents.definitions import RestartEngineIntent, UpdateConfigIntent
+from src.core.intents.definitions import RestartEngineIntent, UpdateConfigIntent, thaw_value
 
 if TYPE_CHECKING:
     from src.core.settings import VociferousSettings
@@ -40,17 +40,18 @@ class SystemHandlers:
         from src.core.log_manager import LogManager
         from src.core.settings import update_settings
 
-        new_settings = update_settings(**intent.settings)
+        settings_updates = thaw_value(intent.settings)
+        new_settings = update_settings(**settings_updates)
         self._on_settings_updated(new_settings)
         self._emit("config_updated", new_settings.model_dump())
 
-        user_updates = intent.settings.get("user") if isinstance(intent.settings, dict) else None
+        user_updates = settings_updates.get("user") if isinstance(settings_updates, dict) else None
         if isinstance(user_updates, dict) and "typing_wpm" in user_updates:
             insight_manager = self._insight_manager_provider()
             if insight_manager is not None:
                 insight_manager.mark_dirty("typing_wpm_changed")
 
-        if "logging" in intent.settings:
+        if "logging" in settings_updates:
             try:
                 LogManager().configure_logging()
                 logger.info("Logging configuration reloaded")

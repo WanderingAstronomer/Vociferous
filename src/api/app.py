@@ -53,7 +53,13 @@ from src.api.system import (
     stop_key_capture,
 )
 from src.api.tags import assign_tags, create_tag, list_tags, update_tag
-from src.api.transcription_providers import list_transcription_provider_models, test_transcription_provider
+from src.api.transcription_providers import (
+    delete_transcription_provider_api_key,
+    get_transcription_provider_api_key_status,
+    list_transcription_provider_models,
+    save_transcription_provider_api_key,
+    test_transcription_provider,
+)
 from src.api.transcripts import (
     batch_refine_transcripts,
     batch_tag_toggle,
@@ -305,6 +311,9 @@ def create_app(coordinator: ApplicationCoordinator) -> Litestar:
             test_refinement_provider,
             list_transcription_provider_models,
             test_transcription_provider,
+            get_transcription_provider_api_key_status,
+            save_transcription_provider_api_key,
+            delete_transcription_provider_api_key,
             get_refinement_provider_api_key_status,
             save_refinement_provider_api_key,
             delete_refinement_provider_api_key,

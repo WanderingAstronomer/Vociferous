@@ -18,9 +18,9 @@ class KeyChord:
     def update(self, key: KeyCode, event_type: InputEvent) -> bool:
         """Update the state of pressed keys and check if the chord is active."""
         match event_type:
-            case InputEvent.KEY_PRESS:
+            case InputEvent.KEY_PRESS | InputEvent.MOUSE_PRESS:
                 self.pressed_keys.add(key)
-            case InputEvent.KEY_RELEASE:
+            case InputEvent.KEY_RELEASE | InputEvent.MOUSE_RELEASE:
                 self.pressed_keys.discard(key)
         return self.is_active()
 

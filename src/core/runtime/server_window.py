@@ -21,7 +21,14 @@ def _detect_port_conflict(port: int) -> tuple[bool, str]:
     try:
         current_pid = psutil.Process().pid
         for conn in psutil.net_connections(kind="inet"):
-            if conn.laddr.port == port and conn.status == "LISTEN":
+            laddr = getattr(conn, "laddr", None)
+            if getattr(laddr, "port", None) == port and conn.status == "LISTEN":
+                if conn.pid is None:
+                    msg = (
+                        f"Port {port} is already in use by an unknown process.\n\n"
+                        "Stop the process using that port, then restart Vociferous."
+                    )
+                    return True, msg
                 try:
                     proc = psutil.Process(conn.pid)
                     if proc.pid == current_pid:
@@ -32,10 +39,7 @@ def _detect_port_conflict(port: int) -> tuple[bool, str]:
                     msg = (
                         f"Port {port} is already in use by PID {conn.pid} ({username}).\n"
                         f"Command: {cmdline}\n\n"
-                        f"To fix:\n"
-                        f"  1. Kill the process: kill {conn.pid}\n"
-                        f"  2. If unresponsive: kill -9 {conn.pid}\n"
-                        f"  3. Or check with: ss -tlnp | grep {port}"
+                        "Stop that process, then restart Vociferous."
                     )
                     return True, msg
                 except (psutil.NoSuchProcess, psutil.AccessDenied):

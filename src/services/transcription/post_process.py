@@ -125,6 +125,9 @@ def normalize_sentence_casing(text: str) -> str:
                 should_capitalize = False
             continue
 
+        if char == "." and i > 0 and i + 1 < len(chars) and chars[i - 1].isdigit() and chars[i + 1].isdigit():
+            continue
+
         if char in ".!?":
             should_capitalize = True
 

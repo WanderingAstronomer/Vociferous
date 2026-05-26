@@ -80,6 +80,12 @@ class TestParseOutput:
         assert result.content == "The corrected text."
         assert result.reasoning == "I need to fix spelling."
 
+    def test_multiple_think_blocks_are_all_extracted(self) -> None:
+        engine = _make_engine()
+        result = engine._parse_output("<think>first pass</think>The corrected text.<think>second pass</think>")
+        assert result.content == "The corrected text."
+        assert result.reasoning == "first pass\n\nsecond pass"
+
     def test_think_block_with_newlines(self) -> None:
         engine = _make_engine()
         result = engine._parse_output("<think>\nLine 1\nLine 2\n</think>\nOutput here.")

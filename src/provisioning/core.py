@@ -155,16 +155,18 @@ def download_model_directory(
         result = Path(downloaded_path)
         logger.info("Downloaded CT2 model directory %s -> %s", repo_id, result)
 
+        model_bin = result / model_file
+        if not model_bin.exists():
+            raise ProvisioningError(
+                f"Downloaded CT2 model from {repo_id} is missing required file {model_file} in {result}."
+            )
+
         # --- SHA-256 integrity check on the primary model binary ---
         if expected_sha256:
-            model_bin = result / model_file
-            if model_bin.exists():
-                if progress_callback:
-                    progress_callback(f"Verifying integrity of {model_file}...")
-                _verify_integrity(model_bin, expected_sha256)
-                logger.info("SHA-256 verified for %s/%s", repo_id, model_file)
-            else:
-                logger.warning("Model file %s not found in %s — skipping SHA-256 check", model_file, result)
+            if progress_callback:
+                progress_callback(f"Verifying integrity of {model_file}...")
+            _verify_integrity(model_bin, expected_sha256)
+            logger.info("SHA-256 verified for %s/%s", repo_id, model_file)
 
         if progress_callback:
             progress_callback(f"Downloaded {repo_id} successfully.")
@@ -172,6 +174,8 @@ def download_model_directory(
         return result
 
     except IntegrityError:
+        raise
+    except ProvisioningError:
         raise
     except Exception as e:
         raise ProvisioningError(f"Failed to download CT2 model from {repo_id}: {e}") from e

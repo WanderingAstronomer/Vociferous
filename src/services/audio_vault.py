@@ -271,32 +271,44 @@ class AudioVaultManager:
                 if len(header_payload) != header_len:
                     valid_end = record_start
                     break
-                chunk_header = json.loads(header_payload.decode("utf-8"))
-                stored_bytes = int(chunk_header["stored_bytes"])
-                payload = handle.read(stored_bytes)
-                if len(payload) != stored_bytes:
-                    valid_end = record_start
-                    break
-                record_bytes = header_len_raw + header_payload + payload
-                digest = hashlib.sha256(record_bytes).hexdigest()
-                if encrypted:
-                    nonce = bytes.fromhex(chunk_header["nonce"])
-                    aad = (
-                        f"{record.id}:{chunk_header['chunk_index']}:{chunk_header['start_frame']}:{chunk_header['frame_count']}"
-                    ).encode("utf-8")
-                    payload = aesgcm.decrypt(nonce, payload, aad)
-                frames = np.frombuffer(payload, dtype=np.int16).copy()
-                chunks.append(frames)
-                self._db.add_recording_chunk(
-                    recording_id=record.id,
-                    chunk_index=int(chunk_header["chunk_index"]),
-                    start_frame=int(chunk_header["start_frame"]),
-                    frame_count=int(chunk_header["frame_count"]),
-                    byte_offset=record_start,
-                    byte_count=len(record_bytes),
-                    sha256=digest,
-                )
-                valid_end = handle.tell()
+                try:
+                    chunk_header = json.loads(header_payload.decode("utf-8"))
+                    stored_bytes = int(chunk_header["stored_bytes"])
+                    payload = handle.read(stored_bytes)
+                    if len(payload) != stored_bytes:
+                        valid_end = record_start
+                        break
+                    record_bytes = header_len_raw + header_payload + payload
+                    digest = hashlib.sha256(record_bytes).hexdigest()
+                    if encrypted:
+                        nonce = bytes.fromhex(chunk_header["nonce"])
+                        aad = (
+                            f"{record.id}:{chunk_header['chunk_index']}:{chunk_header['start_frame']}:{chunk_header['frame_count']}"
+                        ).encode("utf-8")
+                        payload = aesgcm.decrypt(nonce, payload, aad)
+                    frames = np.frombuffer(payload, dtype=np.int16).copy()
+                    chunks.append(frames)
+                    self._db.add_recording_chunk(
+                        recording_id=record.id,
+                        chunk_index=int(chunk_header["chunk_index"]),
+                        start_frame=int(chunk_header["start_frame"]),
+                        frame_count=int(chunk_header["frame_count"]),
+                        byte_offset=record_start,
+                        byte_count=len(record_bytes),
+                        sha256=digest,
+                    )
+                    valid_end = handle.tell()
+                except Exception as exc:
+                    if repair:
+                        logger.warning(
+                            "Truncating corrupt audio vault record at byte %d for %s",
+                            record_start,
+                            record.id,
+                            exc_info=True,
+                        )
+                        valid_end = record_start
+                        break
+                    raise AudioVaultError(f"Invalid audio vault chunk in {path.name}.") from exc
             if repair:
                 handle.truncate(valid_end)
         return chunks

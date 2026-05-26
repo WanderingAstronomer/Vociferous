@@ -72,6 +72,39 @@ def test_audio_vault_recovery_truncates_torn_record(monkeypatch, tmp_path: Path)
         db.close()
 
 
+def test_audio_vault_recovery_truncates_malformed_complete_record(monkeypatch, tmp_path: Path) -> None:
+    _configure_paths(monkeypatch, tmp_path)
+    db = TranscriptDB(db_path=tmp_path / "test.db")
+    try:
+        writer = AudioVaultWriter(
+            db=db,
+            session_id="rec_malformed",
+            sample_rate=16000,
+            durability_interval_seconds=1,
+        )
+        audio = np.arange(16000, dtype=np.int16)
+        writer.write_frames(audio)
+        malformed_header = b'{"stored_bytes":0'
+        writer._fh.write(len(malformed_header).to_bytes(4, "big"))
+        writer._fh.write(malformed_header)
+        writer._fh.flush()
+        os.fsync(writer._fh.fileno())
+        writer._fh.close()
+        writer._fh = None
+
+        before_size = writer.path.stat().st_size
+        recovered = AudioVaultManager(db).recover_interrupted_recordings()
+        after_size = writer.path.stat().st_size
+
+        assert len(recovered) == 1
+        assert recovered[0].status == "recovered"
+        assert after_size < before_size
+        loaded = AudioVaultManager(db).load_audio("rec_malformed")
+        np.testing.assert_array_equal(loaded, audio)
+    finally:
+        db.close()
+
+
 def test_audio_vault_encrypted_roundtrip(monkeypatch, tmp_path: Path) -> None:
     _configure_paths(monkeypatch, tmp_path)
     keys: dict[str, bytes] = {}

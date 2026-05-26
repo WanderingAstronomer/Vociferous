@@ -25,10 +25,11 @@ def parse_generation_output(text: str) -> GenerationResult:
     reasoning = None
     content = text
 
-    match = re.search(r"<think>(.*?)</think>", text, flags=re.DOTALL)
-    if match:
-        reasoning = match.group(1).strip()
-        content = text.replace(match.group(0), "")
+    matches = list(re.finditer(r"<think>(.*?)</think>", text, flags=re.DOTALL))
+    if matches:
+        reasoning_parts = [match.group(1).strip() for match in matches if match.group(1).strip()]
+        reasoning = "\n\n".join(reasoning_parts) if reasoning_parts else None
+        content = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     elif "<think>" in text:
         parts = text.split("<think>", 1)
         content = parts[0]

@@ -458,6 +458,8 @@ class TestProvisionWrappers:
         model = next(iter(ASR_MODELS.values()))
         local_dir_name = model.repo.split("/")[-1]
         expected_dir = tmp_path / local_dir_name
+        expected_dir.mkdir()
+        (expected_dir / model.model_file).touch()
         mock_snapshot.return_value = str(expected_dir)
 
         result = provision_asr_model(model, tmp_path)
@@ -474,6 +476,8 @@ class TestProvisionWrappers:
         model = next(iter(SLM_MODELS.values()))
         local_dir_name = model.repo.split("/")[-1]
         expected_dir = tmp_path / local_dir_name
+        expected_dir.mkdir()
+        (expected_dir / model.model_file).touch()
         mock_snapshot.return_value = str(expected_dir)
 
         result = provision_slm_model(model, tmp_path)
@@ -503,7 +507,10 @@ class TestProvisionWrappers:
     def test_provision_asr_with_callback(self, mock_snapshot: MagicMock, _mock_verify: MagicMock, tmp_path: Path):
         model = next(iter(ASR_MODELS.values()))
         local_dir_name = model.repo.split("/")[-1]
-        mock_snapshot.return_value = str(tmp_path / local_dir_name)
+        expected_dir = tmp_path / local_dir_name
+        expected_dir.mkdir()
+        (expected_dir / model.model_file).touch()
+        mock_snapshot.return_value = str(expected_dir)
         cb = MagicMock()
 
         provision_asr_model(model, tmp_path, progress_callback=cb)
@@ -515,7 +522,10 @@ class TestProvisionWrappers:
     def test_provision_slm_with_callback(self, mock_snapshot: MagicMock, _mock_verify: MagicMock, tmp_path: Path):
         model = next(iter(SLM_MODELS.values()))
         local_dir_name = model.repo.split("/")[-1]
-        mock_snapshot.return_value = str(tmp_path / local_dir_name)
+        expected_dir = tmp_path / local_dir_name
+        expected_dir.mkdir()
+        (expected_dir / model.model_file).touch()
+        mock_snapshot.return_value = str(expected_dir)
         cb = MagicMock()
 
         provision_slm_model(model, tmp_path, progress_callback=cb)
@@ -539,6 +549,17 @@ class TestProvisionWrappers:
 
         with pytest.raises(ProvisioningError):
             provision_slm_model(model, tmp_path)
+
+    @patch(SNAPSHOT_PATCH)
+    def test_ct2_directory_missing_primary_model_file_fails(self, mock_snapshot: MagicMock, tmp_path: Path):
+        model = next(iter(ASR_MODELS.values()))
+        local_dir_name = model.repo.split("/")[-1]
+        downloaded_dir = tmp_path / local_dir_name
+        downloaded_dir.mkdir()
+        mock_snapshot.return_value = str(downloaded_dir)
+
+        with pytest.raises(ProvisioningError, match="missing required file"):
+            provision_asr_model(model, tmp_path)
 
 
 # ======================================================================

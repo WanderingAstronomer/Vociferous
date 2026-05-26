@@ -120,7 +120,11 @@ class RefinementHandlers:
             self._emit("refinement_error", {"message": "Transcript not found"})
             return
 
-        resolved_instructions = self._resolve_instructions(intent.instructions, db, intent.prompt_transcript_id)
+        resolved_instructions = self._resolve_instructions(
+            intent.instructions,
+            db,
+            getattr(intent, "prompt_transcript_id", None),
+        )
 
         self._emit(
             "refinement_started",

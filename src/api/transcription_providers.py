@@ -4,10 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
-from litestar import Response, get, post
+from litestar import Response, delete, get, post, put
 
 from src.api.deps import get_coordinator
+from src.core.secret_store import (
+    SecretStoreUnavailable,
+    delete_provider_api_key,
+    get_provider_api_key,
+    get_secret_backend,
+    provider_api_key_is_valid,
+    store_provider_api_key,
+)
 from src.core.settings import VociferousSettings
 from src.services.transcription_service import (
     TranscriptionProviderRequestError,
@@ -61,3 +70,70 @@ async def test_transcription_provider(provider_id: str, data: dict | None = None
         logger.warning("Transcription provider test failed for %s: %s", provider_id, exc)
         return Response(content={"ok": False, "error": str(exc)}, status_code=502)
     return Response(content=result)
+
+
+@get("/api/transcription/providers/{provider_id:str}/api-key")
+async def get_transcription_provider_api_key_status(provider_id: str) -> Response:
+    """Return transcription API key availability without exposing the secret value."""
+    try:
+        settings = _provider_settings(provider_id)
+        provider_settings = getattr(settings.model, provider_id)
+        env_name = provider_settings.api_key_env
+        env_key = os.environ.get(env_name) if env_name else None
+        stored_key = await asyncio.to_thread(get_provider_api_key, provider_id)
+        has_env_key = bool(env_key)
+        has_stored_key = bool(stored_key)
+        has_env_key_valid = provider_api_key_is_valid(provider_id, env_key) if has_env_key else False
+        has_stored_key_valid = provider_api_key_is_valid(provider_id, stored_key) if has_stored_key else False
+        source = "stored" if has_stored_key else "environment" if has_env_key else "none"
+        source_valid = has_stored_key_valid if source == "stored" else has_env_key_valid if source == "environment" else False
+    except ValueError as exc:
+        return Response(content={"error": str(exc)}, status_code=400)
+    return Response(
+        content={
+            "provider": provider_id,
+            "backend": get_secret_backend(),
+            "has_env_key": has_env_key,
+            "has_env_key_valid": has_env_key_valid,
+            "has_stored_key": has_stored_key,
+            "has_stored_key_valid": has_stored_key_valid,
+            "source": source,
+            "source_valid": source_valid,
+            "api_key_env": env_name,
+        }
+    )
+
+
+@put("/api/transcription/providers/{provider_id:str}/api-key")
+async def save_transcription_provider_api_key(provider_id: str, data: dict) -> Response:
+    """Save a transcription provider API key to the local secret backend."""
+    try:
+        if provider_id not in _EXTERNAL_PROVIDERS:
+            raise ValueError(f"Unknown external transcription provider: {provider_id}")
+        api_key = data.get("api_key")
+        if not isinstance(api_key, str) or not api_key.strip():
+            return Response(content={"error": "'api_key' must be a non-empty string"}, status_code=400)
+        await asyncio.to_thread(store_provider_api_key, provider_id, api_key)
+    except SecretStoreUnavailable as exc:
+        return Response(content={"error": str(exc), "backend": get_secret_backend()}, status_code=501)
+    except ValueError as exc:
+        return Response(content={"error": str(exc)}, status_code=400)
+    except Exception as exc:
+        logger.warning("Failed to save transcription provider API key for %s: %s", provider_id, exc)
+        return Response(content={"error": "Failed to save provider API key"}, status_code=500)
+    return Response(content={"provider": provider_id, "stored": True, "backend": get_secret_backend()})
+
+
+@delete("/api/transcription/providers/{provider_id:str}/api-key", status_code=200)
+async def delete_transcription_provider_api_key(provider_id: str) -> Response:
+    """Delete a transcription provider API key from the local secret backend."""
+    try:
+        if provider_id not in _EXTERNAL_PROVIDERS:
+            raise ValueError(f"Unknown external transcription provider: {provider_id}")
+        deleted = await asyncio.to_thread(delete_provider_api_key, provider_id)
+    except ValueError as exc:
+        return Response(content={"error": str(exc)}, status_code=400)
+    except Exception as exc:
+        logger.warning("Failed to delete transcription provider API key for %s: %s", provider_id, exc)
+        return Response(content={"error": "Failed to delete provider API key"}, status_code=500)
+    return Response(content={"provider": provider_id, "deleted": deleted, "backend": get_secret_backend()})

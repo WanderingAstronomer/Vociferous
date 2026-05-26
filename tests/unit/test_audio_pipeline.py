@@ -398,3 +398,16 @@ class TestFullPipeline:
         result = pipe.process(np.zeros(16000, dtype=np.int16))
         assert result is None
         mock_load.assert_not_called()  # VAD model never loaded
+
+    @patch("src.services.audio_pipeline.AudioPipeline._load_vad_model")
+    def test_process_recomputes_highpass_when_sample_rate_changes(self, mock_load: MagicMock):
+        mock_load.return_value = _build_mock_session(speech_prob=0.95)
+        pipe = AudioPipeline(sample_rate=16000)
+        original_alpha = pipe._hp_alpha
+
+        tone = _make_tone(freq=300, duration_s=1.0, sample_rate=48000, amplitude=0.5)
+        result = pipe.process(tone, sample_rate=48000)
+
+        assert result is not None
+        assert pipe.sample_rate == 48000
+        assert pipe._hp_alpha != original_alpha

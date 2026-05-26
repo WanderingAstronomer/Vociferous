@@ -54,7 +54,13 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
         test_refinement_provider,
     )
     from src.api.system import health, import_audio_file
-    from src.api.transcription_providers import list_transcription_provider_models, test_transcription_provider
+    from src.api.transcription_providers import (
+        delete_transcription_provider_api_key,
+        get_transcription_provider_api_key_status,
+        list_transcription_provider_models,
+        save_transcription_provider_api_key,
+        test_transcription_provider,
+    )
     from src.api.transcripts import (
         batch_tag_toggle,
         delete_recovered_recording,
@@ -113,6 +119,9 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
             get_refinement_provider_api_key_status,
             save_refinement_provider_api_key,
             delete_refinement_provider_api_key,
+            get_transcription_provider_api_key_status,
+            save_transcription_provider_api_key,
+            delete_transcription_provider_api_key,
             list_refinement_provider_models,
             test_refinement_provider,
             list_transcription_provider_models,
@@ -820,6 +829,68 @@ class TestRefinementProviderSecretRoutes:
         result = client.post("/api/transcription/providers/groq/test", json={"model_id": "draft-whisper"})
         assert result.status_code == 200
         assert result.json() == {"ok": True, "provider": "groq"}
+
+    def test_transcription_provider_api_key_status_uses_transcription_env_setting(self, api, monkeypatch):
+        from src.api import transcription_providers
+        from src.core.settings import VociferousSettings
+
+        client, coord, _ = api
+        merged = coord.settings.model_dump()
+        merged["model"]["groq"]["api_key_env"] = "ASR_GROQ_API_KEY"
+        merged["refinement"]["groq"]["api_key_env"] = "REFINEMENT_GROQ_API_KEY"
+        coord.settings = VociferousSettings(**merged)
+
+        monkeypatch.setenv("ASR_GROQ_API_KEY", "gsk_test_secret_123456789012345678901234567890")
+        monkeypatch.delenv("REFINEMENT_GROQ_API_KEY", raising=False)
+        monkeypatch.setattr(transcription_providers, "get_secret_backend", lambda: "test_secret")
+        monkeypatch.setattr(transcription_providers, "get_provider_api_key", lambda _provider_id: None)
+
+        status = client.get("/api/transcription/providers/groq/api-key")
+
+        assert status.status_code == 200
+        assert status.json()["api_key_env"] == "ASR_GROQ_API_KEY"
+        assert status.json()["source"] == "environment"
+        assert status.json()["source_valid"] is True
+        assert "gsk_test_secret_123456789012345678901234567890" not in status.text
+
+    def test_transcription_provider_api_key_round_trip_never_exposes_secret(self, api, monkeypatch):
+        from src.api import transcription_providers
+
+        client, _, _ = api
+        stored: dict[str, str] = {}
+
+        monkeypatch.delenv("GROQ_API_KEY", raising=False)
+        monkeypatch.setattr(transcription_providers, "get_secret_backend", lambda: "test_secret")
+        monkeypatch.setattr(transcription_providers, "get_provider_api_key", lambda provider_id: stored.get(provider_id))
+        monkeypatch.setattr(
+            transcription_providers,
+            "store_provider_api_key",
+            lambda provider_id, api_key: stored.__setitem__(provider_id, api_key),
+        )
+        monkeypatch.setattr(
+            transcription_providers,
+            "delete_provider_api_key",
+            lambda provider_id: stored.pop(provider_id, None) is not None,
+        )
+
+        saved = client.put(
+            "/api/transcription/providers/groq/api-key",
+            json={"api_key": "gsk_test_secret_123456789012345678901234567890"},
+        )
+        assert saved.status_code == 200
+        assert saved.json() == {"provider": "groq", "stored": True, "backend": "test_secret"}
+        assert "gsk_test_secret_123456789012345678901234567890" not in saved.text
+
+        status = client.get("/api/transcription/providers/groq/api-key")
+        assert status.status_code == 200
+        assert status.json()["has_stored_key"] is True
+        assert status.json()["source"] == "stored"
+        assert status.json()["source_valid"] is True
+        assert "gsk_test_secret_123456789012345678901234567890" not in status.text
+
+        deleted = client.delete("/api/transcription/providers/groq/api-key")
+        assert deleted.status_code == 200
+        assert deleted.json() == {"provider": "groq", "deleted": True, "backend": "test_secret"}
 
     def test_lm_studio_is_not_a_transcription_provider(self, api):
         client, _, _ = api

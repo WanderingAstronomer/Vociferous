@@ -313,6 +313,9 @@ class AudioService:
                 try:
                     frame = audio_queue.get_nowait()
                     if len(frame) >= frame_size:
+                        if initial_frames_to_skip > 0:
+                            initial_frames_to_skip -= 1
+                            continue
                         recording.extend(frame)
                         if spool_writer is not None:
                             spool_writer.write_frames(frame)

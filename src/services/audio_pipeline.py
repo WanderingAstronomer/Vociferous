@@ -77,7 +77,7 @@ class AudioPipeline:
     }
 
     def __init__(self, sample_rate: int = 16000, sensitivity: str = "normal") -> None:
-        self.sample_rate = sample_rate
+        self.sample_rate = int(sample_rate)
         self._session: Any = None  # onnxruntime.InferenceSession (deferred import)
 
         # Apply sensitivity preset by shadowing class constants with
@@ -90,7 +90,10 @@ class AudioPipeline:
         for attr, value in preset.items():
             setattr(self, attr, value)
 
-        # Pre-compute highpass filter coefficient
+        self._recompute_highpass_coefficient()
+
+    def _recompute_highpass_coefficient(self) -> None:
+        """Refresh the sample-rate-dependent highpass filter coefficient."""
         rc = 1.0 / (2.0 * np.pi * self._HIGHPASS_CUTOFF)
         dt = 1.0 / self.sample_rate
         self._hp_alpha: float = rc / (rc + dt)
@@ -158,7 +161,10 @@ class AudioPipeline:
         if audio.size == 0:
             return None
 
-        self.sample_rate = sample_rate
+        sample_rate = int(sample_rate)
+        if sample_rate != self.sample_rate:
+            self.sample_rate = sample_rate
+            self._recompute_highpass_coefficient()
 
         # Stage 1: int16 -> float32 (do this once; reused by RMS pre-check)
         audio_f32: NDArray[np.float32] = audio.astype(np.float32) / 32768.0

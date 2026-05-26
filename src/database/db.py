@@ -50,6 +50,11 @@ def normalize_tag_filter_mode(tag_mode: str) -> str:
     return normalized
 
 
+def _escape_like_token(token: str) -> str:
+    """Escape user text for a literal LIKE match using backslash as ESCAPE."""
+    return token.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 # --- Database ---
 
 
@@ -481,8 +486,8 @@ class TranscriptDB:
         # Wrap each token as an FTS5 phrase with prefix wildcard.
         # Inner double-quotes are escaped by doubling them per FTS5 syntax.
         fts_terms = " ".join(f'"{token.replace(chr(34), chr(34) * 2)}"*' for token in tokens)
-        title_conditions = " AND ".join("LOWER(COALESCE(t.display_name, '')) LIKE ?" for _ in tokens)
-        title_params = tuple(f"%{token.lower()}%" for token in tokens)
+        title_conditions = " AND ".join("LOWER(COALESCE(t.display_name, '')) LIKE ? ESCAPE '\\'" for _ in tokens)
+        title_params = tuple(f"%{_escape_like_token(token.lower())}%" for token in tokens)
         with self._write_lock:
             visibility_conditions: list[str] = []
             if not include_compound_children:
@@ -522,8 +527,8 @@ class TranscriptDB:
             )
         tokens = query.split()
         fts_terms = " ".join(f'"{t.replace(chr(34), chr(34) * 2)}"*' for t in tokens)
-        title_conditions = " AND ".join("LOWER(COALESCE(t.display_name, '')) LIKE ?" for _ in tokens)
-        title_params = tuple(f"%{token.lower()}%" for token in tokens)
+        title_conditions = " AND ".join("LOWER(COALESCE(t.display_name, '')) LIKE ? ESCAPE '\\'" for _ in tokens)
+        title_params = tuple(f"%{_escape_like_token(token.lower())}%" for token in tokens)
         with self._write_lock:
             visibility_conditions = [
                 f"(t.id IN (SELECT rowid FROM transcripts_fts WHERE transcripts_fts MATCH ?) OR ({title_conditions}))"

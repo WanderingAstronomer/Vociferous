@@ -7,10 +7,30 @@ They carry no behavior — handlers are registered in the CommandBus.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from types import MappingProxyType
+from typing import Any
 
 from src.core.intents import InteractionIntent
+
+
+def _freeze_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _freeze_value(item) for key, item in value.items()})
+    if isinstance(value, list | tuple):
+        return tuple(_freeze_value(item) for item in value)
+    return value
+
+
+def thaw_value(value: Any) -> Any:
+    """Return plain mutable containers for code that needs to merge intent payloads."""
+    if isinstance(value, Mapping):
+        return {key: thaw_value(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [thaw_value(item) for item in value]
+    return value
 
 
 class IntentSource(Enum):
@@ -82,6 +102,9 @@ class BatchDeleteTranscriptsIntent(InteractionIntent):
     transcript_ids: tuple[int, ...] = field(default_factory=tuple)
     source: IntentSource = IntentSource.API
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "transcript_ids", tuple(self.transcript_ids))
+
 
 @dataclass(frozen=True, slots=True)
 class ClearAllTranscriptsIntent(InteractionIntent):
@@ -133,6 +156,7 @@ class BulkRefineTranscriptsIntent(InteractionIntent):
     source: IntentSource = IntentSource.API
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "transcript_ids", tuple(self.transcript_ids))
         if not isinstance(self.level, int) or not (1 <= self.level <= 5):
             raise ValueError("level must be an integer between 1 and 5")
 
@@ -148,8 +172,11 @@ class CancelBulkRefinementIntent(InteractionIntent):
 class UpdateConfigIntent(InteractionIntent):
     """Update application configuration settings."""
 
-    settings: dict = field(default_factory=dict)
+    settings: Mapping[str, Any] = field(default_factory=dict)
     source: IntentSource = IntentSource.API
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "settings", _freeze_value(self.settings))
 
 
 @dataclass(frozen=True, slots=True)

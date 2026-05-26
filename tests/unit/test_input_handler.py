@@ -178,6 +178,16 @@ class TestKeyChordEdgeCases:
         chord.update(KeyCode.A, InputEvent.KEY_RELEASE)
         assert KeyCode.A not in chord.pressed_keys
 
+    def test_mouse_button_events_update_chord_state(self):
+        """Mouse buttons are first-class hotkey keys, not enum-shaped decorations."""
+        chord = KeyChord(keys={KeyCode.MOUSE_LEFT})
+
+        assert chord.update(KeyCode.MOUSE_LEFT, InputEvent.MOUSE_PRESS) is True
+        assert chord.is_active()
+
+        assert chord.update(KeyCode.MOUSE_LEFT, InputEvent.MOUSE_RELEASE) is False
+        assert not chord.is_active()
+
 
 # ── KeyCode Enum ──────────────────────────────────────────────────────────
 
@@ -472,3 +482,17 @@ class TestCaptureMode:
 
         listener.on_input_event((KeyCode.A, InputEvent.KEY_PRESS))
         assert calls == []
+
+
+class TestKeyCaptureHandler:
+    """Test capture helper behavior independent of the API route."""
+
+    def test_mouse_press_finalizes_capture(self):
+        from src.input_handler.key_capture import make_capture_handler
+
+        captured: list[tuple[str, str]] = []
+        handler = make_capture_handler(on_chord=lambda combo, display: captured.append((combo, display)))
+
+        handler(KeyCode.MOUSE_LEFT, InputEvent.MOUSE_PRESS)
+
+        assert captured == [("MOUSE_LEFT", "Mouse_Left")]
