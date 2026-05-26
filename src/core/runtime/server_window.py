@@ -11,6 +11,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _set_windows_app_identity() -> None:
+    """Give the Windows taskbar a stable app identity instead of inheriting python.exe."""
+    if platform.system() != "Windows":
+        return
+
+    try:
+        import ctypes
+
+        app_id = "WanderingAstronomer.Vociferous"
+        result = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)  # type: ignore[attr-defined]
+        if result != 0:
+            logger.warning("Failed to set Windows AppUserModelID: %s", result)
+    except Exception:
+        logger.debug("Could not set Windows app identity", exc_info=True)
+
+
 def _detect_port_conflict(port: int) -> tuple[bool, str]:
     """Detect if another process is using our port."""
     try:
@@ -116,6 +132,8 @@ def open_window(coordinator: ApplicationCoordinator) -> None:
     """Open the main pywebview window. Blocks until closed."""
     try:
         import webview
+
+        _set_windows_app_identity()
 
         if platform.system() == "Linux":
             try:
