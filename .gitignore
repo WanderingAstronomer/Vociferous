@@ -103,3 +103,8 @@ dev_tools/
 # =========================
 
 vociferous.desktop
+
+# =========================
+# Wiki (DO NOT COMMIT. READ-ONLY. For local reference only.)
+# =========================
+wiki/

@@ -4,16 +4,21 @@ import argparse
 import sys
 import time
 from pathlib import Path
-
-from src.core.settings import get_settings, init_settings
-from src.services.slm_runtime import SLMRuntime
+from typing import Protocol
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+class _RuntimeStateLike(Protocol):
+    value: str
 
-def _wait_ready(runtime: SLMRuntime, timeout_s: int = 180) -> bool:
+
+class _RuntimeLike(Protocol):
+    state: _RuntimeStateLike
+
+
+def _wait_ready(runtime: _RuntimeLike, timeout_s: int = 180) -> bool:
     start = time.monotonic()
     while time.monotonic() - start < timeout_s:
         state = runtime.state.value
@@ -53,6 +58,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    from src.core.settings import get_settings, init_settings
+    from src.services.slm_runtime import SLMRuntime
+
     args = _build_parser().parse_args()
 
     init_settings()

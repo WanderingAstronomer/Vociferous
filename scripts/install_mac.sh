@@ -73,17 +73,33 @@ echo ""
 echo "=========================================="
 echo "Creating virtual environment"
 echo "=========================================="
-if [ ! -d "$PROJECT_DIR/.venv" ]; then
+VENV_DIR="$PROJECT_DIR/.venv"
+VENV_PYTHON="$VENV_DIR/bin/python"
+
+if [ -d "$VENV_DIR" ]; then
+    VENV_OK=false
+    if [ -x "$VENV_PYTHON" ]; then
+        VENV_VER=$("$VENV_PYTHON" --version 2>&1 | cut -d' ' -f2 | cut -d'.' -f1,2)
+        if [[ "$VENV_VER" == "3.12" || "$VENV_VER" == "3.13" ]]; then
+            VENV_OK=true
+        fi
+    fi
+    if [ "$VENV_OK" = false ]; then
+        echo "⚠ Existing .venv uses an unsupported Python version. Recreating..."
+        rm -rf "$VENV_DIR"
+    fi
+fi
+
+if [ ! -d "$VENV_DIR" ]; then
     echo "Creating virtual environment..."
-    "$PYTHON_CMD" -m venv "$PROJECT_DIR/.venv"
+    "$PYTHON_CMD" -m venv "$VENV_DIR"
     echo "✓ Virtual environment created"
 else
     echo "✓ Virtual environment already exists"
 fi
 
 # Activate and install
-source "$PROJECT_DIR/.venv/bin/activate"
-VENV_PYTHON="$PROJECT_DIR/.venv/bin/python"
+source "$VENV_DIR/bin/activate"
 
 echo ""
 echo "=========================================="
@@ -147,7 +163,7 @@ echo "=========================================="
 echo ""
 echo "To run the application:"
 echo "  cd $PROJECT_DIR"
-echo "  ./vociferous"
+echo "  ./vociferous.sh"
 echo ""
 echo "Note: On first run, macOS may prompt for:"
 echo "  - Microphone access (required for transcription)"

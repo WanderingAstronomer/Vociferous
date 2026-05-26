@@ -123,5 +123,5 @@ echo
 echo -e "Next steps:"
 echo -e "  1. ${CYAN}python3 -m venv .venv && source .venv/bin/activate${NC}"
 echo -e "  2. ${CYAN}pip install -r requirements.txt${NC}"
-echo -e "  3. ${CYAN}./vociferous${NC}"
+echo -e "  3. ${CYAN}./vociferous.sh${NC}"
 echo

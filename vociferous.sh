@@ -41,8 +41,11 @@ build_frontend() {
 if [[ -x "$VENV_PYTHON" ]]; then
     PYTHON="$VENV_PYTHON"
 else
-    PYTHON="$(command -v python3 || command -v python)"
-    if [[ -z "$PYTHON" ]]; then
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON="$(command -v python3)"
+    elif command -v python >/dev/null 2>&1; then
+        PYTHON="$(command -v python)"
+    else
         echo "Error: Python not found. Run scripts/install.sh first." >&2
         exit 1
     fi

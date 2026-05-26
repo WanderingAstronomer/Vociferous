@@ -7,7 +7,7 @@ name = "vociferous"
 dynamic = ["version"]
 description = "Cross-platform speech-to-text with offline transcription and SLM refinement"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 license = "AGPL-3.0-or-later"
 dependencies = [
     # Window Shell

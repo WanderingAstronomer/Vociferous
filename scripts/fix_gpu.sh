@@ -43,8 +43,7 @@ else
         echo "  ! modprobe failed. Trying nvidia-modprobe..."
         if command -v nvidia-modprobe &> /dev/null; then
             echo "  Running: nvidia-modprobe -u"
-            nvidia-modprobe -u
-            if [ $? -eq 0 ]; then
+            if nvidia-modprobe -u; then
                 echo "  ✓ nvidia-modprobe returned success."
             else
                 echo "  ✗ Failed to load UVM. Please run 'sudo modprobe $UVM_MODULE' manually."
@@ -76,8 +75,7 @@ if [ ! -c /dev/nvidia-uvm ]; then
         
         if [ -n "$UVM_MAJOR" ]; then
             echo "  Found nvidia-uvm major number: $UVM_MAJOR"
-            mknod -m 666 /dev/nvidia-uvm c "$UVM_MAJOR" 0
-            if [ $? -eq 0 ]; then
+            if mknod -m 666 /dev/nvidia-uvm c "$UVM_MAJOR" 0; then
                 echo "  ✓ Successfully created /dev/nvidia-uvm manually."
             else
                 echo "  ✗ Failed to run mknod."

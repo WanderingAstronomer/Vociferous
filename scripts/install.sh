@@ -13,15 +13,25 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Check Python version
-PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
-echo "Detected Python version: $PYTHON_VERSION"
+PYTHON_CMD=""
+PYTHON_VERSION=""
+for cmd in python3.13 python3.12 python3; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+        candidate_version=$("$cmd" --version 2>&1 | cut -d' ' -f2 | cut -d'.' -f1,2)
+        if [[ "$candidate_version" == "3.12" || "$candidate_version" == "3.13" ]]; then
+            PYTHON_CMD="$cmd"
+            PYTHON_VERSION="$candidate_version"
+            break
+        fi
+    fi
+done
 
-if [[ "$PYTHON_VERSION" != "3.12" && "$PYTHON_VERSION" != "3.13" ]]; then
+if [[ -z "$PYTHON_CMD" ]]; then
     echo "Error: Vociferous requires Python 3.12 or 3.13"
-    echo "Your version: $PYTHON_VERSION"
+    echo "Install python3.12 or python3.13, then run this script again."
     exit 1
 fi
-echo "✓ Python version check passed"
+echo "✓ Python $PYTHON_VERSION ($PYTHON_CMD) found"
 
 # Check for required system packages (before venv creation, as some are needed for building)
 echo ""
@@ -90,7 +100,7 @@ echo "=========================================="
 
 # Install dependencies via uv (CTranslate2/faster-whisper ship pre-built wheels with CUDA support)
 cd "$PROJECT_DIR"
-uv sync
+UV_PYTHON="$PYTHON_CMD" uv sync
 echo "✓ Dependencies installed"
 
 # Use venv Python explicitly for verification

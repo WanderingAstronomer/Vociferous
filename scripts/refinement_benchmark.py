@@ -24,15 +24,11 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol, Sequence
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-from src.core.model_registry import SLMModel, get_slm_model
-from src.core.resource_manager import ResourceManager
-from src.core.settings import RefinementSettings, get_settings, init_settings
-
 
 @dataclass(slots=True)
 class BenchmarkResult:
@@ -54,11 +50,28 @@ class BenchmarkResult:
     refinement_need_score: float
 
 
+class _SLMModelLike(Protocol):
+    repo: str
+    model_file: str
+    name: str
+
+
+class _RefinementSettingsLike(Protocol):
+    system_prompt: str
+    invariants: Sequence[str]
+    temperature: float
+    top_p: float
+    top_k: int
+    repetition_penalty: float
+
+
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 
-def _resolve_model_dir(model: SLMModel) -> Path:
+def _resolve_model_dir(model: _SLMModelLike) -> Path:
     """Find the local CT2 model directory."""
+    from src.core.resource_manager import ResourceManager
+
     cache_dir = ResourceManager.get_user_cache_dir("models")
     local_dir_name = model.repo.split("/")[-1]
     model_dir = cache_dir / local_dir_name
@@ -69,7 +82,7 @@ def _resolve_model_dir(model: SLMModel) -> Path:
     return model_dir
 
 
-def _load_engine(model_dir: Path, settings: RefinementSettings, n_threads: int):  # noqa: ANN202
+def _load_engine(model_dir: Path, settings: _RefinementSettingsLike, n_threads: int):  # noqa: ANN202
     """Create a RefinementEngine with the given thread count. Forces CPU."""
     from src.refinement.engine import RefinementEngine
 
@@ -103,7 +116,7 @@ def _run_single(
     n_threads: int,
     model_id: str,
     run_number: int,
-    settings: RefinementSettings,
+    settings: _RefinementSettingsLike,
 ) -> BenchmarkResult:
     """Run one refinement call and capture all metrics."""
     text = sample["text"]
@@ -170,6 +183,8 @@ def run_benchmark(
     model_id: str,
 ) -> list[BenchmarkResult]:
     """Execute the full benchmark sweep."""
+    from src.core.model_registry import get_slm_model
+    from src.core.settings import get_settings
 
     settings = get_settings()
     slm_model = get_slm_model(model_id)
@@ -184,7 +199,7 @@ def run_benchmark(
     total_runs = sum(len(corpus.get(b, [])) * runs_per_sample for b in buckets) * len(thread_counts)
 
     print(f"\n{'=' * 70}")
-    print(f"  CPU Refinement Benchmark")
+    print("  CPU Refinement Benchmark")
     print(f"  Model: {slm_model.name} ({model_id})")
     print(f"  Model path: {model_dir}")
     print(f"  Thread counts: {thread_counts}")
@@ -364,6 +379,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    from src.core.settings import get_settings, init_settings
+
     args = _build_parser().parse_args()
 
     # Force CPU-only for benchmarking
