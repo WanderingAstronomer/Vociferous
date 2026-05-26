@@ -8,14 +8,14 @@
 
     import { Loader2, CheckCircle, AlertCircle, RefreshCw, PlugZap } from "lucide-svelte";
     import {
-        deleteRefinementProviderApiKey,
-        getRefinementProviderApiKeyStatus,
+        deleteTranscriptionProviderApiKey,
+        getTranscriptionProviderApiKeyStatus,
         getTranscriptionProviderModels,
-        saveRefinementProviderApiKey,
+        saveTranscriptionProviderApiKey,
         testTranscriptionProvider,
         type ExternalProviderModel,
         type ModelInfo,
-        type RefinementProviderApiKeyStatus,
+        type TranscriptionProviderApiKeyStatus,
         type TranscriptionProviderId,
     } from "../api";
     import type { ConfigPath, GetConfigValue, SetConfigValue, VociferousConfig } from "../config.svelte";
@@ -52,7 +52,7 @@
     let providerTestOk = $state<boolean | null>(null);
     let apiKeyDraft = $state("");
     let apiKeyBusy = $state(false);
-    let apiKeyStatus = $state<RefinementProviderApiKeyStatus | null>(null);
+    let apiKeyStatus = $state<TranscriptionProviderApiKeyStatus | null>(null);
     let apiKeyStatusProvider = $state("");
 
     function isExternalProvider(value: string): value is TranscriptionProviderId {
@@ -120,7 +120,7 @@
 
     async function refreshApiKeyStatus(providerId: TranscriptionProviderId) {
         try {
-            apiKeyStatus = await getRefinementProviderApiKeyStatus(providerId);
+            apiKeyStatus = await getTranscriptionProviderApiKeyStatus(providerId);
         } catch {
             apiKeyStatus = null;
         }
@@ -156,7 +156,7 @@
         }
         apiKeyBusy = true;
         try {
-            await saveRefinementProviderApiKey(providerId, apiKey);
+            await saveTranscriptionProviderApiKey(providerId, apiKey);
             apiKeyDraft = "";
             await refreshApiKeyStatus(providerId);
             toast.success("Provider API key saved locally");
@@ -170,7 +170,7 @@
     async function removeApiKey(providerId: TranscriptionProviderId) {
         apiKeyBusy = true;
         try {
-            await deleteRefinementProviderApiKey(providerId);
+            await deleteTranscriptionProviderApiKey(providerId);
             await refreshApiKeyStatus(providerId);
             toast.success("Stored provider API key removed");
         } catch (e) {

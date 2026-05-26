@@ -90,6 +90,10 @@ export interface TranscriptsBatchDeletedData {
     count: number;
 }
 
+export interface TranscriptsClearedData {
+    count: number;
+}
+
 export interface TranscriptUpdatedData {
     id: number;
     variant_id?: number;
@@ -107,6 +111,11 @@ export interface EngineStatusData {
     component?: string;
     status?: string;
     message?: string;
+}
+
+export interface AudioRecoveryUpdatedData {
+    count?: number;
+    recording_id?: string;
 }
 
 export interface OnboardingRequiredData {
@@ -168,9 +177,11 @@ export interface WSEventMap {
     bulk_refinement_error: BulkRefinementErrorData;
     transcript_deleted: TranscriptDeletedData;
     transcripts_batch_deleted: TranscriptsBatchDeletedData;
+    transcripts_cleared: TranscriptsClearedData;
     transcript_updated: TranscriptUpdatedData;
     config_updated: ConfigUpdatedData;
     engine_status: EngineStatusData;
+    audio_recovery_updated: AudioRecoveryUpdatedData;
     onboarding_required: OnboardingRequiredData;
     download_progress: DownloadProgressData;
     tag_created: TagCreatedData;
@@ -271,6 +282,8 @@ export const wsEventValidators: {
         isObject(data) && isNumber(data.id),
     transcripts_batch_deleted: (data): data is TranscriptsBatchDeletedData =>
         isObject(data) && isNumberArray(data.ids) && isNumber(data.count),
+    transcripts_cleared: (data): data is TranscriptsClearedData =>
+        isObject(data) && isNumber(data.count),
     transcript_updated: (data): data is TranscriptUpdatedData =>
         isObject(data) && isNumber(data.id) && (data.variant_id === undefined || isNumber(data.variant_id)),
     config_updated: (data): data is ConfigUpdatedData => isObject(data),
@@ -281,6 +294,10 @@ export const wsEventValidators: {
         (data.component === undefined || isString(data.component)) &&
         (data.status === undefined || isString(data.status)) &&
         (data.message === undefined || isString(data.message)),
+    audio_recovery_updated: (data): data is AudioRecoveryUpdatedData =>
+        isObject(data) &&
+        (data.count === undefined || isNumber(data.count)) &&
+        (data.recording_id === undefined || isString(data.recording_id)),
     onboarding_required: (data): data is OnboardingRequiredData =>
         isObject(data) && isString(data.reason),
     download_progress: (data): data is DownloadProgressData =>

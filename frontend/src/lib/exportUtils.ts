@@ -43,6 +43,15 @@ function tagList(t: Transcript): string {
     return t.tags.map((tg) => tg.name).join(", ") || "none";
 }
 
+function exportFilenamePrefix(transcripts: Transcript[], datePart: string): string {
+    if (transcripts.length === 1 && transcripts[0].display_name) {
+        const cleaned = transcripts[0].display_name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 60);
+        const compact = cleaned.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+        if (compact) return compact;
+    }
+    return `vociferous-export-${datePart}`;
+}
+
 /* ===== Format functions ===== */
 
 export function transcriptsToCsv(transcripts: Transcript[]): string {
@@ -119,10 +128,7 @@ export function buildExportPayload(
 ): { filename: string; content: string } {
     const datePart = new Date().toISOString().slice(0, 10);
     const ext = format === "md" ? "md" : format;
-    const prefix =
-        transcripts.length === 1 && transcripts[0].display_name
-            ? transcripts[0].display_name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 60)
-            : `vociferous-export-${datePart}`;
+    const prefix = exportFilenamePrefix(transcripts, datePart);
 
     switch (format) {
         case "csv":

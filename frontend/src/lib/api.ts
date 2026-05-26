@@ -400,10 +400,28 @@ export interface RefinementProviderApiKeyStatus {
     api_key_env: string | null;
 }
 
+export interface TranscriptionProviderApiKeyStatus {
+    provider: TranscriptionProviderId;
+    backend: RefinementProviderApiKeyStatus["backend"];
+    has_env_key: boolean;
+    has_env_key_valid: boolean;
+    has_stored_key: boolean;
+    has_stored_key_valid: boolean;
+    source: "environment" | "stored" | "none";
+    source_valid: boolean;
+    api_key_env: string | null;
+}
+
 export function getRefinementProviderApiKeyStatus(
     providerId: RefinementProviderId,
 ): Promise<RefinementProviderApiKeyStatus> {
     return request(`/refinement/providers/${providerId}/api-key`);
+}
+
+export function getTranscriptionProviderApiKeyStatus(
+    providerId: TranscriptionProviderId,
+): Promise<TranscriptionProviderApiKeyStatus> {
+    return request(`/transcription/providers/${providerId}/api-key`);
 }
 
 export function saveRefinementProviderApiKey(
@@ -416,10 +434,30 @@ export function saveRefinementProviderApiKey(
     });
 }
 
+export function saveTranscriptionProviderApiKey(
+    providerId: TranscriptionProviderId,
+    apiKey: string,
+): Promise<{ provider: TranscriptionProviderId; stored: boolean; backend: TranscriptionProviderApiKeyStatus["backend"] }> {
+    return request(`/transcription/providers/${providerId}/api-key`, {
+        method: "PUT",
+        body: JSON.stringify({ api_key: apiKey }),
+    });
+}
+
 export function deleteRefinementProviderApiKey(
     providerId: RefinementProviderId,
 ): Promise<{ provider: RefinementProviderId; deleted: boolean; backend: RefinementProviderApiKeyStatus["backend"] }> {
     return request(`/refinement/providers/${providerId}/api-key`, { method: "DELETE" });
+}
+
+export function deleteTranscriptionProviderApiKey(
+    providerId: TranscriptionProviderId,
+): Promise<{
+    provider: TranscriptionProviderId;
+    deleted: boolean;
+    backend: TranscriptionProviderApiKeyStatus["backend"];
+}> {
+    return request(`/transcription/providers/${providerId}/api-key`, { method: "DELETE" });
 }
 
 // --- Health ---

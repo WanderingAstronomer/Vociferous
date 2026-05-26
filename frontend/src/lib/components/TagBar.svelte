@@ -9,6 +9,7 @@
     import type { Tag } from "../api";
     import type { Snippet } from "svelte";
     import { Hammer, Plus, Check, X, Palette, Trash2 } from "lucide-svelte";
+    import { safeTagColor } from "../tagColor";
     import { getZoomFactor } from "../zoom";
 
     interface Props {
@@ -48,7 +49,7 @@
     /* ===== Helpers ===== */
 
     function tagColor(tag: { color: string | null }): string {
-        return tag.color ?? "var(--accent)";
+        return safeTagColor(tag.color);
     }
 
     /* ===== Context Menu ===== */
@@ -58,7 +59,7 @@
         event.stopPropagation();
         const tag = tags.find((t) => t.id === tagId);
         if (!tag || tag.is_system) return;
-        menuColor = tag.color ?? "#5a9fd4";
+        menuColor = safeTagColor(tag.color, "#5a9fd4");
         const z = getZoomFactor();
         menuX = Math.min(event.clientX / z, window.innerWidth / z - 200);
         menuY = event.clientY / z;

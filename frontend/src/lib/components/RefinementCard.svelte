@@ -37,6 +37,8 @@
         handleDownload: (type: "asr" | "slm", modelId: string) => void;
     }
 
+    const DEFAULT_SLM_MODEL_ID = "qwen4b";
+
     let {
         config,
         models,
@@ -67,7 +69,9 @@
     let showsCpuRuntimeControls = $derived(isCpu || gpuWillFallbackToCpu);
 
     /* AWQ + CPU incompatibility check */
-    let selectedModelQuant = $derived(models.slm[getSafe(config, "refinement.model_id", "qwen8b")]?.quant ?? "");
+    let selectedModelQuant = $derived(
+        models.slm[getSafe(config, "refinement.model_id", DEFAULT_SLM_MODEL_ID)]?.quant ?? "",
+    );
     let awqCpuConflict = $derived(isCpu && selectedModelQuant === "awq");
     let awqAutoFallback = $derived(gpuWillFallbackToCpu && selectedModelQuant === "awq");
 
@@ -356,15 +360,15 @@
                                 value: id,
                                 label: `${m.name} (${m.size_mb}MB)${m.downloaded ? "" : " ⬇"}${showsCpuRuntimeControls && m.quant === "awq" ? " — GPU only" : ""}`,
                             }))}
-                            value={getSafe(config, "refinement.model_id", "qwen8b")}
+                            value={getSafe(config, "refinement.model_id", DEFAULT_SLM_MODEL_ID)}
                             onchange={(v: string) => setSafe("refinement.model_id", v)}
                             placeholder="Select model…"
                         />
                     </div>
-                    {#if models.slm[getSafe(config, "refinement.model_id", "qwen8b")]}
-                        {@const selectedSlm = models.slm[getSafe(config, "refinement.model_id", "qwen8b")]}
+                    {#if models.slm[getSafe(config, "refinement.model_id", DEFAULT_SLM_MODEL_ID)]}
+                        {@const selectedSlm = models.slm[getSafe(config, "refinement.model_id", DEFAULT_SLM_MODEL_ID)]}
                         {#if !selectedSlm.downloaded}
-                            {#if downloadingModel === getSafe(config, "refinement.model_id", "qwen8b")}
+                            {#if downloadingModel === getSafe(config, "refinement.model_id", DEFAULT_SLM_MODEL_ID)}
                                 <span
                                     class="inline-flex items-center gap-1 text-[var(--text-xs)] whitespace-nowrap text-[var(--accent)] shrink overflow-hidden"
                                 >
@@ -376,7 +380,10 @@
                             {:else}
                                 <DownloadButton
                                     onclick={() =>
-                                        handleDownload("slm", getSafe(config, "refinement.model_id", "qwen8b"))}
+                                        handleDownload(
+                                            "slm",
+                                            getSafe(config, "refinement.model_id", DEFAULT_SLM_MODEL_ID),
+                                        )}
                                 />
                             {/if}
                         {:else}

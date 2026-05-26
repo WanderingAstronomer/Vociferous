@@ -164,6 +164,7 @@
             ws.on("transcription_complete", () => loadData()),
             ws.on("transcript_deleted", () => loadData()),
             ws.on("transcripts_batch_deleted", () => loadData()),
+            ws.on("transcripts_cleared", () => loadData()),
         ];
         return () => unsubs.forEach((fn) => fn());
     });

@@ -4,6 +4,7 @@
     import type { Transcript, Tag } from "../../api";
     import { SelectionManager } from "../../selection.svelte";
     import { formatDuration, formatRelativeDate, wordCount } from "../../formatters";
+    import { safeTagColor } from "../../tagColor";
     import EmptyState from "../EmptyState.svelte";
     import MarkdownBody from "../MarkdownBody.svelte";
     import StyledButton from "../StyledButton.svelte";
@@ -68,7 +69,7 @@
             .trim()
             .split(/\s+/)
             .filter(Boolean)
-            .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+            .map((token) => escapeHtml(token).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
         if (tokens.length === 0) return escapeHtml(text);
         return escapeHtml(text).replace(new RegExp(`(${tokens.join("|")})`, "gi"), '<mark class="search-hl">$1</mark>');
     }
@@ -98,7 +99,7 @@
     }
 
     function tagColor(tag: Tag): string {
-        return tag.color ?? "var(--accent)";
+        return safeTagColor(tag.color);
     }
 
     let cardHeightClass = $derived(

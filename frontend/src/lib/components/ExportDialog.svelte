@@ -8,12 +8,15 @@
      */
 
     import { exportFile, getTranscripts } from "../api";
+    import type { Transcript } from "../api";
     import { buildExportPayload, type ExportFormat } from "../exportUtils";
     import { exportDialog } from "../exportDialog.svelte";
     import { toast } from "../toast.svelte";
     import CustomSelect from "./CustomSelect.svelte";
     import StyledButton from "./StyledButton.svelte";
     import ToggleSwitch from "./ToggleSwitch.svelte";
+
+    const EXPORT_PAGE_SIZE = 1000;
 
     let dialogEl: HTMLDivElement | undefined = $state();
     let format = $state<ExportFormat>("json");
@@ -37,10 +40,26 @@
         return typeof value === "object" && value !== null && "error" in value;
     }
 
+    async function fetchAllTranscripts(): Promise<Transcript[]> {
+        const transcripts: Transcript[] = [];
+        let offset = 0;
+        let total = Number.POSITIVE_INFINITY;
+
+        while (offset < total) {
+            const result = await getTranscripts({ limit: EXPORT_PAGE_SIZE, offset });
+            transcripts.push(...result.items);
+            total = result.total;
+            if (result.items.length === 0) break;
+            offset += result.items.length;
+        }
+
+        return transcripts;
+    }
+
     async function handleExport() {
         exporting = true;
         try {
-            const { items: transcripts } = await getTranscripts({ limit: 99999 });
+            const transcripts = await fetchAllTranscripts();
             const { filename, content } = buildExportPayload(transcripts, format);
 
             if (preferSaveDialog) {

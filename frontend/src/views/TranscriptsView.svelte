@@ -51,6 +51,7 @@
     import { confirmDeleteAction } from "../lib/deleteConfirm";
     import { appConfig } from "../lib/config.svelte";
     import { getZoomFactor } from "../lib/zoom";
+    import { safeTagColor } from "../lib/tagColor";
     import TranscriptsHeader from "../lib/components/transcripts/TranscriptsHeader.svelte";
     import TranscriptsListPane from "../lib/components/transcripts/TranscriptsListPane.svelte";
     import TranscriptsSelectionBar from "../lib/components/transcripts/TranscriptsSelectionBar.svelte";
@@ -85,6 +86,7 @@
     let searching = $state(false);
     let selectingAll = $state(false);
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let searchGeneration = 0;
     const SEARCH_PAGE_SIZE = 100;
     const SELECT_ALL_BATCH_SIZE = 250;
 
@@ -171,7 +173,7 @@
     }
 
     function tagColor(tag: Tag): string {
-        return tag.color ?? "var(--accent)";
+        return safeTagColor(tag.color);
     }
 
     function matchesTagFilter(entry: Transcript, selectedTagIds: number[], mode: TagFilterMode): boolean {
@@ -239,39 +241,47 @@
     }
 
     async function doSearch() {
-        if (!searchQuery.trim()) {
+        const query = searchQuery.trim();
+        const generation = ++searchGeneration;
+        if (!query) {
             searchResults = [];
             searchTotal = 0;
+            searching = false;
             return;
         }
         searching = true;
         error = "";
         try {
-            const res: SearchResult = await searchTranscripts(searchQuery.trim(), SEARCH_PAGE_SIZE, 0);
+            const res: SearchResult = await searchTranscripts(query, SEARCH_PAGE_SIZE, 0);
+            if (generation !== searchGeneration || searchQuery.trim() !== query) return;
             searchResults = res.items;
             searchTotal = res.total;
         } catch (e: any) {
-            error = e.message;
+            if (generation === searchGeneration) error = e.message;
         } finally {
-            searching = false;
+            if (generation === searchGeneration) searching = false;
         }
     }
 
     async function loadMore() {
-        if (!isSearching || !hasMore) return;
+        if (!isSearching || !hasMore || searching) return;
+        const query = searchQuery.trim();
+        const generation = searchGeneration;
+        const offset = searchResults.length;
         searching = true;
         try {
             const res: SearchResult = await searchTranscripts(
-                searchQuery.trim(),
+                query,
                 SEARCH_PAGE_SIZE,
-                searchResults.length,
+                offset,
             );
+            if (generation !== searchGeneration || searchQuery.trim() !== query) return;
             searchResults = [...searchResults, ...res.items];
             searchTotal = res.total;
         } catch (e: any) {
-            error = e.message;
+            if (generation === searchGeneration) error = e.message;
         } finally {
-            searching = false;
+            if (generation === searchGeneration) searching = false;
         }
     }
 
@@ -286,8 +296,10 @@
     function handleSearchInput() {
         if (debounceTimer) clearTimeout(debounceTimer);
         if (!searchQuery.trim()) {
+            searchGeneration++;
             searchResults = [];
             searchTotal = 0;
+            searching = false;
             return;
         }
         debounceTimer = setTimeout(() => doSearch(), 250);
@@ -841,6 +853,14 @@
                 const deleted = new Set(data.ids);
                 entries = entries.filter((e) => !deleted.has(e.id));
                 searchResults = searchResults.filter((e) => !deleted.has(e.id));
+                if (data.ids.some((id) => selection.isSelected(id))) selection.clear();
+            }),
+            ws.on("transcripts_cleared", () => {
+                entries = [];
+                searchResults = [];
+                totalCount = 0;
+                searchTotal = 0;
+                selection.clear();
             }),
             ws.on("refinement_complete", () => refreshVisibleTranscripts()),
             ws.on("transcript_updated", () => refreshVisibleTranscripts()),

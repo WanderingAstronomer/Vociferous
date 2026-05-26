@@ -64,6 +64,7 @@
     import { appConfig } from "../lib/config.svelte";
     import { confirmDialog } from "../lib/confirm.svelte";
     import { toast } from "../lib/toast.svelte";
+    import { safeTagColor } from "../lib/tagColor";
 
     type WorkspaceState = "idle" | "recording" | "transcribing" | "ready" | "viewing" | "editing";
 
@@ -83,6 +84,10 @@
     let autoRefine = $derived(appConfig.current?.output?.auto_refine ?? false);
     let username = $derived(appConfig.current?.user?.name ?? "");
 
+    function errorMessage(error: unknown): string {
+        return error instanceof Error ? error.message : String(error);
+    }
+
     /* ===== Audio file import ===== */
     const AUDIO_ACCEPT = ".wav,.mp3,.m4a,.flac,.ogg,.webm,.wma,.aac,.opus";
     let fileInput: HTMLInputElement | undefined = $state();
@@ -91,17 +96,21 @@
     let allTags = $state<Tag[]>([]);
     let assignedTagIds = $state<Set<number>>(new Set());
 
-    function loadTags() {
-        getTags()
-            .then((tags) => (allTags = tags))
-            .catch(() => {});
+    async function loadTags(): Promise<void> {
+        try {
+            allTags = await getTags();
+        } catch {
+            /* advisory; tag events will try again */
+        }
     }
 
     /* ===== Session refinement prompt ===== */
     let promptTranscripts = $state<Transcript[]>([]);
     let sessionPromptId = $state<number | null>(null);
+    let promptTranscriptGeneration = 0;
 
     $effect(() => {
+        const generation = ++promptTranscriptGeneration;
         const promptTag = allTags.find((t) => t.is_system && t.name === "Prompt");
         if (!promptTag) {
             promptTranscripts = [];
@@ -109,9 +118,11 @@
         }
         getTranscripts({ tag_ids: [promptTag.id], tag_mode: "or", limit: 50 })
             .then((r) => {
+                if (generation !== promptTranscriptGeneration) return;
                 promptTranscripts = r.items;
             })
             .catch(() => {
+                if (generation !== promptTranscriptGeneration) return;
                 promptTranscripts = [];
             });
     });
@@ -153,8 +164,8 @@
             await createTag(name, color);
             await loadTags();
             toast.success(`Tag "${name}" created`);
-        } catch (e: any) {
-            toast.error(`Tag creation failed: ${e.message}`);
+        } catch (error) {
+            toast.error(`Tag creation failed: ${errorMessage(error)}`);
         }
     }
 
@@ -174,8 +185,8 @@
             sessionTagIds = next;
             await loadTags();
             toast.success("Tag deleted");
-        } catch (e: any) {
-            toast.error(`Tag deletion failed: ${e.message}`);
+        } catch (error) {
+            toast.error(`Tag deletion failed: ${errorMessage(error)}`);
         }
     }
 
@@ -183,8 +194,8 @@
         try {
             await updateTag(tagId, { color });
             await loadTags();
-        } catch (e: any) {
-            toast.error(`Failed to update tag color: ${e.message}`);
+        } catch (error) {
+            toast.error(`Failed to update tag color: ${errorMessage(error)}`);
         }
     }
 
@@ -223,8 +234,10 @@
     // Recording timer
     let recordingElapsedMs = $state(0);
     let recordingTimerInterval: ReturnType<typeof setInterval> | null = null;
+    let copyResetTimeout: ReturnType<typeof setTimeout> | null = null;
 
     function startRecordingTimer() {
+        stopRecordingTimer();
         recordingElapsedMs = 0;
         recordingTimerInterval = setInterval(() => {
             recordingElapsedMs += 1000;
@@ -302,6 +315,7 @@
     }
 
     function resetTranscriptWorkspace() {
+        invalidateTranscriptLoads();
         transcriptText = "";
         verbatimWordCount = 0;
         transcriptId = null;
@@ -365,6 +379,7 @@
         duration_ms?: number;
         speech_duration_ms?: number;
     }) {
+        invalidateTranscriptLoads();
         applyTranscriptWorkspaceState({
             text: data.text,
             rawText: data.text,
@@ -377,9 +392,17 @@
         });
     }
 
+    let transcriptLoadGeneration = 0;
+
+    function invalidateTranscriptLoads(): void {
+        transcriptLoadGeneration += 1;
+    }
+
     async function openTranscript(id: number, mode: "view" | "edit" = "view"): Promise<void> {
+        const generation = ++transcriptLoadGeneration;
         try {
             const t = await getTranscript(id);
+            if (generation !== transcriptLoadGeneration) return;
             applyLoadedTranscript(t);
             if (mode === "edit") {
                 if (!nav.isNavigationLocked) {
@@ -390,8 +413,10 @@
             } else {
                 viewState = "viewing";
             }
-        } catch (e) {
-            console.error("Failed to open transcript:", e);
+        } catch (error) {
+            if (generation === transcriptLoadGeneration) {
+                console.error("Failed to open transcript:", error);
+            }
         }
     }
 
@@ -405,6 +430,7 @@
             .then((health) => {
                 if (health.recording_active) {
                     viewState = "recording";
+                    startRecordingTimer();
                 }
             })
             .catch(() => {
@@ -448,8 +474,8 @@
                         }
                         await openTranscript(targetId, "view");
                         loadRecentSessions();
-                    } catch (e: any) {
-                        toast.error(`Append failed: ${e.message}`);
+                    } catch (error) {
+                        toast.error(`Append failed: ${errorMessage(error)}`);
                         viewState = "idle";
                         loadRecentSessions();
                     }
@@ -501,6 +527,7 @@
                 if (data.id === transcriptId) {
                     try {
                         const t = await getTranscript(data.id);
+                        if (data.id !== transcriptId) return;
                         transcriptTitle = t.display_name || "";
                         assignedTagIds = new Set((t.tags ?? []).map((tag: Tag) => tag.id));
                     } catch {
@@ -516,7 +543,14 @@
                 sessionTagIds = new Set([...sessionTagIds].filter((id) => id !== data.id));
             }),
         ];
-        return () => unsubs.forEach((fn) => fn());
+        return () => {
+            unsubs.forEach((fn) => fn());
+            stopRecordingTimer();
+            if (copyResetTimeout !== null) {
+                clearTimeout(copyResetTimeout);
+                copyResetTimeout = null;
+            }
+        };
     });
 
     $effect(() => {
@@ -568,8 +602,8 @@
             if (result.status === "importing") {
                 viewState = "transcribing";
             }
-        } catch (e) {
-            toast.error(`Import failed: ${e instanceof Error ? e.message : "unknown error"}`);
+        } catch (error) {
+            toast.error(`Import failed: ${errorMessage(error)}`);
         }
     }
 
@@ -590,7 +624,11 @@
         if (text) {
             navigator.clipboard.writeText(text).catch(() => {});
             copied = true;
-            setTimeout(() => (copied = false), 1500);
+            if (copyResetTimeout !== null) clearTimeout(copyResetTimeout);
+            copyResetTimeout = setTimeout(() => {
+                copied = false;
+                copyResetTimeout = null;
+            }, 1500);
         }
     }
 
@@ -678,8 +716,8 @@
 
             await openTranscript(targetId, "view");
             loadRecentSessions();
-        } catch (e: any) {
-            toast.error(`Append failed: ${e.message}`);
+        } catch (error) {
+            toast.error(`Append failed: ${errorMessage(error)}`);
         }
     }
 
@@ -805,7 +843,7 @@
                             ? 'border-transparent text-white'
                             : 'border-[var(--shell-border)] text-[var(--text-secondary)] bg-transparent hover:bg-[var(--hover-overlay)]'}"
                         style={active && tag.color
-                            ? `background: ${tag.color}`
+                            ? `background: ${safeTagColor(tag.color)}`
                             : active
                               ? "background: var(--accent)"
                               : ""}
@@ -925,8 +963,9 @@
                     {#each appliedTags as tag (tag.id)}
                         <span
                             class="inline-flex items-center h-5 px-1.5 rounded-full text-[10px] font-medium"
-                            style="background: color-mix(in srgb, {tag.color ??
-                                'var(--accent)'} 25%, transparent); color: var(--text-primary);">{tag.name}</span
+                            style="background: color-mix(in srgb, {safeTagColor(
+                                tag.color,
+                            )} 25%, transparent); color: var(--text-primary);">{tag.name}</span
                         >
                     {/each}
                 </div>

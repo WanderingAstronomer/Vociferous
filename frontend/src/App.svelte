@@ -53,7 +53,7 @@
         // Check ASR model availability + refinement toggle + UI scale
         try {
             const [models] = await Promise.all([getModels(), appConfig.ensureLoaded()]);
-            const hasAsr = Object.values(models.asr).some((m: any) => m.downloaded);
+            const hasAsr = Object.values(models.asr).some((model) => model.downloaded);
             if (!hasAsr) {
                 nav.navigate("settings");
             }
@@ -66,6 +66,7 @@
         try {
             const health = await getHealth();
             const gpu = health.gpu;
+            recordingActive = Boolean(health.recording_active);
             if (gpu?.cuda_available && gpu.vram_free_mb > 0 && gpu.vram_free_mb < VRAM_WARNING_MB) {
                 toast.warning(
                     `Low VRAM: ${gpu.vram_free_mb} MB free of ${gpu.vram_total_mb} MB. ` +

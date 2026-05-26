@@ -87,6 +87,7 @@
     let bulkRefineCompleted = $state(0);
     let bulkRefineFailed = $state(0);
     let bulkRefineTotal = $state(0);
+    let transcriptLoadGeneration = 0;
 
     /* ── Derived analytics ── */
     let origMetrics: TextMetrics = $derived(computeTextMetrics(originalText));
@@ -163,6 +164,7 @@
     }
 
     async function selectTranscript(id: number) {
+        const generation = ++transcriptLoadGeneration;
         selectedId = id;
         refinedText = "";
         hasRefined = false;
@@ -174,9 +176,11 @@
         }
         try {
             const t = await getTranscript(id);
+            if (generation !== transcriptLoadGeneration || selectedId !== id) return;
             originalText = t.text || t.normalized_text || t.raw_text || "";
             transcriptName = t.display_name?.trim() || `Transcript #${id}`;
         } catch (e) {
+            if (generation !== transcriptLoadGeneration || selectedId !== id) return;
             console.error("Failed to load transcript:", e);
             originalText = "";
             transcriptName = "";

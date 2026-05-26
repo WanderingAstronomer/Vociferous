@@ -76,8 +76,10 @@
         for (const e of entries) {
             const raw = e.created_at ?? e.timestamp;
             if (!raw) continue;
-            const key = new Date(raw).toLocaleDateString("sv");
-            const w = (e.text || (e as any).normalized_text || "").split(/\s+/).filter(Boolean).length;
+            const date = new Date(raw);
+            if (Number.isNaN(date.getTime())) continue;
+            const key = date.toLocaleDateString("sv");
+            const w = (e.text || e.normalized_text || "").split(/\s+/).filter(Boolean).length;
             map.set(key, (map.get(key) ?? 0) + w);
         }
         return map;
