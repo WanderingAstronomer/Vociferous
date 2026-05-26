@@ -120,7 +120,7 @@
                 onNavigate={(view) => nav.navigate(view)}
             />
 
-            <main class="flex-1 min-w-0 overflow-clip bg-[var(--surface-secondary)]">
+            <main class="relative flex-1 min-w-0 overflow-clip bg-[var(--surface-secondary)]">
                 <!-- TranscribeView stays mounted to preserve recording/visualizer state -->
                 <div class="h-full" style:display={nav.current === "transcribe" ? "block" : "none"}>
                     <TranscribeView />
@@ -145,10 +145,11 @@
                 {:else if nav.current === "edit"}
                     <EditView />
                 {/if}
+
+                <ToastContainer />
             </main>
         {/if}
     </div>
-    <ToastContainer />
     <ConfirmDialog />
     <ExportDialog />
 </div>

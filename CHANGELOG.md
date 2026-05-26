@@ -1,8 +1,72 @@
 # Vociferous Changelog
 
+## v7.0.0 — Provider-Flexible Speech Records, Durable Audio, and Release-Grade Workflows
+
+**Date:** 2026-05-25
+**Status:** Major release
+
+Vociferous v7 is the point where the project stops being merely a local transcription tool and becomes a durable, provider-flexible speech-record workspace. Local faster-whisper/CTranslate2 and local CTranslate2 refinement remain the private baseline, but the app now has real paths to LM Studio and Groq for users who need larger models, faster inference, or stronger refinement than their own hardware can reasonably provide.
+
+This is also the release where the app got hardened like it actually matters when words are lost. Recording recovery, audio-vault persistence, transcript provenance, provider diagnostics, Markdown editing, prompt workflows, bulk operations, settings safety, frontend race guards, installation scripts, and release documentation all got dragged into shape. Some of it is glamorous. Most of it is the unglamorous work that keeps a tool from betraying the user at the exact moment they trusted it.
+
+### Added
+- **External transcription providers** — Groq-backed ASR now sits beside local faster-whisper, with provider settings, model discovery, API-key management, runtime summaries, readiness checks, and diagnostics redaction.
+- **External refinement providers** — LM Studio and Groq are supported through OpenAI-compatible chat completions, including base URL/model configuration, API-key source selection, timeout handling, model-list validation, reasoning-output extraction, and provider-specific capability declarations.
+- **Provider-flexible settings surface** — Speech Recognition and Refinement settings now expose local and external provider controls without pretending every runtime behaves like local CTranslate2.
+- **Smart Refinement** — Refinement can skip transcripts that do not need meaningful cleanup when the setting is enabled, while manual, automatic, and bulk refinement now share the same skip policy instead of quietly disagreeing.
+- **Bulk refinement prompt picker** — Multi-transcript refinement can select a Prompt-tagged transcript and apply it through the queued bulk-refine workflow.
+- **Session refinement prompt selection** — The Transcribe view can set a session prompt for recordings before transcription/refinement begins, matching the existing session-tag workflow.
+- **Markdown editing surface** — The dedicated Edit view now uses a TipTap Markdown editor with toolbar controls, active-format state, tag management, retitling, analytics controls, copy, save, discard, re-transcription, and revert-to-original actions.
+- **Dedicated transcript editor routing** — Transcripts, Refine, and Transcribe edit entry points now route through the dedicated editor instead of leaking users into stale inline editing paths.
+- **Durable audio vault and recovery** — Recording audio can be promoted into durable vault assets, recoverable recordings are surfaced after interrupted sessions, and re-transcription can use cached audio when available.
+- **Audio durability settings** — Recording length limits, cache duration, durability interval, and audio-vault encryption options are configurable from Settings.
+- **Transcript processing provenance** — Transcripts now persist original transcription provider/model/runtime metadata, re-transcription provenance, refinement provider/model/runtime metadata, thinking mode, prompt metadata, and token counts.
+- **Usage and insight analytics** — User analytics now summarize word volume, estimated time saved, speech speed, streaks, activity heatmaps, filler reduction, readability changes, provider/model counts, re-transcription throughput, refinement token usage, and generated insights.
+- **Data-driven command bars** — Transcript and transcribe actions now use `CommandNode`, `CommandBar`, and `CommandMenu`, giving action visibility, overflow placement, grouping, and nested menus a single model instead of scattered bespoke buttons.
+- **Platform-native clipboard helper** — Clipboard writes now go through a shared platform-aware helper used by recording and refinement workflows.
+- **Architecture documentation** — `ARCHITECTURE.md` now records the composition root, H-pattern, threading model, persistence contract, and project invariants.
+- **v7 README rebuild** — The README has been rebuilt as the main project front door with the v7 thesis, install paths, provider model, screenshots, architecture links, data/privacy notes, troubleshooting, and development commands.
+
+### Changed
+- **Application architecture** — The SOLID refactor sweep split transcription post-processing, refinement providers, refinement capture helpers, insight helpers, database models, and transcription stage orchestration into smaller, explicit modules while preserving public import paths through re-exports.
+- **Provider architecture** — Refinement providers now live in a package split by contracts, capabilities, runtime models, local CTranslate2, OpenAI-compatible providers, and factory wiring. This killed the old “everything in one provider file” pileup.
+- **Transcription storage flow** — `_transcribe_and_store` was decomposed into explicit stages for model loading, audio pipeline setup, transcription, empty-result handling, persistence, derived work, legacy spool promotion, and failure handling.
+- **Engine status** — Runtime status now reports local and external provider readiness, requested/resolved model IDs, key availability, device/package context, rate-limit hints, and model lifecycle details.
+- **Settings safety and diagnostics** — Settings were split into clearer safety/data, diagnostics, export, confirmation, recording, refinement, provider, and maintenance surfaces.
+- **Recording surface** — The Transcribe view now has a stronger recording control, clearer active-recording state, session tags, session prompts, metrics, import audio, heatmap, continue/append flows, and better action-bar placement.
+- **Transcription library** — Transcript cards gained better dynamic heights, preview scanning, search highlighting, tag filters, boolean tag modes, prompt/protected-record filtering, selection actions, bulk refinement, export, retitle, append, and re-transcription polish.
+- **Frontend state handling** — Transcribe, Transcripts, Refine, User, exports, and WebSocket event consumers now guard against stale async responses and backend/frontend contract drift instead of letting old requests overwrite current state.
+- **Toast placement** — Toast notifications now center over the workspace area instead of the full app shell, so the icon rail no longer shifts the visual center like a dumb little layout tax.
+- **Dashboard action placement** — The Transcribe dashboard action now lives at the end of the action bar with low visual priority instead of competing with primary transcript actions.
+- **Install and runtime metadata** — Windows, Linux, Docker, CUDA, model provisioning, frontend build assets, and Python runtime metadata were aligned for the v7 release line.
+
+### Fixed
+- **Reasoning-model empty refinements** — OpenAI-compatible reasoning models that return content through `reasoning_content` now have final payloads extracted correctly, with schema-forced JSON where appropriate and enough output budget to return the envelope.
+- **Title generation copying transcript text** — Title candidates are rejected when they exceed the title character/word limits, preventing entire transcripts from being persisted as titles.
+- **Groq Qwen empty retitles** — External Qwen title generation now receives the no-thinking directive when thinking is disabled, avoiding invisible reasoning consuming the small title budget.
+- **LM Studio false-ready state** — Stopped or unreachable LM Studio servers now report as unavailable instead of being marked ready because configuration happened to exist.
+- **Restart-required false positives** — Settings compare saved changes against comparable loaded runtime data, not startup half-state.
+- **Tag/search staleness** — Tag changes, retitles, and transcript WebSocket updates refresh active search results so chips and list state do not rot until the user clears a filter.
+- **Audio-vault foreign keys** — Added a migration/repair path for audio-vault records with broken transcript/session references.
+- **Windows CUDA detection** — Runtime validation now checks the vendored CUDA 12 DLL chain from NVIDIA wheels instead of assuming driver presence means CTranslate2 can actually run.
+- **Linux CUDA/runtime support** — Optional CUDA dependencies and install/runtime checks were aligned for Linux as well as Windows.
+- **Litestar logging takeover** — Litestar no longer overwrites the app logging configuration.
+- **Transcript timestamp schema** — Removed an invalid uniqueness assumption and covered the migration behavior.
+- **API and persistence edge cases** — Hardening closed loose defaults around provider APIs, mutable intent payloads, transcript/audio recovery, vault cleanup, output parsing, provisioning, input handling, and runtime-window behavior.
+- **Frontend export/search/color edge cases** — Exports now paginate instead of relying on fake giant limits, export filenames handle hostile text, search highlighting survives punctuation-heavy queries, and stored tag colors are sanitized before inline style interpolation.
+
+### Documentation
+- **README reduced to primary screenshots** — The README now features only the ready-to-record and recording-workspace screenshots; the full visual tour belongs in the wiki where it has room.
+- **Wiki rebuilt outside the repository** — The old wiki staging copy was removed from the main repository. The GitHub wiki is maintained separately and pushed separately by Drew.
+- **Release-prep metadata refreshed** — Pre-v7 documentation metadata and release notes now reflect the actual hardening sequence instead of pretending the work arrived in neat chronological packaging.
+
+### Tests and Validation
+- Added and updated focused coverage for provider payloads, external provider failures, Groq key validation, Qwen no-thinking generation, Smart Refinement behavior, retitle scheduling, refinement handlers, protected prompt filtering, migrations, CUDA runtime detection, engine status, download stall handling, logging, processing provenance, transcript JSON exposure, usage stats, WebSocket event contracts, frontend defaults, database recovery, audio vault behavior, input handling, clipboard behavior, provisioning, runtime-window behavior, and API contracts.
+- Release validation ran the frontend Svelte/TypeScript check, frontend production build, Python test suite, Ruff checks, and focused contract/integration tests during the v7 hardening sequence.
+
 ## v6.7.0 — SOLID Refactor Sweep
 
-**Date:** 2026-05-26
+**Date:** 2026-05-25
 **Status:** Internal refactor (no behavior change)
 
 A ten-item architectural cleanup pass focused on Single Responsibility and explicit boundaries. No user-facing behavior changes. All 740 tests still pass, lint clean. Back-compat preserved via `__all__` re-exports — every external import path that worked in v6.6.2 still works in v6.7.0.
@@ -2574,7 +2638,7 @@ This release is fully reproducible. All wiki content is:
 **Date:** 2026-01
 **Status:** Feature Release
 
-This release brings significant maturity to the AI Refinement engine, replacing the legacy experimental backend with a robust **Qwen3-4B-Instruct** foundation. We introduce **Refinement Profiles** (Minimal, Balanced, Strong) to give users granular control over editing intensity, and a **Dynamic Resource Manager** that intelligently loads models into GPU memory based on available headroom.
+This release brings significant maturity to the AI Refinement engine, replacing the legacy experimental backend with a robust **Qwen3-4B-Instruct** foundation.I introduced **Refinement Profiles** (Minimal, Balanced, Strong) to give users granular control over editing intensity, and a **Dynamic Resource Manager** that intelligently loads models into GPU memory based on available headroom.
 
 The input system has been hardened against prompt injection using a "Swiss-Army-Knife" system prompt strategy, treating transcripts strictly as data rather than instructions.
 

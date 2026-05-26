@@ -405,14 +405,11 @@
             if (generation !== transcriptLoadGeneration) return;
             applyLoadedTranscript(t);
             if (mode === "edit") {
-                if (!nav.isNavigationLocked) {
-                    nav.beginEditSession({ view: "transcribe", transcriptId: t.id });
-                }
-                editText = transcriptText;
-                viewState = "editing";
-            } else {
                 viewState = "viewing";
+                nav.navigateToEdit(t.id, { view: "transcribe", transcriptId: t.id });
+                return;
             }
+            viewState = "viewing";
         } catch (error) {
             if (generation === transcriptLoadGeneration) {
                 console.error("Failed to open transcript:", error);
@@ -634,9 +631,11 @@
 
     function enterEditMode() {
         if (!hasText || isRecording || isTranscribing) return;
-        nav.beginEditSession();
-        editText = transcriptText;
-        viewState = "editing";
+        if (transcriptId == null) {
+            toast.error("Transcript is not available for editing yet");
+            return;
+        }
+        nav.navigateToEdit(transcriptId, { view: "transcribe", transcriptId });
     }
 
     function commitEdits() {

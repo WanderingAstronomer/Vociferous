@@ -23,30 +23,16 @@ Vociferous is not a meeting bot, not a team transcription service, not a cloud s
 
 ## Screenshots
 
+The README shows the two primary application states. The full visual tour belongs in the [wiki](https://github.com/WanderingAstronomer/Vociferous/wiki), where every workflow screenshot has room to breathe.
+
 <table>
   <tr>
-    <td align="center"><strong>Transcribe</strong></td>
-    <td align="center"><strong>Transcriptions</strong></td>
+    <td align="center"><strong>Ready to Record</strong></td>
+    <td align="center"><strong>Recording Workspace</strong></td>
   </tr>
   <tr>
+    <td><img src="assets/screenshots/transcribe_view-idle.png" alt="Transcribe view ready to record" width="100%"/></td>
     <td><img src="assets/screenshots/transcribe_view-recording.png" alt="Transcribe view while recording" width="100%"/></td>
-    <td><img src="assets/screenshots/transcriptions_view.png" alt="Transcriptions library with search, tags, and actions" width="100%"/></td>
-  </tr>
-  <tr>
-    <td align="center"><strong>Refine</strong></td>
-    <td align="center"><strong>Edit</strong></td>
-  </tr>
-  <tr>
-    <td><img src="assets/screenshots/refinement_view.png" alt="Refine view with original and refined text" width="100%"/></td>
-    <td><img src="assets/screenshots/edit_view.png" alt="Edit view with Markdown rendering" width="100%"/></td>
-  </tr>
-  <tr>
-    <td align="center"><strong>Fresh Install</strong></td>
-    <td align="center"><strong>User Dashboard</strong></td>
-  </tr>
-  <tr>
-    <td><img src="assets/screenshots/transcribe_view-idle.png" alt="Transcribe view on a fresh install" width="100%"/></td>
-    <td><img src="assets/screenshots/user_view-dashboard.png" alt="User analytics dashboard" width="100%"/></td>
   </tr>
 </table>
 
@@ -64,13 +50,13 @@ Vociferous is not a meeting bot, not a team transcription service, not a cloud s
 - Tags, searches, filters, sorts, exports, retitles, and bulk-refines transcripts.
 - Tracks usage analytics, activity heatmaps, time saved, filler reduction, readability, and processing metrics.
 
-## Why v7 Matters
+## Why v7.0.0 Matters
 
-Vociferous began as a local tool for getting words out of one person's head faster than typing allowed. That remains the core. The problem is hardware: good local inference is expensive, and not every user has the GPU needed to run larger local models comfortably.
+Vociferous originated as an optimization for high-velocity transcription, bypassing the latency of manual typing. The core function remains unchanged: converting speech to text at speed. However, hardware constraints present a bottleneck; local inference requires significant GPU resources that are not universally available.
 
-The v7 line makes Vociferous provider-flexible. Local inference remains the private baseline, but LM Studio and Groq let users route refinement or transcription through larger models when that tradeoff makes sense. The output is still the user's voice. The prompt system and refinement workflow simply let the user decide how that voice should land: cleaned verbatim, deeply edited, rewritten as Markdown, or shaped by a saved prompt.
+The v7.0.0 architecture introduces provider flexibility. While local inference serves as the default for privacy-centric workflows, integration with LM Studio and Groq enables users to offload transcription or refinement tasks to larger models when computational trade-offs favor performance over locality. The user retains absolute control via a prompt system that dictates output format—ranging from verbatim cleanup to Markdown restructuring—ensuring the final text reflects the intended shape rather than an autonomous agent's whim.
 
-This release is also a ruggedization release. Recording recovery, audio vault handling, transcript provenance, provider diagnostics, settings safety, frontend race guards, contract tests, and install scripts all received hardening because a dictation tool that loses words is worse than useless. It is betrayal with a UI.
+This update is fundamentally a hardening release. I have implemented rigorous safeguards for recording recovery, audio vault integrity, transcript provenance, and provider diagnostics. Frontend race conditions, settings safety, contract testing, and deployment scripts were rebuilt to prevent data loss. In dictation software, losing input is not merely an error; it is a failure of the tool's primary promise. With v7.0.0, I are doubling down on that promise by ensuring that every spoken word is treated as a durable asset, whether it is processed locally or through an external provider.
 
 ## Platform Support
 
@@ -128,7 +114,7 @@ bash scripts/install_mac.sh
 ./vociferous.sh
 ```
 
-The macOS installer validates the virtual environment Python version and recreates unsupported environments instead of quietly reusing them.
+It is critical to note that Vociferous on Mac is not extensively tested. I am a one-man army, and I have no love, care, or plan to accommodate Apple products in my life anytime soon. The installer is a best-effort attempt to set up a working environment on Mac, but I have no way to validate it beyond basic syntax checks. If you want to run Vociferous on Mac, you are on your own, and I wish you the best of luck.
 
 ### Windows
 
@@ -149,7 +135,7 @@ Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 .\vociferous.bat
 ```
 
-The Windows installer searches for real Python installs, ignores the Microsoft Store stub, builds the frontend, verifies critical imports, checks WebView2, probes CUDA usability, offers pinned CUDA runtime wheels when needed, provisions models, and can create Start Menu/Desktop shortcuts.
+The Windows installer searches for real Python installs, ignores the Microsoft Store stub, builds the frontend, verifies critical imports, checks WebView2, probes CUDA usability, offers pinned CUDA runtime wheels when needed, provisions models, and can create Start Menu/Desktop shortcuts. I have spent 1/3 of my time developing Vociferous on MS Windows, and am confident in its stability. That said, Windows is a complex ecosystem with many configurations, and I cannot guarantee that the installer will work perfectly for every user. If you encounter issues, please open an issue with detailed information about your system and the problem.
 
 ### Docker on Linux
 
@@ -166,7 +152,7 @@ docker compose up
 docker compose --profile gpu up vociferous-gpu
 ```
 
-Docker requires host display, audio, and input-device plumbing. If that sounds annoying, good instincts. Native installs are simpler.
+Docker requires host display, audio, and input-device plumbing. If that sounds annoying, good instincts. Native installs are simpler, and I do not personally run a docker deployment; I have no reason to do so.
 
 ## Model Provisioning
 

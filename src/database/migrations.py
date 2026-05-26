@@ -363,7 +363,7 @@ def _transcripts_timestamp_has_unique_constraint(conn: sqlite3.Connection) -> bo
 
 
 def _v12_timestamp_not_unique(conn: sqlite3.Connection) -> None:
-    """v12 ΓÇö Rebuild transcripts so timestamp is indexed but not unique."""
+    """v12 - Rebuild transcripts so timestamp is indexed but not unique."""
     if not _transcripts_timestamp_has_unique_constraint(conn):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_transcripts_timestamp ON transcripts(timestamp)")
         logger.info("v12 migration: transcript timestamp already non-unique")

@@ -23,7 +23,7 @@
 
 {#if toast.items.length > 0}
     <div
-        class="fixed left-1/2 bottom-[var(--space-2)] z-[260] flex w-[420px] max-w-[calc(100vw-32px)] max-h-[calc(100vh-32px)] -translate-x-1/2 flex-col gap-[var(--space-2)] overflow-hidden pointer-events-none"
+        class="absolute left-1/2 bottom-[var(--space-2)] z-[260] flex w-[420px] max-w-[calc(100%_-_32px)] max-h-[calc(100%_-_32px)] -translate-x-1/2 flex-col gap-[var(--space-2)] overflow-hidden pointer-events-none"
         aria-label="Notifications"
     >
         {#each toast.items as item (item.id)}
