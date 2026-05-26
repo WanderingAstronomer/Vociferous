@@ -11,7 +11,7 @@
 **Cross-platform speech-to-text with local transcription and optional AI refinement.**
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-blue.svg)](https://python.org)
+[![Python 3.12-3.13](https://img.shields.io/badge/Python-3.12--3.13-blue.svg)](https://python.org)
 [![Svelte 5](https://img.shields.io/badge/Svelte-5-orange.svg)](https://svelte.dev)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-green.svg)](#platform-support)
 
@@ -144,7 +144,7 @@ Record. Transcribe. Refine. Copy. That's the core loop. The rest is infrastructu
 
 ### Prerequisites
 
-- Python 3.12+
+- Python 3.12 or 3.13
 - Node.js 18+ and npm
 - System packages (`libportaudio2`, `xclip`, `libsecret-tools` on Linux)
 - On Linux, stored provider API keys and encrypted audio vault keys require a working Secret Service backend such as GNOME Keyring, KWallet, or another compatible keyring provider.
@@ -181,7 +181,7 @@ make provision
 
 #### 1. Install Prerequisites
 
-You need **Python 3.12+** and **Node.js 18+**. If you don't have them,
+You need **Python 3.12 or 3.13** and **Node.js 18+**. If you don't have them,
 [winget](https://learn.microsoft.com/en-us/windows/package-manager/winget/) is the easiest route:
 
 ```powershell
@@ -210,14 +210,14 @@ cd Vociferous
 ```
 
 The install script will:
-- Verify Python 3.12+ and Visual C++ Build Tools
+- Verify Python 3.12/3.13 and Visual C++ Build Tools
 - Create a `.venv` virtual environment
 - Install all Python dependencies from `requirements.txt`
 - Build the Svelte frontend (`frontend/dist`)
 - Verify critical imports (ctranslate2, faster-whisper, pywebview, etc.)
 - Detect NVIDIA GPU availability and probe whether CTranslate2 can actually use CUDA
 - Verify Microsoft Edge WebView2 Runtime
-- **Download AI models** (ASR ~780 MB, SLM ~5.8 GB, VAD ~2 MB) — interactive prompt
+- **Download AI models** (ASR ~780 MB, SLM ~3.8 GB, VAD ~2 MB) — interactive prompt
 - **Create Desktop and Start Menu shortcuts** with the Vociferous icon — interactive prompt
 
 #### 4. Launch
@@ -240,7 +240,7 @@ launch where you can download models via the UI.
 CPU inference works out of the box. For GPU acceleration with NVIDIA cards:
 
 1. Install the latest [NVIDIA Game Ready or Studio driver](https://www.nvidia.com/download/index.aspx)
-2. Install a usable CUDA 12 runtime yourself. Vociferous does **not** assume it can do this reliably for you on Windows. CTranslate2 currently ships against CUDA 12 — do not install CUDA 13, it is not yet supported by this build. Use one of these paths:
+2. Install a usable CUDA 12 runtime. The Windows installer can install the pinned Python runtime wheels into the app venv when it detects an NVIDIA driver but cannot load CUDA. CTranslate2 currently ships against CUDA 12 — do not install CUDA 13, it is not yet supported by this build. Use one of these paths:
   - Recommended system install: [CUDA Toolkit 12.x](https://developer.nvidia.com/cuda-downloads) plus [cuDNN 9](https://developer.nvidia.com/cudnn-downloads)
   - Python-only runtime inside the venv:
 
@@ -432,7 +432,7 @@ frontend/
 └── public/           # Static assets
 
 scripts/              # Install, provisioning, GPU fix scripts
-tests/                # Unit + integration + contract tests (582 tests)
+tests/                # Unit + integration + contract tests (776 tests)
 ```
 
 ---
@@ -459,7 +459,7 @@ Models are cached in `~/.cache/vociferous/models/` (XDG-compliant).
 ```bash
 make lint       # Ruff + frontend type check
 make format     # Ruff format + frontend format
-make test       # pytest (582 tests across 3 tiers)
+make test       # pytest (776 tests across 3 tiers)
 make build      # Vite production build
 make clean      # Remove build artifacts
 ```
