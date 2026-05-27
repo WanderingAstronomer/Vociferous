@@ -1,5 +1,26 @@
 # Vociferous Changelog
 
+## v7.0.1 — Provider Reasoning Contract Hotfix
+
+**Date:** 2026-05-26
+**Status:** Hotfix
+
+This hotfix fixes the reasoning-model integration contract instead of papering over one broken model family at a time. The old `use_thinking` toggle was doing too many unrelated jobs badly: token budgeting, provider reasoning suppression, response-shape expectations, and task intent all got jammed behind one boolean and then leaked provider-specific failure modes back into the app.
+
+### Fixed
+- **LM Studio Qwen3.5/Qwen3.6 final-output handling** — Final-answer-only requests now use an empty assistant `<think></think>` prefill with `continue_assistant_turn`, while retaining LM Studio's native thinking flag as best-effort. This stops affected Qwen builds from spending the whole completion budget on hidden reasoning and returning empty visible output.
+- **Groq reasoning control misuse** — Groq requests now use model-family-specific reasoning controls instead of blindly sending the same payload everywhere. Qwen final-output requests use `reasoning_effort="none"`; GPT-OSS final-output requests use `include_reasoning=false` without illegally combining it with `reasoning_format`.
+- **Custom generation contract drift** — Title generation and analytics generation now declare explicit task intent, final-output-only reasoning policy, and response shape instead of relying on the old flat `max_tokens` + `use_thinking` pair.
+- **Analytics output budget starvation** — Insight generation no longer runs under the old 220-token ceiling that was trivial to exhaust once reasoning-capable providers burned hidden tokens before returning visible JSON.
+
+### Changed
+- **Provider request policy** — Added a provider-neutral generation request contract carrying task kind, visible output budget, reasoning policy, and response shape so LM Studio, Groq, and local CT2 can translate the same product intent without pretending they expose the same controls.
+- **Runtime diagnostics** — Refinement runtime summaries now record the last translated generation request policy, making provider debugging less of a guessing game.
+
+### Tests and Validation
+- Added and updated focused coverage for LM Studio assistant-prefill suppression, Groq GPT-OSS/Qwen reasoning parameter translation, analytics/title generation request policy wiring, and SLM runtime compatibility.
+- Verified focused unit coverage for provider payloads, insight generation, title generation, and SLM runtime behavior.
+
 ## v7.0.0 — Provider-Flexible Speech Records, Durable Audio, and Release-Grade Workflows
 
 **Date:** 2026-05-25

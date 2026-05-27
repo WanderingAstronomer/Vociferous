@@ -13,7 +13,15 @@ import time
 from typing import Callable, Optional
 
 from src.core.settings import VociferousSettings, update_settings
-from src.refinement.providers import RefinementProvider, describe_refinement_runtime, make_refinement_provider
+from src.refinement.providers import (
+    GenerationRequest,
+    GenerationTaskKind,
+    ReasoningPolicy,
+    RefinementProvider,
+    ResponseShape,
+    describe_refinement_runtime,
+    make_refinement_provider,
+)
 from src.services.slm_types import SLMState
 
 logger = logging.getLogger(__name__)
@@ -303,6 +311,10 @@ class SLMRuntime:
         max_tokens: int = 150,
         temperature: float = 0.7,
         use_thinking: bool = False,
+        task_kind: GenerationTaskKind | str = GenerationTaskKind.FREEFORM,
+        reasoning_policy: ReasoningPolicy | str | None = None,
+        response_shape: ResponseShape | str = ResponseShape.TEXT,
+        request: GenerationRequest | None = None,
     ) -> str:
         """Synchronous freeform generation — blocks until complete. Returns generated text.
 
@@ -321,13 +333,21 @@ class SLMRuntime:
         try:
             if not self._engine:
                 raise RuntimeError("Engine not loaded.")
+            request = request or GenerationRequest.for_custom(
+                visible_output_tokens=max_tokens,
+                use_thinking=use_thinking,
+                task_kind=task_kind,
+                reasoning_policy=reasoning_policy,
+                response_shape=response_shape,
+            )
             start = time.perf_counter()
             result = self._engine.generate_custom(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                max_tokens=max_tokens,
+                max_tokens=request.visible_output_tokens,
                 temperature=temperature,
-                use_thinking=use_thinking,
+                use_thinking=request.use_thinking,
+                request=request,
             )
             self._log_inference_timing("custom-generation", user_prompt, result.content, time.perf_counter() - start)
         finally:

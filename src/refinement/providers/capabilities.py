@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from src.refinement.providers.contracts import GenerationRequest, ReasoningPolicy
+
 # ---------------------------------------------------------------------------
 # Marker tuples. Matched as case-insensitive substrings against ``model_id``.
 # ---------------------------------------------------------------------------
@@ -49,12 +51,39 @@ _QWEN3_REASONING_EFFORT_MODEL_MARKERS = ("qwen3", "qwq", "qwopus")
 # text out of either ``content`` or ``reasoning_content``.
 _LM_STUDIO_SCHEMA_MODEL_MARKERS = ("gpt-oss", "deepseek-r1")
 
-# Multi-Token-Prediction variants. Documented to have ~90% schema-compliance
-# failures on agentic / structured tasks because LM Studio's "Harmony"
-# parser misses intermediate state transitions during speculative bursts.
-# The HTTP provider uses this marker to enable a single retry when schema
-# extraction returns malformed JSON, instead of immediately raising.
-_MTP_MODEL_MARKERS = ("qwopus", "qwen3-mtp", "qwen3.6", "qwen-3.6")
+# Models with built-in Multi-Token-Prediction heads.  These have ~90%
+# schema-compliance failures on agentic / structured tasks because LM
+# Studio’s “Harmony” parser misses intermediate state transitions during
+# speculative bursts.  The HTTP provider enables a single retry when JSON
+# schema extraction returns malformed output, instead of immediately raising.
+_MTP_MODEL_MARKERS = ("qwopus", "qwen3-mtp")
+
+# Models in the Qwen3.6 architecture family where LM Studio cannot suppress
+# thinking via chat_template_kwargs or reasoning_effort.  LM Studio emits:
+#   “No valid custom reasoning fields found … Reasoning setting ‘off’ cannot
+#   be converted to any custom KVs.”
+# and the model generates reasoning_content regardless of enable_thinking=False.
+# Both MTP (qwen3.6-*-mtp) and plain (qwen3.6-*) variants are affected.
+# The HTTP provider adds _THINKING_UNSUPPRESSABLE_OVERHEAD_TOKENS to the
+# token budget when use_thinking=False so the involuntary thinking phase has
+# room to complete before actual content is produced.
+_THINKING_UNSUPPRESSABLE_MODEL_MARKERS = ("qwopus", "qwen3-mtp", "qwen3.6", "qwen-3.6")
+
+# LM Studio's OpenAI-compatible REST path has been observed to ignore both
+# top-level and ``extra_body`` forms of ``chat_template_kwargs`` for these
+# Qwen families. Appending an assistant message containing an empty think block
+# structurally skips the model's reasoning phase.
+_LM_STUDIO_ASSISTANT_PREFILL_MODEL_MARKERS = (
+    "qwopus",
+    "qwen3-mtp",
+    "qwen3.5",
+    "qwen-3.5",
+    "qwen3.6",
+    "qwen-3.6",
+)
+
+_GROQ_GPT_OSS_MODEL_MARKERS = ("gpt-oss",)
+_GROQ_REASONING_FORMAT_MODEL_MARKERS = ("qwen/qwen3", "qwen3-32b")
 
 # Fields on a ChatCompletion ``message`` object that may carry the cognitive
 # trace. ``reasoning_content`` is LM Studio's name; ``reasoning`` is what
@@ -98,11 +127,14 @@ class ProviderCapabilities:
     # ---- thinking suppression ---------------------------------------------
     accepts_no_think_directive: bool
     supports_enable_thinking_kwarg: bool
+    assistant_prefill_suppresses_thinking: bool
 
     # ---- reasoning_effort -------------------------------------------------
     supports_reasoning_effort: bool
     reasoning_effort_enabled_value: str
     reasoning_effort_disabled_value: str
+    supports_reasoning_format: bool
+    supports_include_reasoning: bool
 
     # ---- structured output workaround ------------------------------------
     force_text_schema: bool
@@ -111,6 +143,9 @@ class ProviderCapabilities:
     # ---- output routing & retries ----------------------------------------
     routes_output_to_reasoning_content: bool
     is_mtp_model: bool
+    # LM Studio cannot suppress thinking for this model via any API parameter.
+    # The model generates reasoning_content regardless of use_thinking=False.
+    thinking_unsuppressable: bool
 
     # ----- derivations -----------------------------------------------------
 
@@ -126,6 +161,11 @@ class ProviderCapabilities:
             return ""
         return "/no_think" if self.accepts_no_think_directive else ""
 
+    def thinking_directive_for(self, request: GenerationRequest) -> str:
+        if request.reasoning_policy != ReasoningPolicy.DISABLED:
+            return ""
+        return "/no_think" if self.accepts_no_think_directive else ""
+
     def chat_template_kwargs(self, *, use_thinking: bool) -> dict[str, object] | None:
         """LM Studio ``chat_template_kwargs`` payload for thinking control."""
         if self.provider_id != "lm_studio":
@@ -134,21 +174,65 @@ class ProviderCapabilities:
             return None
         return {"enable_thinking": bool(use_thinking)}
 
+    def chat_template_kwargs_for(self, request: GenerationRequest) -> dict[str, object] | None:
+        if self.provider_id != "lm_studio":
+            return None
+        if not self.supports_enable_thinking_kwarg:
+            return None
+        return {"enable_thinking": request.reasoning_policy != ReasoningPolicy.DISABLED}
+
     def reasoning_effort_value(self, *, use_thinking: bool) -> str | None:
         """Resolved ``reasoning_effort`` value, or None when not applicable."""
         if not self.supports_reasoning_effort:
             return None
         return self.reasoning_effort_enabled_value if use_thinking else self.reasoning_effort_disabled_value
 
+    def reasoning_effort_for(self, request: GenerationRequest) -> str | None:
+        if not self.supports_reasoning_effort:
+            return None
+        if self.provider_id == "groq" and self.supports_include_reasoning:
+            return (
+                "low" if request.reasoning_policy == ReasoningPolicy.DISABLED else self.reasoning_effort_enabled_value
+            )
+        if request.reasoning_policy == ReasoningPolicy.DISABLED:
+            return self.reasoning_effort_disabled_value
+        return self.reasoning_effort_enabled_value
+
+    def groq_reasoning_params_for(self, request: GenerationRequest) -> dict[str, object]:
+        """Return Groq reasoning payload fields without illegal combinations."""
+        if self.provider_id != "groq":
+            return {}
+
+        params: dict[str, object] = {}
+        effort = self.reasoning_effort_for(request)
+        if effort is not None:
+            params["reasoning_effort"] = effort
+
+        if self.supports_include_reasoning:
+            params["include_reasoning"] = request.reasoning_policy == ReasoningPolicy.VISIBLE
+            return params
+
+        if self.supports_reasoning_format and request.reasoning_policy != ReasoningPolicy.DISABLED:
+            params["reasoning_format"] = "parsed" if request.reasoning_policy == ReasoningPolicy.VISIBLE else "hidden"
+        return params
+
+    def should_prefill_empty_think(self, request: GenerationRequest) -> bool:
+        return (
+            self.provider_id == "lm_studio"
+            and self.assistant_prefill_suppresses_thinking
+            and request.reasoning_policy == ReasoningPolicy.DISABLED
+        )
+
 
 def resolve_capabilities(provider_id: str, model_id: str) -> ProviderCapabilities:
     """Return the capability descriptor for ``(provider_id, model_id)``."""
-    accepts_no_think = _model_matches(model_id, _NO_THINK_MODEL_MARKERS)
-    supports_enable_thinking = (
-        provider_id == "lm_studio"
-        and _model_matches(model_id, _ENABLE_THINKING_KWARG_MODEL_MARKERS)
+    accepts_no_think = provider_id == "lm_studio" and _model_matches(model_id, _NO_THINK_MODEL_MARKERS)
+    supports_enable_thinking = provider_id == "lm_studio" and _model_matches(
+        model_id, _ENABLE_THINKING_KWARG_MODEL_MARKERS
     )
     supports_reasoning_effort = _model_matches(model_id, _REASONING_EFFORT_MODEL_MARKERS)
+    supports_reasoning_format = provider_id == "groq" and _model_matches(model_id, _GROQ_REASONING_FORMAT_MODEL_MARKERS)
+    supports_include_reasoning = provider_id == "groq" and _model_matches(model_id, _GROQ_GPT_OSS_MODEL_MARKERS)
 
     # Groq Qwen3-32B accepts only ``none``/``default``; gpt-oss accepts
     # ``low``/``medium``/``high``. LM Studio is more permissive but
@@ -156,29 +240,39 @@ def resolve_capabilities(provider_id: str, model_id: str) -> ProviderCapabilitie
     if provider_id == "groq" and _model_matches(model_id, _QWEN3_REASONING_EFFORT_MODEL_MARKERS):
         reasoning_effort_enabled = "default"
         reasoning_effort_disabled = "none"
+    elif provider_id == "groq" and _model_matches(model_id, _GROQ_GPT_OSS_MODEL_MARKERS):
+        reasoning_effort_enabled = "medium"
+        reasoning_effort_disabled = "low"
     else:
         reasoning_effort_enabled = "medium"
         reasoning_effort_disabled = "none"
 
-    force_schema = (
-        provider_id == "lm_studio"
-        and _model_matches(model_id, _LM_STUDIO_SCHEMA_MODEL_MARKERS)
-    )
+    force_schema = provider_id == "lm_studio" and _model_matches(model_id, _LM_STUDIO_SCHEMA_MODEL_MARKERS)
     routes_to_reasoning = force_schema or supports_enable_thinking
     is_mtp = _model_matches(model_id, _MTP_MODEL_MARKERS)
+    thinking_unsuppressable = provider_id == "lm_studio" and _model_matches(
+        model_id, _THINKING_UNSUPPRESSABLE_MODEL_MARKERS
+    )
+    prefill_suppresses = provider_id == "lm_studio" and _model_matches(
+        model_id, _LM_STUDIO_ASSISTANT_PREFILL_MODEL_MARKERS
+    )
 
     return ProviderCapabilities(
         provider_id=provider_id,
         model_id=model_id,
         accepts_no_think_directive=accepts_no_think,
         supports_enable_thinking_kwarg=supports_enable_thinking,
+        assistant_prefill_suppresses_thinking=prefill_suppresses,
         supports_reasoning_effort=supports_reasoning_effort,
         reasoning_effort_enabled_value=reasoning_effort_enabled,
         reasoning_effort_disabled_value=reasoning_effort_disabled,
+        supports_reasoning_format=supports_reasoning_format,
+        supports_include_reasoning=supports_include_reasoning,
         force_text_schema=force_schema,
         schema_min_output_tokens=LM_STUDIO_SCHEMA_MIN_OUTPUT_TOKENS,
         routes_output_to_reasoning_content=routes_to_reasoning,
         is_mtp_model=is_mtp,
+        thinking_unsuppressable=thinking_unsuppressable,
     )
 
 

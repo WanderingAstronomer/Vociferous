@@ -18,6 +18,7 @@ import threading
 from typing import TYPE_CHECKING, Callable
 
 from src.core.constants import TitleGeneration
+from src.refinement.providers import GenerationTaskKind, ReasoningPolicy
 
 if TYPE_CHECKING:
     from src.database.db import TranscriptDB
@@ -139,6 +140,8 @@ class TitleGenerator:
                 user_prompt=input_text,
                 max_tokens=TitleGeneration.MAX_TITLE_TOKENS,
                 temperature=TitleGeneration.TEMPERATURE,
+                task_kind=GenerationTaskKind.TITLE,
+                reasoning_policy=ReasoningPolicy.DISABLED,
             )
 
             if not title or not title.strip():

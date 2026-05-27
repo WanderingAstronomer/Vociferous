@@ -18,7 +18,7 @@ from src.refinement.providers.capabilities import (
     ProviderCapabilities,
     resolve_capabilities,
 )
-from src.refinement.providers.contracts import ProviderRequestError
+from src.refinement.providers.contracts import GenerationRequest, ProviderRequestError, ResponseShape
 from src.refinement.providers.runtime import api_key_from_env, describe_refinement_runtime
 
 logger = logging.getLogger(__name__)
@@ -35,6 +35,12 @@ class OpenAICompatibleRefinementProvider:
     _LM_STUDIO_PROMPT_WORDS_PER_SECOND = 40.0
     _LM_STUDIO_GENERATION_TOKENS_PER_SECOND = 12.0
     _LM_STUDIO_MAX_READ_TIMEOUT_SECONDS = 900.0
+    # Qwen3.6 architecture models (both MTP and non-MTP variants) ignore the
+    # normal LM Studio REST controls: chat_template_kwargs, reasoning_effort,
+    # and /no_think. The assistant-prefill path is the structural suppression;
+    # this overhead is retained as a defensive fallback if LM Studio still burns
+    # hidden reasoning tokens before producing content.
+    _THINKING_UNSUPPRESSABLE_OVERHEAD_TOKENS = 1024
 
     def __init__(self, settings: VociferousSettings, provider_id: str) -> None:
         if provider_id not in {"lm_studio", "groq"}:
@@ -46,6 +52,7 @@ class OpenAICompatibleRefinementProvider:
         self._runtime_summary = describe_refinement_runtime(settings)
         self._last_usage: dict[str, object] | None = None
         self._last_rate_limit: dict[str, str] = {}
+        self._last_request: dict[str, object] | None = None
 
     @property
     def provider_id(self) -> str:
@@ -70,6 +77,8 @@ class OpenAICompatibleRefinementProvider:
             summary["last_usage"] = dict(self._last_usage)
         if self._last_rate_limit:
             summary["rate_limit"] = dict(self._last_rate_limit)
+        if self._last_request:
+            summary["last_request"] = dict(self._last_request)
         return summary
 
     def list_models(self) -> list[dict[str, object]]:
@@ -95,6 +104,7 @@ class OpenAICompatibleRefinementProvider:
         repetition_penalty: float,
         use_thinking: bool,
         allow_skip: bool = True,
+        request: GenerationRequest | None = None,
     ) -> GenerationResult:
         if not text or not text.strip():
             return GenerationResult(content=text)
@@ -112,21 +122,24 @@ class OpenAICompatibleRefinementProvider:
             system_prompt=self._settings.refinement.system_prompt,
             invariants=self._settings.refinement.invariants,
         )
+        request = request or GenerationRequest.for_refinement(
+            visible_output_tokens=self._refinement_max_tokens(text, use_thinking=use_thinking),
+            use_thinking=use_thinking,
+        )
         messages = prompt_builder.build_refinement_messages(
             text,
             instructions,
-            use_thinking=use_thinking,
-            thinking_directive=capabilities.thinking_directive(use_thinking=use_thinking),
+            use_thinking=request.use_thinking,
+            thinking_directive=capabilities.thinking_directive_for(request),
         )
         result = self._chat_completion(
             capabilities=capabilities,
             messages=messages,
-            max_tokens=self._refinement_max_tokens(text, use_thinking=use_thinking),
+            request=request,
             temperature=temperature,
             top_p=top_p,
             top_k=top_k,
             repetition_penalty=repetition_penalty,
-            use_thinking=use_thinking,
         )
         if not result.content.strip():
             detail = " after producing reasoning only" if result.reasoning else ""
@@ -145,24 +158,28 @@ class OpenAICompatibleRefinementProvider:
         max_tokens: int = 150,
         temperature: float = 0.7,
         use_thinking: bool = False,
+        request: GenerationRequest | None = None,
     ) -> GenerationResult:
         capabilities = self._capabilities()
+        request = request or GenerationRequest.for_custom(
+            visible_output_tokens=max_tokens,
+            use_thinking=use_thinking,
+        )
         prompt_builder = PromptBuilder()
         messages = prompt_builder.build_custom_messages(
             system_prompt,
             user_prompt,
-            use_thinking=use_thinking,
-            thinking_directive=capabilities.thinking_directive(use_thinking=use_thinking),
+            use_thinking=request.use_thinking,
+            thinking_directive=capabilities.thinking_directive_for(request),
         )
         return self._chat_completion(
             capabilities=capabilities,
             messages=messages,
-            max_tokens=max_tokens,
+            request=request,
             temperature=temperature,
             top_p=1.0,
             top_k=0,
             repetition_penalty=1.0,
-            use_thinking=use_thinking,
         )
 
     # ------------------------------------------------------------------
@@ -379,24 +396,29 @@ class OpenAICompatibleRefinementProvider:
         *,
         capabilities: ProviderCapabilities,
         messages: list[dict[str, str]],
-        max_tokens: int,
+        request: GenerationRequest,
         temperature: float,
         top_p: float,
         top_k: int,
         repetition_penalty: float,
-        use_thinking: bool = False,
     ) -> GenerationResult:
         force_text_schema = capabilities.force_text_schema
-        request_tokens = max(1, max_tokens)
+        request_tokens = max(1, request.visible_output_tokens)
         if force_text_schema:
             request_tokens = max(request_tokens, capabilities.schema_min_output_tokens)
+        if capabilities.thinking_unsuppressable and request.final_output_only:
+            request_tokens += self._THINKING_UNSUPPRESSABLE_OVERHEAD_TOKENS
 
-        chat_template_kwargs = capabilities.chat_template_kwargs(use_thinking=use_thinking)
-        reasoning_effort = capabilities.reasoning_effort_value(use_thinking=use_thinking)
+        chat_template_kwargs = capabilities.chat_template_kwargs_for(request)
+        reasoning_effort = capabilities.reasoning_effort_for(request)
+        request_messages = self._messages_for_request(messages, capabilities=capabilities, request=request)
+        continue_assistant_turn = capabilities.should_prefill_empty_think(request)
+        self._last_request = request.to_runtime_summary()
 
         while True:
             payload = self._build_chat_payload(
-                messages=messages,
+                messages=request_messages,
+                request=request,
                 request_tokens=request_tokens,
                 temperature=temperature,
                 top_p=top_p,
@@ -405,6 +427,8 @@ class OpenAICompatibleRefinementProvider:
                 force_text_schema=force_text_schema,
                 chat_template_kwargs=chat_template_kwargs,
                 reasoning_effort=reasoning_effort,
+                capabilities=capabilities,
+                continue_assistant_turn=continue_assistant_turn,
             )
 
             try:
@@ -429,6 +453,7 @@ class OpenAICompatibleRefinementProvider:
         self,
         *,
         messages: list[dict[str, str]],
+        request: GenerationRequest,
         request_tokens: int,
         temperature: float,
         top_p: float,
@@ -437,6 +462,8 @@ class OpenAICompatibleRefinementProvider:
         force_text_schema: bool,
         chat_template_kwargs: dict[str, object] | None,
         reasoning_effort: str | None,
+        capabilities: ProviderCapabilities,
+        continue_assistant_turn: bool,
     ) -> dict[str, object]:
         payload: dict[str, object] = {
             "model": self._provider_settings.model_id,
@@ -447,9 +474,9 @@ class OpenAICompatibleRefinementProvider:
         }
         if self._provider_id == "groq":
             payload["max_completion_tokens"] = request_tokens
-            payload["reasoning_format"] = "parsed"
-            if reasoning_effort is not None:
-                payload["reasoning_effort"] = reasoning_effort
+            if request.response_shape == ResponseShape.JSON_OBJECT:
+                payload["response_format"] = {"type": "json_object"}
+            payload.update(capabilities.groq_reasoning_params_for(request))
         else:
             payload["max_tokens"] = request_tokens
             if top_k > 0:
@@ -458,11 +485,26 @@ class OpenAICompatibleRefinementProvider:
                 payload["repeat_penalty"] = repetition_penalty
             if force_text_schema:
                 payload["response_format"] = TEXT_RESPONSE_FORMAT
+            elif request.response_shape == ResponseShape.JSON_OBJECT:
+                payload["response_format"] = {"type": "json_object"}
             if chat_template_kwargs is not None:
                 payload["chat_template_kwargs"] = chat_template_kwargs
             if reasoning_effort is not None:
                 payload["reasoning_effort"] = reasoning_effort
+            if continue_assistant_turn:
+                payload["continue_assistant_turn"] = True
         return payload
+
+    @staticmethod
+    def _messages_for_request(
+        messages: list[dict[str, str]],
+        *,
+        capabilities: ProviderCapabilities,
+        request: GenerationRequest,
+    ) -> list[dict[str, str]]:
+        if not capabilities.should_prefill_empty_think(request):
+            return messages
+        return [*messages, {"role": "assistant", "content": "<think>\n\n</think>\n\n"}]
 
     def _parse_chat_response(self, body: dict[str, object]) -> GenerationResult:
         self._last_usage = body.get("usage") if isinstance(body.get("usage"), dict) else None

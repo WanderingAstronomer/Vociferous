@@ -18,6 +18,7 @@ import pytest
 from src.core.constants import TitleGeneration
 from src.core.title_generator import TitleGenerator
 from src.database.db import TranscriptDB
+from src.refinement.providers import GenerationTaskKind, ReasoningPolicy
 from src.services.slm_types import SLMState
 
 # ---------------------------------------------------------------------------
@@ -255,5 +256,5 @@ class TestGenerateTask:
         call_kwargs = mock_slm.generate_custom_sync.call_args
         passed_text = call_kwargs.kwargs["user_prompt"]
         assert len(passed_text) == TitleGeneration.MAX_TEXT_CHARS
-
-
+        assert call_kwargs.kwargs["task_kind"] == GenerationTaskKind.TITLE
+        assert call_kwargs.kwargs["reasoning_policy"] == ReasoningPolicy.DISABLED

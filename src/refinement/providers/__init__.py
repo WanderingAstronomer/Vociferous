@@ -19,7 +19,14 @@ Internal modules (not re-exported, but stable for tests inside this package):
     implementation modules.
 """
 
-from src.refinement.providers.contracts import ProviderRequestError, RefinementProvider
+from src.refinement.providers.contracts import (
+    GenerationRequest,
+    GenerationTaskKind,
+    ProviderRequestError,
+    ReasoningPolicy,
+    RefinementProvider,
+    ResponseShape,
+)
 from src.refinement.providers.factory import (
     list_external_provider_models,
     make_refinement_provider,
@@ -32,8 +39,12 @@ from src.refinement.providers.runtime import describe_refinement_runtime
 __all__ = [
     "LocalCT2RefinementProvider",
     "OpenAICompatibleRefinementProvider",
+    "GenerationRequest",
+    "GenerationTaskKind",
     "ProviderRequestError",
+    "ReasoningPolicy",
     "RefinementProvider",
+    "ResponseShape",
     "describe_refinement_runtime",
     "list_external_provider_models",
     "make_refinement_provider",

@@ -11,6 +11,7 @@ from src.core.resource_manager import ResourceManager
 from src.core.settings import VociferousSettings
 from src.refinement.engine import RefinementEngine
 from src.refinement.output_parser import GenerationResult
+from src.refinement.providers.contracts import GenerationRequest
 from src.refinement.providers.runtime import describe_refinement_runtime
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,7 @@ class LocalCT2RefinementProvider:
         self._engine: RefinementEngine | None = None
         self._runtime_summary: dict[str, object] | None = None
         self._last_usage: dict[str, int] | None = None
+        self._last_request: dict[str, object] | None = None
 
     @property
     def provider_id(self) -> str:
@@ -105,6 +107,8 @@ class LocalCT2RefinementProvider:
         summary = dict(self._runtime_summary or describe_refinement_runtime(self._settings))
         if self._last_usage:
             summary["last_usage"] = dict(self._last_usage)
+        if self._last_request:
+            summary["last_request"] = dict(self._last_request)
         return summary
 
     def refine(
@@ -118,9 +122,11 @@ class LocalCT2RefinementProvider:
         repetition_penalty: float,
         use_thinking: bool,
         allow_skip: bool = True,
+        request: GenerationRequest | None = None,
     ) -> GenerationResult:
         if self._engine is None:
             raise RuntimeError("Engine not loaded.")
+        request = request or GenerationRequest.for_refinement(visible_output_tokens=1, use_thinking=use_thinking)
         result = self._engine.refine(
             text,
             user_instructions=instructions,
@@ -128,7 +134,7 @@ class LocalCT2RefinementProvider:
             top_p=top_p,
             top_k=top_k,
             repetition_penalty=repetition_penalty,
-            use_thinking=use_thinking,
+            use_thinking=request.use_thinking,
             allow_skip=allow_skip,
         )
         self._last_usage = {
@@ -136,6 +142,7 @@ class LocalCT2RefinementProvider:
             "completion_tokens": result.completion_tokens,
             "total_tokens": result.total_tokens,
         }
+        self._last_request = request.to_runtime_summary()
         return result
 
     def generate_custom(
@@ -146,16 +153,25 @@ class LocalCT2RefinementProvider:
         max_tokens: int = 150,
         temperature: float = 0.7,
         use_thinking: bool = False,
+        request: GenerationRequest | None = None,
     ) -> GenerationResult:
         if self._engine is None:
             raise RuntimeError("Engine not loaded.")
-        return self._engine.generate_custom(
+        request = request or GenerationRequest.for_custom(visible_output_tokens=max_tokens, use_thinking=use_thinking)
+        result = self._engine.generate_custom(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
-            max_tokens=max_tokens,
+            max_tokens=request.visible_output_tokens,
             temperature=temperature,
-            use_thinking=use_thinking,
+            use_thinking=request.use_thinking,
         )
+        self._last_usage = {
+            "prompt_tokens": result.prompt_tokens,
+            "completion_tokens": result.completion_tokens,
+            "total_tokens": result.total_tokens,
+        }
+        self._last_request = request.to_runtime_summary()
+        return result
 
     @staticmethod
     def _model_dir(cache_dir: Path, model: SLMModel) -> Path:
@@ -172,8 +188,7 @@ class LocalCT2RefinementProvider:
             return model, ""
         if settings.refinement.n_gpu_layers == 0:
             raise ValueError(
-                f"{model.name} uses AWQ quantization which requires GPU. "
-                "Choose an int8 refinement model for CPU mode."
+                f"{model.name} uses AWQ quantization which requires GPU. Choose an int8 refinement model for CPU mode."
             )
         if wants_gpu and cuda_status.cuda_available:
             return model, ""

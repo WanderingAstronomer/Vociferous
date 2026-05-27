@@ -15,6 +15,7 @@ import pytest
 
 from src.core.insight_manager import InsightManager
 from src.refinement.prompt_builder import PromptBuilder
+from src.refinement.providers import GenerationTaskKind, ReasoningPolicy, ResponseShape
 
 # ── Inline Cache ──────────────────────────────────────────────────────────
 
@@ -277,8 +278,11 @@ class TestInsightManagerPromptContract:
         assert 'Required JSON shape:\n{"daily":"...","lifetime":"..."}' in kwargs["user_prompt"]
         assert "- Words today: 500." in kwargs["user_prompt"]
         assert "- Total words captured: 1,000 across 10 transcriptions." in kwargs["user_prompt"]
+        assert kwargs["max_tokens"] == 384
         assert kwargs["temperature"] == 0.4
-        assert kwargs["use_thinking"] is False
+        assert kwargs["task_kind"] == GenerationTaskKind.ANALYTICS
+        assert kwargs["reasoning_policy"] == ReasoningPolicy.DISABLED
+        assert kwargs["response_shape"] == ResponseShape.JSON_OBJECT
 
     def test_zero_today_words_marks_daily_highlights_none(self, tmp_path: Path) -> None:
         manager, _ = _make_manager_with_emit(tmp_path, "Long-term only.", today_words=0)

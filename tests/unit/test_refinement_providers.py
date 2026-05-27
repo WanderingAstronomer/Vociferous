@@ -5,7 +5,14 @@ import json
 import httpx
 import pytest
 
-from src.refinement.providers import OpenAICompatibleRefinementProvider, describe_refinement_runtime
+from src.refinement.providers import (
+    GenerationRequest,
+    GenerationTaskKind,
+    OpenAICompatibleRefinementProvider,
+    ReasoningPolicy,
+    ResponseShape,
+    describe_refinement_runtime,
+)
 
 VALID_GROQ_KEY = "gsk_test_secret_123456789012345678901234567890"
 
@@ -82,7 +89,7 @@ def test_groq_chat_payload_uses_groq_token_field_and_omits_local_knobs(fresh_set
     assert "repeat_penalty" not in captured
 
 
-def test_qwen_external_custom_generation_sends_no_think_when_thinking_disabled(fresh_settings) -> None:
+def test_groq_qwen_custom_generation_uses_reasoning_effort_not_no_think(fresh_settings) -> None:
     fresh_settings.refinement.provider = "groq"
     fresh_settings.refinement.groq.model_id = "qwen/qwen3-32b"
     fresh_settings.refinement.groq.api_key = VALID_GROQ_KEY
@@ -105,7 +112,9 @@ def test_qwen_external_custom_generation_sends_no_think_when_thinking_disabled(f
     )
 
     assert result.content == "Useful Title"
-    assert "/no_think" in str(captured["messages"])
+    assert "/no_think" not in str(captured["messages"])
+    assert captured["reasoning_effort"] == "none"
+    assert "reasoning_format" not in captured
 
 
 def test_lm_studio_qwopus_refinement_uses_canonical_thinking_suppression(fresh_settings) -> None:
@@ -132,9 +141,12 @@ def test_lm_studio_qwopus_refinement_uses_canonical_thinking_suppression(fresh_s
     )
 
     assert result.content == "Edited text"
-    # Canonical Qwen3 mechanism: chat_template_kwargs.enable_thinking=False pre-fills
-    # an empty <think></think> block so the model structurally cannot reason.
+    # LM Studio claims chat_template_kwargs is the canonical Qwen mechanism,
+    # but the REST adapter drops it for affected Qwen3.6 builds. Keep the flag
+    # and add the assistant prefill that actually blocks the reasoning phase.
     assert captured["chat_template_kwargs"] == {"enable_thinking": False}
+    assert captured["continue_assistant_turn"] is True
+    assert captured["messages"][-1] == {"role": "assistant", "content": "<think>\n\n</think>\n\n"}
     # reasoning_effort=none is the parallel mechanism for providers that honor it.
     assert captured["reasoning_effort"] == "none"
     # /no_think is still injected as a belt-and-suspenders fallback for custom
@@ -303,7 +315,7 @@ def test_lm_studio_non_reasoning_model_omits_reasoning_params(fresh_settings) ->
     assert "response_format" not in captured
 
 
-def test_groq_sets_reasoning_format_parsed_for_every_request(fresh_settings) -> None:
+def test_groq_non_reasoning_model_omits_reasoning_params(fresh_settings) -> None:
     fresh_settings.refinement.provider = "groq"
     fresh_settings.refinement.groq.model_id = "llama-3.1-8b-instant"
     fresh_settings.refinement.groq.api_key = VALID_GROQ_KEY
@@ -327,21 +339,21 @@ def test_groq_sets_reasoning_format_parsed_for_every_request(fresh_settings) -> 
         allow_skip=False,
     )
 
-    assert captured["reasoning_format"] == "parsed"
-    # llama-3.1 is not a reasoning model, so no effort param is sent.
+    assert "reasoning_format" not in captured
+    assert "include_reasoning" not in captured
     assert "reasoning_effort" not in captured
 
 
-def test_groq_gpt_oss_sets_reasoning_effort_per_thinking_mode(fresh_settings) -> None:
+def test_groq_gpt_oss_uses_include_reasoning_without_reasoning_format(fresh_settings) -> None:
     fresh_settings.refinement.provider = "groq"
     fresh_settings.refinement.groq.model_id = "openai/gpt-oss-120b"
     fresh_settings.refinement.groq.api_key = VALID_GROQ_KEY
 
-    seen_efforts: list[str] = []
+    seen_payloads: list[dict[str, object]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content.decode("utf-8"))
-        seen_efforts.append(str(payload.get("reasoning_effort", "<missing>")))
+        seen_payloads.append(payload)
         return _json_response({"choices": [{"message": {"content": "ok"}}]})
 
     provider = OpenAICompatibleRefinementProvider(fresh_settings, "groq")
@@ -366,7 +378,12 @@ def test_groq_gpt_oss_sets_reasoning_effort_per_thinking_mode(fresh_settings) ->
         allow_skip=False,
     )
 
-    assert seen_efforts == ["none", "medium"]
+    assert seen_payloads[0]["reasoning_effort"] == "low"
+    assert seen_payloads[0]["include_reasoning"] is False
+    assert "reasoning_format" not in seen_payloads[0]
+    assert seen_payloads[1]["reasoning_effort"] == "medium"
+    assert seen_payloads[1]["include_reasoning"] is True
+    assert "reasoning_format" not in seen_payloads[1]
 
 
 def test_groq_does_not_send_lm_studio_chat_template_kwargs(fresh_settings) -> None:
@@ -393,11 +410,12 @@ def test_groq_does_not_send_lm_studio_chat_template_kwargs(fresh_settings) -> No
         allow_skip=False,
     )
 
-    # chat_template_kwargs is an LM Studio passthrough; Groq surfaces thinking
-    # control through reasoning_effort and reasoning_format instead.
+    # chat_template_kwargs and /no_think are LM Studio/Qwen-template hacks.
+    # Groq exposes an actual reasoning control, so use that instead.
     assert "chat_template_kwargs" not in captured
+    assert "/no_think" not in str(captured["messages"])
     assert captured["reasoning_effort"] == "none"
-    assert captured["reasoning_format"] == "parsed"
+    assert "reasoning_format" not in captured
 
 
 def test_lm_studio_reasoning_only_refinement_raises_instead_of_returning_original(fresh_settings) -> None:
@@ -432,6 +450,95 @@ def test_lm_studio_reasoning_only_refinement_raises_instead_of_returning_origina
             use_thinking=False,
             allow_skip=False,
         )
+
+
+def test_lm_studio_qwen36_inflates_token_budget_when_thinking_disabled(fresh_settings) -> None:
+    """Qwen3.6 architecture models (MTP and non-MTP) ignore every thinking-suppression
+    mechanism LM Studio exposes.  LM Studio logs:
+      'No valid custom reasoning fields found ... Reasoning setting off cannot
+       be converted to any custom KVs.'
+    The provider must pad max_tokens by _THINKING_UNSUPPRESSABLE_OVERHEAD_TOKENS so
+    the involuntary reasoning phase has room to complete before actual content is
+    produced.  When thinking IS requested the overhead must NOT be added.
+    Using the non-MTP model ID here proves the scope is architecture-level, not
+    speculative-decoding-specific.
+    """
+    fresh_settings.refinement.provider = "lm_studio"
+    fresh_settings.refinement.lm_studio.model_id = "qwen3.6-35b-a3b"
+
+    captured_no_think: dict[str, object] = {}
+    captured_thinking: dict[str, object] = {}
+
+    def handler_no_think(request: httpx.Request) -> httpx.Response:
+        captured_no_think.update(json.loads(request.content.decode("utf-8")))
+        return _json_response({"choices": [{"message": {"content": "Edited text"}}]})
+
+    def handler_thinking(request: httpx.Request) -> httpx.Response:
+        captured_thinking.update(json.loads(request.content.decode("utf-8")))
+        return _json_response({"choices": [{"message": {"content": "Edited text"}}]})
+
+    base_max_tokens = 220
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "lm_studio")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler_no_think))
+    provider.generate_custom(
+        system_prompt="summarise",
+        user_prompt="data",
+        max_tokens=base_max_tokens,
+        temperature=0.4,
+        use_thinking=False,
+    )
+
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler_thinking))
+    provider.generate_custom(
+        system_prompt="summarise",
+        user_prompt="data",
+        max_tokens=base_max_tokens,
+        temperature=0.4,
+        use_thinking=True,
+    )
+
+    overhead = OpenAICompatibleRefinementProvider._THINKING_UNSUPPRESSABLE_OVERHEAD_TOKENS
+    assert captured_no_think["max_tokens"] == base_max_tokens + overhead, (
+        "Token budget must be inflated for Qwen3.6 models when thinking is disabled"
+    )
+    assert captured_no_think["continue_assistant_turn"] is True
+    assert captured_no_think["messages"][-1] == {"role": "assistant", "content": "<think>\n\n</think>\n\n"}
+    assert captured_thinking["max_tokens"] == base_max_tokens, (
+        "Token budget must NOT be inflated when thinking is explicitly requested"
+    )
+
+
+def test_groq_json_request_uses_json_object_without_reasoning_field_conflicts(fresh_settings) -> None:
+    fresh_settings.refinement.provider = "groq"
+    fresh_settings.refinement.groq.model_id = "openai/gpt-oss-120b"
+    fresh_settings.refinement.groq.api_key = VALID_GROQ_KEY
+
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content.decode("utf-8")))
+        return _json_response({"choices": [{"message": {"content": '{"daily":"ok","lifetime":"ok"}'}}]})
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "groq")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    provider.generate_custom(
+        system_prompt="analytics",
+        user_prompt="facts",
+        max_tokens=384,
+        temperature=0.4,
+        request=GenerationRequest.for_custom(
+            visible_output_tokens=384,
+            task_kind=GenerationTaskKind.ANALYTICS,
+            reasoning_policy=ReasoningPolicy.DISABLED,
+            response_shape=ResponseShape.JSON_OBJECT,
+        ),
+    )
+
+    assert captured["response_format"] == {"type": "json_object"}
+    assert captured["include_reasoning"] is False
+    assert "reasoning_format" not in captured
 
 
 def test_qwen_external_custom_generation_omits_no_think_when_thinking_enabled(fresh_settings) -> None:
@@ -659,4 +766,3 @@ def test_external_refine_raises_when_provider_returns_empty_content(fresh_settin
             use_thinking=False,
             allow_skip=False,
         )
-

@@ -28,15 +28,18 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from src.core.insights.formatting import (
     combine_text,
-    highlight_block as _highlight_block,
     parse_generated_insight,
     split_legacy_text,
     stats_fingerprint,
     today_key,
 )
+from src.core.insights.formatting import (
+    highlight_block as _highlight_block,
+)
 from src.core.insights.highlights import build_daily_highlights, build_long_term_highlights
 from src.core.resource_manager import ResourceManager
 from src.refinement.prompt_builder import PromptBuilder
+from src.refinement.providers import GenerationTaskKind, ReasoningPolicy, ResponseShape
 
 if TYPE_CHECKING:
     from src.services.slm_runtime import SLMRuntime
@@ -58,6 +61,7 @@ _DEFAULT_THRESHOLDS: tuple[int, ...] = (500, 1000, 2500, 5000, 10_000)
 # rule that runs in addition to bracket crossings.
 _FRESHNESS_GROWTH_WORDS = 250
 _FRESHNESS_MIN_INTERVAL_S = 120.0
+_INSIGHT_VISIBLE_OUTPUT_TOKENS = 384
 
 
 class InsightManager:
@@ -358,9 +362,11 @@ class InsightManager:
             result = slm.generate_custom_sync(
                 system_prompt=PromptBuilder.ANALYTICS_SYSTEM_PROMPT,
                 user_prompt=prompt,
-                max_tokens=220,
+                max_tokens=_INSIGHT_VISIBLE_OUTPUT_TOKENS,
                 temperature=0.4,
-                use_thinking=False,
+                task_kind=GenerationTaskKind.ANALYTICS,
+                reasoning_policy=ReasoningPolicy.DISABLED,
+                response_shape=ResponseShape.JSON_OBJECT,
             )
 
             if result and result.strip():

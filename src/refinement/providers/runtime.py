@@ -45,6 +45,7 @@ def describe_refinement_runtime(
                 or api_key_from_env(provider, provider_settings.api_key_env)
             ),
             "use_thinking": False,
+            "default_reasoning_policy": "disabled",
             "fallback_reason": fallback_reason,
         }
 
@@ -73,6 +74,7 @@ def describe_refinement_runtime(
         "cpu_threads": settings.refinement.n_threads,
         "compute_type": settings.model.compute_type,
         "use_thinking": settings.refinement.use_thinking,
+        "default_reasoning_policy": "visible" if settings.refinement.use_thinking else "disabled",
         "cuda_detail": status.detail,
         "fallback_reason": fallback_reason,
     }
