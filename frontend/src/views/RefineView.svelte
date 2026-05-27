@@ -445,8 +445,7 @@
         </div>
         </div>
     {:else}
-        <div class="flex-1 min-h-0 overflow-y-auto" style="scrollbar-gutter: stable;">
-        <div class="min-h-full flex flex-col">
+        <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
         <!-- Analytics Delta (visible after refinement) -->
         {#if hasRefined && refinedText}
             <div
@@ -763,11 +762,10 @@
                         placeholder="Add specific instructions (e.g., 'Make it bullet points', 'Fix technical jargon')…"
                         bind:value={customInstructions}
                         disabled={isRefining}
-                        rows="4"
+                        rows="8"
                     ></textarea>
                 {/if}
             </div>
-        </div>
         </div>
         </div>
 

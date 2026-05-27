@@ -83,6 +83,7 @@
     let refinementEnabled = $derived(appConfig.current?.refinement?.enabled ?? true);
     let autoRefine = $derived(appConfig.current?.output?.auto_refine ?? false);
     let username = $derived(appConfig.current?.user?.name ?? "");
+    let pendingAutoCommitRefinementIds = $state<Set<number>>(new Set());
 
     function errorMessage(error: unknown): string {
         return error instanceof Error ? error.message : String(error);
@@ -392,6 +393,28 @@
         });
     }
 
+    function trackPendingAutoCommitRefinement(id: number): void {
+        const next = new Set(pendingAutoCommitRefinementIds);
+        next.add(id);
+        pendingAutoCommitRefinementIds = next;
+    }
+
+    function clearPendingAutoCommitRefinement(id: number): void {
+        if (!pendingAutoCommitRefinementIds.has(id)) return;
+        const next = new Set(pendingAutoCommitRefinementIds);
+        next.delete(id);
+        pendingAutoCommitRefinementIds = next;
+    }
+
+    function dispatchTrackedAutoRefinement(targetId: number): Promise<{ status: string }> {
+        const DEFAULT_LEVEL = 2;
+        trackPendingAutoCommitRefinement(targetId);
+        return refineTranscript(targetId, DEFAULT_LEVEL, "", sessionPromptId).catch((error) => {
+            clearPendingAutoCommitRefinement(targetId);
+            throw error;
+        });
+    }
+
     let transcriptLoadGeneration = 0;
 
     function invalidateTranscriptLoads(): void {
@@ -464,8 +487,7 @@
 
                         /* Auto-refine the combined transcript if enabled */
                         if (autoRefine && refinementEnabled) {
-                            const DEFAULT_LEVEL = 2;
-                            refineTranscript(targetId, DEFAULT_LEVEL, "", sessionPromptId).catch((e) =>
+                            dispatchTrackedAutoRefinement(targetId).catch((e) =>
                                 console.warn("Auto-refine after append failed:", e),
                             );
                         }
@@ -496,8 +518,7 @@
 
                 /* Auto-refine: fire-and-forget if enabled */
                 if (autoRefine && refinementEnabled && data.id) {
-                    const DEFAULT_LEVEL = 2;
-                    refineTranscript(data.id, DEFAULT_LEVEL, "", sessionPromptId).catch((e) =>
+                    dispatchTrackedAutoRefinement(data.id).catch((e) =>
                         console.warn("Auto-refine dispatch failed:", e),
                     );
                 }
@@ -510,14 +531,23 @@
                 audioLevel = data.level;
             }),
             ws.on("refinement_complete", async (data) => {
-                /* Auto-commit: if this transcript is the current one and auto-refine triggered it */
-                if (autoRefine && data.transcript_id === transcriptId && data.text) {
-                    try {
-                        await commitRefinement(data.transcript_id, data.text);
+                /* Only auto-commit refinements explicitly dispatched from this view. */
+                if (!autoRefine || !data.text || !pendingAutoCommitRefinementIds.has(data.transcript_id)) {
+                    return;
+                }
+                clearPendingAutoCommitRefinement(data.transcript_id);
+                try {
+                    await commitRefinement(data.transcript_id, data.text);
+                    if (data.transcript_id === transcriptId) {
                         transcriptText = data.text;
-                    } catch (e) {
-                        console.warn("Auto-refine commit failed:", e);
                     }
+                } catch (e) {
+                    console.warn("Auto-refine commit failed:", e);
+                }
+            }),
+            ws.on("refinement_error", (data) => {
+                if (typeof data.transcript_id === "number") {
+                    clearPendingAutoCommitRefinement(data.transcript_id);
                 }
             }),
             ws.on("transcript_updated", async (data) => {
@@ -707,8 +737,7 @@
 
             /* Auto-refine the combined transcript if enabled */
             if (autoRefine && refinementEnabled) {
-                const DEFAULT_LEVEL = 2;
-                refineTranscript(targetId, DEFAULT_LEVEL, "", sessionPromptId).catch((e) =>
+                dispatchTrackedAutoRefinement(targetId).catch((e) =>
                     console.warn("Auto-refine after append failed:", e),
                 );
             }
@@ -729,248 +758,250 @@
 
 <div class="flex flex-col h-full overflow-hidden bg-[var(--surface-primary)]">
     <div class="flex-1 min-h-0 overflow-y-auto" style="scrollbar-gutter: stable;">
-    <div class={mainStackClasses}>
-        <TranscribeHeader
-            {viewState}
-            {greeting}
-            {refinementEnabled}
-            {sessionStats}
-            {transcriptTitle}
-            {transcriptTimestamp}
-        />
+        <div class={mainStackClasses}>
+            <TranscribeHeader
+                {viewState}
+                {greeting}
+                {refinementEnabled}
+                {sessionStats}
+                {transcriptTitle}
+                {transcriptTimestamp}
+            />
 
-        <TranscribeTranscriptMetrics {hasText} {durationMs} {speechDurationMs} wordCount={verbatimWordCount} />
+            <TranscribeTranscriptMetrics {hasText} {durationMs} {speechDurationMs} wordCount={verbatimWordCount} />
 
-        <!-- Append mode banner -->
-        {#if appendTargetId !== null && (viewState === "idle" || viewState === "recording")}
-            <div
-                class="shrink-0 flex items-center gap-[var(--space-2)] px-[var(--space-2)] py-[var(--space-1)] rounded-[var(--radius-md)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] border border-[var(--accent-muted)]"
-            >
-                <PlusCircle size={13} class="text-[var(--accent)] shrink-0" />
-                <span class="text-[var(--text-sm)] text-[var(--text-secondary)] flex-1 truncate">
-                    Appending to: <span class="font-semibold text-[var(--text-primary)]"
-                        >{appendTargetTitle || `Transcript #${appendTargetId}`}</span
-                    >
-                </span>
-                <button
-                    class="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] bg-transparent border-none cursor-pointer p-0 leading-none transition-colors"
-                    onclick={cancelAppendMode}
-                    title="Cancel append mode"
+            <!-- Append mode banner -->
+            {#if appendTargetId !== null && (viewState === "idle" || viewState === "recording")}
+                <div
+                    class="shrink-0 flex items-center gap-[var(--space-2)] px-[var(--space-2)] py-[var(--space-1)] rounded-[var(--radius-md)] bg-[color-mix(in_srgb,var(--accent)_10%,transparent)] border border-[var(--accent-muted)]"
                 >
-                    <X size={13} />
-                </button>
-            </div>
-        {/if}
-
-        <!-- Session tag bar (idle/recording — selects tags auto-applied to every new transcript) -->
-        {#if (viewState === "idle" || viewState === "recording") && allTags.filter((t) => !t.is_system).length > 0}
-            <div
-                class="shrink-0 flex flex-col items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)]"
-                title="Selected tags are auto-applied to every new recording until cleared"
-            >
-                <div class="flex items-center gap-[var(--space-1)]">
-                    <Bookmark
-                        size={13}
-                        class={sessionTagIds.size > 0
-                            ? "text-[var(--accent)] shrink-0"
-                            : "text-[var(--text-tertiary)] shrink-0"}
-                    />
-                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] shrink-0 select-none"
-                        >Session tags</span
-                    >
-                </div>
-                <TagBar
-                    tags={allTags.filter((t) => !t.is_system)}
-                    activeIds={sessionTagIds}
-                    ontoggle={toggleSessionTag}
-                    oncreate={handleSessionTagCreate}
-                    ondelete={handleSessionTagDelete}
-                    oncolorchange={handleSessionTagColorChange}
-                />
-            </div>
-        {/if}
-
-        <!-- Session refinement prompt selector (idle/recording — overrides default prompt for auto-refine) -->
-        {#if (viewState === "idle" || viewState === "recording") && promptTranscripts.length > 0}
-            <div
-                class="shrink-0 flex flex-col items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)]"
-                title="Selected prompt is used for auto-refinement on every new recording until cleared"
-            >
-                <div class="flex items-center gap-[var(--space-1)]">
-                    <Sparkles
-                        size={13}
-                        class={sessionPromptId != null
-                            ? "text-[var(--accent)] shrink-0"
-                            : "text-[var(--text-tertiary)] shrink-0"}
-                    />
-                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] shrink-0 select-none"
-                        >Session prompt</span
-                    >
-                </div>
-                <div class="w-full max-w-[260px]">
-                    <CustomSelect
-                        options={[
-                            { value: "", label: "Default" },
-                            ...promptTranscripts.map((t) => {
-                                const isGlobalDefault =
-                                    t.id === (appConfig.current?.refinement?.default_prompt_transcript_id ?? null);
-                                const base = t.display_name?.trim() || t.text.slice(0, 40);
-                                return {
-                                    value: String(t.id),
-                                    label: isGlobalDefault ? `${base} ★` : base,
-                                };
-                            }),
-                        ]}
-                        value={sessionPromptId != null ? String(sessionPromptId) : ""}
-                        onchange={(v: string) => (sessionPromptId = v ? Number(v) : null)}
-                        placeholder="Default"
-                    />
-                </div>
-            </div>
-        {/if}
-
-        <!-- Quick-tag strip (visible when a transcript is loaded) -->
-        {#if transcriptId != null && allTags.length > 0 && (viewState === "ready" || viewState === "viewing")}
-            <div
-                class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)] shrink-0 flex-wrap"
-            >
-                <TagIcon size={14} class="text-[var(--text-tertiary)] shrink-0 mr-1" />
-                {#each allTags as tag (tag.id)}
-                    {@const active = assignedTagIds.has(tag.id)}
+                    <PlusCircle size={13} class="text-[var(--accent)] shrink-0" />
+                    <span class="text-[var(--text-sm)] text-[var(--text-secondary)] flex-1 truncate">
+                        Appending to: <span class="font-semibold text-[var(--text-primary)]"
+                            >{appendTargetTitle || `Transcript #${appendTargetId}`}</span
+                        >
+                    </span>
                     <button
-                        class="inline-flex items-center gap-1 h-6 px-2 rounded-full text-[var(--text-xs)] font-[var(--weight-emphasis)] border cursor-pointer transition-all duration-150 {active
-                            ? 'border-transparent text-white'
-                            : 'border-[var(--shell-border)] text-[var(--text-secondary)] bg-transparent hover:bg-[var(--hover-overlay)]'}"
-                        style={active && tag.color
-                            ? `background: ${safeTagColor(tag.color)}`
-                            : active
-                              ? "background: var(--accent)"
-                              : ""}
-                        onclick={() => toggleTag(tag.id)}
-                        title={active ? `Remove "${tag.name}" tag` : `Add "${tag.name}" tag`}
+                        class="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] bg-transparent border-none cursor-pointer p-0 leading-none transition-colors"
+                        onclick={cancelAppendMode}
+                        title="Cancel append mode"
                     >
-                        {tag.name}
+                        <X size={13} />
                     </button>
-                {/each}
-            </div>
-        {/if}
+                </div>
+            {/if}
 
-        <!-- Recording surface -->
-        {#if viewState === "idle" || viewState === "recording"}
-            <div class="flex-1 min-h-[190px] flex items-center py-[var(--space-3)]">
-                <RecordingControls {isRecording} {audioLevel} onstart={startRecording} onstop={stopRecording} />
-            </div>
-        {:else}
-            <!-- Content panel -->
-            <WorkspacePanel editing={viewState === "editing"} recording={isTranscribing}>
-                {#if viewState === "transcribing"}
-                    <div class="flex-1 flex flex-col items-center justify-center gap-[var(--space-3)]">
-                        <Loader2 size={40} strokeWidth={1.5} class="spin" />
-                        <p class="text-[var(--text-sm)] text-[var(--text-tertiary)]">Transcribing audio…</p>
+            <!-- Session tag bar (idle/recording — selects tags auto-applied to every new transcript) -->
+            {#if (viewState === "idle" || viewState === "recording") && allTags.filter((t) => !t.is_system).length > 0}
+                <div
+                    class="shrink-0 flex flex-col items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)]"
+                    title="Selected tags are auto-applied to every new recording until cleared"
+                >
+                    <div class="flex items-center gap-[var(--space-1)]">
+                        <Bookmark
+                            size={13}
+                            class={sessionTagIds.size > 0
+                                ? "text-[var(--accent)] shrink-0"
+                                : "text-[var(--text-tertiary)] shrink-0"}
+                        />
+                        <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] shrink-0 select-none"
+                            >Session tags</span
+                        >
                     </div>
+                    <TagBar
+                        tags={allTags.filter((t) => !t.is_system)}
+                        activeIds={sessionTagIds}
+                        ontoggle={toggleSessionTag}
+                        oncreate={handleSessionTagCreate}
+                        ondelete={handleSessionTagDelete}
+                        oncolorchange={handleSessionTagColorChange}
+                    />
+                </div>
+            {/if}
 
-                    <!-- EDITING: editable textarea -->
-                {:else if viewState === "editing"}
-                    <div class="flex-1 overflow-y-auto">
-                        <textarea
-                            class="w-full h-full min-h-[200px] bg-transparent text-[var(--text-primary)] border-none outline-none resize-none font-[var(--font-family)] text-[var(--text-base)] leading-[var(--leading-relaxed)] p-0 placeholder:text-[var(--text-tertiary)]"
-                            bind:value={editText}
-                            spellcheck="true"
-                        ></textarea>
+            <!-- Session refinement prompt selector (idle/recording — overrides default prompt for auto-refine) -->
+            {#if (viewState === "idle" || viewState === "recording") && promptTranscripts.length > 0}
+                <div
+                    class="shrink-0 flex flex-col items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)]"
+                    title="Selected prompt is used for auto-refinement on every new recording until cleared"
+                >
+                    <div class="flex items-center gap-[var(--space-1)]">
+                        <Sparkles
+                            size={13}
+                            class={sessionPromptId != null
+                                ? "text-[var(--accent)] shrink-0"
+                                : "text-[var(--text-tertiary)] shrink-0"}
+                        />
+                        <span class="text-[var(--text-xs)] text-[var(--text-tertiary)] shrink-0 select-none"
+                            >Session prompt</span
+                        >
                     </div>
-
-                    <!-- READY / VIEWING: display transcript text -->
-                {:else}
-                    <div class="flex-1 overflow-y-auto">
-                        <MarkdownBody
-                            text={transcriptText}
-                            className="text-[var(--text-base)] text-[var(--text-primary)]"
+                    <div class="w-full max-w-[260px]">
+                        <CustomSelect
+                            options={[
+                                { value: "", label: "Default" },
+                                ...promptTranscripts.map((t) => {
+                                    const isGlobalDefault =
+                                        t.id === (appConfig.current?.refinement?.default_prompt_transcript_id ?? null);
+                                    const base = t.display_name?.trim() || t.text.slice(0, 40);
+                                    return {
+                                        value: String(t.id),
+                                        label: isGlobalDefault ? `${base} ★` : base,
+                                    };
+                                }),
+                            ]}
+                            value={sessionPromptId != null ? String(sessionPromptId) : ""}
+                            onchange={(v: string) => (sessionPromptId = v ? Number(v) : null)}
+                            placeholder="Default"
                         />
                     </div>
-                {/if}
-            </WorkspacePanel>
-        {/if}
-
-        <!-- Import Audio File — secondary recording path. Lives outside the panel so the
-         panel can size itself purely around the mic surface. Idle-only. -->
-        {#if viewState === "idle"}
-            <input
-                bind:this={fileInput}
-                type="file"
-                accept={AUDIO_ACCEPT}
-                class="hidden"
-                onchange={handleFileSelected}
-            />
-            <div class="shrink-0 flex justify-center py-[var(--space-1)]">
-                <StyledButton variant="ghost" size="sm" onclick={importAudio}>
-                    <FileAudio size={14} /> Import Audio File
-                </StyledButton>
-            </div>
-        {/if}
-
-        <!-- Heatmap is collapsible so the record button remains the primary surface. -->
-        {#if viewState === "idle" && recentSessions.length > 0}
-            <div class="shrink-0 flex flex-col gap-[var(--space-2)] px-[var(--space-1)]">
-                <ActivityHeatmap
-                    entries={recentSessions}
-                    collapsed={heatmapCollapsed}
-                    onToggleCollapsed={() => (heatmapCollapsed = !heatmapCollapsed)}
-                />
-            </div>
-        {/if}
-
-        <!-- Recording status bar (cancel + status + timer) — below the panel during active recording.
-         3-column grid: Cancel, status, timer each get equal width so the middle status text is
-         geometrically centered regardless of the side elements' widths. -->
-        {#if isRecording}
-            <div class="grid grid-cols-3 items-center gap-[var(--space-2)] py-[var(--space-1)] shrink-0">
-                <div class="justify-self-start">
-                    <StyledButton
-                        variant="danger-outline"
-                        size="sm"
-                        onclick={cancelRecording}
-                        ariaLabel="Cancel recording and discard audio"
-                        title="Cancel recording and discard captured audio"
-                    >
-                        <X size={15} /> Cancel
-                    </StyledButton>
                 </div>
+            {/if}
 
-                <div class="flex items-center justify-center gap-[var(--space-2)]">
-                    <span
-                        class="w-2 h-2 rounded-full bg-[var(--color-danger)] shrink-0 animate-[pulse-dot_1.2s_ease-in-out_infinite]"
-                    ></span>
-                    <span class="text-[var(--text-sm)] text-[var(--color-danger)] whitespace-nowrap"
-                        >Recording in progress…</span
-                    >
-                </div>
-
-                <span
-                    class="justify-self-end text-[var(--text-sm)] font-[var(--font-mono)] text-[var(--text-tertiary)] tabular-nums whitespace-nowrap"
-                    >{formatElapsed(recordingElapsedMs)}</span
+            <!-- Quick-tag strip (visible when a transcript is loaded) -->
+            {#if transcriptId != null && allTags.length > 0 && (viewState === "ready" || viewState === "viewing")}
+                <div
+                    class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)] shrink-0 flex-wrap"
                 >
-            </div>
-        {/if}
-
-        <!-- Session tags applied confirmation (ready state only) -->
-        {#if viewState === "ready" && sessionTagIds.size > 0}
-            {@const appliedTags = allTags.filter((t) => sessionTagIds.has(t.id))}
-            {#if appliedTags.length > 0}
-                <div class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)] shrink-0">
-                    <Bookmark size={12} class="text-[var(--accent)] shrink-0" />
-                    <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">Session tags applied:</span>
-                    {#each appliedTags as tag (tag.id)}
-                        <span
-                            class="inline-flex items-center h-5 px-1.5 rounded-full text-[10px] font-medium"
-                            style="background: color-mix(in srgb, {safeTagColor(
-                                tag.color,
-                            )} 25%, transparent); color: var(--text-primary);">{tag.name}</span
+                    <TagIcon size={14} class="text-[var(--text-tertiary)] shrink-0 mr-1" />
+                    {#each allTags as tag (tag.id)}
+                        {@const active = assignedTagIds.has(tag.id)}
+                        <button
+                            class="inline-flex items-center gap-1 h-6 px-2 rounded-full text-[var(--text-xs)] font-[var(--weight-emphasis)] border cursor-pointer transition-all duration-150 {active
+                                ? 'border-transparent text-white'
+                                : 'border-[var(--shell-border)] text-[var(--text-secondary)] bg-transparent hover:bg-[var(--hover-overlay)]'}"
+                            style={active && tag.color
+                                ? `background: ${safeTagColor(tag.color)}`
+                                : active
+                                  ? "background: var(--accent)"
+                                  : ""}
+                            onclick={() => toggleTag(tag.id)}
+                            title={active ? `Remove "${tag.name}" tag` : `Add "${tag.name}" tag`}
                         >
+                            {tag.name}
+                        </button>
                     {/each}
                 </div>
             {/if}
-        {/if}
-    </div>
+
+            <!-- Recording surface -->
+            {#if viewState === "idle" || viewState === "recording"}
+                <div class="flex-1 min-h-[190px] flex items-center py-[var(--space-3)]">
+                    <RecordingControls {isRecording} {audioLevel} onstart={startRecording} onstop={stopRecording} />
+                </div>
+            {:else}
+                <!-- Content panel -->
+                <WorkspacePanel editing={viewState === "editing"} recording={isTranscribing}>
+                    {#if viewState === "transcribing"}
+                        <div class="flex-1 flex flex-col items-center justify-center gap-[var(--space-3)]">
+                            <Loader2 size={40} strokeWidth={1.5} class="spin" />
+                            <p class="text-[var(--text-sm)] text-[var(--text-tertiary)]">Transcribing audio…</p>
+                        </div>
+
+                        <!-- EDITING: editable textarea -->
+                    {:else if viewState === "editing"}
+                        <div class="flex-1 overflow-y-auto">
+                            <textarea
+                                class="w-full h-full min-h-[200px] bg-transparent text-[var(--text-primary)] border-none outline-none resize-none font-[var(--font-family)] text-[var(--text-base)] leading-[var(--leading-relaxed)] p-0 placeholder:text-[var(--text-tertiary)]"
+                                bind:value={editText}
+                                spellcheck="true"
+                            ></textarea>
+                        </div>
+
+                        <!-- READY / VIEWING: display transcript text -->
+                    {:else}
+                        <div class="flex-1 overflow-y-auto">
+                            <MarkdownBody
+                                text={transcriptText}
+                                className="text-[var(--text-base)] text-[var(--text-primary)]"
+                            />
+                        </div>
+                    {/if}
+                </WorkspacePanel>
+            {/if}
+
+            <!-- Import Audio File — secondary recording path. Lives outside the panel so the
+         panel can size itself purely around the mic surface. Idle-only. -->
+            {#if viewState === "idle"}
+                <input
+                    bind:this={fileInput}
+                    type="file"
+                    accept={AUDIO_ACCEPT}
+                    class="hidden"
+                    onchange={handleFileSelected}
+                />
+                <div class="shrink-0 flex justify-center py-[var(--space-1)]">
+                    <StyledButton variant="ghost" size="sm" onclick={importAudio}>
+                        <FileAudio size={14} /> Import Audio File
+                    </StyledButton>
+                </div>
+            {/if}
+
+            <!-- Heatmap is collapsible so the record button remains the primary surface. -->
+            {#if viewState === "idle" && recentSessions.length > 0}
+                <div class="shrink-0 flex flex-col gap-[var(--space-2)] px-[var(--space-1)]">
+                    <ActivityHeatmap
+                        entries={recentSessions}
+                        collapsed={heatmapCollapsed}
+                        onToggleCollapsed={() => (heatmapCollapsed = !heatmapCollapsed)}
+                    />
+                </div>
+            {/if}
+
+            <!-- Recording status bar (cancel + status + timer) — below the panel during active recording.
+         3-column grid: Cancel, status, timer each get equal width so the middle status text is
+         geometrically centered regardless of the side elements' widths. -->
+            {#if isRecording}
+                <div class="grid grid-cols-3 items-center gap-[var(--space-2)] py-[var(--space-1)] shrink-0">
+                    <div class="justify-self-start">
+                        <StyledButton
+                            variant="danger-outline"
+                            size="sm"
+                            onclick={cancelRecording}
+                            ariaLabel="Cancel recording and discard audio"
+                            title="Cancel recording and discard captured audio"
+                        >
+                            <X size={15} /> Cancel
+                        </StyledButton>
+                    </div>
+
+                    <div class="flex items-center justify-center gap-[var(--space-2)]">
+                        <span
+                            class="w-2 h-2 rounded-full bg-[var(--color-danger)] shrink-0 animate-[pulse-dot_1.2s_ease-in-out_infinite]"
+                        ></span>
+                        <span class="text-[var(--text-sm)] text-[var(--color-danger)] whitespace-nowrap"
+                            >Recording in progress…</span
+                        >
+                    </div>
+
+                    <span
+                        class="justify-self-end text-[var(--text-sm)] font-[var(--font-mono)] text-[var(--text-tertiary)] tabular-nums whitespace-nowrap"
+                        >{formatElapsed(recordingElapsedMs)}</span
+                    >
+                </div>
+            {/if}
+
+            <!-- Session tags applied confirmation (ready state only) -->
+            {#if viewState === "ready" && sessionTagIds.size > 0}
+                {@const appliedTags = allTags.filter((t) => sessionTagIds.has(t.id))}
+                {#if appliedTags.length > 0}
+                    <div
+                        class="flex items-center gap-[var(--space-1)] py-[var(--space-1)] px-[var(--space-1)] shrink-0"
+                    >
+                        <Bookmark size={12} class="text-[var(--accent)] shrink-0" />
+                        <span class="text-[var(--text-xs)] text-[var(--text-tertiary)]">Session tags applied:</span>
+                        {#each appliedTags as tag (tag.id)}
+                            <span
+                                class="inline-flex items-center h-5 px-1.5 rounded-full text-[10px] font-medium"
+                                style="background: color-mix(in srgb, {safeTagColor(
+                                    tag.color,
+                                )} 25%, transparent); color: var(--text-primary);">{tag.name}</span
+                            >
+                        {/each}
+                    </div>
+                {/if}
+            {/if}
+        </div>
     </div>
 
     <TranscribeActionBar
