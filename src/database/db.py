@@ -458,6 +458,27 @@ class TranscriptDB:
             self._enrich_transcripts_with_tags(transcripts)
         return transcripts, total
 
+    def analytics_transcripts(self) -> list[Transcript]:
+        """Return the full analytics population without UI pagination caps.
+
+        This is the canonical query surface for aggregate analytics. It keeps the
+        same visibility semantics as the historic analytics path: compound
+        children and protected transcripts are excluded, and only transcripts
+        explicitly included in analytics are returned.
+        """
+        with self._write_lock:
+            rows = self._conn.execute(
+                """
+                SELECT t.*
+                FROM transcripts t
+                WHERE t.compound_root_id IS NULL
+                  AND t.is_protected = 0
+                  AND t.include_in_analytics = 1
+                ORDER BY t.created_at DESC
+                """
+            ).fetchall()
+            return [self._row_to_transcript(row) for row in rows]
+
     def search(
         self,
         query: str,

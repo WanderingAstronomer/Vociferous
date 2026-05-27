@@ -264,11 +264,7 @@ export function assignTags(transcriptId: number, tagIds: number[]): Promise<{ st
  * add=true → insert the tag on all transcripts that lack it (preserves other tags).
  * add=false → remove the tag from all specified transcripts (preserves other tags).
  */
-export function batchToggleTag(
-    transcriptIds: number[],
-    tagId: number,
-    add: boolean,
-): Promise<{ toggled: number }> {
+export function batchToggleTag(transcriptIds: number[], tagId: number, add: boolean): Promise<{ toggled: number }> {
     return request("/transcripts/batch-tag-toggle", {
         method: "POST",
         body: JSON.stringify({ transcript_ids: transcriptIds, tag_id: tagId, add }),
@@ -278,9 +274,7 @@ export function batchToggleTag(
 /**
  * Batch-delete multiple transcripts in a single server round-trip.
  */
-export async function batchDeleteTranscripts(
-    transcriptIds: number[],
-): Promise<{ deleted: number }> {
+export async function batchDeleteTranscripts(transcriptIds: number[]): Promise<{ deleted: number }> {
     if (transcriptIds.length === 0) return { deleted: 0 };
     return request("/intents", {
         method: "POST",
@@ -437,7 +431,11 @@ export function saveRefinementProviderApiKey(
 export function saveTranscriptionProviderApiKey(
     providerId: TranscriptionProviderId,
     apiKey: string,
-): Promise<{ provider: TranscriptionProviderId; stored: boolean; backend: TranscriptionProviderApiKeyStatus["backend"] }> {
+): Promise<{
+    provider: TranscriptionProviderId;
+    stored: boolean;
+    backend: TranscriptionProviderApiKeyStatus["backend"];
+}> {
     return request(`/transcription/providers/${providerId}/api-key`, {
         method: "PUT",
         body: JSON.stringify({ api_key: apiKey }),
@@ -450,9 +448,7 @@ export function deleteRefinementProviderApiKey(
     return request(`/refinement/providers/${providerId}/api-key`, { method: "DELETE" });
 }
 
-export function deleteTranscriptionProviderApiKey(
-    providerId: TranscriptionProviderId,
-): Promise<{
+export function deleteTranscriptionProviderApiKey(providerId: TranscriptionProviderId): Promise<{
     provider: TranscriptionProviderId;
     deleted: boolean;
     backend: TranscriptionProviderApiKeyStatus["backend"];
@@ -495,6 +491,52 @@ export interface HealthInfo {
 
 export function getHealth(): Promise<HealthInfo> {
     return request("/health");
+}
+
+export interface FillerBreakdownEntry {
+    label: string;
+    count: number;
+}
+
+export interface DailyWordBucket {
+    date: string;
+    words: number;
+}
+
+export interface UserMetricsPayload {
+    user_name: string;
+    typing_wpm: number;
+    count: number;
+    total_words: number;
+    total_recorded_seconds: number;
+    total_speech_seconds: number;
+    avg_seconds: number;
+    avg_wpm: number;
+    time_saved_seconds: number;
+    total_silence_seconds: number;
+    avg_silence_seconds: number;
+    vocabulary_ratio: number;
+    filler_count: number;
+    filler_breakdown: FillerBreakdownEntry[];
+    current_streak: number;
+    longest_streak: number;
+    refined_count: number;
+    fillers_removed: number;
+    verbatim_avg_fk_grade: number;
+    refined_avg_fk_grade: number;
+    verbatim_fk_for_refined: number;
+    fk_grade_delta: number;
+    total_transcription_seconds: number;
+    total_refinement_seconds: number;
+    has_timing_data: boolean;
+    avg_transcription_speed_x: number;
+    avg_refinement_wpm: number;
+    refinement_time_saved_seconds: number;
+    daily_word_buckets: DailyWordBucket[];
+}
+
+export function getUserMetrics(): Promise<UserMetricsPayload> {
+    return request("/user-metrics");
 }
 
 export interface EngineComponentStatus {
@@ -616,7 +658,10 @@ export function openLogDirectory(): Promise<{ status: string; path: string; erro
     return request("/logs/open-dir", { method: "POST" });
 }
 
-export function downloadModel(modelType: "asr" | "slm", modelId: string): Promise<{ status: string; model_id: string }> {
+export function downloadModel(
+    modelType: "asr" | "slm",
+    modelId: string,
+): Promise<{ status: string; model_id: string }> {
     return request("/models/download", {
         method: "POST",
         body: JSON.stringify({ model_type: modelType, model_id: modelId }),

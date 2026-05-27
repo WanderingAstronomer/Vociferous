@@ -112,6 +112,13 @@ def get_insight() -> dict:
     return coordinator.get_insight_payload()
 
 
+@get("/api/user-metrics", sync_to_thread=True)
+def get_user_metrics() -> dict:
+    """Return the backend-owned User View metrics payload."""
+    coordinator = get_coordinator()
+    return coordinator.get_user_metrics_payload()
+
+
 @post("/api/insight/refresh", sync_to_thread=True)
 def refresh_insight() -> dict:
     """Mark analytics insight stale and request regeneration when possible."""

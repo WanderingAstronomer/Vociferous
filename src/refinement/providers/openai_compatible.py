@@ -485,7 +485,7 @@ class OpenAICompatibleRefinementProvider:
                 payload["repeat_penalty"] = repetition_penalty
             if force_text_schema:
                 payload["response_format"] = TEXT_RESPONSE_FORMAT
-            elif request.response_shape == ResponseShape.JSON_OBJECT:
+            elif request.response_shape == ResponseShape.JSON_OBJECT and self._provider_id != "lm_studio":
                 payload["response_format"] = {"type": "json_object"}
             if chat_template_kwargs is not None:
                 payload["chat_template_kwargs"] = chat_template_kwargs

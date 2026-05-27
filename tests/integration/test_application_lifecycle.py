@@ -519,6 +519,16 @@ class TestCoordinatorAccessors:
         coordinator.insight_manager = mock_manager
         assert coordinator.get_motd_text() == "Unified insight"
 
+    def test_get_user_metrics_payload_uses_backend_analytics(self, coordinator):
+        coordinator.db.add_transcript(raw_text="um um word", duration_ms=3000)
+
+        payload = coordinator.get_user_metrics_payload()
+
+        assert payload["count"] == 1
+        assert payload["total_words"] == 3
+        assert payload["filler_count"] == 2
+        assert payload["typing_wpm"] == coordinator.settings.user.typing_wpm
+
 
 # ── Engine Restarted Event ────────────────────────────────────────────────
 

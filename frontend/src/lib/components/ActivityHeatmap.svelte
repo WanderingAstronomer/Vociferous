@@ -12,11 +12,15 @@
      */
 
     interface Props {
-        entries: Array<{
+        entries?: Array<{
             text: string;
             normalized_text?: string;
             timestamp?: string;
             created_at?: string;
+        }>;
+        dailyWordBuckets?: Array<{
+            date: string;
+            words: number;
         }>;
         title?: string;
         collapsed?: boolean;
@@ -26,7 +30,13 @@
     import { ChevronDown } from "lucide-svelte";
     import { windowSize } from "../windowSize.svelte";
 
-    let { entries, title = "Activity Heatmap", collapsed = false, onToggleCollapsed }: Props = $props();
+    let {
+        entries = [],
+        dailyWordBuckets = [],
+        title = "Activity Heatmap",
+        collapsed = false,
+        onToggleCollapsed,
+    }: Props = $props();
 
     /* ── Layout constants ── */
     const TARGET_CELL = 18;
@@ -73,6 +83,15 @@
     /* ── Aggregate words per day ── */
     let dailyWords = $derived.by(() => {
         const map = new Map<string, number>();
+        if (dailyWordBuckets.length > 0) {
+            for (const bucket of dailyWordBuckets) {
+                if (bucket.date && bucket.words > 0) {
+                    map.set(bucket.date, (map.get(bucket.date) ?? 0) + bucket.words);
+                }
+            }
+            return map;
+        }
+
         for (const e of entries) {
             const raw = e.created_at ?? e.timestamp;
             if (!raw) continue;
@@ -178,7 +197,7 @@
     }
 
     let layout = $derived.by((): GridLayout | null => {
-        if (collapsed || containerWidth < 150 || entries.length === 0) return null;
+        if (collapsed || containerWidth < 150 || dailyWords.size === 0) return null;
 
         const today = new Date();
         today.setHours(23, 59, 59, 999);

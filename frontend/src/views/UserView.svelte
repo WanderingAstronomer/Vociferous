@@ -1,12 +1,14 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { getTranscripts, getHealth, type Transcript } from "../lib/api";
-    import { appConfig } from "../lib/config.svelte";
-    import { toast } from "../lib/toast.svelte";
+    import {
+        getHealth,
+        getUserMetrics,
+        type DailyWordBucket,
+        type HealthInfo,
+        type UserMetricsPayload,
+    } from "../lib/api";
     import { ws } from "../lib/ws";
     import { formatCount } from "../lib/formatters";
-    import * as metrics from "../lib/userViewMetrics";
-    import { DEFAULT_TYPING_WPM } from "../lib/userViewMetrics";
     import StatCard from "../lib/components/StatCard.svelte";
     import ActivityHeatmap from "../lib/components/ActivityHeatmap.svelte";
     import AnalyticsParagraph from "../lib/components/AnalyticsParagraph.svelte";
@@ -37,7 +39,7 @@
     } from "lucide-svelte";
 
     /* ── Constants ── */
-    const TRANSCRIPT_EXPORT_LIMIT = 10000;
+    const DEFAULT_TYPING_WPM = 40;
 
     /* ── Tabs ── */
     type UserTab = "dashboard" | "deep-dive";
@@ -47,70 +49,68 @@
     ];
 
     /* ── State ── */
-    let entries: Transcript[] = $state([]);
+    let userMetrics = $state<UserMetricsPayload | null>(null);
     let loading = $state(true);
-    let userName = $state("");
-    let typingWpm = $state(DEFAULT_TYPING_WPM);
     let showExplanations = $state(false);
     let activeTab = $state<UserTab>("dashboard");
-    let healthInfo: { version: string; transcripts: number } | null = $state(null);
+    let healthInfo = $state<HealthInfo | null>(null);
 
     /* ── Derived Metrics ── */
-    let hasData = $derived(entries.length > 0);
-    let count = $derived(entries.length);
-    let totalWords = $derived(metrics.totalWords(entries));
-    let recordedSeconds = $derived(metrics.recordedSeconds(entries, totalWords));
-    let typingSeconds = $derived(metrics.typingSeconds(totalWords, typingWpm));
-    let timeSavedSeconds = $derived(metrics.timeSavedSeconds(totalWords, typingWpm, recordedSeconds));
-    let avgSeconds = $derived(count > 0 ? recordedSeconds / count : 0);
+    let hasData = $derived((userMetrics?.count ?? 0) > 0);
+    let count = $derived(userMetrics?.count ?? 0);
+    let userName = $derived(userMetrics?.user_name ?? "");
+    let typingWpm = $derived(userMetrics?.typing_wpm ?? DEFAULT_TYPING_WPM);
+    let totalWords = $derived(userMetrics?.total_words ?? 0);
+    let recordedSeconds = $derived(userMetrics?.total_recorded_seconds ?? 0);
+    let timeSavedSeconds = $derived(userMetrics?.time_saved_seconds ?? 0);
+    let avgSeconds = $derived(userMetrics?.avg_seconds ?? 0);
 
     /* ── Speech time & WPM (using VAD speech_duration_ms) ── */
-    let totalSpeechSeconds = $derived(metrics.totalSpeechSeconds(entries));
-    let avgWpm = $derived(metrics.avgWpm(totalWords, totalSpeechSeconds));
-    let totalSilence = $derived(metrics.totalSilenceSeconds(entries));
-    let avgSilence = $derived(metrics.avgSilenceSeconds(entries));
-    let fillerCount = $derived(metrics.fillerCount(entries));
+    let avgWpm = $derived(userMetrics?.avg_wpm ?? 0);
+    let totalSilence = $derived(userMetrics?.total_silence_seconds ?? 0);
+    let avgSilence = $derived(userMetrics?.avg_silence_seconds ?? 0);
+    let fillerCount = $derived(userMetrics?.filler_count ?? 0);
 
     /* ── Filler breakdown (top 5 per-word counts) ── */
-    let fillerBreakdown = $derived(metrics.fillerBreakdown(entries));
+    let fillerBreakdown = $derived(
+        (userMetrics?.filler_breakdown ?? []).map((entry) => [entry.label, entry.count] as [string, number]),
+    );
     let fillerBreakdownMax = $derived(fillerBreakdown.length > 0 ? fillerBreakdown[0][1] : 0);
 
     /* ── Vocabulary diversity ── */
-    let vocabRatio = $derived(metrics.vocabularyRatio(entries));
+    let vocabRatio = $derived(userMetrics?.vocabulary_ratio ?? 0);
 
     /* ── Streaks (consecutive active days) ── */
-    let streaks = $derived(metrics.streaks(entries));
+    let streaks = $derived({
+        current: userMetrics?.current_streak ?? 0,
+        longest: userMetrics?.longest_streak ?? 0,
+    });
+
+    /* ── Activity buckets ── */
+    let dailyWordBuckets: DailyWordBucket[] = $derived(userMetrics?.daily_word_buckets ?? []);
 
     /* ── Verbatim vs Refined Metrics ── */
-    let refinedEntries = $derived(metrics.refinedEntries(entries));
-    let refinedCount = $derived(refinedEntries.length);
+    let refinedCount = $derived(userMetrics?.refined_count ?? 0);
     let hasRefinements = $derived(refinedCount > 0);
-
-    /* Filler count across ALL transcripts (for Speech Quality section) */
-    let verbatimFillerCount = $derived(metrics.verbatimFillerCount(entries));
-
-    /* Refinement Impact — compare the SAME transcripts before/after */
-    let rawFillersInRefined = $derived(metrics.rawFillersInRefined(refinedEntries));
-    let refinedFillerCount = $derived(metrics.refinedFillerCount(refinedEntries));
-    let fillersRemoved = $derived(rawFillersInRefined - refinedFillerCount);
+    let fillersRemoved = $derived(userMetrics?.fillers_removed ?? 0);
 
     /* FK Grade — overall verbatim average (all transcripts) */
-    let verbatimAvgFkGrade = $derived(metrics.verbatimAvgFkGrade(entries));
+    let verbatimAvgFkGrade = $derived(userMetrics?.verbatim_avg_fk_grade ?? 0);
 
     /* FK Grade — refined average (refined transcripts' normalized text) */
-    let refinedAvgFkGrade = $derived(metrics.refinedAvgFkGrade(refinedEntries));
+    let refinedAvgFkGrade = $derived(userMetrics?.refined_avg_fk_grade ?? 0);
 
     /* FK delta — compare same population: raw vs refined for refined transcripts only */
-    let verbatimFkForRefined = $derived(metrics.verbatimFkForRefined(refinedEntries));
-    let fkGradeDelta = $derived(hasRefinements ? Math.round((refinedAvgFkGrade - verbatimFkForRefined) * 10) / 10 : 0);
+    let verbatimFkForRefined = $derived(userMetrics?.verbatim_fk_for_refined ?? 0);
+    let fkGradeDelta = $derived(userMetrics?.fk_grade_delta ?? 0);
 
     /* ── Processing Performance (transcription + refinement timing) ── */
-    let totalTranscriptionTime = $derived(metrics.totalTranscriptionSeconds(entries));
-    let totalRefinementTime = $derived(metrics.totalRefinementSeconds(entries));
-    let hasTimingData = $derived(totalTranscriptionTime > 0 || totalRefinementTime > 0);
-    let avgTranscriptionSpeedX = $derived(metrics.avgTranscriptionSpeedX(recordedSeconds, totalTranscriptionTime));
-    let avgRefinementWpm = $derived(metrics.avgRefinementWpm(refinedEntries, totalRefinementTime));
-    let refinementTimeSaved = $derived(metrics.refinementTimeSaved(refinedEntries, typingWpm, totalRefinementTime));
+    let totalTranscriptionTime = $derived(userMetrics?.total_transcription_seconds ?? 0);
+    let totalRefinementTime = $derived(userMetrics?.total_refinement_seconds ?? 0);
+    let hasTimingData = $derived(userMetrics?.has_timing_data ?? false);
+    let avgTranscriptionSpeedX = $derived(userMetrics?.avg_transcription_speed_x ?? 0);
+    let avgRefinementWpm = $derived(userMetrics?.avg_refinement_wpm ?? 0);
+    let refinementTimeSaved = $derived(userMetrics?.refinement_time_saved_seconds ?? 0);
 
     let titleText = $derived(userName.trim() ? `${userName.trim()}'s Vociferous Journey` : "Your Vociferous Journey");
 
@@ -135,20 +135,10 @@
         const gen = ++loadGeneration;
         loading = true;
         try {
-            const [transcriptResult, health, config] = await Promise.all([
-                getTranscripts({ limit: TRANSCRIPT_EXPORT_LIMIT }),
-                getHealth().catch(() => null),
-                appConfig.ensureLoaded().catch(() => ({})),
-            ]);
+            const [metricsPayload, health] = await Promise.all([getUserMetrics(), getHealth().catch(() => null)]);
             if (gen !== loadGeneration) return; // stale response
-            entries = transcriptResult.items.filter((t) => t.include_in_analytics);
+            userMetrics = metricsPayload;
             healthInfo = health;
-            // Extract user name and typing WPM from config
-            const u = config as Record<string, unknown>;
-            const userSection = u?.user as Record<string, unknown> | undefined;
-            userName = (userSection?.name as string) ?? "";
-            const wpm = Number(userSection?.typing_wpm);
-            if (wpm > 0) typingWpm = wpm;
         } catch (e) {
             if (gen !== loadGeneration) return;
             console.error("Failed to load user data:", e);
@@ -162,9 +152,12 @@
         loadData();
         const unsubs = [
             ws.on("transcription_complete", () => loadData()),
+            ws.on("transcript_updated", () => loadData()),
             ws.on("transcript_deleted", () => loadData()),
             ws.on("transcripts_batch_deleted", () => loadData()),
             ws.on("transcripts_cleared", () => loadData()),
+            ws.on("bulk_refinement_complete", () => loadData()),
+            ws.on("config_updated", () => loadData()),
         ];
         return () => unsubs.forEach((fn) => fn());
     });
@@ -174,7 +167,7 @@
         { title: "Transcriptions", text: "Total count of all transcription entries stored in your database." },
         {
             title: "Words Captured",
-            text: "Sum of word counts across all transcriptions. Each entry's words are counted individually.",
+            text: "Sum of raw ASR word counts across analytics-included transcriptions. Edited and refined text does not rewrite this speech metric.",
         },
         {
             title: "Avg Speed",
@@ -182,7 +175,7 @@
         },
         {
             title: "Time Saved",
-            text: `Productivity gain vs. manual typing. Calculated as: (words ÷ ${typingWpm} WPM × 60) − recording_time = time_saved. Based on typing speed of ${typingWpm} WPM.`,
+            text: `Productivity gain vs. manual typing raw captured speech. Calculated per analytics population as: (raw_words ÷ ${typingWpm} WPM × 60) − resolved_recording_time = time_saved.`,
         },
         {
             title: "Streaks",
@@ -191,15 +184,15 @@
         { title: "Average Length", text: "Mean duration per transcription: total_time ÷ transcription_count." },
         {
             title: "Total Silence",
-            text: "Accumulated silence across all recordings. Calculated as: recording_duration − VAD_speech_duration for each entry.",
+            text: "Accumulated silence across recordings with duration metadata. Uses VAD speech duration when available; otherwise estimates speech time per transcript before subtracting.",
         },
         {
             title: "Vocabulary",
-            text: "Ratio of unique words to total words across all transcriptions. Higher = more diverse vocabulary.",
+            text: "Ratio of unique cleaned words to total cleaned words across raw ASR output. Higher = more diverse vocabulary.",
         },
         {
             title: "Filler Words",
-            text: "Approximate count of common filler words and phrases detected across all transcriptions. Single-word fillers (um, uh, like, etc.) are matched token-by-token; multi-word fillers (you know, I mean, etc.) are matched by substring, which may overcount in some contexts.",
+            text: "Approximate count of common filler words and phrases detected in raw ASR output. Single-word fillers are matched token-by-token; multi-word fillers are matched by phrase pattern.",
         },
         {
             title: "Transcripts Refined",
@@ -215,15 +208,15 @@
         },
         {
             title: "Est. Editing Time Saved",
-            text: `Estimated time saved by using SLM refinement vs. manual editing. Manual editing speed assumed at ${Math.round(typingWpm / 2)} WPM (half your ${typingWpm} WPM typing speed — editing requires reading, restructuring, and proofreading). Formula: (refined_words ÷ editing_WPM × 60) − actual_SLM_time.`,
+            text: `Estimated time saved by using SLM refinement vs. manual editing, using only refined transcripts with recorded SLM processing time. Manual editing speed is ${Math.round(typingWpm / 2)} WPM.`,
         },
         {
             title: "Transcription Speed",
-            text: "Realtime multiplier for ASR inference. A value of 45× means 30 minutes of audio was transcribed in ~40 seconds. Computed as: total_recording_duration ÷ total_Whisper_processing_time.",
+            text: "Realtime multiplier for ASR inference. Computed only from transcripts with matching transcription processing time metadata.",
         },
         {
             title: "Refinement Throughput",
-            text: "Words processed per minute by the SLM during refinement. Computed as: total_refined_words ÷ total_SLM_processing_minutes.",
+            text: "Words processed per minute by the SLM during refinement. Computed only from refined transcripts with matching SLM processing time metadata.",
         },
     ]);
 </script>
@@ -256,12 +249,15 @@
                         {titleText}
                     </h2>
                     <div class="w-12 h-[2px] rounded-full bg-[var(--accent)]"></div>
-                    <AnalyticsParagraph segment="lifetime" class="text-center text-[var(--text-sm)] text-[var(--accent)]" />
+                    <AnalyticsParagraph
+                        segment="lifetime"
+                        class="text-center text-[var(--text-sm)] text-[var(--accent)]"
+                    />
                 </div>
 
                 <!-- ═══ Activity Heatmap (shared, above tabs) ═══ -->
                 {#if count >= 2}
-                    <ActivityHeatmap {entries} />
+                    <ActivityHeatmap {dailyWordBuckets} />
                 {/if}
 
                 <!-- ═══ Tab Bar ═══ -->

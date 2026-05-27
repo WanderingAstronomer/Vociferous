@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from src.core.usage_stats import compute_usage_stats
+from src.core.usage_stats import compute_usage_stats, compute_user_view_metrics
 from src.database.db import TranscriptDB
 
 
@@ -122,6 +122,20 @@ class TestUsageStatsContract:
 
         assert stats["count"] == 1
         assert stats["total_words"] == 5
+
+    def test_analytics_population_is_not_recent_page_limited(self, db):
+        created_at = datetime.now(timezone.utc).isoformat()
+        with db._conn as con:
+            con.executemany(
+                "INSERT INTO transcripts (timestamp, raw_text, normalized_text, display_name, created_at) "
+                "VALUES (?,?,?,?,?)",
+                [(created_at, "word", "word", "", created_at) for _ in range(10_001)],
+            )
+
+        stats = compute_usage_stats(db)
+
+        assert stats["count"] == 10_001
+        assert stats["total_words"] == 10_001
 
 
 class TestCoreMetrics:
@@ -260,6 +274,127 @@ class TestTimingMetrics:
         assert stats["retranscription_model_counts"] == {"large-v3": 1}
         assert stats["refinement_provider_counts"] == {"lm_studio": 1}
         assert stats["refinement_model_counts"] == {"qwen3.5-27b": 1}
+
+
+class TestUserViewMetrics:
+    def test_user_metrics_full_payload_values_are_mathematically_pinned(self, db):
+        today = datetime.now().astimezone().replace(microsecond=0)
+        yesterday = today - timedelta(days=1)
+        today_key = today.strftime("%Y-%m-%d")
+        yesterday_key = yesterday.strftime("%Y-%m-%d")
+
+        _insert_transcript(
+            db,
+            created_at=today.isoformat(),
+            raw_text="um um alpha beta alpha.",
+            normalized_text="alpha beta.",
+            duration_ms=8000,
+            speech_duration_ms=5000,
+            transcription_time_ms=2000,
+            refinement_time_ms=4000,
+        )
+        _insert_transcript(
+            db,
+            created_at=yesterday.isoformat(),
+            raw_text="you know gamma gamma",
+            duration_ms=0,
+            speech_duration_ms=0,
+        )
+
+        metrics = compute_user_view_metrics(db, typing_wpm=30, user_name="Drew")
+
+        assert metrics == {
+            "user_name": "Drew",
+            "typing_wpm": 30,
+            "count": 2,
+            "total_words": 9,
+            "total_recorded_seconds": 9.6,
+            "total_speech_seconds": 6.6,
+            "avg_seconds": 4.8,
+            "avg_wpm": 82,
+            "time_saved_seconds": 8.4,
+            "total_silence_seconds": 3.0,
+            "avg_silence_seconds": 3.0,
+            "vocabulary_ratio": pytest.approx(0.6667),
+            "filler_count": 3,
+            "filler_breakdown": [
+                {"label": "um", "count": 2},
+                {"label": "you know", "count": 1},
+            ],
+            "current_streak": 2,
+            "longest_streak": 2,
+            "refined_count": 1,
+            "fillers_removed": 2,
+            "verbatim_avg_fk_grade": pytest.approx(4.5),
+            "refined_avg_fk_grade": pytest.approx(8.8),
+            "verbatim_fk_for_refined": pytest.approx(5.2),
+            "fk_grade_delta": pytest.approx(3.6),
+            "total_transcription_seconds": 2.0,
+            "total_refinement_seconds": 4.0,
+            "has_timing_data": True,
+            "avg_transcription_speed_x": 4.0,
+            "avg_refinement_wpm": 30,
+            "refinement_time_saved_seconds": 4.0,
+            "daily_word_buckets": [
+                {"date": yesterday_key, "words": 4},
+                {"date": today_key, "words": 5},
+            ],
+        }
+
+    def test_user_metrics_estimate_missing_duration_per_transcript(self, db):
+        words = " ".join(["word"] * 150)
+        db.add_transcript(raw_text=words, duration_ms=60_000)
+        db.add_transcript(raw_text=words, duration_ms=0)
+
+        metrics = compute_user_view_metrics(db, typing_wpm=40)
+
+        assert metrics["total_words"] == 300
+        assert metrics["total_recorded_seconds"] == pytest.approx(120.0)
+        assert metrics["avg_wpm"] == 150
+        assert metrics["time_saved_seconds"] == pytest.approx(330.0)
+
+    def test_user_metrics_estimate_silence_when_vad_missing(self, db):
+        words = " ".join(["word"] * 150)
+        db.add_transcript(raw_text=words, duration_ms=120_000, speech_duration_ms=0)
+
+        metrics = compute_user_view_metrics(db, typing_wpm=40)
+
+        assert metrics["total_speech_seconds"] == pytest.approx(60.0)
+        assert metrics["total_silence_seconds"] == pytest.approx(60.0)
+        assert metrics["avg_silence_seconds"] == pytest.approx(60.0)
+
+    def test_user_metrics_use_matching_timing_samples(self, db):
+        db.add_transcript(
+            raw_text=" ".join(["word"] * 30),
+            duration_ms=30_000,
+            transcription_time_ms=10_000,
+        )
+        db.add_transcript(
+            raw_text=" ".join(["word"] * 60),
+            duration_ms=60_000,
+            transcription_time_ms=0,
+        )
+        timed = db.add_transcript(raw_text="rough text", duration_ms=3000)
+        db.update_normalized_text(timed.id, " ".join(["word"] * 50))
+        db.update_refinement_time(timed.id, 30_000)
+        untimed = db.add_transcript(raw_text="rough text", duration_ms=3000)
+        db.update_normalized_text(untimed.id, " ".join(["word"] * 100))
+
+        metrics = compute_user_view_metrics(db, typing_wpm=40)
+
+        assert metrics["avg_transcription_speed_x"] == 3.0
+        assert metrics["avg_refinement_wpm"] == 100
+        assert metrics["refinement_time_saved_seconds"] == pytest.approx(120.0)
+
+    def test_user_metrics_keep_speech_metrics_raw_after_refinement(self, db):
+        transcript = db.add_transcript(raw_text="um um word", duration_ms=3000)
+        db.update_normalized_text(transcript.id, "polished sentence")
+
+        metrics = compute_user_view_metrics(db, typing_wpm=40)
+
+        assert metrics["total_words"] == 3
+        assert metrics["filler_count"] == 2
+        assert metrics["daily_word_buckets"][-1]["words"] == 3
 
 
 class TestSessionMetrics:

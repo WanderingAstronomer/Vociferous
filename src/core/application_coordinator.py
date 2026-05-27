@@ -357,6 +357,16 @@ class ApplicationCoordinator:
             "dirty_reasons": [],
         }
 
+    def get_user_metrics_payload(self) -> dict[str, Any]:
+        """Return the backend-owned User View analytics payload."""
+        from src.core.usage_stats import compute_user_view_metrics
+
+        return compute_user_view_metrics(
+            self.db,
+            typing_wpm=self.settings.user.typing_wpm,
+            user_name=self.settings.user.name,
+        )
+
     def request_insight_refresh(self) -> dict[str, Any]:
         """Mark analytics insight stale and request regeneration when the SLM is available."""
         if self.insight_manager is not None:

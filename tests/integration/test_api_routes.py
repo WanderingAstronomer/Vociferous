@@ -40,6 +40,7 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
         dispatch_intent,
         get_config,
         get_insight,
+        get_user_metrics,
         refresh_insight,
         set_default_refinement_prompt,
         update_config,
@@ -107,6 +108,7 @@ def api(coordinator, event_collector) -> Iterator[tuple]:
             delete_recovered_recording,
             get_config,
             get_insight,
+            get_user_metrics,
             update_config,
             set_default_refinement_prompt,
             clear_default_refinement_prompt,
@@ -705,6 +707,29 @@ class TestConfigRoutes:
         assert resp.json()["daily_text"] == "Daily."
         assert resp.json()["lifetime_text"] == "Lifetime."
 
+    def test_get_user_metrics_returns_backend_payload(self, api):
+        client, coord, _ = api
+        from src.core.usage_stats import compute_user_view_metrics
+
+        coord.db.add_transcript(raw_text="um um word", duration_ms=3000)
+
+        resp = client.get("/api/user-metrics")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        expected = compute_user_view_metrics(
+            coord.db,
+            typing_wpm=coord.settings.user.typing_wpm,
+            user_name=coord.settings.user.name,
+        )
+        assert set(body) == set(expected)
+        assert body == expected
+        assert body["count"] == 1
+        assert body["total_words"] == 3
+        assert body["filler_count"] == 2
+        assert body["typing_wpm"] == coord.settings.user.typing_wpm
+        assert body["daily_word_buckets"][-1]["words"] == 3
+
     def test_refresh_insight_dispatches_manual_refresh(self, api):
         client, coord, _ = api
         coord.insight_manager = MagicMock()
@@ -861,7 +886,9 @@ class TestRefinementProviderSecretRoutes:
 
         monkeypatch.delenv("GROQ_API_KEY", raising=False)
         monkeypatch.setattr(transcription_providers, "get_secret_backend", lambda: "test_secret")
-        monkeypatch.setattr(transcription_providers, "get_provider_api_key", lambda provider_id: stored.get(provider_id))
+        monkeypatch.setattr(
+            transcription_providers, "get_provider_api_key", lambda provider_id: stored.get(provider_id)
+        )
         monkeypatch.setattr(
             transcription_providers,
             "store_provider_api_key",
