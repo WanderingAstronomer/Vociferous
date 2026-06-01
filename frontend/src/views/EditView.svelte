@@ -42,6 +42,7 @@
     /* ===== State ===== */
 
     let transcript = $state<Transcript | null>(null);
+    let savedText = $state("");
     let editText = $state("");
     let loading = $state(true);
     let saving = $state(false);
@@ -147,9 +148,11 @@
         error = "";
         try {
             const [t, tags] = await Promise.all([getTranscript(id), getTags()]);
+            const nextText = t.text || t.raw_text || "";
             transcript = t;
             allTags = tags;
-            editText = t.normalized_text || t.raw_text || "";
+            savedText = nextText;
+            editText = nextText;
         } catch (e: any) {
             error = e.message;
         } finally {
@@ -220,7 +223,8 @@
             });
             // Reload to reflect changes
             transcript = await getTranscript(transcript.id);
-            editText = transcript.normalized_text || transcript.raw_text || "";
+            savedText = transcript.text || transcript.raw_text || "";
+            editText = savedText;
             toast.success("Reverted to original text");
         } catch (e: any) {
             toast.error(`Revert failed: ${e.message}`);
@@ -356,7 +360,14 @@
             }),
             ws.on("transcript_updated", async (data) => {
                 if (transcript?.id && data.id === transcript.id) {
-                    transcript = await getTranscript(transcript.id);
+                    const wasDirty = isDirty;
+                    const nextTranscript = await getTranscript(transcript.id);
+                    transcript = nextTranscript;
+                    if (!wasDirty) {
+                        const nextText = nextTranscript.text || nextTranscript.raw_text || "";
+                        savedText = nextText;
+                        editText = nextText;
+                    }
                 }
             }),
         ];
