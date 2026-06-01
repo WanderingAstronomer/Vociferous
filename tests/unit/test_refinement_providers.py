@@ -746,6 +746,79 @@ def test_groq_refine_retries_with_smaller_budget_after_413(fresh_settings) -> No
     assert seen_budgets == [512, 256]
 
 
+def test_lm_studio_grows_budget_and_retries_after_length_truncation(fresh_settings) -> None:
+    """A too-small output budget surfaces as HTTP 200 + finish_reason=length with
+    silently truncated content, not an error. The provider must detect that and
+    retry with a larger budget rather than return the truncated text."""
+    fresh_settings.refinement.provider = "lm_studio"
+    fresh_settings.refinement.lm_studio.model_id = "local-model"
+    # max_output_tokens defaults to 0 (auto): no ceiling, free to grow.
+
+    seen_budgets: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        seen_budgets.append(int(payload["max_tokens"]))
+        if len(seen_budgets) == 1:
+            return _json_response(
+                {"choices": [{"message": {"content": "truncated half"}, "finish_reason": "length"}]}
+            )
+        return _json_response(
+            {"choices": [{"message": {"content": "the complete refined text"}, "finish_reason": "stop"}]}
+        )
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "lm_studio")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    result = provider.refine(
+        "word " * 250,
+        temperature=0.2,
+        top_p=0.9,
+        top_k=20,
+        repetition_penalty=1.0,
+        use_thinking=False,
+        allow_skip=False,
+    )
+
+    assert result.content == "the complete refined text"
+    # Seed = max(256, 250 words * 3) = 750; grown x2 on truncation.
+    assert seen_budgets == [750, 1500]
+
+
+def test_lm_studio_stops_growing_at_configured_ceiling(fresh_settings) -> None:
+    """A positive max_output_tokens is an explicit spend cap: when the model keeps
+    truncating at the ceiling, the provider must give up and return the truncated
+    result rather than grow past it."""
+    fresh_settings.refinement.provider = "lm_studio"
+    fresh_settings.refinement.lm_studio.model_id = "local-model"
+    fresh_settings.refinement.lm_studio.max_output_tokens = 300
+
+    seen_budgets: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_budgets.append(int(json.loads(request.content.decode("utf-8"))["max_tokens"]))
+        return _json_response(
+            {"choices": [{"message": {"content": "still truncated"}, "finish_reason": "length"}]}
+        )
+
+    provider = OpenAICompatibleRefinementProvider(fresh_settings, "lm_studio")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    result = provider.refine(
+        "word " * 250,
+        temperature=0.2,
+        top_p=0.9,
+        top_k=20,
+        repetition_penalty=1.0,
+        use_thinking=False,
+        allow_skip=False,
+    )
+
+    assert result.content == "still truncated"
+    # Seed clamped to the 300 ceiling; already at ceiling, so no grow-retry.
+    assert seen_budgets == [300]
+
+
 def test_external_refine_raises_when_provider_returns_empty_content(fresh_settings) -> None:
     fresh_settings.refinement.provider = "lm_studio"
     fresh_settings.refinement.lm_studio.model_id = "local-model"

@@ -34,6 +34,7 @@ venv/
 .github/copilot-instructions.md
 .idea/
 .vscode/
+.github/
 *.swp
 *.swo
 *~

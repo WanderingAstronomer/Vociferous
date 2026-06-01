@@ -181,7 +181,12 @@ class OpenAICompatibleProviderSettings(BaseModel):
     api_key_env: str | None = None
     api_key: str | None = Field(default=None, exclude=True)
     timeout_seconds: float = 120.0
-    max_output_tokens: int = 4096
+    # Optional hard ceiling on the generated-output budget. 0 (the default) means
+    # "auto": the budget is derived from the input length and self-corrects against
+    # the provider (grows on length-truncation, shrinks on 413), bounded only by the
+    # model's own context window. Set a positive value only to cap spend on a
+    # metered API — it will truncate long refinements at that limit.
+    max_output_tokens: int = 0
     model_list_enabled: bool = True
 
 

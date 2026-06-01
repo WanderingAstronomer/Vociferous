@@ -1,5 +1,20 @@
 # Vociferous Changelog
 
+## v7.0.3 — Self-Correcting Output Budgets and Edit-View Refinement
+
+**Date:** 2026-05-31
+**Status:** Hotfix
+
+### Fixed
+- **Output budget truncation on long transcripts** — The refinement provider no longer hard-caps output at a fixed token ceiling. The budget is now derived from the input's word count and self-corrects via provider feedback: it grows automatically when the provider returns `finish_reason == "length"` (silent truncation), shrinks on HTTP 413 (context overflow), and stops only when the provider signals clean completion or a user-configured spend cap is reached. Long dictation sessions that were silently cut off mid-sentence will now complete in full.
+
+### Changed
+- **`max_output_tokens` semantics** — The setting now acts as an optional spend ceiling rather than a default cap. The new default is `0` (auto), meaning the budget is content-driven with no artificial upper bound. Set a positive value only to cap spend on a metered API. Existing configurations with `4096` will continue to work as an explicit ceiling; removing the entry (or setting it to `0`) enables full auto mode.
+
+### Added
+- **Refine button in Edit view** — A Refine action is now available directly from the transcript editor footer. If there are unsaved changes, the editor prompts to save first; otherwise it navigates straight to the Refine view for the current transcript. This eliminates the need to close the editor, return to the transcript list, select the entry, and then open the Refine view.
+- **View Original in Edit view** — The refined-transcript banner now offers a non-destructive "View Original" option alongside the existing "Revert" action. Clicking it expands a read-only panel showing the pre-refinement text. Revert remains available from within that panel for users who decide to roll back after reviewing.
+
 ## v7.0.1 — Provider Reasoning Contract Hotfix
 
 **Date:** 2026-05-26

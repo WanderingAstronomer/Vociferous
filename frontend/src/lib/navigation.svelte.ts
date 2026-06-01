@@ -106,6 +106,13 @@ class NavigationStore {
         this.navigate("edit", transcriptId, "edit", { force: true });
     }
 
+    /** Navigate to RefineView for the given transcript, releasing any active edit session. */
+    navigateToRefine(transcriptId: number): void {
+        this.editReturnTarget = null;
+        this.isNavigationLocked = false;
+        this.navigate("refine", transcriptId, "view", { force: true });
+    }
+
     /** Navigate to TranscribeView in append mode targeting the given transcript. */
     navigateToAppendMode(targetId: number): void {
         if (this.isNavigationLocked) return;

@@ -42,6 +42,22 @@ class OpenAICompatibleRefinementProvider:
     # hidden reasoning tokens before producing content.
     _THINKING_UNSUPPRESSABLE_OVERHEAD_TOKENS = 1024
 
+    # Output-budget seed. Refinement is verbatim editing, so the corrected text
+    # tracks the input length; the budget is derived from the input rather than a
+    # fixed cap. This factor (output tokens per input word) is only a starting
+    # point: ~1.5 tokens/word for English, doubled so restructuring/expansion has
+    # room. It does not need to be precise because the request self-corrects — a
+    # `finish_reason == "length"` truncation grows the budget and retries (see
+    # _grow_budget_if_truncated), and a 413 shrinks it (see _smaller_retry_budget).
+    _OUTPUT_TOKENS_PER_INPUT_WORD = 3
+    # Floor so very short inputs still get a workable budget.
+    _MIN_OUTPUT_TOKENS = 256
+    # On length-truncation, multiply the budget by this and retry.
+    _BUDGET_GROWTH_FACTOR = 2
+    # Hard stop on the grow-retry loop so a misbehaving model (or metered API)
+    # cannot trigger unbounded regeneration. Three doublings = 8x the seed.
+    _MAX_BUDGET_GROWTHS = 3
+
     def __init__(self, settings: VociferousSettings, provider_id: str) -> None:
         if provider_id not in {"lm_studio", "groq"}:
             raise ValueError(f"Unsupported OpenAI-compatible provider: {provider_id}")
@@ -53,6 +69,7 @@ class OpenAICompatibleRefinementProvider:
         self._last_usage: dict[str, object] | None = None
         self._last_rate_limit: dict[str, str] = {}
         self._last_request: dict[str, object] | None = None
+        self._last_finish_reason: str | None = None
 
     @property
     def provider_id(self) -> str:
@@ -415,6 +432,7 @@ class OpenAICompatibleRefinementProvider:
         continue_assistant_turn = capabilities.should_prefill_empty_think(request)
         self._last_request = request.to_runtime_summary()
 
+        budget_growths = 0
         while True:
             payload = self._build_chat_payload(
                 messages=request_messages,
@@ -433,7 +451,6 @@ class OpenAICompatibleRefinementProvider:
 
             try:
                 response = self._request("POST", "chat/completions", json_payload=payload)
-                break
             except ProviderRequestError as exc:
                 next_tokens = self._smaller_retry_budget(request_tokens, exc)
                 if next_tokens is None:
@@ -446,8 +463,20 @@ class OpenAICompatibleRefinementProvider:
                     next_tokens,
                 )
                 request_tokens = next_tokens
+                continue
 
-        return self._parse_chat_response(response.json())
+            result = self._parse_chat_response(response.json())
+            grown_tokens = self._grow_budget_if_truncated(request_tokens, budget_growths)
+            if grown_tokens is None:
+                return result
+            logger.info(
+                "%s truncated output at budget %d (finish_reason=length). Retrying with %d.",
+                self._provider_label,
+                request_tokens,
+                grown_tokens,
+            )
+            request_tokens = grown_tokens
+            budget_growths += 1
 
     def _build_chat_payload(
         self,
@@ -513,6 +542,7 @@ class OpenAICompatibleRefinementProvider:
             message = choice["message"]
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError(f"{self._provider_label} returned an invalid chat completion response.") from exc
+        self._last_finish_reason = choice.get("finish_reason") if isinstance(choice, dict) else None
         if not isinstance(message, dict):
             raise RuntimeError(f"{self._provider_label} returned an invalid chat completion message.")
 
@@ -589,12 +619,56 @@ class OpenAICompatibleRefinementProvider:
         total_tokens = int(usage.get("total_tokens") or (prompt_tokens + completion_tokens))
         return prompt_tokens, completion_tokens, total_tokens
 
+    def _budget_ceiling(self) -> int | None:
+        """Optional user-imposed hard ceiling. 0 (the default) means no ceiling:
+        the budget is content-driven and self-correcting up to the provider's
+        own context window."""
+        configured = int(self._provider_settings.max_output_tokens)
+        return configured if configured > 0 else None
+
+    def _apply_budget_ceiling(self, budget: int) -> int:
+        ceiling = self._budget_ceiling()
+        return min(budget, ceiling) if ceiling is not None else budget
+
     def _refinement_max_tokens(self, text: str, *, use_thinking: bool = False) -> int:
         words = max(1, len(text.split()))
-        heuristic = max(256, int(words * 1.75) + 128)
+        budget = max(self._MIN_OUTPUT_TOKENS, words * self._OUTPUT_TOKENS_PER_INPUT_WORD)
         if use_thinking:
-            heuristic += RefinementEngine.THINKING_BUDGET_TOKENS
-        return min(max(1, self._provider_settings.max_output_tokens), heuristic)
+            budget += RefinementEngine.THINKING_BUDGET_TOKENS
+        return self._apply_budget_ceiling(budget)
+
+    def _grow_budget_if_truncated(self, current_tokens: int, growths: int) -> int | None:
+        """Return a larger budget when the provider truncated on length, else None.
+
+        This is the missing half of the self-correcting loop: LM Studio (and other
+        OpenAI-compatible servers) report an output-budget exhaustion as HTTP 200
+        with ``finish_reason == "length"`` and silently truncated content — never an
+        error — so nothing downstream catches it without inspecting finish_reason.
+        """
+        if self._last_finish_reason != "length":
+            return None
+        if growths >= self._MAX_BUDGET_GROWTHS:
+            logger.warning(
+                "%s truncated output at %d tokens and the grow-retry limit (%d) is reached; "
+                "returning the truncated result.",
+                self._provider_label,
+                current_tokens,
+                self._MAX_BUDGET_GROWTHS,
+            )
+            return None
+        ceiling = self._budget_ceiling()
+        if ceiling is not None and current_tokens >= ceiling:
+            logger.warning(
+                "%s truncated output at the configured max_output_tokens ceiling (%d); "
+                "raise it to allow longer refinements.",
+                self._provider_label,
+                ceiling,
+            )
+            return None
+        candidate = current_tokens * self._BUDGET_GROWTH_FACTOR
+        if ceiling is not None:
+            candidate = min(candidate, ceiling)
+        return candidate if candidate > current_tokens else None
 
     def _capture_rate_limits(self, response: httpx.Response) -> None:
         keys = (

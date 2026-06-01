@@ -37,7 +37,7 @@
     import ActionBar from "../lib/components/ActionBar.svelte";
     import ToggleSwitch from "../lib/components/ToggleSwitch.svelte";
     import MarkdownEditor from "../lib/components/MarkdownEditor.svelte";
-    import { ArrowLeft, Check, X, Hammer, RotateCcw, Pencil, Copy, RefreshCw, Wand2 } from "lucide-svelte";
+    import { ArrowLeft, Check, X, Hammer, RotateCcw, Pencil, Copy, RefreshCw, Wand2, Sparkles, Eye } from "lucide-svelte";
 
     /* ===== State ===== */
 
@@ -47,6 +47,7 @@
     let saving = $state(false);
     let error = $state("");
     let copied = $state(false);
+    let viewingOriginal = $state(false);
     let allTags: Tag[] = $state([]);
     let tagMenuOpen = $state(false);
     let editingTitle = $state(false);
@@ -61,6 +62,7 @@
     /* ===== Derived ===== */
 
     let originalText = $derived(transcript ? transcript.normalized_text || transcript.raw_text || "" : "");
+    let rawText = $derived(transcript?.raw_text || "");
     let isDirty = $derived(normalizeEditableText(editText) !== normalizeEditableText(originalText));
     let wc = $derived(wordCount(editText));
     let fillerCount = $derived(editText ? countFillers(editText) : 0);
@@ -155,8 +157,8 @@
         }
     }
 
-    async function save() {
-        if (!transcript?.id || !editText.trim() || saving) return;
+    async function saveContent(): Promise<boolean> {
+        if (!transcript?.id || !editText.trim() || saving) return false;
         saving = true;
         error = "";
         try {
@@ -164,13 +166,37 @@
                 transcript_id: transcript.id,
                 content: editText.trim(),
             });
+            transcript = await getTranscript(transcript.id);
             toast.success("Changes saved");
-            nav.completeEditSession();
+            return true;
         } catch (e: any) {
             error = e.message;
             toast.error(`Save failed: ${e.message}`);
+            return false;
+        } finally {
             saving = false;
         }
+    }
+
+    async function save() {
+        const ok = await saveContent();
+        if (ok) nav.completeEditSession();
+    }
+
+    async function handleRefine() {
+        if (!transcript?.id) return;
+        if (isDirty) {
+            const confirmed = await confirmDialog.confirm({
+                title: "Save before refining?",
+                message: "You have unsaved changes. Save now to refine the current version.",
+                confirmLabel: "Save & Refine",
+                cancelLabel: "Cancel",
+            });
+            if (!confirmed) return;
+            const ok = await saveContent();
+            if (!ok) return;
+        }
+        nav.navigateToRefine(transcript.id);
     }
 
     function discard() {
@@ -484,10 +510,33 @@
                 This transcript has been refined. Original text is preserved.
             </span>
             <div class="flex-1"></div>
+            <StyledButton
+                size="sm"
+                variant={viewingOriginal ? "primary" : "secondary"}
+                onclick={() => (viewingOriginal = !viewingOriginal)}
+            >
+                <Eye size={12} /> {viewingOriginal ? "Hide original" : "View original"}
+            </StyledButton>
             <StyledButton size="sm" variant="secondary" onclick={revertToRaw}>
-                <RotateCcw size={12} /> Revert to original
+                <RotateCcw size={12} /> Revert
             </StyledButton>
         </div>
+
+        <!-- ── Original Text Panel ── -->
+        {#if viewingOriginal}
+            <div class="shrink-0 flex flex-col border-b border-[var(--shell-border)] bg-[var(--surface-secondary)] max-h-[30vh]">
+                <div class="flex items-center gap-2 px-5 py-1.5 border-b border-[var(--shell-border)]">
+                    <span class="text-[11px] uppercase tracking-wide text-[var(--text-tertiary)] font-medium">Original (pre-refinement)</span>
+                    <div class="flex-1"></div>
+                    <StyledButton size="sm" variant="ghost" onclick={revertToRaw}>
+                        <RotateCcw size={11} /> Revert to this
+                    </StyledButton>
+                </div>
+                <div class="overflow-y-auto px-5 py-3 text-[14px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">
+                    {rawText}
+                </div>
+            </div>
+        {/if}
     {/if}
 
     <!-- ── Tag Bar ── -->
@@ -570,6 +619,16 @@
             }}
         >
             <RefreshCw size={13} /> Re-transcribe
+        </StyledButton>
+
+        <StyledButton
+            size="sm"
+            variant="secondary"
+            disabled={!transcript}
+            title={isDirty ? "Save changes then open Refine view" : "Open Refine view for this transcript"}
+            onclick={handleRefine}
+        >
+            <Sparkles size={13} /> Refine{isDirty ? "…" : ""}
         </StyledButton>
 
         <div class="flex-1"></div>
