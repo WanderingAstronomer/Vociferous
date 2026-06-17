@@ -11,9 +11,13 @@ import pytest
 from src.core.cuda_runtime import CudaRuntimeStatus
 from src.core.exceptions import EngineError
 from src.core.settings import ModelSettings, get_settings
+import src.services.transcription_service as ts
 from src.services.transcription_service import (
     OpenAICompatibleTranscriptionProvider,
+    _max_chunk_samples,
     _merge_segment_texts,
+    _split_on_silence,
+    _transcribe_external_chunked,
     create_local_model,
     post_process_transcription,
     transcribe,
@@ -422,3 +426,142 @@ class TestTranscriptionTimingLogs:
         assert "Slow ASR run detected" in caplog.text
         assert "realtime=0.80x" in caplog.text
         assert "resolved_device=cpu" in caplog.text
+
+
+class _ChunkRecordingClient:
+    """Test httpx client double that records each outbound WAV payload size."""
+
+    def __init__(self) -> None:
+        self.payload_sizes: list[int] = []
+        self.calls = 0
+
+    def request(self, method, url, **kwargs):
+        self.payload_sizes.append(len(kwargs["files"]["file"][1]))
+        idx = self.calls
+        self.calls += 1
+
+        class _Resp:
+            status_code = 200
+            headers = {"content-type": "application/json"}
+            text = "{}"
+
+            def json(self_inner):
+                # End time of 1.0s -> 1000ms of speech per chunk.
+                return {"text": f"part{idx}", "segments": [{"end": 1.0}]}
+
+        return _Resp()
+
+
+class TestExternalChunking:
+    """Long recordings are split on silence into sub-cap chunks (Groq 25MB cap)."""
+
+    def _make_provider(self, fresh_settings):
+        settings = TestExternalTranscriptionProvider._settings_with_provider(fresh_settings)
+        provider = OpenAICompatibleTranscriptionProvider(settings)
+        client = _ChunkRecordingClient()
+        provider._client = client
+        provider.load()
+        return provider, client, settings
+
+    @staticmethod
+    def _pipeline(chunk_size: int = 512, *, raise_vad: bool = False, probs=None) -> MagicMock:
+        pipeline = MagicMock()
+        pipeline._CHUNK_SIZE = chunk_size
+        if raise_vad:
+            pipeline._vad_classify.side_effect = RuntimeError("vad unavailable")
+        elif probs is not None:
+            pipeline._vad_classify.return_value = probs
+        else:
+            pipeline._vad_classify.side_effect = lambda a: [0.9] * (len(a) // chunk_size)
+        pipeline.process.side_effect = lambda audio, **kw: audio.astype(np.float32)
+        return pipeline
+
+    def test_small_payload_sent_as_single_request(self, fresh_settings):
+        provider, client, settings = self._make_provider(fresh_settings)
+        pipeline = self._pipeline()
+        audio = np.zeros(16_000, dtype=np.float32)  # ~32 KB, far under 20 MB
+
+        text, speech_ms, _ = _transcribe_external_chunked(provider, audio, settings, pipeline)
+
+        assert client.calls == 1
+        assert "part0" in text.lower()
+        assert speech_ms == 1000
+
+    def test_oversized_payload_split_into_subcap_chunks(self, fresh_settings, monkeypatch):
+        monkeypatch.setattr(ts, "_CHUNK_BYTE_BUDGET", 64 * 1024)
+        provider, client, settings = self._make_provider(fresh_settings)
+        pipeline = self._pipeline()
+        # 200k samples -> ~400 KB WAV, far over the 64 KB test budget.
+        audio = np.full(200_000, 0.4, dtype=np.float32)
+
+        text, speech_ms, time_ms = _transcribe_external_chunked(provider, audio, settings, pipeline)
+
+        assert client.calls >= 6
+        # No single request exceeds the byte budget.
+        assert all(size <= 64 * 1024 for size in client.payload_sizes)
+        # Raw chunk texts are concatenated in order, then post-processed once.
+        lowered = text.lower()
+        parts = [f"part{i}" for i in range(client.calls)]
+        positions = [lowered.find(p) for p in parts]
+        assert all(pos != -1 for pos in positions)
+        assert positions == sorted(positions)
+        # Per-chunk speech/time totals accumulate.
+        assert speech_ms == client.calls * 1000
+        assert time_ms >= 0
+
+    # Period = 2048 samples (3 loud chunks + 1 silent chunk). max_samples below
+    # gives a lookback window (max_samples//5) >= one full period, so every
+    # boundary has a silent gap to snap to.
+    @staticmethod
+    def _loud_silent_audio(chunk_size: int = 512, periods: int = 30) -> np.ndarray:
+        block = np.concatenate(
+            [np.full(3 * chunk_size, 0.5, dtype=np.float32), np.zeros(chunk_size, dtype=np.float32)]
+        )
+        return np.tile(block, periods)
+
+    def test_split_cuts_land_on_silence_via_amplitude_fallback(self):
+        chunk_size = 512
+        pipeline = self._pipeline(chunk_size=chunk_size, raise_vad=True)
+        audio = self._loud_silent_audio(chunk_size)
+        max_samples = 20 * chunk_size  # window = 4 chunks = one full period
+
+        segments = _split_on_silence(audio, pipeline, max_samples)
+
+        assert sum(len(s) for s in segments) == len(audio)  # nothing dropped
+        assert all(0 < len(s) <= max_samples for s in segments)
+        offsets = np.cumsum([len(s) for s in segments])[:-1]
+        for off in offsets:
+            gap = audio[off : off + chunk_size]
+            assert float(np.sqrt(np.mean(gap**2))) < 0.05  # cut sits in a silent gap
+
+    def test_split_cuts_land_on_silence_via_vad(self):
+        chunk_size = 512
+        audio = self._loud_silent_audio(chunk_size)
+        n_chunks = len(audio) // chunk_size
+        # Speech prob dips only on the silent (4th) chunk of each 4-chunk period.
+        probs = [0.05 if (i % 4 == 3) else 0.95 for i in range(n_chunks)]
+        pipeline = self._pipeline(chunk_size=chunk_size, probs=probs)
+        max_samples = 20 * chunk_size
+
+        segments = _split_on_silence(audio, pipeline, max_samples)
+
+        offsets = np.cumsum([len(s) for s in segments])[:-1]
+        for off in offsets:
+            gap = audio[off : off + chunk_size]
+            assert float(np.sqrt(np.mean(gap**2))) < 0.05
+
+    def test_module_transcribe_routes_external_through_chunker(self, fresh_settings, monkeypatch):
+        monkeypatch.setattr(ts, "_CHUNK_BYTE_BUDGET", 64 * 1024)
+        provider, client, settings = self._make_provider(fresh_settings)
+        pipeline = self._pipeline()
+        audio_int16 = np.full(200_000, 120, dtype=np.int16)
+
+        text, _, _ = transcribe(audio_int16, settings, local_model=provider, audio_pipeline=pipeline)
+
+        assert client.calls >= 6
+        assert "part0" in text.lower()
+
+    def test_max_chunk_samples_stays_under_real_cap(self):
+        # With the production 20 MB budget, a full chunk encodes under 25 MB.
+        assert ts._encoded_wav_size(_max_chunk_samples()) <= ts._CHUNK_BYTE_BUDGET
+        assert ts._encoded_wav_size(_max_chunk_samples()) < 25 * 1024 * 1024

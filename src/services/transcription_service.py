@@ -32,6 +32,15 @@ logger = logging.getLogger(__name__)
 
 _EXTERNAL_ASR_PROVIDERS = frozenset({"groq"})
 
+# Groq's audio transcription API enforces a 25 MB per-request file-size cap and
+# rejects on encoded bytes, not duration, so a long capture's WAV payload can
+# exceed the limit and fail with HTTP 413. We keep the outbound payload safely
+# under the cap by splitting on silence; 20 MB leaves ~5 MB of headroom.
+_CHUNK_BYTE_BUDGET = 20 * 1024 * 1024
+# `wave` writes a 44-byte canonical PCM/RIFF header; audio is mono 16-bit PCM
+# (2 bytes/sample), so encoded size == samples * 2 + 44.
+_WAV_HEADER_BYTES = 44
+
 
 class TranscriptionProviderRequestError(RuntimeError):
     """Raised when an external transcription provider rejects or cannot serve a request."""
@@ -271,6 +280,17 @@ class OpenAICompatibleTranscriptionProvider:
         return models
 
     def transcribe(self, audio: NDArray[np.float32], settings: VociferousSettings) -> tuple[str, int, int]:
+        text, speech_duration_ms, transcription_time_ms = self.transcribe_raw(audio, settings)
+        return post_process_transcription(text, settings), speech_duration_ms, transcription_time_ms
+
+    def transcribe_raw(self, audio: NDArray[np.float32], settings: VociferousSettings) -> tuple[str, int, int]:
+        """Send a single audio payload and return the *raw* transcript.
+
+        Unlike :meth:`transcribe`, this does NOT run ``post_process_transcription``.
+        It is the per-chunk primitive used when a long recording is split into
+        sub-cap pieces; post-processing must run once over the stitched text, not
+        per chunk (see ``transcribe`` module function).
+        """
         start = time.perf_counter()
         prompt = _transcription_prompt(settings.model.initial_prompt)
         response = self._request(
@@ -292,7 +312,7 @@ class OpenAICompatibleTranscriptionProvider:
             speech_duration_ms,
             len(prompt.split()),
         )
-        return post_process_transcription(text, settings), speech_duration_ms, transcription_time_ms
+        return text, speech_duration_ms, transcription_time_ms
 
     def _transcription_data(self, settings: VociferousSettings) -> dict[str, str]:
         data = {
@@ -432,6 +452,164 @@ def test_external_transcription_provider(settings: VociferousSettings, provider_
     return {"ok": True, "provider": provider_id, "models": models}
 
 
+def _encoded_wav_size(n_samples: int) -> int:
+    """Bytes a mono 16-bit PCM WAV occupies for ``n_samples`` samples."""
+    return n_samples * 2 + _WAV_HEADER_BYTES
+
+
+def _max_chunk_samples() -> int:
+    """Largest number of samples whose encoded WAV stays under the byte budget."""
+    return (_CHUNK_BYTE_BUDGET - _WAV_HEADER_BYTES) // 2
+
+
+def _best_silence_cut(
+    audio: NDArray[np.float32],
+    speech_probs: list[float] | None,
+    chunk_size: int,
+    lo: int,
+    hi: int,
+) -> int | None:
+    """Find the silence gap nearest the boundary in ``[lo, hi)`` and cut at its centre.
+
+    Scores each chunk-aligned frame — preferring Silero VAD speech probabilities,
+    falling back to RMS energy — then groups the quietest frames into contiguous
+    silence runs, picks the run nearest ``hi`` (the desired boundary), and returns
+    its *centre* offset. Cutting at the centre (rather than the edge) keeps the
+    seam clear of word onsets/offsets, since VAD probabilities decay across a few
+    frames at speech boundaries. Returns a chunk-aligned sample offset, or
+    ``None`` if no frame fits.
+    """
+    positions = list(range(lo, hi - chunk_size + 1, chunk_size))
+    if not positions:
+        return None
+
+    if speech_probs:
+        n_probs = len(speech_probs)
+        scores = [speech_probs[p // chunk_size] if p // chunk_size < n_probs else 1.0 for p in positions]
+    else:
+        scores = [
+            float(np.sqrt(np.mean(audio[p : p + chunk_size].astype(np.float32) ** 2))) for p in positions
+        ]
+
+    # Frames within a small tolerance of the quietest score count as "silent".
+    lo_s = min(scores)
+    hi_s = max(scores)
+    tol = max(1e-6, 0.05 * (hi_s - lo_s))
+    silent = [s <= lo_s + tol for s in scores]
+
+    # Collect contiguous silence runs as (start_index, end_index) into positions.
+    runs: list[tuple[int, int]] = []
+    i = 0
+    while i < len(positions):
+        if silent[i]:
+            j = i
+            while j + 1 < len(positions) and silent[j + 1]:
+                j += 1
+            runs.append((i, j))
+            i = j + 1
+        else:
+            i += 1
+
+    if not runs:  # the minimum is always within tolerance, so this is unreachable
+        return positions[-1]
+
+    # The run nearest the boundary is the one ending latest; cut at its centre.
+    start_i, end_i = max(runs, key=lambda r: r[1])
+    return positions[(start_i + end_i) // 2]
+
+
+def _split_on_silence(
+    audio: NDArray[np.float32],
+    audio_pipeline: AudioPipeline,
+    max_samples: int,
+) -> list[NDArray[np.float32]]:
+    """Split ``audio`` into pieces of at most ``max_samples``, cutting on silence.
+
+    Each boundary is placed at the strongest silence gap *before* the hard
+    sample limit (searching backward keeps every chunk under budget). Uses the
+    already-loaded Silero VAD to locate gaps, with an amplitude fallback.
+    """
+    try:
+        speech_probs = audio_pipeline._vad_classify(audio)
+    except Exception as exc:  # pragma: no cover - VAD failure shouldn't block sending
+        logger.warning("VAD scan for chunk splitting failed (%s); using amplitude fallback", exc)
+        speech_probs = None
+
+    chunk_size = int(getattr(audio_pipeline, "_CHUNK_SIZE", 512))
+    n = len(audio)
+    cuts: list[int] = []
+    start = 0
+    # Search window: look back up to 20% of a chunk budget for a silence gap.
+    window = max(max_samples // 5, chunk_size)
+
+    while n - start > max_samples:
+        target = start + max_samples
+        lo = max(start + chunk_size, target - window)
+        cut = _best_silence_cut(audio, speech_probs, chunk_size, lo, target)
+        if cut is None or cut <= start:
+            cut = target  # no usable gap found; hard-cut at the budget limit
+        cuts.append(cut)
+        start = cut
+
+    segments: list[NDArray[np.float32]] = []
+    prev = 0
+    for cut in cuts:
+        segments.append(audio[prev:cut])
+        prev = cut
+    segments.append(audio[prev:])
+    return segments
+
+
+def _transcribe_external_chunked(
+    provider: OpenAICompatibleTranscriptionProvider,
+    clean_audio: NDArray[np.float32],
+    settings: VociferousSettings,
+    audio_pipeline: AudioPipeline,
+) -> tuple[str, int, int]:
+    """Send silence-stripped audio to an external provider, chunking if oversized.
+
+    Normal recordings (payload under the byte budget) are sent in a single
+    request — no behavior change. Long recordings whose encoded WAV would exceed
+    the provider's per-request cap are split on silence into sub-cap chunks,
+    transcribed sequentially (reusing the provider's retry/backoff), and the raw
+    texts are concatenated in order. Post-processing runs ONCE over the stitched
+    transcript so downstream titling/refinement see one cohesive text.
+    """
+    if _encoded_wav_size(len(clean_audio)) <= _CHUNK_BYTE_BUDGET:
+        return provider.transcribe(clean_audio, settings)
+
+    max_samples = _max_chunk_samples()
+    chunks = _split_on_silence(clean_audio, audio_pipeline, max_samples)
+    logger.info(
+        "Audio payload %.1f MB exceeds %.0f MB budget; split into %d chunks on silence",
+        _encoded_wav_size(len(clean_audio)) / (1024 * 1024),
+        _CHUNK_BYTE_BUDGET / (1024 * 1024),
+        len(chunks),
+    )
+
+    raw_parts: list[str] = []
+    total_speech_ms = 0
+    total_time_ms = 0
+    for index, chunk in enumerate(chunks):
+        if len(chunk) == 0:
+            continue
+        logger.info(
+            "Transcribing chunk %d/%d (%.1f MB, %.1fs)",
+            index + 1,
+            len(chunks),
+            _encoded_wav_size(len(chunk)) / (1024 * 1024),
+            len(chunk) / AudioConfig.DEFAULT_SAMPLE_RATE,
+        )
+        raw_text, speech_ms, time_ms = provider.transcribe_raw(chunk, settings)
+        if raw_text.strip():
+            raw_parts.append(raw_text.strip())
+        total_speech_ms += speech_ms
+        total_time_ms += time_ms
+
+    stitched = " ".join(raw_parts)
+    return post_process_transcription(stitched, settings), total_speech_ms, total_time_ms
+
+
 def transcribe(
     audio_data: NDArray[np.int16] | None,
     settings: VociferousSettings,
@@ -474,7 +652,7 @@ def transcribe(
         return "", 0, 0
 
     if isinstance(local_model, OpenAICompatibleTranscriptionProvider):
-        return local_model.transcribe(clean_audio, settings)
+        return _transcribe_external_chunked(local_model, clean_audio, settings, audio_pipeline)
 
     try:
         audio_float: NDArray[np.float32] = clean_audio
